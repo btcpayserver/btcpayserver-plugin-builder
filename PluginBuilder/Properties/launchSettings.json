@@ -1,0 +1,14 @@
+{
+  "profiles": {
+    "Debug Profile": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:7259;http://localhost:5001",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "PB_POSTGRES": "lo"
+      }
+    }
+  }
+}
