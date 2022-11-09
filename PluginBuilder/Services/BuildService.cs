@@ -31,9 +31,8 @@ namespace PluginBuilder.Services
         public DBConnectionFactory ConnectionFactory { get; }
         public AzureStorageClient AzureStorageClient { get; }
 
-        public async Task Build(PluginSlug pluginSlug, PluginBuildParameters buildParameters)
+        public async Task Build(FullBuildId fullBuildId, PluginBuildParameters buildParameters)
         {
-            var fullBuildId = await CreateNewBuild(pluginSlug);
             List<string> args = new List<string>();
 
             // Create the volumes where the artifacts will be stored

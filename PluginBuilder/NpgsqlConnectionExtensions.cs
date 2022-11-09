@@ -6,13 +6,33 @@ namespace PluginBuilder
 {
     public static class NpgsqlConnectionExtensions
     {
-        public static async Task NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
+        public static async Task<bool> UserOwnsPlugin(this NpgsqlConnection connection, string userId, PluginSlug pluginSlug)
         {
-            await connection.ExecuteAsync("INSERT INTO plugins (slug) VALUES (@id);",
+            return await connection.QuerySingleAsync<bool>(
+                "SELECT EXISTS (SELECT * FROM users_plugins WHERE user_id=@userId AND plugin_slug=@pluginSlug);",
+                new
+                {
+                    pluginSlug = pluginSlug.ToString(),
+                    userId = userId
+                });
+        }
+        public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+        {
+            await connection.ExecuteAsync("INSERT INTO users_plugins VALUES (@userId, @pluginSlug) ON CONFLICT DO NOTHING",
+                new
+                {
+                    pluginSlug = pluginSlug.ToString(),
+                    userId = userId
+                });
+        }
+        public static async Task<bool> NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
+        {
+            var count = await connection.ExecuteAsync("INSERT INTO plugins (slug) VALUES (@id) ON CONFLICT DO NOTHING;",
                 new
                 {
                     id = pluginSlug.ToString(),
                 });
+            return count == 1;
         }
         public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, string newState, JObject? buildInfo, PluginManifest? manifestInfo = null)
         {
@@ -30,6 +50,12 @@ namespace PluginBuilder
                     plugin_slug = fullBuildId.PluginSlug.ToString(),
                     buildId = fullBuildId.BuildId
                 });
+        }
+        public static async Task<PluginSlug[]> GetPluginsByUserId(this NpgsqlConnection connection, string userId)
+        {
+            return (await connection.QueryAsync<string>(
+                "SELECT p.slug FROM plugins p JOIN users_plugins up ON up.plugin_slug=p.slug;"))
+                .Select(s => PluginSlug.Parse(s)).ToArray();
         }
         public static Task SetVersionBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, int[] version, int[]? minBTCPayVersion)
         {

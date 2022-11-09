@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -32,6 +32,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="Components\Icon\Default.cshtml" />
     <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-300.woff2" />
     <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-300italic.woff2" />
     <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-700.woff2" />
@@ -55,6 +56,8 @@
     <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-700italic.woff2" />
     <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-italic.woff2" />
     <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-regular.woff2" />
+    <None Include="wwwroot\vendor\bootstrap\bootstrap.bundle.min.js" />
+    <None Include="wwwroot\vendor\bootstrap\bootstrap.bundle.min.js.map" />
     <None Include="wwwroot\vendor\font-awesome\fonts\fontawesome-webfont.svg" />
     <None Include="wwwroot\vendor\font-awesome\fonts\fontawesome-webfont.woff2" />
     <None Include="wwwroot\vendor\font-awesome\less\animated.less" />
@@ -85,6 +88,8 @@
     <None Include="wwwroot\vendor\font-awesome\scss\_screen-reader.scss" />
     <None Include="wwwroot\vendor\font-awesome\scss\_stacked.scss" />
     <None Include="wwwroot\vendor\font-awesome\scss\_variables.scss" />
+    <None Include="wwwroot\vendor\jquery\jquery.js" />
+    <None Include="wwwroot\vendor\jquery\jquery.min.js" />
   </ItemGroup>
 
   <ItemGroup>

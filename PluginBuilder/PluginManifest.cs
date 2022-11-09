@@ -1,16 +1,23 @@
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace PluginBuilder
 {
     public class PluginManifest
     {
+        public static PluginManifest Parse(string json)
+        {
+            return new PluginManifest(JObject.Parse(json));
+        }
         public PluginManifest(JObject content)
         {
             Content = content;
             Version = TryParseVersion(content["Version"]);
+            if (content["Version"]?.Value<string>() is var v && System.Version.TryParse(v, out var vv))
+                VersionString = vv.ToString();
             BTCPayMinVersion = TryParseMinBTCPayVersion(content);
         }
-
+        public string VersionString { get; set; }
         private static int[]? TryParseMinBTCPayVersion(JObject manifest)
         {
             var version = manifest["Dependencies"]?.OfType<JObject>()

@@ -13,6 +13,7 @@ namespace PluginBuilder.Controllers
         public UserManager<IdentityUser> UserManager { get; }
         public RoleManager<IdentityRole> RoleManager { get; }
         public SignInManager<IdentityUser> SignInManager { get; }
+        public IAuthorizationService AuthorizationService { get; }
         public ServerEnvironment Env { get; }
 
         public HomeController(
@@ -20,17 +21,27 @@ namespace PluginBuilder.Controllers
             UserManager<IdentityUser> userManager,
             RoleManager<IdentityRole> roleManager,
             SignInManager<IdentityUser> signInManager,
+            IAuthorizationService authorizationService,
             ServerEnvironment env)
         {
             ConnectionFactory = connectionFactory;
             UserManager = userManager;
             RoleManager = roleManager;
             SignInManager = signInManager;
+            AuthorizationService = authorizationService;
             Env = env;
         }
         [HttpGet("/")]
-        public IActionResult HomePage()
+        public async Task<IActionResult> HomePage()
         {
+            if (HttpContext.Request.Cookies.TryGetValue(Cookies.PluginSlug, out var s) && s is not null && PluginSlug.TryParse(s, out var p))
+            {
+                var auth = await AuthorizationService.AuthorizeAsync(User, p, new OwnPluginRequirement());
+                if (auth.Succeeded)
+                    return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = p.ToString() });
+                else
+                    HttpContext.Response.Cookies.Delete(Cookies.PluginSlug);
+            }
             return View();
         }
 
@@ -117,6 +128,30 @@ namespace PluginBuilder.Controllers
 
             await SignInManager.SignInAsync(user, isPersistent: false);
             return RedirectToLocal(returnUrl);
+        }
+
+        [HttpGet("/plugins/create")]
+        public IActionResult CreatePlugin()
+        {
+            return View();
+        }
+
+        [HttpPost("/plugins/create")]
+        public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
+        {
+            if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
+            {
+                ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
+                return View(model);
+            }
+            using var conn = await ConnectionFactory.Open();
+            if (!await conn.NewPlugin(pluginSlug))
+            {
+                ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+                return View(model);
+            }
+            await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User));
+            return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 
         [HttpPost("/plugins/add")]

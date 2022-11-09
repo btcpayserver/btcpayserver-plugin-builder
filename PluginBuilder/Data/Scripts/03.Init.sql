@@ -5,6 +5,15 @@ CREATE TABLE plugins
     slug TEXT NOT NULL PRIMARY KEY
 );
 
+CREATE TABLE users_plugins
+(
+    user_id TEXT NOT NULL,
+    plugin_slug TEXT NOT NULL,
+    PRIMARY KEY(user_id, plugin_slug),
+    FOREIGN KEY (plugin_slug) REFERENCES plugins (slug) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES "AspNetUsers" ("Id") ON DELETE CASCADE
+);
+
 
 CREATE TABLE builds_ids
 (
@@ -21,9 +30,11 @@ CREATE TABLE builds
     state TEXT NOT NULL,
     manifest_info JSONB,
     build_info JSONB,
-    PRIMARY KEY (plugin_slug, id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    /*PRIMARY KEY (plugin_slug, id),*/
     FOREIGN KEY (plugin_slug) REFERENCES plugins (slug) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX builds_pkey ON builds (plugin_slug, id DESC);
 
 CREATE TABLE versions
 (

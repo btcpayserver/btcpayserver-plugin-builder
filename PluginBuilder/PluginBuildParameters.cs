@@ -4,6 +4,8 @@ namespace PluginBuilder
     {
         public PluginBuildParameters(string gitRepository)
         {
+            if (gitRepository is null)
+                throw new ArgumentNullException(nameof(gitRepository));
             GitRepository = gitRepository;
         }
         public string GitRepository { get; set; }

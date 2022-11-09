@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +34,9 @@ public class Program
     {
         var builder = WebApplication.CreateBuilder(args ?? Array.Empty<string>());
         builder.Configuration.AddEnvironmentVariables("PB_");
+#if DEBUG
+        builder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
+#endif
         AddServices(builder.Configuration, builder.Services);
         return builder;
     }
@@ -51,7 +55,12 @@ public class Program
 
     public void AddServices(IConfiguration configuration, IServiceCollection services)
     {
-        services.AddControllersWithViews();
+        services.AddControllersWithViews()
+                .AddRazorRuntimeCompilation()
+                .AddRazorOptions(options =>
+                {
+                    options.ViewLocationFormats.Add("/{0}.cshtml");
+                });
         services.AddHostedService<DatabaseStartupHostedService>();
         services.AddHostedService<DockerStartupHostedService>();
         services.AddHostedService<AzureStartupHostedService>();
@@ -61,7 +70,6 @@ public class Program
         services.AddSingleton<AzureStorageClient>();
         services.AddSingleton<ServerEnvironment>();
 
-        services.AddMvc().AddRazorRuntimeCompilation();
         services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
         {
             b.UseNpgsql(configuration.GetRequired("POSTGRES"));
@@ -86,5 +94,10 @@ public class Program
             opt.AccessDeniedPath = null;
             opt.LogoutPath = "/logout";
         });
+        services.AddAuthorization(o =>
+        {
+            o.AddPolicy(Policies.OwnPlugin, o => o.AddRequirements(new OwnPluginRequirement()));
+        });
+        services.AddScoped<IAuthorizationHandler, PluginBuilderAuthorizationHandler>();
     }
 }
