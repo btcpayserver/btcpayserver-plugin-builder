@@ -1,4 +1,7 @@
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 
@@ -56,5 +59,32 @@ public class Program
         services.AddSingleton<BuildService>();
         services.AddSingleton<ProcessRunner>();
         services.AddSingleton<AzureStorageClient>();
+        services.AddSingleton<ServerEnvironment>();
+
+        services.AddMvc().AddRazorRuntimeCompilation();
+        services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
+        {
+            b.UseNpgsql(configuration.GetRequired("POSTGRES"));
+        });
+        services.AddIdentity<IdentityUser, IdentityRole>(options =>
+        {
+            options.Password.RequireDigit = false;
+            options.Password.RequiredLength = 6;
+            options.Password.RequireLowercase = false;
+            options.Password.RequireNonAlphanumeric = false;
+            options.Password.RequireUppercase = false;
+            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+            options.Lockout.MaxFailedAccessAttempts = 5;
+            options.Lockout.AllowedForNewUsers = true;
+            options.Password.RequireUppercase = false;
+        })
+        .AddEntityFrameworkStores<IdentityDbContext<IdentityUser>>();
+
+        services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, opt =>
+        {
+            opt.LoginPath = "/login";
+            opt.AccessDeniedPath = null;
+            opt.LogoutPath = "/logout";
+        });
     }
 }

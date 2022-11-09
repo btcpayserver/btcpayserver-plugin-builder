@@ -14,7 +14,7 @@ namespace PluginBuilder
                     id = pluginSlug.ToString(),
                 });
         }
-        public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, string newState, JObject? buildInfo, JObject? manifestInfo = null)
+        public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, string newState, JObject? buildInfo, PluginManifest? manifestInfo = null)
         {
             await connection.ExecuteAsync(
                 "UPDATE builds " +
@@ -29,6 +29,20 @@ namespace PluginBuilder
                     manifest_info = manifestInfo?.ToString(),
                     plugin_slug = fullBuildId.PluginSlug.ToString(),
                     buildId = fullBuildId.BuildId
+                });
+        }
+        public static Task SetVersionBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, int[] version, int[]? minBTCPayVersion)
+        {
+            minBTCPayVersion ??= new int[] { 0,0,0,0 };
+            return connection.ExecuteAsync(
+                "INSERT INTO versions VALUES (@plugin_slug, @ver, @build_id, @btcpay_min_ver) " +
+                "ON CONFLICT (plugin_slug, ver) DO UPDATE SET build_id = @build_id, btcpay_min_ver = @btcpay_min_ver;",
+                new
+                {
+                    plugin_slug = fullBuildId.PluginSlug.ToString(),
+                    ver = version,
+                    build_id = fullBuildId.BuildId,
+                    btcpay_min_ver = minBTCPayVersion
                 });
         }
         public static Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug)

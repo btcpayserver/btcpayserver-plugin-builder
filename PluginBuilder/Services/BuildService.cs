@@ -100,12 +100,32 @@ namespace PluginBuilder.Services
             var pluginName = buildEnv["pluginName"]!.Value<string>();
             string manifestStr = await ReadFileInVolume(volume, $"{pluginName}.btcpay.json");
 
-            var manifest = JObject.Parse(manifestStr);
+            var manifest = new PluginManifest(JObject.Parse(manifestStr));
             await UpdateBuild(fullBuildId, "waiting-upload", buildEnv, manifest);
 
             await UpdateBuild(fullBuildId, "uploading", null, null);
-            var url = await AzureStorageClient.Upload(volume, $"{pluginName}.btcpay", $"{fullBuildId}/{pluginName}.btcpay");
+            string url;
+            try
+            {
+                url = await AzureStorageClient.Upload(volume, $"{pluginName}.btcpay", $"{fullBuildId}/{pluginName}.btcpay");
+            }
+            catch (Exception err)
+            {
+                await UpdateBuild(fullBuildId, "failed", new JObject() { ["error"] = err.Message });
+                throw;
+            }
             await UpdateBuild(fullBuildId, "uploaded", new JObject() { ["url"] = url }, null);
+
+            if (manifest.Version != null)
+            {
+                await SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion);
+            }
+        }
+
+        private async Task SetVersionBuild(FullBuildId fullBuildId, int[] version, int[]? minBTCPayVersion)
+        {
+            await using var connection = await ConnectionFactory.Open();
+            await connection.SetVersionBuild(fullBuildId, version, minBTCPayVersion);
         }
 
         private async Task<string> ReadFileInVolume(string volume, string file)
@@ -124,7 +144,7 @@ namespace PluginBuilder.Services
             return output.ToString();
         }
 
-        private async Task UpdateBuild(FullBuildId fullBuildId, string newState, JObject? buildInfo, JObject? manifestInfo = null)
+        private async Task UpdateBuild(FullBuildId fullBuildId, string newState, JObject? buildInfo, PluginManifest? manifestInfo = null)
         {
             await using var connection = await ConnectionFactory.Open();
             await connection.UpdateBuild(fullBuildId, newState, buildInfo, manifestInfo);

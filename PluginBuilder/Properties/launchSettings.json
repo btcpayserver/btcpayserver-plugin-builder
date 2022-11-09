@@ -7,7 +7,9 @@
       "applicationUrl": "https://localhost:7259;http://localhost:5001",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "PB_POSTGRES": "lo"
+        "PB_POSTGRES": "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=61932;Database=btcpayplugin3",
+        "PB_STORAGE_CONNECTION_STRING": "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==",
+        "PB_CHEAT_MODE": "true"
       }
     }
   }
