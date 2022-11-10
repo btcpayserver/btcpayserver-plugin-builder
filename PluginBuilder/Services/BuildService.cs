@@ -18,23 +18,27 @@ namespace PluginBuilder.Services
             ILogger<BuildService> logger,
             ProcessRunner processRunner,
             DBConnectionFactory connectionFactory,
+            EventAggregator eventAggregator,
             AzureStorageClient azureStorageClient)
         {
             Logger = logger;
             ProcessRunner = processRunner;
             ConnectionFactory = connectionFactory;
+            EventAggregator = eventAggregator;
             AzureStorageClient = azureStorageClient;
         }
 
         public ILogger<BuildService> Logger { get; }
         public ProcessRunner ProcessRunner { get; }
         public DBConnectionFactory ConnectionFactory { get; }
+        public EventAggregator EventAggregator { get; }
         public AzureStorageClient AzureStorageClient { get; }
 
-        public async Task Build(FullBuildId fullBuildId, PluginBuildParameters buildParameters)
+        public async Task Build(FullBuildId fullBuildId)
         {
+            using BuildOutputCapture buildLogCapture = new BuildOutputCapture(fullBuildId, ConnectionFactory);
             List<string> args = new List<string>();
-
+            var buildParameters = await GetBuildInfo(fullBuildId);
             // Create the volumes where the artifacts will be stored
             args.AddRange(new[] { "volume", "create" });
             args.AddRange(new[] { "--label", $"BTCPAY_PLUGIN_BUILD={fullBuildId}" });
@@ -62,10 +66,10 @@ namespace PluginBuilder.Services
                 args.AddRange(new[] { "--env", $"GIT_REF={buildParameters.GitRef}" });
                 info["gitRef"] = buildParameters.GitRef;
             }
-            if (buildParameters.PluginDirectory != null)
+            if (buildParameters.PluginDir != null)
             {
-                args.AddRange(new[] { "--env", $"PLUGIN_DIR={buildParameters.PluginDirectory}" });
-                info["pluginDir"] = buildParameters.PluginDirectory;
+                args.AddRange(new[] { "--env", $"PLUGIN_DIR={buildParameters.PluginDir}" });
+                info["pluginDir"] = buildParameters.PluginDir;
             }
             if (buildParameters.BuildConfig != null)
             {
@@ -83,7 +87,9 @@ namespace PluginBuilder.Services
                 code = await ProcessRunner.RunAsync(new ProcessSpec()
                 {
                     Executable = "docker",
-                    Arguments = args.ToArray()
+                    Arguments = args.ToArray(),
+                    OutputCapture = buildLogCapture,
+                    ErrorCapture = buildLogCapture
                 }, default);
                 if (code != 0)
                     throw new BuildServiceException("docker build failed");
@@ -121,6 +127,20 @@ namespace PluginBuilder.Services
             }
         }
 
+        private async Task<BuildInfo> GetBuildInfo(FullBuildId fullBuildId)
+        {
+            await using var connection = await ConnectionFactory.Open();
+            var buildInfo = await connection.QueryFirstOrDefaultAsync<string>("SELECT build_info FROM builds WHERE plugin_slug=@pluginSlug AND id=@buildId",
+                new
+                {
+                    pluginSlug = fullBuildId.PluginSlug.ToString(),
+                    buildId = fullBuildId.BuildId
+                });
+            if (buildInfo is null)
+                throw new BuildServiceException("This build doesn't exists");
+            return BuildInfo.Parse(buildInfo);
+        }
+
         private async Task SetVersionBuild(FullBuildId fullBuildId, int[] version, int[]? minBTCPayVersion)
         {
             await using var connection = await ConnectionFactory.Open();
@@ -147,12 +167,7 @@ namespace PluginBuilder.Services
         {
             await using var connection = await ConnectionFactory.Open();
             await connection.UpdateBuild(fullBuildId, newState, buildInfo, manifestInfo);
-        }
-
-        private async Task<FullBuildId> CreateNewBuild(PluginSlug pluginSlug)
-        {
-            await using var connection = await ConnectionFactory.Open();
-            return new FullBuildId(pluginSlug, await connection.NewBuild(pluginSlug));
+            EventAggregator.Publish<Events.BuildChanged>(new Events.BuildChanged(fullBuildId));
         }
     }
 }

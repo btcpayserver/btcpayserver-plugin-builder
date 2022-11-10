@@ -1,0 +1,45 @@
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Mvc.TagHelpers
+@inject SignInManager<IdentityUser> SignInManager
+@model PluginBuilder.Components.PluginSelector.PluginSelectorViewModel
+
+
+@if (Model.PluginSlug == null)
+{
+    <a href="~/" class="navbar-brand py-2 js-scroll-trigger">
+		<svg xmlns="http://www.w3.org/2000/svg" role="img" alt="BTCPay Server" class="logo"><use href="/img/logo.svg#small" class="logo-small" /><use href="/img/logo.svg#large" class="logo-large" /></svg>
+	</a>
+}
+else
+{
+	<a asp-controller="Home" asp-action="Dashboard" asp-route-pluginSlug="@Model.PluginSlug" class="navbar-brand py-2 js-scroll-trigger">
+		<svg xmlns="http://www.w3.org/2000/svg" role="img" alt="BTCPay Server" class="logo"><use href="/img/logo.svg#small" class="logo-small" /><use href="/img/logo.svg#large" class="logo-large" /></svg>
+	</a>   
+}
+
+<div id="StoreSelector">
+    @if (Model.Options.Count > 0)
+    {
+        <div id="StoreSelectorDropdown" class="dropdown only-for-js">
+            <button id="StoreSelectorToggle" class="btn btn-secondary dropdown-toggle rounded-pill px-3 @(Model.PluginSlug == null ? "text-secondary" : "")" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <vc:icon symbol="store"/>
+                <span>@(Model.PluginSlug == null ? "Select Plugin" : Model.PluginSlug.ToString())</span>
+                <vc:icon symbol="caret-down"/>
+            </button>
+            <ul id="StoreSelectorMenu" class="dropdown-menu" aria-labelledby="StoreSelectorToggle">
+                @foreach (var option in Model.Options)
+                {
+                    <li>
+                        <a asp-controller="Plugin" asp-action="Dashboard" asp-route-pluginSlug="@option.Value" class="dropdown-item@(option.Selected ? " active" : "")" id="StoreSelectorMenuItem-@option.Value">@option.Text</a>
+                    </li>
+                }
+                <li><hr class="dropdown-divider"></li>
+                <li><a asp-controller="Home" asp-action="CreatePlugin" class="dropdown-item" id="StoreSelectorCreate">Create Plugin</a></li>
+            </ul>
+        </div>
+    }
+    else if (SignInManager.IsSignedIn(User))
+    {
+        <a asp-controller="Home" asp-action="CreatePlugin" class="btn btn-primary w-100 rounded-pill" id="StoreSelectorCreate">Create Plugin</a>
+    }
+</div>

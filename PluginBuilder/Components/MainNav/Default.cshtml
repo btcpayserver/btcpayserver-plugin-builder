@@ -1,0 +1,72 @@
+@inject Microsoft.AspNetCore.Identity.SignInManager<Microsoft.AspNetCore.Identity.IdentityUser>	SignInManager
+@model PluginBuilder.Components.MainNav.MainNavViewModel
+
+<nav id="mainNav" class="d-flex flex-column justify-content-between">
+	<div class="accordion px-3 px-lg-4">
+		@if (SignInManager.IsSignedIn(User))
+		{
+			@if (Model.PluginSlug != null)
+			{
+				<div class="accordion-item">
+					<div class="accordion-body">
+						<ul class="navbar-nav">
+							<li class="nav-item">
+								<a asp-area="" asp-controller="Plugin" asp-action="Dashboard" asp-route-pluginSlug="@Model.PluginSlug" class="nav-link js-scroll-trigger @ViewData.IsActivePage(PluginNavPages.Dashboard)" id="StoreNav-Dashboard">
+									<vc:icon symbol="home" />
+									<span>Builds</span>
+								</a>
+							</li>
+						</ul>
+					</div>
+				</div>
+				<div class="accordion-item">
+					<header class="accordion-header" id="Nav-Versions-Header">
+						<div class="accordion-button">
+							Versions
+						</div>
+					</header>
+					<div id="Nav-Versions" class="accordion-collapse" aria-labelledby="Nav-Wallets-Header">
+						<div class="accordion-body">
+							<ul class="navbar-nav">
+								@foreach (var version in Model.Versions)
+								{
+									<li class="nav-item">
+										<a asp-area="" asp-controller="Plugin" asp-action="Version" asp-route-version="@version" class="nav-link">
+												<span>@version</span>
+										</a>
+									</li>
+								}
+
+							</ul>
+						</div>
+					</div>
+				</div>
+			}
+		}
+	</div>
+	@if (SignInManager.IsSignedIn(User))
+	{
+		<ul id="mainNavSettings" class="navbar-nav border-top p-3 px-lg-4">
+			<li class="nav-item dropup">
+				<a class="nav-link js-scroll-trigger" role="button" data-bs-toggle="dropdown" aria-expanded="false" id="Nav-Account">
+					<vc:icon symbol="account" />
+					<span>Account</span>
+				</a>
+				<ul class="dropdown-menu py-0 w-100" aria-labelledby="Nav-Account">
+					<li class="p-3">
+						<strong class="d-block text-truncate" style="max-width:195px">@User.Identity.Name</strong>
+						@if (User.IsInRole(Roles.ServerAdmin))
+						{
+							<div class="text-secondary">Administrator</div>
+						}
+					</li>
+					<li class="border-top py-1 px-3">
+						<a asp-area="" asp-controller="Home" asp-action="Logout" class="nav-link text-danger" id="Nav-Logout">
+							<span>Logout</span>
+						</a>
+					</li>
+				</ul>
+			</li>
+		</ul>
+	}
+</nav>

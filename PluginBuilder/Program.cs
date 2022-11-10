@@ -47,6 +47,8 @@ public class Program
         app.UseRouting();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/hub");
+        app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/builds/{buildId}/hub");
         //        app.MapControllerRoute(
         //name: "default",
         //pattern: "{controller=Home}/{action=Index}/{id?}");
@@ -64,11 +66,14 @@ public class Program
         services.AddHostedService<DatabaseStartupHostedService>();
         services.AddHostedService<DockerStartupHostedService>();
         services.AddHostedService<AzureStartupHostedService>();
+        services.AddHostedService<PluginHubHostedService>();
+
         services.AddSingleton<DBConnectionFactory>();
         services.AddSingleton<BuildService>();
         services.AddSingleton<ProcessRunner>();
         services.AddSingleton<AzureStorageClient>();
         services.AddSingleton<ServerEnvironment>();
+        services.AddSingleton<EventAggregator>();
 
         services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
         {
@@ -99,5 +104,6 @@ public class Program
             o.AddPolicy(Policies.OwnPlugin, o => o.AddRequirements(new OwnPluginRequirement()));
         });
         services.AddScoped<IAuthorizationHandler, PluginBuilderAuthorizationHandler>();
+        services.AddSignalR();
     }
 }

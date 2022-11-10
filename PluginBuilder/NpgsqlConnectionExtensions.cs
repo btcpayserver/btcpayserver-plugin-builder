@@ -71,8 +71,15 @@ namespace PluginBuilder
                     btcpay_min_ver = minBTCPayVersion
                 });
         }
-        public static Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug)
+        public static Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
         {
+            var bi = new BuildInfo()
+            {
+                BuildConfig = buildParameters.BuildConfig,
+                GitRepository = buildParameters.GitRepository,
+                GitRef = buildParameters.GitRef,
+                PluginDir = buildParameters.PluginDirectory
+            };
             return connection.ExecuteScalarAsync<long>("" +
                 "WITH cte AS " +
                 "( " +
@@ -80,11 +87,12 @@ namespace PluginBuilder
                 "        ON CONFLICT (plugin_slug) DO UPDATE SET curr_id=bi.curr_id+1 " +
                 " RETURNING curr_id " +
                 ") " +
-                "INSERT INTO builds (plugin_slug, id, state) VALUES (@plugin_slug, (SELECT * FROM cte), @state) RETURNING id;",
+                "INSERT INTO builds (plugin_slug, id, state, build_info) VALUES (@plugin_slug, (SELECT * FROM cte), @state, @buildInfo::JSONB) RETURNING id;",
                 new
                 {
                     plugin_slug = pluginSlug.ToString(),
-                    state = "queued"
+                    state = "queued",
+                    buildInfo = bi.ToString()
                 });
         }
     }

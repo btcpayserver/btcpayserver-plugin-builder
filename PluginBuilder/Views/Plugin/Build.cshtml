@@ -1,0 +1,125 @@
+@model BuildViewModel
+@{
+	Layout = "_Layout";
+	ViewData.SetActivePage(PluginNavPages.Dashboard);
+	ViewData["Title"] = $"Build";
+}
+
+<div class="d-sm-flex align-items-center justify-content-between">
+	<div class="d-sm-flex align-items-center">
+		<h2 class="mb-0">
+			@ViewData["Title"]
+		</h2>
+		@if (Model.Published) {
+			<div>
+				<span>&nbsp;</span>
+				<span class="badge bg-info">published</span>
+			</div>
+		}
+	</div>
+	@if (Model.DownloadLink != null)
+	{
+		<a href="@Model.DownloadLink" rel="noreferrer noopener" class="btn btn-info mt-3 mt-sm-0">Download</a>
+	}
+</div>
+
+<div class="row justify-content-between">
+	<div class="col-md-6">
+		<table class="table mb-5">
+			<tr>
+				<th class="fw-semibold">Created Date</th>
+				<td>
+					@Model.CreatedDate
+				</td>
+			</tr>
+			<tr>
+				<th class="fw-semibold">Plugin</th>
+				<td>
+					<a asp-action="Dashboard" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug.ToString()">@Model.FullBuildId.PluginSlug.ToString()</a>
+				</td>
+			</tr>
+			<tr>
+				<th class="fw-semibold">Build</th>
+				<td>
+					@Model.FullBuildId.BuildId
+				</td>
+			</tr>
+		</table>
+	</div>
+	<div class="col-md-6">
+		<table class="table mb-5">
+			<tr>
+				<th class="fw-semibold">Repository</th>
+				<td>
+					@Model.Repository
+				</td>
+			</tr>
+			<tr>
+				<th class="fw-semibold">Git ref</th>
+				<td>
+					@Model.GitRef
+				</td>
+			</tr>
+			<tr>
+				<th class="fw-semibold">Commit</th>
+				
+				@if (Model.RepositoryLink is null)
+				{
+					<td>@Model.Commit</td>
+				}
+				else
+				{
+					<td><a href="@Model.RepositoryLink" target="_blank" rel="noreferrer noopener">@Model.Commit</a></td>
+				}
+				
+			</tr>
+		</table>
+	</div>
+</div>
+
+<div>
+	<ul class="nav nav-pills mt-4" id="artifacts-tabs" role="tablist">
+		@if (Model.Logs is not null)
+		{
+			<li class="nav-item">
+				<button class="nav-link" id="build-logs-tab" data-bs-toggle="pill" data-bs-target="#build-logs" type="button" role="tab" aria-controls="pills-build-info">Logs</button>
+			</li>
+		}
+		@if (Model.ManifestInfo is not null)
+		{
+			<li class="nav-item">
+				<button class="nav-link" id="manifest-info-tab" data-bs-toggle="pill" data-bs-target="#manifest-info" type="button" role="tab" aria-controls="pills-manifest-info">Plugin manifest</button>
+			</li>
+		}
+		<li class="nav-item">
+			<button class="nav-link" id="build-info-tab" data-bs-toggle="pill" data-bs-target="#build-info" type="button" role="tab" aria-controls="pills-build-info">Build info</button>
+		</li>
+	</ul>
+	<div class="tab-content" id="pills-tabContent">
+		<div class="tab-pane fade" id="build-logs" role="tabpanel" aria-labelledby="build-logs-tab"><div id="terminal">@Model.Logs</div></div>
+		<div class="tab-pane fade show active" id="manifest-info" role="tabpanel" aria-labelledby="build-info-tab">
+			<pre><code class="language-json">@Model.ManifestInfo</code></pre>
+		</div>
+		<div class="tab-pane fade" id="build-info" role="tabpanel" aria-labelledby="manifest-info-tab">
+			<pre><code class="language-json">@Model.BuildInfo</code></pre>
+		</div>
+	</div>
+</div>
+
+@section HeaderScripts {
+	<link href="~/vendor/xterm/xterm.css" asp-append-version="true" rel="stylesheet" />
+	<link href="~/vendor/highlight.js/default.min.css" asp-append-version="true" rel="stylesheet" />
+	<style>
+		/*This is a hack so the code doesn't flicker before hljs.highlightAll(); is called*/
+		.language-json {
+			display: none;
+		}
+	</style>
+}
+
+@section FooterScripts {
+<script src="~/vendor/xterm/xterm.js"></script>
+<script src="~/vendor/highlight.js/highlight.min.js" asp-append-version="true"></script>
+<script src="~/vendor/signalr/signalr.min.js" asp-append-version="true"></script>
+<script src="~/scripts/Build.js" asp-append-version="true"></script>
+}

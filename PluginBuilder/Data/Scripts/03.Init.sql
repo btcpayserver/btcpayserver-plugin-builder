@@ -46,3 +46,15 @@ CREATE TABLE versions
     FOREIGN KEY (plugin_slug) REFERENCES plugins (slug) ON DELETE CASCADE,
     FOREIGN KEY (plugin_slug, build_id) REFERENCES builds (plugin_slug, id) ON DELETE CASCADE
 );
+
+
+CREATE TABLE builds_logs
+(
+    plugin_slug TEXT NOT NULL,
+    build_id BIGINT NOT NULL,
+    logs TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (plugin_slug) REFERENCES plugins (slug) ON DELETE CASCADE,
+    FOREIGN KEY (plugin_slug, build_id) REFERENCES builds (plugin_slug, id) ON DELETE CASCADE
+);
+CREATE INDEX builds_logs_idx ON builds_logs (plugin_slug, build_id, created_at);

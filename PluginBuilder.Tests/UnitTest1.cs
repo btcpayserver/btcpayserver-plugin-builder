@@ -41,13 +41,12 @@ public class UnitTest1 : UnitTestBase
         var buildService = tester.GetService<BuildService>();
         using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin("rockstar-stylist");
-        var build = await conn.NewBuild("rockstar-stylist");
-        //https://github.com/Kukks/btcpayserver/tree/plugins/collection/Plugins/BTCPayServer.Plugins.RockstarStylist
-        await buildService.Build(new FullBuildId("rockstar-stylist", build),
-        new PluginBuildParameters("https://github.com/Kukks/btcpayserver")
+        var build = await conn.NewBuild("rockstar-stylist", new PluginBuildParameters("https://github.com/Kukks/btcpayserver")
         {
             PluginDirectory = "Plugins/BTCPayServer.Plugins.RockstarStylist",
             GitRef = "plugins/collection"
         });
+        //https://github.com/Kukks/btcpayserver/tree/plugins/collection/Plugins/BTCPayServer.Plugins.RockstarStylist
+        await buildService.Build(new FullBuildId("rockstar-stylist", build));
     }
 }
