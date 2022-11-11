@@ -14,9 +14,9 @@
 	<div class="d-flex gap-3 mt-3 mt-sm-0">
 		@if (Model.Version.PreRelease)
 		{
-		<form asp-action="Release" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" asp-route-version="@Model.Version.Version" method="post">
-			<button type="submit" class="btn btn-primary mt-3 mt-sm-0">Release</button>
-		</form>
+			<form asp-action="Release" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" asp-route-version="@Model.Version.Version" method="post">
+				<button type="submit" class="btn btn-primary mt-3 mt-sm-0">Release</button>
+			</form>
 		}
 		@if (Model.DownloadLink != null)
 		{

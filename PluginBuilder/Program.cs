@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -65,6 +66,12 @@ public class Program
                 })
                .AddNewtonsoftJson(o => o.SerializerSettings.Formatting = Newtonsoft.Json.Formatting.Indented)
                .AddApplicationPart(typeof(Program).Assembly);
+        if (configuration["DATADIR"] is string datadir)
+        {
+            services.AddDataProtection()
+                     .SetApplicationName("Plugin Builder")
+                    .PersistKeysToFileSystem(new DirectoryInfo(datadir));
+        }
         services.AddHostedService<DatabaseStartupHostedService>();
         services.AddHostedService<DockerStartupHostedService>();
         services.AddHostedService<AzureStartupHostedService>();
