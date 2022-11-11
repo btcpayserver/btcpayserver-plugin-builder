@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Security.Cryptography;
 using Dapper;
 using Microsoft.Extensions.FileProviders;
@@ -102,17 +103,26 @@ namespace PluginBuilder.Services
                 await UpdateBuild(fullBuildId, "failed", new JObject() { ["error"] = err.Message });
                 throw;
             }
-            var pluginName = buildEnv["pluginName"]!.Value<string>();
-            string manifestStr = await ReadFileInVolume(volume, $"{pluginName}.btcpay.json");
+            var assemblyName = buildEnv["assemblyName"]!.Value<string>();
+            string manifestStr = await ReadFileInVolume(volume, $"{assemblyName}.btcpay.json");
 
-            var manifest = new PluginManifest(JObject.Parse(manifestStr));
-            await UpdateBuild(fullBuildId, "waiting-upload", buildEnv, manifest);
+            PluginManifest manifest;
+            try
+            {
+                manifest = PluginManifest.Parse(manifestStr);
+                await UpdateBuild(fullBuildId, "waiting-upload", buildEnv, manifest);
+            }
+            catch (Exception err)
+            {
+                await UpdateBuild(fullBuildId, "failed", new JObject() { ["error"] = "Invalid plugin manifest: " + err.Message });
+                throw;
+            }
 
             await UpdateBuild(fullBuildId, "uploading", null, null);
             string url;
             try
             {
-                url = await AzureStorageClient.Upload(volume, $"{pluginName}.btcpay", $"{fullBuildId}/{pluginName}.btcpay");
+                url = await AzureStorageClient.Upload(volume, $"{assemblyName}.btcpay", $"{fullBuildId}/{assemblyName}.btcpay");
             }
             catch (Exception err)
             {
@@ -120,11 +130,7 @@ namespace PluginBuilder.Services
                 throw;
             }
             await UpdateBuild(fullBuildId, "uploaded", new JObject() { ["url"] = url }, null);
-
-            if (manifest.Version != null)
-            {
-                await SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion);
-            }
+            await SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion);
         }
 
         private async Task<BuildInfo> GetBuildInfo(FullBuildId fullBuildId)
@@ -141,10 +147,10 @@ namespace PluginBuilder.Services
             return BuildInfo.Parse(buildInfo);
         }
 
-        private async Task SetVersionBuild(FullBuildId fullBuildId, int[] version, int[]? minBTCPayVersion)
+        private async Task SetVersionBuild(FullBuildId fullBuildId, PluginVersion version, PluginVersion? minBTCPayVersion)
         {
             await using var connection = await ConnectionFactory.Open();
-            await connection.SetVersionBuild(fullBuildId, version, minBTCPayVersion);
+            await connection.SetVersionBuild(fullBuildId, version, minBTCPayVersion, true);
         }
 
         private async Task<string> ReadFileInVolume(string volume, string file)

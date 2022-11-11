@@ -62,7 +62,9 @@ public class Program
                 .AddRazorOptions(options =>
                 {
                     options.ViewLocationFormats.Add("/{0}.cshtml");
-                });
+                })
+               .AddNewtonsoftJson(o => o.SerializerSettings.Formatting = Newtonsoft.Json.Formatting.Indented)
+               .AddApplicationPart(typeof(Program).Assembly);
         services.AddHostedService<DatabaseStartupHostedService>();
         services.AddHostedService<DockerStartupHostedService>();
         services.AddHostedService<AzureStartupHostedService>();

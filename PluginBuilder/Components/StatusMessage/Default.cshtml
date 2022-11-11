@@ -1,0 +1,7 @@
+@using PluginBuilder
+@if (TempData[TempDataConstant.SuccessMessage] != null)
+{
+    <div class="alert alert-success text-break" role="alert">
+        <span style="white-space: pre-wrap;">@TempData[TempDataConstant.SuccessMessage]</span>
+    </div>
+}

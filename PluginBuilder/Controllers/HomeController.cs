@@ -1,6 +1,9 @@
+using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
+using PluginBuilder.APIModels;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 
@@ -43,6 +46,47 @@ namespace PluginBuilder.Controllers
                     HttpContext.Response.Cookies.Delete(Cookies.PluginSlug);
             }
             return View();
+        }
+
+        [HttpGet("/logout")]
+        public async Task<IActionResult> Logout()
+        {
+            await SignInManager.SignOutAsync();
+            return RedirectToAction(nameof(Login));
+        }
+
+        [AllowAnonymous]
+        [HttpGet("/api/v1/plugins")]
+        public async Task<IActionResult> Plugins(
+            [ModelBinder(typeof(ModelBinders.PluginVersionModelBinder))]
+            PluginVersion? btcpayVersion = null,
+            bool? includePreRelease = null)
+        {
+            includePreRelease ??= false;
+            btcpayVersion ??= PluginVersion.Zero;
+            var conn = await ConnectionFactory.Open();
+            // This query probably doesn't have right indexes
+            var rows = await conn.QueryAsync<(string plugin_slug, long id, string manifest_info, string build_info)>(
+                "SELECT lv.plugin_slug, b.id, b.manifest_info, b.build_info FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv " +
+                "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
+                "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL",
+                new
+                {
+                    btcpayVersion = btcpayVersion.VersionParts,
+                    includePreRelease = includePreRelease.Value
+                });
+            rows.TryGetNonEnumeratedCount(out var count);
+            List<PublishedVersion> versions = new List<PublishedVersion>(count);
+            foreach (var r in rows)
+            {
+                var v = new PublishedVersion();
+                v.ProjectSlug = r.plugin_slug;
+                v.BuildId = r.id;
+                v.BuildInfo = JObject.Parse(r.build_info);
+                v.ManifestInfo = JObject.Parse(r.manifest_info);
+                versions.Add(v);
+            }
+            return Json(versions);
         }
 
         [AllowAnonymous]
@@ -104,13 +148,13 @@ namespace PluginBuilder.Controllers
             ViewData["ReturnUrl"] = returnUrl;
             if (!ModelState.IsValid)
                 return View(model);
-            
+
             var user = new IdentityUser
             {
                 UserName = model.Email,
-                Email = model.Email
+                Email = model.Email,
             };
-            var result = await UserManager.CreateAsync(user);
+            var result = await UserManager.CreateAsync(user, model.Password);
             if (!result.Succeeded)
             {
                 foreach (var error in result.Errors)

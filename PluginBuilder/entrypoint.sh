@@ -15,19 +15,19 @@ GIT_COMMIT_DATE=$(git show -s --format=%ci)
 # To UTC
 GIT_COMMIT_DATE=$(date -d "$GIT_COMMIT_DATE" --iso-8601=seconds --utc)
 [[ "$PLUGIN_DIR" ]] && cd "${PLUGIN_DIR}"
-PLUGIN_NAME="$(ls *.csproj)"
-PLUGIN_NAME="${PLUGIN_NAME/.csproj/}"
+ASSEMBLY_NAME="$(ls *.csproj)"
+ASSEMBLY_NAME="${ASSEMBLY_NAME/.csproj/}"
 dotnet publish -c "${BUILD_CONFIG}" -o "/tmp/publish"
 
 # PluginPacker crash because of no gpg, but we don't use it anyway...
-/build-tools/PluginPacker/BTCPayServer.PluginPacker "/tmp/publish" "${PLUGIN_NAME}" "/tmp/publish-package" || true
+/build-tools/PluginPacker/BTCPayServer.PluginPacker "/tmp/publish" "${ASSEMBLY_NAME}" "/tmp/publish-package" || true
 cp /tmp/publish-package/*/*/* /out
 rm /out/SHA256SUMS.asc /out/SHA256SUMS
 
 BUILD_DATE=$(date --iso-8601=seconds --utc)
 # To UTC
 BUILD_DATE=$(date -d "$BUILD_DATE" --iso-8601=seconds --utc)
-BUILD_HASH=($(sha256sum /out/${PLUGIN_NAME}.btcpay))
+BUILD_HASH=($(sha256sum /out/${ASSEMBLY_NAME}.btcpay))
 
 jq --null-input \
 --arg buildConfig "$BUILD_CONFIG" \
@@ -39,9 +39,9 @@ jq --null-input \
 --arg gitCommitDate "$GIT_COMMIT_DATE" \
 --arg buildDate "$BUILD_DATE" \
 --arg buildHash "$BUILD_HASH" \
---arg pluginName "$PLUGIN_NAME" \
+--arg assemblyName "$ASSEMBLY_NAME" \
 '{
-"pluginName": $pluginName,
+"assemblyName": $assemblyName,
 "gitRepository": $gitRepository, 
 "gitRef": $gitRef,
 "pluginDir": $pluginDir,

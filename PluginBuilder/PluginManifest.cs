@@ -1,59 +1,60 @@
+#nullable disable
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using PluginBuilder.JsonConverters;
 
 namespace PluginBuilder
 {
     public class PluginManifest
     {
+        public class PluginDependency
+        {
+            public string Identifier { get; set; }
+            public string Condition { get; set; }
+            public override string ToString()
+            {
+                return $"{Identifier}: {Condition}";
+            }
+        }
         public static PluginManifest Parse(string json)
         {
-            return new PluginManifest(JObject.Parse(json));
+            var pluginManifest = JsonConvert.DeserializeObject<PluginManifest>(json) ?? throw new InvalidOperationException("Impossible to deserialized plugin manifest");
+            if (pluginManifest.Version is null)
+                throw new FormatException("Plugin's Version is missing");
+            pluginManifest.BTCPayMinVersion = TryParseMinBTCPayVersion(pluginManifest);
+            return pluginManifest;
         }
-        public PluginManifest(JObject content)
+
+        private static PluginVersion TryParseMinBTCPayVersion(PluginManifest manifest)
         {
-            Content = content;
-            Version = TryParseVersion(content["Version"]);
-            if (content["Version"]?.Value<string>() is var v && System.Version.TryParse(v, out var vv))
-                VersionString = vv.ToString();
-            BTCPayMinVersion = TryParseMinBTCPayVersion(content);
-        }
-        public string VersionString { get; set; }
-        private static int[]? TryParseMinBTCPayVersion(JObject manifest)
-        {
-            var version = manifest["Dependencies"]?.OfType<JObject>()
-                .Where(o => o["Identifier"]?.Value<string>() == "BTCPayServer")
-                .Select(o => o["Condition"])
-                .FirstOrDefault()?
-                .Value<string>();
+            var version = manifest.Dependencies?
+                .Where(d => d.Identifier == "BTCPayServer")
+                .Select(d => d.Condition).FirstOrDefault();
             if (version is null || !version.StartsWith(">=", StringComparison.OrdinalIgnoreCase))
                 return null;
             version = version.Substring(2);
-            return TryParseVersion(new JValue(version));
+            PluginVersion.TryParse(version, out var s);
+            return s;
         }
 
-        private static int[]? TryParseVersion(JToken? version)
+        public PluginManifest()
         {
-            var parts = version?.Value<string>()?.Split('.');
-            if (parts is null || parts.Length == 0)
-                return null;
-            int[] ret = new int[parts.Length];
-            for (int i = 0; i < ret.Length; i++)
-            {
-                if (!int.TryParse(parts[i], out var v))
-                    return null;
-                ret[i] = v;
-            }
-            return ret;
         }
+        public string Identifier { get; set; }
+        public string Name { get; set; }
+        [JsonConverter(typeof(PluginVersionConverter))]
+        public PluginVersion Version { get; set; }
+        public string Description { get; set; }
+        public bool SystemPlugin { get; set; }
+        public PluginDependency[] Dependencies { get; set; }
 
-        public int[]? Version { get; }
-        public int[]? BTCPayMinVersion { get; }
 
-        public JObject Content { get; }
+        [JsonIgnore]
+        public PluginVersion BTCPayMinVersion { get; set; }
 
         public override string ToString()
         {
-            return Content.ToString();
+            return JsonConvert.SerializeObject(this);
         }
     }
 }

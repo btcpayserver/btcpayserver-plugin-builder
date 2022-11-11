@@ -6,6 +6,7 @@ using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
+using PluginBuilder.Components.PluginVersion;
 
 namespace PluginBuilder.Controllers
 {
@@ -51,6 +52,7 @@ namespace PluginBuilder.Controllers
             }
             return View(model);
         }
+
         [HttpPost]
         [Route("create")]
         public async Task<IActionResult> CreateBuild(
@@ -65,6 +67,49 @@ namespace PluginBuilder.Controllers
             return RedirectToAction(nameof(Dashboard), new { pluginSlug = pluginSlug.ToString() });
         }
 
+        [HttpPost("versions/{version}/release")]
+        public async Task<IActionResult> Release(
+            [ModelBinder(typeof(PluginSlugModelBinder))]
+            PluginSlug pluginSlug,
+            [ModelBinder(typeof(PluginVersionModelBinder))]
+            PluginBuilder.PluginVersion version)
+        {
+            using var conn = await ConnectionFactory.Open();
+            await conn.ExecuteAsync("UPDATE versions SET pre_release='f' WHERE plugin_slug=@pluginSlug AND ver=@version",
+                new
+                {
+                    pluginSlug = pluginSlug.ToString(),
+                    version = version.VersionParts
+                });
+            TempData[TempDataConstant.SuccessMessage] = "New release published";
+            return RedirectToAction(nameof(Version), new
+            {
+                pluginSlug = pluginSlug.ToString(),
+                version = version.ToString()
+            });
+        }
+
+        [HttpGet("versions/{version}")]
+        public async Task<IActionResult> Version(
+            [ModelBinder(typeof(PluginSlugModelBinder))]
+            PluginSlug pluginSlug,
+            [ModelBinder(typeof(PluginVersionModelBinder))]
+            PluginBuilder.PluginVersion version)
+        {
+            using var conn = await ConnectionFactory.Open();
+            var buildId = conn.ExecuteScalar<long>("SELECT build_id FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
+            new
+            {
+                pluginSlug = pluginSlug.ToString(),
+                version = version.VersionParts
+            });
+            return RedirectToAction(nameof(Build), new
+            { 
+                pluginSlug = pluginSlug.ToString(),
+                buildId = buildId
+            });
+        }
+
         [HttpGet]
         [Route("builds/{buildId}")]
         public async Task<IActionResult> Build(
@@ -73,8 +118,8 @@ namespace PluginBuilder.Controllers
            long buildId)
         {
             using var conn = await ConnectionFactory.Open();
-            var row = await conn.QueryFirstOrDefaultAsync<(string manifest_info, string build_info, DateTimeOffset created_at, bool published)>(
-                "SELECT manifest_info, build_info, created_at, v.ver IS NOT NULL FROM builds b " +
+            var row = await conn.QueryFirstOrDefaultAsync<(string manifest_info, string build_info, DateTimeOffset created_at, bool published, bool pre_release)>(
+                "SELECT manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
                 "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                 "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
                 "LIMIT 1",
@@ -105,7 +150,7 @@ namespace PluginBuilder.Controllers
             vm.Commit = buildInfo?.GitCommit?.Substring(0, 8);
             vm.Repository = buildInfo?.GitRepository;
             vm.GitRef = buildInfo?.GitRef;
-            vm.Version = manifest?.VersionString;
+            vm.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release);
             vm.RepositoryLink = GetUrl(buildInfo);
             vm.DownloadLink = buildInfo?.Url;
             //vm.Error = buildInfo?.Error;
@@ -133,8 +178,8 @@ namespace PluginBuilder.Controllers
         {
             HttpContext.Response.Cookies.Append(Cookies.PluginSlug, pluginSlug.ToString());
             using var conn = await ConnectionFactory.Open();
-            var rows = await conn.QueryAsync<(long id, string state, string? manifest_info, string? build_info, DateTimeOffset created_at, bool published)>
-                ("SELECT id, state, manifest_info, build_info, created_at, v.ver IS NOT NULL " +
+            var rows = await conn.QueryAsync<(long id, string state, string? manifest_info, string? build_info, DateTimeOffset created_at, bool published, bool pre_release)>
+                ("SELECT id, state, manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release " +
                 "FROM builds b " +
                 "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                 "WHERE b.plugin_slug = @pluginSlug " +
@@ -152,12 +197,11 @@ namespace PluginBuilder.Controllers
                 b.Commit = buildInfo?.GitCommit?.Substring(0, 8);
                 b.Repository = buildInfo?.GitRepository;
                 b.GitRef = buildInfo?.GitRef;
-                b.Version = manifest?.VersionString;
+                b.Version = Components.PluginVersion.PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release);
                 b.Date = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
                 b.RepositoryLink = GetUrl(buildInfo);
                 b.DownloadLink = buildInfo?.Url;
                 b.Error = buildInfo?.Error;
-                b.Published = row.published;
             }
             return View(vm);
         }

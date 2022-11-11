@@ -66,10 +66,7 @@
 					<td>@item.Date</td>
 					<td>@item.BuildId</td>
 					<td>
-						<span>@item.Version</span>
-						@if (item.Published) {
-							<span>&nbsp;</span><span class="badge bg-info">published</span>
-						}
+						<vc:plugin-version model="@item.Version"></vc:plugin-version>
 					</td>
 					<td>
 						@{

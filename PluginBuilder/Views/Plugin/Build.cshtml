@@ -10,22 +10,33 @@
 		<h2 class="mb-0">
 			@ViewData["Title"]
 		</h2>
-		@if (Model.Published) {
-			<div>
-				<span>&nbsp;</span>
-				<span class="badge bg-info">published</span>
-			</div>
+	</div>
+	<div class="d-flex gap-3 mt-3 mt-sm-0">
+		@if (Model.Version.PreRelease)
+		{
+		<form asp-action="Release" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" asp-route-version="@Model.Version.Version" method="post">
+			<button type="submit" class="btn btn-primary mt-3 mt-sm-0">Release</button>
+		</form>
+		}
+		@if (Model.DownloadLink != null)
+		{
+			<a href="@Model.DownloadLink" rel="noreferrer noopener" class="btn btn-info mt-3 mt-sm-0">Download</a>
 		}
 	</div>
-	@if (Model.DownloadLink != null)
-	{
-		<a href="@Model.DownloadLink" rel="noreferrer noopener" class="btn btn-info mt-3 mt-sm-0">Download</a>
-	}
 </div>
 
 <div class="row justify-content-between">
 	<div class="col-md-6">
 		<table class="table mb-5">
+			@if (Model.Version != null)
+			{
+			<tr>
+				<th class="fw-semibold">Version</th>
+				<td>
+					<vc:plugin-version model="@Model.Version"></vc:plugin-version>
+				</td>
+			</tr>
+			}
 			<tr>
 				<th class="fw-semibold">Created Date</th>
 				<td>

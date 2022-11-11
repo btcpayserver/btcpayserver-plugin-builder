@@ -26,6 +26,7 @@ namespace PluginBuilder
         public string Url { get; set; }
         public string Error { get; set; }
         public string BuildConfig { get; set; }
+        public string AssemblyName { get; set; }
         public IDictionary<string, JToken> AdditionalObjects { get; set; }
         public override string ToString()
         {

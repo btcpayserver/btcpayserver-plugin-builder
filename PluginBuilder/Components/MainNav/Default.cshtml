@@ -31,9 +31,7 @@
 								@foreach (var version in Model.Versions)
 								{
 									<li class="nav-item">
-										<a asp-area="" asp-controller="Plugin" asp-action="Version" asp-route-version="@version" class="nav-link">
-												<span>@version</span>
-										</a>
+										<span class="nav-link"><vc:plugin-version model="@version"></vc:plugin-version></span>
 									</li>
 								}
 

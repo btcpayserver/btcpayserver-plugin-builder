@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using Dapper;
 using PluginBuilder.Services;
 using Xunit;
 using Xunit.Abstractions;
@@ -15,7 +16,7 @@ public class UnitTest1 : UnitTestBase
     public async Task Test1()
     {
         await using var tester = await Start();
-        
+
     }
 
     [Theory]
@@ -47,6 +48,29 @@ public class UnitTest1 : UnitTestBase
             GitRef = "plugins/collection"
         });
         //https://github.com/Kukks/btcpayserver/tree/plugins/collection/Plugins/BTCPayServer.Plugins.RockstarStylist
-        await buildService.Build(new FullBuildId("rockstar-stylist", build));
+        var fullBuildId = new FullBuildId("rockstar-stylist", build);
+        await buildService.Build(fullBuildId);
+
+        var client = tester.CreateHttpClient();
+        var versions = await client.GetPublishedVersions("1.4.6.0", true);
+        var version = Assert.Single(versions);
+        versions = await client.GetPublishedVersions("1.4.5.9", true);
+        Assert.Empty(versions);
+        versions = await client.GetPublishedVersions("1.4.6.0", false);
+        Assert.Empty(versions);
+
+        var manifest = PluginManifest.Parse(version.ManifestInfo.ToString());
+
+        // Nothing changed
+        Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, true));
+        // Can change BTCPayMinVersion
+        Assert.True(await conn.SetVersionBuild(fullBuildId, manifest.Version, null, true));
+        // Can remove pre-release
+        Assert.True(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false));
+
+        // Can't put back in pre-release
+        Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, true));
+        // Can't modify pre-release
+        Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, null, false));
     }
 }

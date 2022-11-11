@@ -1,12 +1,14 @@
 #nullable disable
 
 
+using PluginBuilder.Components.PluginVersion;
+
 namespace PluginBuilder.Components.MainNav
 {
     public class MainNavViewModel
     {
         public string PluginSlug { get; set; }
 
-        public List<string> Versions { get; set; } = new List<string>();
+        public List<PluginVersionViewModel> Versions { get; set; } = new List<PluginVersionViewModel>();
     }
 }

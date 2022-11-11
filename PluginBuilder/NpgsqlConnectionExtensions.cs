@@ -54,22 +54,27 @@ namespace PluginBuilder
         public static async Task<PluginSlug[]> GetPluginsByUserId(this NpgsqlConnection connection, string userId)
         {
             return (await connection.QueryAsync<string>(
-                "SELECT p.slug FROM plugins p JOIN users_plugins up ON up.plugin_slug=p.slug;"))
+                "SELECT up.plugin_slug FROM users_plugins up " +
+                "JOIN plugins p ON up.plugin_slug=p.slug " +
+                "WHERE up.user_id=@userId;", new { userId = userId }))
                 .Select(s => PluginSlug.Parse(s)).ToArray();
         }
-        public static Task SetVersionBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, int[] version, int[]? minBTCPayVersion)
+        public static async Task<bool> SetVersionBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, PluginVersion version, PluginVersion? minBTCPayVersion, bool preRelease)
         {
-            minBTCPayVersion ??= new int[] { 0,0,0,0 };
-            return connection.ExecuteAsync(
-                "INSERT INTO versions VALUES (@plugin_slug, @ver, @build_id, @btcpay_min_ver) " +
-                "ON CONFLICT (plugin_slug, ver) DO UPDATE SET build_id = @build_id, btcpay_min_ver = @btcpay_min_ver;",
-                new
-                {
-                    plugin_slug = fullBuildId.PluginSlug.ToString(),
-                    ver = version,
-                    build_id = fullBuildId.BuildId,
-                    btcpay_min_ver = minBTCPayVersion
-                });
+            minBTCPayVersion ??= PluginVersion.Zero;
+
+            return (await connection.ExecuteAsync(
+                    "INSERT INTO versions AS v VALUES (@plugin_slug, @ver, @build_id, @btcpay_min_ver, @pre_release) " +
+                    "ON CONFLICT (plugin_slug, ver) DO UPDATE SET build_id = @build_id, btcpay_min_ver = @btcpay_min_ver, pre_release=@pre_release " +
+                    "WHERE v.pre_release IS TRUE AND (v.build_id != @build_id OR v.btcpay_min_ver != @btcpay_min_ver OR @pre_release IS FALSE);",
+                    new
+                    {
+                        plugin_slug = fullBuildId.PluginSlug.ToString(),
+                        ver = version.VersionParts,
+                        build_id = fullBuildId.BuildId,
+                        btcpay_min_ver = minBTCPayVersion.VersionParts,
+                        pre_release = preRelease
+                    })) == 1;
         }
         public static Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
         {
