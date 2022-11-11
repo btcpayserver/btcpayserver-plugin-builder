@@ -23,9 +23,15 @@ namespace PluginBuilder.HostedServices
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             Logger.LogInformation("Building the PluginBuilder docker image");
+
             var result = await ProcessRunner.RunAsync(new ProcessSpec()
             {
                 Executable = "docker",
+                EnvironmentVariables = 
+                {
+                    // Somehow we get permission problem when buildkit isn't used
+                    ["DOCKER_BUILDKIT"] = "1"
+                },
                 Arguments = new[]
                 {
                     "build",

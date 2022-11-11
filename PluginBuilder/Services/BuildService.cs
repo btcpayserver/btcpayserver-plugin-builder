@@ -79,7 +79,7 @@ namespace PluginBuilder.Services
             }
 
             args.AddRange(new[] { "-v", $"{volume}:/out" });
-            args.AddRange(new[] { "-ti", "--rm" });
+            args.AddRange(new[] { "--rm" });
             args.Add("plugin-builder");
             await UpdateBuild(fullBuildId, "running", info);
             JObject buildEnv;
@@ -161,7 +161,7 @@ namespace PluginBuilder.Services
             {
                 Executable = "docker",
                 Arguments = new[] {
-                        "run", "-ti", "--rm", "-v", $"{volume}:/out", "plugin-builder", "cat", $"/out/{file}" },
+                        "run", "--rm", "-v", $"{volume}:/out", "plugin-builder", "cat", $"/out/{file}" },
                 OutputCapture = output
             }, default);
             if (code != 0)

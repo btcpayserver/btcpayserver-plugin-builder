@@ -119,7 +119,7 @@ namespace PluginBuilder.Services
         private string[] CreateArguments(string[]? dockerArgs, string[] args)
         {
             List<string> a = new List<string>();
-            a.AddRange(new[] { "run", "-ti", "--rm", "--env", $"AZURE_STORAGE_CONNECTION_STRING={StorageConnectionString}" });
+            a.AddRange(new[] { "run", "--rm", "--env", $"AZURE_STORAGE_CONNECTION_STRING={StorageConnectionString}" });
             if (isLocalhost)
             {
                 // Not needed in prod, but we need it in tests to connect to the azure containers running in docker-compose
