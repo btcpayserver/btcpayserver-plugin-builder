@@ -63,7 +63,6 @@ namespace PluginBuilder.Controllers
             bool? includePreRelease = null)
         {
             includePreRelease ??= false;
-            btcpayVersion ??= PluginVersion.Zero;
             var conn = await ConnectionFactory.Open();
             // This query probably doesn't have right indexes
             var rows = await conn.QueryAsync<(string plugin_slug, long id, string manifest_info, string build_info)>(
@@ -72,7 +71,7 @@ namespace PluginBuilder.Controllers
                 "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL",
                 new
                 {
-                    btcpayVersion = btcpayVersion.VersionParts,
+                    btcpayVersion = btcpayVersion?.VersionParts,
                     includePreRelease = includePreRelease.Value
                 });
             rows.TryGetNonEnumeratedCount(out var count);
