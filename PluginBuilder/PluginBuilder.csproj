@@ -32,6 +32,7 @@
     <None Remove="Data\Scripts\02.AspNetIdentity.sql" />
     <None Remove="Data\Scripts\03.Init.sql" />
     <None Remove="Data\Scripts\04.FixGetLatestVersions.sql" />
+    <None Remove="Data\Scripts\05.ProtectPluginIdentifier.sql" />
   </ItemGroup>
 
   <ItemGroup>

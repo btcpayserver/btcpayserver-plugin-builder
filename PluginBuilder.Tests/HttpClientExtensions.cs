@@ -16,7 +16,10 @@ namespace PluginBuilder.Tests
         {
             var result = await httpClient.GetStringAsync($"api/v1/plugins?btcpayVersion={btcpayVersion}&includePreRelease={includePreRelease}");
             return JsonConvert.DeserializeObject<PublishedVersion[]>(result, serializerSettings) ?? throw new InvalidOperationException();
-            ;
+        }
+        public static async Task<byte[]> DownloadPlugin(this HttpClient httpClient, PluginSelector pluginSelector, PluginVersion pluginVersion)
+        {
+            return await httpClient.GetByteArrayAsync($"api/v1/plugins/{pluginSelector}/versions/{pluginVersion}/download");
         }
     }
 }

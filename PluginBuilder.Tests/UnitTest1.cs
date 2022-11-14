@@ -59,6 +59,14 @@ public class UnitTest1 : UnitTestBase
         versions = await client.GetPublishedVersions("1.4.6.0", false);
         Assert.Empty(versions);
 
+        // Can download the project?
+        var b1 = await client.DownloadPlugin(new PluginSelectorBySlug("rockstar-stylist"), PluginVersion.Parse("1.0.2.0"));
+        var b2 = await client.DownloadPlugin(new PluginSelectorByIdentifier("BTCPayServer.Plugins.RockstarStylist"), PluginVersion.Parse("1.0.2.0"));
+        Assert.NotNull(b1);
+        Assert.NotNull(b2);
+        Assert.Equal(b1.Length, b2.Length);
+
+
         var manifest = PluginManifest.Parse(version.ManifestInfo.ToString());
 
         // Nothing changed
@@ -72,5 +80,23 @@ public class UnitTest1 : UnitTestBase
         Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, true));
         // Can't modify pre-release
         Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, null, false));
+
+
+        // Another plugin slug try to hijack the package
+        await conn.NewPlugin("rockstar-stylist-fake");
+        build = await conn.NewBuild("rockstar-stylist-fake", new PluginBuildParameters("https://github.com/Kukks/btcpayserver")
+        {
+            PluginDirectory = "Plugins/BTCPayServer.Plugins.RockstarStylist",
+            GitRef = "plugins/collection"
+        });
+        fullBuildId = new FullBuildId("rockstar-stylist-fake", build);
+        await buildService.Build(fullBuildId);
+
+        var rockstarPlugins = await conn.QueryAsync<string?>("SELECT slug FROM plugins WHERE identifier='BTCPayServer.Plugins.RockstarStylist'");
+        var p = Assert.Single(rockstarPlugins);
+        Assert.Equal("rockstar-stylist", p);
+        versions = await client.GetPublishedVersions("1.4.6.0", true);
+        version = Assert.Single(versions);
+        Assert.Equal("rockstar-stylist", version.ProjectSlug);
     }
 }

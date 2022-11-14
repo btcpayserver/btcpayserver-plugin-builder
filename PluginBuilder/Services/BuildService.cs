@@ -130,7 +130,7 @@ namespace PluginBuilder.Services
                 throw;
             }
             await UpdateBuild(fullBuildId, "uploaded", new JObject() { ["url"] = url }, null);
-            await SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion);
+            await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
         }
 
         private async Task<BuildInfo> GetBuildInfo(FullBuildId fullBuildId)
@@ -147,10 +147,13 @@ namespace PluginBuilder.Services
             return BuildInfo.Parse(buildInfo);
         }
 
-        private async Task SetVersionBuild(FullBuildId fullBuildId, PluginVersion version, PluginVersion? minBTCPayVersion)
+        private async Task SetVersionBuild(FullBuildId fullBuildId, PluginManifest manifest, IOutputCapture buildLogs)
         {
             await using var connection = await ConnectionFactory.Open();
-            await connection.SetVersionBuild(fullBuildId, version, minBTCPayVersion, true);
+            if (await connection.EnsureIdentifierOwnership(fullBuildId.PluginSlug, manifest.Identifier))
+                await connection.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, true);
+            else
+                buildLogs.AddLine($"The plugin identifier {manifest.Identifier} doesn't belong to this project slug");
         }
 
         private async Task<string> ReadFileInVolume(string volume, string file)

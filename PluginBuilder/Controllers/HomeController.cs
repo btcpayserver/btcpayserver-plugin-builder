@@ -56,6 +56,34 @@ namespace PluginBuilder.Controllers
         }
 
         [AllowAnonymous]
+        [HttpGet("/api/v1/plugins/{pluginSelector}/versions/{version}/download")]
+        public async Task<IActionResult> Download(
+            [ModelBinder(typeof(ModelBinders.PluginSelectorModelBinder))]
+            PluginSelector pluginSelector,
+            [ModelBinder(typeof(ModelBinders.PluginVersionModelBinder))]
+            PluginVersion version)
+        {
+            if (pluginSelector is null || version is null)
+                return NotFound();
+            var conn = await ConnectionFactory.Open();
+            var slug = await conn.GetPluginSlug(pluginSelector);
+            if (slug is null)
+                return NotFound();
+            var url = await conn.ExecuteScalarAsync<string?>(
+            "SELECT b.build_info->>'url' FROM versions v " +
+            "JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id " +
+            "WHERE v.plugin_slug=@plugin_slug AND v.ver=@version",
+            new
+            {
+                plugin_slug = slug.ToString(),
+                version = version.VersionParts
+            });
+            if (url is null)
+                return NotFound();
+            return Redirect(url);
+        }
+
+        [AllowAnonymous]
         [HttpGet("/api/v1/plugins")]
         public async Task<IActionResult> Plugins(
             [ModelBinder(typeof(ModelBinders.PluginVersionModelBinder))]

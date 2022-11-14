@@ -41,7 +41,7 @@ namespace PluginBuilder
                 "SET state=@state, " +
                 "build_info=COALESCE(build_info || @build_info::JSONB, @build_info::JSONB, build_info), " +
                 "manifest_info=COALESCE(@manifest_info::JSONB, manifest_info) " +
-                "WHERE plugin_slug=@plugin_slug AND id=@buildId", 
+                "WHERE plugin_slug=@plugin_slug AND id=@buildId",
                 new
                 {
                     state = newState,
@@ -59,6 +59,37 @@ namespace PluginBuilder
                 "WHERE up.user_id=@userId;", new { userId = userId }))
                 .Select(s => PluginSlug.Parse(s)).ToArray();
         }
+
+        public static async Task<bool> EnsureIdentifierOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string identifier)
+        {
+            var pluginIdentifier = await connection.ExecuteScalarAsync<string?>("SELECT identifier FROM plugins WHERE slug=@pluginSlug", new { pluginSlug = pluginSlug.ToString() });
+            if (pluginIdentifier is not null)
+                return pluginIdentifier == identifier;
+            try
+            {
+                return await connection.ExecuteAsync("UPDATE plugins SET identifier=@identifier WHERE slug=@pluginSlug AND identifier IS NULL", new { pluginSlug = pluginSlug.ToString(), identifier = identifier }) == 1;
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                return false;
+            }
+        }
+
+        public static async Task<PluginSlug?> GetPluginSlug(this NpgsqlConnection connection, PluginSelector selector)
+        {
+            if (selector is PluginSelectorBySlug s)
+                return s.PluginSlug;
+            else if (selector is PluginSelectorByIdentifier i)
+            {
+                var slug = await connection.ExecuteScalarAsync<string?>("SELECT slug FROM plugins WHERE identifier=@identifier", new { identifier  = i.Identifier });
+                if (slug is null)
+                    return null;
+                if (PluginSlug.TryParse(slug, out var o))
+                    return o;
+            }
+            return null;
+        }
+
         public static async Task<bool> SetVersionBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, PluginVersion version, PluginVersion? minBTCPayVersion, bool preRelease)
         {
             minBTCPayVersion ??= PluginVersion.Zero;
