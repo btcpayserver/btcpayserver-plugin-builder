@@ -31,6 +31,7 @@
     <None Remove="Data\Scripts\01.migrations.sql" />
     <None Remove="Data\Scripts\02.AspNetIdentity.sql" />
     <None Remove="Data\Scripts\03.Init.sql" />
+    <None Remove="Data\Scripts\04.FixGetLatestVersions.sql" />
   </ItemGroup>
 
   <ItemGroup>
