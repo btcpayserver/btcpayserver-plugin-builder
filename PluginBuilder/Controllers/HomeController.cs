@@ -80,6 +80,12 @@ namespace PluginBuilder.Controllers
             });
             if (url is null)
                 return NotFound();
+
+            await conn.InsertEvent("Download", new JObject()
+            {
+                ["pluginSlug"] = slug.ToString(),
+                ["version"] = version.ToString()
+            });
             return Redirect(url);
         }
 
@@ -113,6 +119,11 @@ namespace PluginBuilder.Controllers
                 v.ManifestInfo = JObject.Parse(r.manifest_info);
                 versions.Add(v);
             }
+            await conn.InsertEvent("PluginsListed", new JObject()
+            {
+                ["btcpayVersion"] = btcpayVersion?.ToString(),
+                ["includePreRelease"] = includePreRelease
+            });
             return Json(versions);
         }
 

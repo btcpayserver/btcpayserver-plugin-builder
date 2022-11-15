@@ -90,6 +90,15 @@ namespace PluginBuilder
             return null;
         }
 
+        public static Task InsertEvent(this NpgsqlConnection connection, string evtType, JObject data)
+        {
+            return connection.ExecuteAsync("INSERT INTO evts VALUES (@evtType, @evt::JSONB);", new
+            {
+                evtType = evtType,
+                evt = data.ToString()
+            });
+        }
+
         public static async Task<bool> SetVersionBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, PluginVersion version, PluginVersion? minBTCPayVersion, bool preRelease)
         {
             minBTCPayVersion ??= PluginVersion.Zero;
