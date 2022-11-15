@@ -1,6 +1,7 @@
 # Introduction
 
 This project hosts a server with a front end which can be used to build BTCPay Server plugins and store the binaries on some storage.
+You can find our live server on [https://plugin-builder.btcpayserver.org/](https://plugin-builder.btcpayserver.org/).
 
 ## Prerequisite:
 
