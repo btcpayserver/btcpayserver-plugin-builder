@@ -37,3 +37,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
               VERSION=${{ env.VERSION }}
+              GIT_COMMIT=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}

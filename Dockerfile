@@ -6,7 +6,8 @@ COPY PluginBuilder/. PluginBuilder/.
 
 ARG CONFIGURATION_NAME=Release
 ARG VERSION
-RUN cd PluginBuilder && dotnet publish -p:Version=${VERSION} --output /app/ --configuration ${CONFIGURATION_NAME}
+ARG GIT_COMMIT
+RUN cd PluginBuilder && dotnet publish -p:Version=${VERSION} -p:GitCommit=${GIT_COMMIT} --output /app/ --configuration ${CONFIGURATION_NAME}
 
 FROM mcr.microsoft.com/dotnet/aspnet:6.0.11-bullseye-slim
 ENV LC_ALL en_US.UTF-8

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -7,14 +7,23 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>aspnet-PluginBuilder-4D3592EF-6E6A-41BD-960D-231C299188A2</UserSecretsId>
     <RazorCompileOnBuild Condition="'$(Configuration)' == 'Debug'">false</RazorCompileOnBuild>
+    <GitCommit>test</GitCommit>
   </PropertyGroup>
-
+  <ItemGroup>
+    <AssemblyAttribute  Condition="'$(GitCommit)' != ''" Include="PluginBuilder.GitCommitAttribute">
+      <_Parameter1>$(GitCommit)</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.0.123" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="6.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="6.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="6.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" Version="6.0.11" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <PackageReference Include="Npgsql" Version="6.0.7" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="6.0.7" />
