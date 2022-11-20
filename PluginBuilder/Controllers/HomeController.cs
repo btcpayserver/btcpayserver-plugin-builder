@@ -1,3 +1,4 @@
+using System.Reflection;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -53,6 +54,16 @@ namespace PluginBuilder.Controllers
         {
             await SignInManager.SignOutAsync();
             return RedirectToAction(nameof(Login));
+        }
+
+        [AllowAnonymous]
+        [HttpGet("/api/v1/version")]
+        public IActionResult GetVersion()
+        {
+            return Ok(new JObject()
+            {
+                ["version"] = typeof(HomeController).GetTypeInfo().Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion
+            });
         }
 
         [AllowAnonymous]

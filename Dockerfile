@@ -5,8 +5,8 @@ WORKDIR /source
 COPY PluginBuilder/. PluginBuilder/.
 
 ARG CONFIGURATION_NAME=Release
-RUN cd PluginBuilder && dotnet publish --output /app/ --configuration ${CONFIGURATION_NAME}
-
+ARG VERSION
+RUN cd PluginBuilder && dotnet publish -p:Version=${VERSION} --output /app/ --configuration ${CONFIGURATION_NAME}
 
 FROM mcr.microsoft.com/dotnet/aspnet:6.0.11-bullseye-slim
 ENV LC_ALL en_US.UTF-8

@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
+    <Version Condition="'$(Version)' != ''">$(Version)</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>aspnet-PluginBuilder-4D3592EF-6E6A-41BD-960D-231C299188A2</UserSecretsId>
