@@ -102,7 +102,8 @@ namespace PluginBuilder.Controllers
             var rows = await conn.QueryAsync<(string plugin_slug, long id, string manifest_info, string build_info)>(
                 "SELECT lv.plugin_slug, b.id, b.manifest_info, b.build_info FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv " +
                 "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
-                "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL",
+                "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL " +
+                "ORDER BY manifest_info->>'Name'",
                 new
                 {
                     btcpayVersion = btcpayVersion?.VersionParts,
