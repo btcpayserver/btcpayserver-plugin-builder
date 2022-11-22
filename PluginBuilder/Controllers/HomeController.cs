@@ -135,11 +135,6 @@ namespace PluginBuilder.Controllers
                 v.Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation;
                 versions.Add(v);
             }
-            await conn.InsertEvent("PluginsListed", new JObject()
-            {
-                ["btcpayVersion"] = btcpayVersion?.ToString(),
-                ["includePreRelease"] = includePreRelease
-            });
             return Json(versions);
         }
 
