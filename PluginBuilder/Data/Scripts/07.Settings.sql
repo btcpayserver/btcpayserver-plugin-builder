@@ -1,0 +1,1 @@
+ALTER TABLE plugins ADD COLUMN settings JSONB NOT NULL  DEFAULT '{}'::JSONB;

@@ -6,15 +6,10 @@ namespace PluginBuilder
 {
     public class BuildInfo
     {
-        private static readonly JsonSerializerSettings CamelCase = new JsonSerializerSettings()
-        {
-            ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver(),
-            DefaultValueHandling = DefaultValueHandling.Ignore
-        };
 
         public static BuildInfo Parse(string json)
         {
-            return JsonConvert.DeserializeObject<BuildInfo>(json, CamelCase) ?? throw new FormatException("Invalid json for BuildInfo");
+            return JsonConvert.DeserializeObject<BuildInfo>(json, CamelCaseSerializerSettings.Instance) ?? throw new FormatException("Invalid json for BuildInfo");
         }
         public string GitRepository { get; set; }
         public string GitRef { get; set; }
@@ -30,11 +25,11 @@ namespace PluginBuilder
         public IDictionary<string, JToken> AdditionalObjects { get; set; }
         public override string ToString()
         {
-            return JsonConvert.SerializeObject(this, CamelCase);
+            return JsonConvert.SerializeObject(this, CamelCaseSerializerSettings.Instance);
         }
         public string ToString(Formatting formatting)
         {
-            return JsonConvert.SerializeObject(this, formatting, CamelCase);
+            return JsonConvert.SerializeObject(this, formatting, CamelCaseSerializerSettings.Instance);
         }
     }
 }

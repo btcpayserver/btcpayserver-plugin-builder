@@ -25,6 +25,38 @@ namespace PluginBuilder.Controllers
         public DBConnectionFactory ConnectionFactory { get; }
         public BuildService BuildService { get; }
 
+        [HttpGet("settings")]
+        public async Task<IActionResult> Settings(
+            [ModelBinder(typeof(PluginSlugModelBinder))]
+            PluginSlug pluginSlug)
+        {
+            using var conn = await ConnectionFactory.Open();
+            var settings = await conn.GetSettings(pluginSlug);
+            if (settings is null)
+                return NotFound();
+            return View(settings);
+        }
+        [HttpPost("settings")]
+        public async Task<IActionResult> Settings(
+          [ModelBinder(typeof(PluginSlugModelBinder))]
+            PluginSlug pluginSlug,
+            PluginSettings settings)
+        {
+            if (settings is null)
+                return NotFound();
+            if (!string.IsNullOrEmpty(settings.Documentation) && !Uri.TryCreate(settings.Documentation, UriKind.Absolute, out _))
+            {
+                ModelState.AddModelError(nameof(settings.Documentation), "This should be an absolute URL");
+            }
+            if (!ModelState.IsValid)
+                return View(settings);
+            using var conn = await ConnectionFactory.Open();
+            await conn.SetSettings(pluginSlug, settings);
+            TempData[TempDataConstant.SuccessMessage] = "Settings updated";
+            return RedirectToAction(nameof(Settings),new { pluginSlug = pluginSlug });
+        }
+
+
         [HttpGet]
         [Route("create")]
         public async Task<IActionResult> CreateBuild(

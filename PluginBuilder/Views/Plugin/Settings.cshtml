@@ -1,0 +1,23 @@
+@model PluginBuilder.PluginSettings
+@{
+	Layout = "_Layout";
+	ViewData["Title"] = "Plugin settings";
+	ViewData.SetActivePage(PluginNavPages.Settings);
+}
+
+<h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+<div class="row">
+    <div class="col-xl-8 col-xxl-constrain">
+        <form asp-action="CreateBuild">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div class="form-group">
+                <label asp-for="Documentation" class="form-label"></label>
+                <input asp-for="Documentation" class="form-control" placeholder="https://docs.btcpayserver.org/PodServer/" />
+                <span asp-validation-for="Documentation" class="text-danger"></span>
+            </div>
+            <div class="form-group mt-4">
+                <input type="submit" value="Create" class="btn btn-primary" id="Create" />
+            </div>
+        </form>
+    </div>
+</div>

@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Services;
@@ -111,9 +112,10 @@ namespace PluginBuilder.Controllers
             includePreRelease ??= false;
             var conn = await ConnectionFactory.Open();
             // This query probably doesn't have right indexes
-            var rows = await conn.QueryAsync<(string plugin_slug, long id, string manifest_info, string build_info)>(
-                "SELECT lv.plugin_slug, b.id, b.manifest_info, b.build_info FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv " +
+            var rows = await conn.QueryAsync<(string plugin_slug, string settings, long id, string manifest_info, string build_info)>(
+                "SELECT lv.plugin_slug, p.settings, b.id, b.manifest_info, b.build_info FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv " +
                 "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
+                "JOIN plugins p ON b.plugin_slug = p.slug " +
                 "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL " +
                 "ORDER BY manifest_info->>'Name'",
                 new
@@ -130,6 +132,7 @@ namespace PluginBuilder.Controllers
                 v.BuildId = r.id;
                 v.BuildInfo = JObject.Parse(r.build_info);
                 v.ManifestInfo = JObject.Parse(r.manifest_info);
+                v.Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation;
                 versions.Add(v);
             }
             await conn.InsertEvent("PluginsListed", new JObject()

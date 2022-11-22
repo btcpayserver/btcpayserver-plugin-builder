@@ -1,4 +1,4 @@
-@inject Microsoft.AspNetCore.Identity.SignInManager<Microsoft.AspNetCore.Identity.IdentityUser>	SignInManager
+@inject Microsoft.AspNetCore.Identity.SignInManager<Microsoft.AspNetCore.Identity.IdentityUser> SignInManager
 @model PluginBuilder.Components.MainNav.MainNavViewModel
 
 <nav id="mainNav" class="d-flex flex-column justify-content-between">
@@ -14,6 +14,12 @@
 								<a asp-area="" asp-controller="Plugin" asp-action="Dashboard" asp-route-pluginSlug="@Model.PluginSlug" class="nav-link js-scroll-trigger @ViewData.IsActivePage(PluginNavPages.Dashboard)" id="StoreNav-Dashboard">
 									<vc:icon symbol="home" />
 									<span>Builds</span>
+								</a>
+							</li>
+							<li class="nav-item">
+								<a asp-area="" asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug" class="nav-link js-scroll-trigger @ViewData.IsActivePage(PluginNavPages.Settings)" id="StoreNav-Settings">
+									<vc:icon symbol="settings" />
+									<span>Settings</span>
 								</a>
 							</li>
 						</ul>

@@ -1,4 +1,5 @@
 using Dapper;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 
@@ -6,6 +7,27 @@ namespace PluginBuilder
 {
     public static class NpgsqlConnectionExtensions
     {
+        public static async Task<PluginSettings?> GetSettings(this NpgsqlConnection connection, PluginSlug pluginSlug)
+        {
+            var r = await connection.QueryFirstOrDefaultAsync<string>("SELECT settings FROM plugins WHERE slug=@pluginSlug",
+                new
+                {
+                    pluginSlug = pluginSlug.ToString()
+                });
+            if (r is null)
+                return null;
+            return JsonConvert.DeserializeObject<PluginSettings>(r, CamelCaseSerializerSettings.Instance);
+        }
+        public static async Task<bool> SetSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings pluginSettings)
+        {
+            var count = await connection.ExecuteAsync("UPDATE plugins SET settings=@settings::JSONB WHERE slug=@pluginSlug",
+                new
+                {
+                    pluginSlug = pluginSlug.ToString(),
+                    settings = JsonConvert.SerializeObject(pluginSettings, CamelCaseSerializerSettings.Instance)
+                });
+            return count == 1;
+        }
         public static async Task<bool> UserOwnsPlugin(this NpgsqlConnection connection, string userId, PluginSlug pluginSlug)
         {
             return await connection.QuerySingleAsync<bool>(
