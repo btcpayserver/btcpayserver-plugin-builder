@@ -78,7 +78,7 @@ namespace PluginBuilder.Controllers
         {
             if (pluginSelector is null || version is null)
                 return NotFound();
-            var conn = await ConnectionFactory.Open();
+            using var conn = await ConnectionFactory.Open();
             var slug = await conn.GetPluginSlug(pluginSelector);
             if (slug is null)
                 return NotFound();
@@ -110,7 +110,7 @@ namespace PluginBuilder.Controllers
             bool? includePreRelease = null)
         {
             includePreRelease ??= false;
-            var conn = await ConnectionFactory.Open();
+            using var conn = await ConnectionFactory.Open();
             // This query probably doesn't have right indexes
             var rows = await conn.QueryAsync<(string plugin_slug, string settings, long id, string manifest_info, string build_info)>(
                 "SELECT lv.plugin_slug, p.settings, b.id, b.manifest_info, b.build_info FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv " +
