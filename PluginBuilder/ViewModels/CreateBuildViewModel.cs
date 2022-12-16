@@ -5,7 +5,7 @@ namespace PluginBuilder.ViewModels
 {
     public class CreateBuildViewModel
     {
-        [Required]
+        [Required(AllowEmptyStrings = false)]
         [Display(Name = "Git repository")]
         public string GitRepository { get; set; }
         [Display(Name = "Git branch or tag (optional)")]
@@ -27,6 +27,7 @@ namespace PluginBuilder.ViewModels
 
         private static string Normalize(string str)
         {
+            ArgumentNullException.ThrowIfNull(str);
             str = str.Trim();
             // Strip trailing /
             if (str.EndsWith('/'))

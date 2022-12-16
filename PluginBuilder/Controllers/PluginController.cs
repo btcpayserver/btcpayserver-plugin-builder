@@ -92,6 +92,8 @@ namespace PluginBuilder.Controllers
             PluginSlug pluginSlug,
             CreateBuildViewModel model)
         {
+            if (!ModelState.IsValid)
+                return View(model);
             using var conn = await ConnectionFactory.Open();
             var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
             _ = BuildService.Build(new FullBuildId(pluginSlug, buildId));
