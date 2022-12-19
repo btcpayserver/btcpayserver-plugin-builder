@@ -21,7 +21,7 @@ namespace PluginBuilder.ViewModels
             {
                 BuildConfig = BuildConfig,
                 GitRef = GitRef,
-                PluginDirectory = Normalize(PluginDirectory)
+                PluginDirectory = PluginDirectory is null ? null : Normalize(PluginDirectory)
             };
         }
 
