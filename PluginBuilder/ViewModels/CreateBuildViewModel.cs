@@ -31,7 +31,7 @@ namespace PluginBuilder.ViewModels
             str = str.Trim();
             // Strip trailing /
             if (str.EndsWith('/'))
-                str = str.Substring(str.Length - 1);
+                str = str.Substring(0, str.Length - 1);
             return str;
         }
     }
