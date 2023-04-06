@@ -20,21 +20,16 @@ VOLUME /datadir
 
 ENV DEBIAN_FRONTEND=noninteractive 
 
+COPY --from=docker/buildx-bin:latest /buildx /usr/libexec/docker/cli-plugins/docker-buildx
+
 # Install curl
 RUN apt-get -qq update \
   && apt-get -qq install apt-transport-https ca-certificates curl gnupg lsb-release --no-install-recommends \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* && \
+    chmod +x /usr/libexec/docker/cli-plugins/docker-buildx
 
 # Install docker
-ENV DOCKER_VER=20.10.21
-RUN \
-  curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
-  && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian \
-  $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list \
-  && apt-get -qq update \
-  && . /etc/os-release \
-  && apt-get -qq install docker-ce=5:${DOCKER_VER}~3-0~${ID}-${VERSION_CODENAME} --no-install-recommends \
-  && rm -rf /var/lib/apt/lists/*
+
 
 COPY --from=builder "/app" .
 ENTRYPOINT ["/app/PluginBuilder"]
