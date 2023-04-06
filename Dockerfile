@@ -20,10 +20,13 @@ VOLUME /datadir
 
 ENV DEBIAN_FRONTEND=noninteractive 
 
+COPY --from=docker/buildx-bin:latest /buildx /usr/libexec/docker/cli-plugins/docker-buildx
+
 # Install curl
 RUN apt-get -qq update \
   && apt-get -qq install apt-transport-https ca-certificates curl gnupg lsb-release --no-install-recommends \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* && \
+    chmod +x /usr/libexec/docker/cli-plugins/docker-buildx
 
 # Install docker
 ENV DOCKER_VER=20.10.21
