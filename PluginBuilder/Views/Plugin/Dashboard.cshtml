@@ -32,70 +32,80 @@
 }
 
 <div class="d-sm-flex align-items-center justify-content-between">
-	<h2 class="mb-0">
-		@ViewData["Title"]
-	</h2>
-	<a id="CreateNewBuild" asp-action="CreateBuild" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" class="btn btn-primary mt-3 mt-sm-0">
-		<span class="fa fa-plus"></span>
-		Create a new build
-	</a>
+    <h2 class="mb-0">
+        @ViewData["Title"]
+    </h2>
+    <a id="CreateNewBuild" asp-action="CreateBuild" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" class="btn btn-primary mt-3 mt-sm-0">
+        <span class="fa fa-plus"></span>
+        Create a new build
+    </a>
 </div>
-<div class="table-responsive">
-	<table class="table table-hover">
-		<thead>
-			<tr>
-				<th class="w-150px">
-					<div class="d-flex align-items-center gap-1">
-						Date
-						<button type="button" class="btn btn-link p-0 fa fa-clock-o switch-time-format" title="Switch date format"></button>
-					</div>
-				</th>
-				<th class="text-nowrap">Build Id</th>
-				<th class="text-nowrap">Version</th>
-				<th class="text-nowrap">State</th>
-				<th class="text-nowrap">Repository</th>
-				<th class="text-nowrap">Git ref</th>
-				<th>Commit</th>
-				<th class="text-end">Actions</th>
-			</tr>
-		</thead>
-		<tbody>
-			@foreach (var item in Model.Builds)
-			{
-				<tr id="plugin_@item.BuildId" class="invoice-row">
-					<td>@item.Date</td>
-					<td>@item.BuildId</td>
-					<td>
-						<vc:plugin-version model="@item.Version"></vc:plugin-version>
-					</td>
-					<td>
-						@{
-							ToBadge(item.State, item.Error);
-						}
-					</td>
-					<td>@item.Repository</td>
-					<td>@item.GitRef</td>
-					@if (item.RepositoryLink is null)
-					{
-						<td>@item.Commit</td>
-					}
-					else
-					{
-						<td><a href="@item.RepositoryLink" target="_blank" rel="noreferrer noopener">@item.Commit</a></td>
-					}
-					<td class="text-end text-nowrap">
-						@if (item.DownloadLink != null)
-						{
-							<a href="@item.DownloadLink" rel="noreferrer noopener">Download</a> <span> - </span>
-						}
-						<a asp-action="CreateBuild" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" asp-route-copyBuild="@item.BuildId">Retry</a><span> - </span>
-						<a asp-action="Build" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" asp-route-buildId="@item.BuildId">Details</a>
-					</td>
-				</tr>
-			}
-		</tbody>
-	</table>
-</div>
+
+@if (Model.Builds.Any())
+{
+    <div class="table-responsive">
+    	<table class="table table-hover">
+    		<thead>
+    			<tr>
+    				<th class="w-150px">
+    					<div class="d-flex align-items-center gap-1">
+    						Date
+    						<button type="button" class="btn btn-link p-0 fa fa-clock-o switch-time-format" title="Switch date format"></button>
+    					</div>
+    				</th>
+    				<th class="text-nowrap">Build Id</th>
+    				<th class="text-nowrap">Version</th>
+    				<th class="text-nowrap">State</th>
+    				<th class="text-nowrap">Repository</th>
+    				<th class="text-nowrap">Git ref</th>
+    				<th>Commit</th>
+    				<th class="text-end">Actions</th>
+    			</tr>
+    		</thead>
+    		<tbody>
+    			@foreach (var item in Model.Builds)
+    			{
+    				<tr id="plugin_@item.BuildId" class="invoice-row">
+    					<td>@item.Date</td>
+    					<td>@item.BuildId</td>
+    					<td>
+    						<vc:plugin-version model="@item.Version"></vc:plugin-version>
+    					</td>
+    					<td>
+    						@{
+    							ToBadge(item.State, item.Error);
+    						}
+    					</td>
+    					<td>@item.Repository</td>
+    					<td>@item.GitRef</td>
+    					@if (item.RepositoryLink is null)
+    					{
+    						<td>@item.Commit</td>
+    					}
+    					else
+    					{
+    						<td><a href="@item.RepositoryLink" target="_blank" rel="noreferrer noopener">@item.Commit</a></td>
+    					}
+    					<td class="text-end text-nowrap">
+    						@if (item.DownloadLink != null)
+    						{
+    							<a href="@item.DownloadLink" rel="noreferrer noopener">Download</a> <span> - </span>
+    						}
+    						<a asp-action="CreateBuild" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" asp-route-copyBuild="@item.BuildId">Retry</a><span> - </span>
+    						<a asp-action="Build" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" asp-route-buildId="@item.BuildId">Details</a>
+    					</td>
+    				</tr>
+    			}
+    		</tbody>
+    	</table>
+    </div>
+}
+else
+{
+    <p class="text-secondary mt-3">
+        There are no builds yet.
+    </p>
+}
 
 @section FooterScripts {
 <script src="~/vendor/signalr/signalr.min.js"></script>
