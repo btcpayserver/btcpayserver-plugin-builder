@@ -36,6 +36,7 @@ namespace PluginBuilder.Controllers
                 return NotFound();
             return View(settings);
         }
+        
         [HttpPost("settings")]
         public async Task<IActionResult> Settings(
           [ModelBinder(typeof(PluginSlugModelBinder))]
@@ -46,27 +47,37 @@ namespace PluginBuilder.Controllers
                 return NotFound();
             if (!string.IsNullOrEmpty(settings.Documentation) && !Uri.TryCreate(settings.Documentation, UriKind.Absolute, out _))
             {
-                ModelState.AddModelError(nameof(settings.Documentation), "This should be an absolute URL");
+                ModelState.AddModelError(nameof(settings.Documentation), "Documentation should be an absolute URL");
+            }
+            if (!string.IsNullOrEmpty(settings.GitRepository) && !Uri.TryCreate(settings.GitRepository, UriKind.Absolute, out _))
+            {
+                ModelState.AddModelError(nameof(settings.GitRepository), "Git repository should be an absolute URL");
             }
             if (!ModelState.IsValid)
                 return View(settings);
             using var conn = await ConnectionFactory.Open();
             await conn.SetSettings(pluginSlug, settings);
             TempData[TempDataConstant.SuccessMessage] = "Settings updated";
-            return RedirectToAction(nameof(Settings),new { pluginSlug = pluginSlug });
+            return RedirectToAction(nameof(Settings),new { pluginSlug });
         }
 
-
-        [HttpGet]
-        [Route("create")]
+        [HttpGet("create")]
         public async Task<IActionResult> CreateBuild(
             [ModelBinder(typeof(PluginSlugModelBinder))]
             PluginSlug pluginSlug, long? copyBuild = null)
         {
-            var model = new CreateBuildViewModel();
+            using var conn = await ConnectionFactory.Open();
+            var settings = await conn.GetSettings(pluginSlug);
+            var model = new CreateBuildViewModel
+            {
+                GitRepository = settings?.GitRepository,
+                GitRef = settings?.GitRef,
+                PluginDirectory = settings?.PluginDirectory,
+                BuildConfig = settings?.BuildConfig
+            };
+            
             if (copyBuild is long buildId)
             {
-                using var conn = await ConnectionFactory.Open();
                 var buildInfo = await conn.QueryFirstOrDefaultAsync<string>("SELECT build_info FROM builds WHERE plugin_slug=@pluginSlug AND id=@buildId",
                     new
                     {
@@ -85,8 +96,7 @@ namespace PluginBuilder.Controllers
             return View(model);
         }
 
-        [HttpPost]
-        [Route("create")]
+        [HttpPost("create")]
         public async Task<IActionResult> CreateBuild(
             [ModelBinder(typeof(PluginSlugModelBinder))]
             PluginSlug pluginSlug,
