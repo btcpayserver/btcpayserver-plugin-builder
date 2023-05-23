@@ -23,10 +23,10 @@ namespace PluginBuilder.Hubs
             }
         }
 
-        public async override Task OnConnectedAsync()
+        public override async Task OnConnectedAsync()
         {
-            PluginSlug = this.Context.GetHttpContext()?.GetPluginSlug() ?? throw new InvalidOperationException("No plugin slug affected to connection");
-            await this.Groups.AddToGroupAsync(this.Context.ConnectionId, PluginSlug.ToString());
+            PluginSlug = Context.GetHttpContext()?.GetPluginSlug() ?? throw new InvalidOperationException("No plugin slug affected to connection");
+            await Groups.AddToGroupAsync(Context.ConnectionId, PluginSlug.ToString());
             await base.OnConnectedAsync();
         }
     }

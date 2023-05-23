@@ -13,13 +13,14 @@
 	<div class="d-flex gap-3 mt-3 mt-sm-0">
 		@if (Model.Version?.PreRelease is true)
 		{
-			<form asp-action="Release" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" asp-route-version="@Model.Version.Version" method="post">
-				<button type="submit" class="btn btn-primary mt-3 mt-sm-0">Release</button>
+			<form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
+				<button type="submit" class="btn btn-primary">Release</button>
 			</form>
 		}
+        <a asp-action="CreateBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-copyBuild="@Model.FullBuildId.BuildId" class="btn btn-secondary">Retry</a>
 		@if (Model.DownloadLink != null)
 		{
-			<a href="@Model.DownloadLink" rel="noreferrer noopener" class="btn btn-info mt-3 mt-sm-0">Download</a>
+			<a href="@Model.DownloadLink" rel="noreferrer noopener" class="btn btn-info">Download</a>
 		}
 	</div>
 </div>
@@ -37,13 +38,15 @@
     <tr>
     	<th class="fw-semibold">Git version</th>
     	<td>
-    		@Model.GitRef @@
+    		@Model.GitRef
             @if (Model.RepositoryLink is null)
             {
+                @("@")
                 <span>@Model.Commit</span>
             }
             else
             {
+                @("@")
                 <a href="@Model.RepositoryLink" target="_blank" rel="noreferrer noopener">@Model.Commit</a>
             }
     	</td>
@@ -59,24 +62,24 @@
 <div>
 	<ul class="nav nav-pills gap-4 mb-3" id="artifacts-tabs" role="tablist">
 		<li class="nav-item">
-			<button class="nav-link active" id="build-logs-tab" data-bs-toggle="pill" data-bs-target="#build-logs" type="button" role="tab" aria-controls="pills-build-info">Logs</button>
+			<button class="nav-link active" id="build-logs-tab" data-bs-toggle="pill" data-bs-target="#build-logs-pane" type="button" role="tab" aria-controls="build-logs-pane">Logs</button>
 		</li>
 		<li class="nav-item">
-			<button class="nav-link" id="build-info-tab" data-bs-toggle="pill" data-bs-target="#build-info" type="button" role="tab" aria-controls="pills-build-info">Build info</button>
+			<button class="nav-link" id="build-info-tab" data-bs-toggle="pill" data-bs-target="#build-info-pane" type="button" role="tab" aria-controls="build-info-pane">Build info</button>
 		</li>
 		<li class="nav-item">
-			<button class="nav-link" id="manifest-info-tab" data-bs-toggle="pill" data-bs-target="#manifest-info" type="button" role="tab" aria-controls="pills-manifest-info">Plugin manifest</button>
+			<button class="nav-link" id="manifest-info-tab" data-bs-toggle="pill" data-bs-target="#manifest-info-pane" type="button" role="tab" aria-controls="manifest-info-pane">Plugin manifest</button>
 		</li>
 	</ul>
 	<div class="tab-content" id="pills-tabContent">
-        <div class="tab-pane show active" id="build-logs" role="tabpanel" aria-labelledby="build-logs-tab">
-            <pre><code class="text hljs" id="Logs">@(string.IsNullOrEmpty(Model.Logs) ? "No logs yet" : Model.Logs)</code></pre>
+        <div class="tab-pane show active" id="build-logs-pane" role="tabpanel" aria-labelledby="build-logs-tab">
+            <pre><code class="text hljs" id="Logs">@Model.Logs</code>@if (string.IsNullOrEmpty(Model.Logs)){<div class="d-flex align-items-center gap-2 p-3"><div class="spinner-border spinner-border-sm" role="status"></div> Build running...</div>}</pre>
         </div>
-		<div class="tab-pane" id="build-info" role="tabpanel" aria-labelledby="manifest-info-tab">
-			<pre><code>@(string.IsNullOrEmpty(Model.BuildInfo) ? "No build info yet" : Model.BuildInfo)</code></pre>
+		<div class="tab-pane" id="build-info-pane" role="tabpanel" aria-labelledby="manifest-info-tab">
+			<pre><code class="json hljs" id="BuildInfo">@(string.IsNullOrEmpty(Model.BuildInfo) ? "{}" : Model.BuildInfo)</code></pre>
 		</div>
-		<div class="tab-pane" id="manifest-info" role="tabpanel" aria-labelledby="build-info-tab">
-			<pre><code>@(string.IsNullOrEmpty(Model.ManifestInfo) ? "No manifest info yet" : Model.ManifestInfo)</code></pre>
+		<div class="tab-pane" id="manifest-info-pane" role="tabpanel" aria-labelledby="build-info-tab">
+			<pre><code class="json hljs" id="ManifestInfo">@(string.IsNullOrEmpty(Model.ManifestInfo) ? "{}" : Model.ManifestInfo)</code></pre>
 		</div>
 	</div>
 </div>

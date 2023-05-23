@@ -4,8 +4,10 @@
         .withAutomaticReconnect()
         .build();
 
-    connection.on("BuildUpdated", () => {
-        window.location.reload();
+    connection.on('build-changed', ({ eventName }) => {
+        if (['running', 'failed', 'uploaded'].includes(eventName)) {
+            window.location.reload();
+        }
     });
 
     connection.start()

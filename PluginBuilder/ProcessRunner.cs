@@ -14,12 +14,12 @@ namespace PluginBuilder
     }
     public class OutputCapture : IOutputCapture
     {
-        private readonly List<string> _lines = new List<string>();
+        private readonly List<string> _lines = new ();
         public IEnumerable<string> Lines => _lines;
         public void AddLine(string line) => _lines.Add(line);
         public override string ToString()
         {
-            return String.Join(Environment.NewLine, _lines);
+            return string.Join(Environment.NewLine, _lines);
         }
     }
     public class ProcessSpec
@@ -47,7 +47,7 @@ namespace PluginBuilder
     {
         private static readonly Func<string, string?> _getEnvironmentVariable = static key => Environment.GetEnvironmentVariable(key);
 
-        public ILogger<ProcessRunner> Logger { get; }
+        private ILogger<ProcessRunner> Logger { get; }
 
         public ProcessRunner(ILogger<ProcessRunner> logger)
         {
@@ -81,7 +81,7 @@ namespace PluginBuilder
                         }
                     };
                 }
-                else if (processSpec.OnOutput != null)
+                if (processSpec.OnOutput != null)
                 {
                     readOutput = true;
                     process.OutputDataReceived += processSpec.OnOutput;
@@ -98,7 +98,7 @@ namespace PluginBuilder
                         }
                     };
                 }
-                else if (processSpec.OnError is not null)
+                if (processSpec.OnError is not null)
                 {
                     readError = true;
                     process.ErrorDataReceived += processSpec.OnError;
