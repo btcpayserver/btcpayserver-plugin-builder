@@ -1,8 +1,7 @@
 @model PluginBuilder.PluginSettings
 @{
 	Layout = "_Layout";
-	ViewData["Title"] = "Plugin settings";
-	ViewData.SetActivePage(PluginNavPages.Settings);
+	ViewData.SetActivePage(PluginNavPages.Settings, "Plugin settings");
 }
 
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>

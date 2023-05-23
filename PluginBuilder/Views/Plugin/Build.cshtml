@@ -1,8 +1,7 @@
 @model BuildViewModel
 @{
 	Layout = "_Layout";
-	ViewData.SetActivePage(PluginNavPages.Dashboard);
-	ViewData["Title"] = $"Build";
+	ViewData.SetActivePage(PluginNavPages.Dashboard, "Build", Model.FullBuildId.ToString());
 }
 
 <div class="d-sm-flex align-items-center justify-content-between">
