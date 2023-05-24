@@ -1,4 +1,3 @@
-using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using PluginBuilder.Services;
@@ -36,7 +35,8 @@ namespace PluginBuilder
                 }
             }
             using var conn = await ConnectionFactory.Open();
-            if (await conn.UserOwnsPlugin(UserManager.GetUserId(context.User), slug))
+            var userId = UserManager.GetUserId(context.User);
+            if (await conn.UserOwnsPlugin(userId, slug))
             {
                 context.Succeed(requirement);
                 httpContext?.SetPluginSlug(slug);
