@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using PluginBuilder.Authentication;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 
@@ -120,6 +121,8 @@ public class Program
             opt.AccessDeniedPath = null;
             opt.LogoutPath = "/logout";
         });
+        services.AddAuthentication()
+            .AddScheme<PluginBuilderAuthenticationOptions, BasicAuthenticationHandler>(PluginBuilderAuthenticationSchemes.BasicAuth, o => {});
         services.AddAuthorization(o =>
         {
             o.AddPolicy(Policies.OwnPlugin, o => o.AddRequirements(new OwnPluginRequirement()));
