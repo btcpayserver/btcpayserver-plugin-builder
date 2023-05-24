@@ -107,8 +107,7 @@ namespace PluginBuilder.Controllers
             using var conn = await ConnectionFactory.Open();
             var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
             _ = BuildService.Build(new FullBuildId(pluginSlug, buildId));
-            //return RedirectToAction(nameof(Build));
-            return RedirectToAction(nameof(Dashboard), new { pluginSlug = pluginSlug.ToString() });
+            return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
         }
 
         [HttpPost("versions/{version}/release")]
@@ -154,8 +153,7 @@ namespace PluginBuilder.Controllers
             });
         }
 
-        [HttpGet]
-        [Route("builds/{buildId}")]
+        [HttpGet("builds/{buildId}")]
         public async Task<IActionResult> Build(
            [ModelBinder(typeof(PluginSlugModelBinder))]
             PluginSlug pluginSlug,

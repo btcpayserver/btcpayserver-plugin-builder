@@ -1,7 +1,15 @@
-var connection = new signalR.HubConnectionBuilder().withUrl(window.location + "/hub").build();
+(function() {
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl(`${window.location}/hub`)
+        .withAutomaticReconnect()
+        .build();
 
-connection.on("BuildUpdated", function () {
-    window.location.reload();
-});
+    connection.on('build-changed', ({ eventName }) => {
+        if (['running', 'failed', 'uploaded'].includes(eventName)) {
+            window.location.reload();
+        }
+    });
 
-connection.start();
+    connection.start()
+        .catch(console.error);
+})();

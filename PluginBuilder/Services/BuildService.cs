@@ -1,8 +1,6 @@
-using System.Reflection;
-using System.Security.Cryptography;
 using Dapper;
-using Microsoft.Extensions.FileProviders;
 using Newtonsoft.Json.Linq;
+using PluginBuilder.Events;
 
 namespace PluginBuilder.Services
 {
@@ -37,14 +35,14 @@ namespace PluginBuilder.Services
 
         public async Task Build(FullBuildId fullBuildId)
         {
-            using BuildOutputCapture buildLogCapture = new BuildOutputCapture(fullBuildId, ConnectionFactory);
+            using var buildLogCapture = new BuildOutputCapture(fullBuildId, ConnectionFactory);
             List<string> args = new List<string>();
             var buildParameters = await GetBuildInfo(fullBuildId);
             // Create the volumes where the artifacts will be stored
             args.AddRange(new[] { "volume", "create" });
             args.AddRange(new[] { "--label", $"BTCPAY_PLUGIN_BUILD={fullBuildId}" });
             var output = new OutputCapture();
-            var code = await ProcessRunner.RunAsync(new ProcessSpec()
+            var code = await ProcessRunner.RunAsync(new ProcessSpec
             {
                 Executable = "docker",
                 Arguments = args.ToArray(),
@@ -85,12 +83,22 @@ namespace PluginBuilder.Services
             JObject buildEnv;
             try
             {
-                code = await ProcessRunner.RunAsync(new ProcessSpec()
+                code = await ProcessRunner.RunAsync(new ProcessSpec
                 {
                     Executable = "docker",
                     Arguments = args.ToArray(),
                     OutputCapture = buildLogCapture,
-                    ErrorCapture = buildLogCapture
+                    ErrorCapture = buildLogCapture,
+                    OnOutput = (_, eventArgs) =>
+                    {
+                        if (!string.IsNullOrEmpty(eventArgs.Data))
+                            EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
+                    },
+                    OnError = (_, eventArgs) =>
+                    {
+                        if (!string.IsNullOrEmpty(eventArgs.Data))
+                            EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
+                    }
                 }, default);
                 if (code != 0)
                     throw new BuildServiceException("docker build failed");
@@ -100,7 +108,7 @@ namespace PluginBuilder.Services
             }
             catch (Exception err)
             {
-                await UpdateBuild(fullBuildId, "failed", new JObject() { ["error"] = err.Message });
+                await UpdateBuild(fullBuildId, "failed", new JObject { ["error"] = err.Message });
                 throw;
             }
             var assemblyName = buildEnv["assemblyName"]!.Value<string>();
@@ -114,11 +122,11 @@ namespace PluginBuilder.Services
             }
             catch (Exception err)
             {
-                await UpdateBuild(fullBuildId, "failed", new JObject() { ["error"] = "Invalid plugin manifest: " + err.Message });
+                await UpdateBuild(fullBuildId, "failed", new JObject { ["error"] = "Invalid plugin manifest: " + err.Message });
                 throw;
             }
 
-            await UpdateBuild(fullBuildId, "uploading", null, null);
+            await UpdateBuild(fullBuildId, "uploading", null);
             string url;
             try
             {
@@ -126,10 +134,10 @@ namespace PluginBuilder.Services
             }
             catch (Exception err)
             {
-                await UpdateBuild(fullBuildId, "failed", new JObject() { ["error"] = err.Message });
+                await UpdateBuild(fullBuildId, "failed", new JObject { ["error"] = err.Message });
                 throw;
             }
-            await UpdateBuild(fullBuildId, "uploaded", new JObject() { ["url"] = url }, null);
+            await UpdateBuild(fullBuildId, "uploaded", new JObject { ["url"] = url });
             await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
         }
 
@@ -176,7 +184,11 @@ namespace PluginBuilder.Services
         {
             await using var connection = await ConnectionFactory.Open();
             await connection.UpdateBuild(fullBuildId, newState, buildInfo, manifestInfo);
-            EventAggregator.Publish<Events.BuildChanged>(new Events.BuildChanged(fullBuildId));
+            EventAggregator.Publish(new BuildChanged(fullBuildId, newState)
+            {
+                BuildInfo = buildInfo?.ToString(),
+                ManifestInfo = manifestInfo?.ToString()
+            });
         }
     }
 }

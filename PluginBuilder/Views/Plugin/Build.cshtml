@@ -1,7 +1,7 @@
 @model BuildViewModel
 @{
 	Layout = "_Layout";
-	ViewData.SetActivePage(PluginNavPages.Dashboard, "Build", Model.FullBuildId.ToString());
+	ViewData.SetActivePage(PluginNavPages.Dashboard, $"Build {Model.FullBuildId.BuildId}", Model.FullBuildId.ToString());
 }
 
 <div class="d-sm-flex align-items-center justify-content-between">
@@ -13,123 +13,87 @@
 	<div class="d-flex gap-3 mt-3 mt-sm-0">
 		@if (Model.Version?.PreRelease is true)
 		{
-			<form asp-action="Release" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" asp-route-version="@Model.Version.Version" method="post">
-				<button type="submit" class="btn btn-primary mt-3 mt-sm-0">Release</button>
+			<form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
+				<button type="submit" class="btn btn-primary">Release</button>
 			</form>
 		}
+        <a asp-action="CreateBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-copyBuild="@Model.FullBuildId.BuildId" class="btn btn-secondary">Retry</a>
 		@if (Model.DownloadLink != null)
 		{
-			<a href="@Model.DownloadLink" rel="noreferrer noopener" class="btn btn-info mt-3 mt-sm-0">Download</a>
+			<a href="@Model.DownloadLink" rel="noreferrer noopener" class="btn btn-info">Download</a>
 		}
 	</div>
 </div>
 
-<div class="row justify-content-between">
-	<div class="col-md-6">
-		<table class="table mb-5">
-			@if (Model.Version != null)
-			{
-			<tr>
-				<th class="fw-semibold">Version</th>
-				<td>
-					<vc:plugin-version model="@Model.Version"></vc:plugin-version>
-				</td>
-			</tr>
-			}
-			<tr>
-				<th class="fw-semibold">Created Date</th>
-				<td>
-					@Model.CreatedDate
-				</td>
-			</tr>
-			<tr>
-				<th class="fw-semibold">Plugin</th>
-				<td>
-					<a asp-action="Dashboard" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug.ToString()">@Model.FullBuildId.PluginSlug.ToString()</a>
-				</td>
-			</tr>
-			<tr>
-				<th class="fw-semibold">Build</th>
-				<td>
-					@Model.FullBuildId.BuildId
-				</td>
-			</tr>
-		</table>
-	</div>
-	<div class="col-md-6">
-		<table class="table mb-5">
-			<tr>
-				<th class="fw-semibold">Repository</th>
-				<td>
-					@Model.Repository
-				</td>
-			</tr>
-			<tr>
-				<th class="fw-semibold">Git ref</th>
-				<td>
-					@Model.GitRef
-				</td>
-			</tr>
-			<tr>
-				<th class="fw-semibold">Commit</th>
-				
-				@if (Model.RepositoryLink is null)
-				{
-					<td>@Model.Commit</td>
-				}
-				else
-				{
-					<td><a href="@Model.RepositoryLink" target="_blank" rel="noreferrer noopener">@Model.Commit</a></td>
-				}
-				
-			</tr>
-		</table>
-	</div>
-</div>
+<table class="table">
+    @if (Model.Version != null)
+    {
+        <tr>
+            <th class="fw-semibold w-100px">Version</th>
+            <td>
+                <vc:plugin-version model="@Model.Version"></vc:plugin-version>
+            </td>
+        </tr>
+    }
+    <tr>
+    	<th class="fw-semibold">Git version</th>
+    	<td>
+    		@Model.GitRef
+            @if (Model.RepositoryLink is null)
+            {
+                @("@")
+                <span>@Model.Commit</span>
+            }
+            else
+            {
+                @("@")
+                <a href="@Model.RepositoryLink" target="_blank" rel="noreferrer noopener">@Model.Commit</a>
+            }
+    	</td>
+    </tr>
+    <tr>
+        <th class="fw-semibold">Created at</th>
+        <td>
+            @Model.CreatedDate
+        </td>
+    </tr>
+</table>
 
 <div>
-	<ul class="nav nav-pills mt-4" id="artifacts-tabs" role="tablist">
-		@if (Model.Logs is not null)
-		{
-			<li class="nav-item">
-				<button class="nav-link" id="build-logs-tab" data-bs-toggle="pill" data-bs-target="#build-logs" type="button" role="tab" aria-controls="pills-build-info">Logs</button>
-			</li>
-		}
-		@if (Model.ManifestInfo is not null)
-		{
-			<li class="nav-item">
-				<button class="nav-link" id="manifest-info-tab" data-bs-toggle="pill" data-bs-target="#manifest-info" type="button" role="tab" aria-controls="pills-manifest-info">Plugin manifest</button>
-			</li>
-		}
+	<ul class="nav nav-pills gap-4 mb-3" id="artifacts-tabs" role="tablist">
 		<li class="nav-item">
-			<button class="nav-link" id="build-info-tab" data-bs-toggle="pill" data-bs-target="#build-info" type="button" role="tab" aria-controls="pills-build-info">Build info</button>
+			<button class="nav-link active" id="build-logs-tab" data-bs-toggle="pill" data-bs-target="#build-logs-pane" type="button" role="tab" aria-controls="build-logs-pane">Logs</button>
+		</li>
+		<li class="nav-item">
+			<button class="nav-link" id="build-info-tab" data-bs-toggle="pill" data-bs-target="#build-info-pane" type="button" role="tab" aria-controls="build-info-pane">Build info</button>
+		</li>
+		<li class="nav-item">
+			<button class="nav-link" id="manifest-info-tab" data-bs-toggle="pill" data-bs-target="#manifest-info-pane" type="button" role="tab" aria-controls="manifest-info-pane">Plugin manifest</button>
 		</li>
 	</ul>
 	<div class="tab-content" id="pills-tabContent">
-		<div class="tab-pane fade" id="build-logs" role="tabpanel" aria-labelledby="build-logs-tab"><div id="terminal">@Model.Logs</div></div>
-		<div class="tab-pane fade show active" id="manifest-info" role="tabpanel" aria-labelledby="build-info-tab">
-			<pre><code class="language-json">@Model.ManifestInfo</code></pre>
+        <div class="tab-pane show active" id="build-logs-pane" role="tabpanel" aria-labelledby="build-logs-tab">
+            <pre><code class="text hljs" id="Logs">@Model.Logs</code>@if (string.IsNullOrEmpty(Model.Logs)){<div class="d-flex align-items-center gap-2 p-3"><div class="spinner-border spinner-border-sm" role="status"></div> Build running...</div>}</pre>
+        </div>
+		<div class="tab-pane" id="build-info-pane" role="tabpanel" aria-labelledby="manifest-info-tab">
+			<pre><code class="json hljs" id="BuildInfo">@(string.IsNullOrEmpty(Model.BuildInfo) ? "{}" : Model.BuildInfo)</code></pre>
 		</div>
-		<div class="tab-pane fade" id="build-info" role="tabpanel" aria-labelledby="manifest-info-tab">
-			<pre><code class="language-json">@Model.BuildInfo</code></pre>
+		<div class="tab-pane" id="manifest-info-pane" role="tabpanel" aria-labelledby="build-info-tab">
+			<pre><code class="json hljs" id="ManifestInfo">@(string.IsNullOrEmpty(Model.ManifestInfo) ? "{}" : Model.ManifestInfo)</code></pre>
 		</div>
 	</div>
 </div>
 
 @section HeaderScripts {
-	<link href="~/vendor/xterm/xterm.css" asp-append-version="true" rel="stylesheet" />
 	<link href="~/vendor/highlight.js/default.min.css" asp-append-version="true" rel="stylesheet" />
 	<style>
-		/*This is a hack so the code doesn't flicker before hljs.highlightAll(); is called*/
-		.language-json {
-			display: none;
-		}
+		#artifacts-tabs .nav-link { background: none; padding: 0; font-weight: var(--btcpay-font-weight-semibold); font-size: 1.125rem; }
+        #artifacts-tabs .nav-link.active { color: var(--btcpay-primary); }
 	</style>
 }
 
 @section FooterScripts {
-<script src="~/vendor/xterm/xterm.js"></script>
-<script src="~/vendor/highlight.js/highlight.min.js" asp-append-version="true"></script>
-<script src="~/vendor/signalr/signalr.min.js" asp-append-version="true"></script>
-<script src="~/scripts/Build.js" asp-append-version="true"></script>
+    <script src="~/vendor/highlight.js/highlight.min.js" asp-append-version="true"></script>
+    <script src="~/vendor/signalr/signalr.min.js" asp-append-version="true"></script>
+    <script src="~/scripts/Build.js" asp-append-version="true"></script>
 }
