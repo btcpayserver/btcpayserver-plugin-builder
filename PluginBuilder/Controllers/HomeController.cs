@@ -1,11 +1,6 @@
-using System.Reflection;
-using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using PluginBuilder.APIModels;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 
@@ -14,12 +9,12 @@ namespace PluginBuilder.Controllers
     [Authorize]
     public class HomeController : Controller
     {
-        public DBConnectionFactory ConnectionFactory { get; }
-        public UserManager<IdentityUser> UserManager { get; }
+        private DBConnectionFactory ConnectionFactory { get; }
+        private UserManager<IdentityUser> UserManager { get; }
         public RoleManager<IdentityRole> RoleManager { get; }
-        public SignInManager<IdentityUser> SignInManager { get; }
-        public IAuthorizationService AuthorizationService { get; }
-        public ServerEnvironment Env { get; }
+        private SignInManager<IdentityUser> SignInManager { get; }
+        private IAuthorizationService AuthorizationService { get; }
+        private ServerEnvironment Env { get; }
 
         public HomeController(
             DBConnectionFactory connectionFactory,
@@ -36,6 +31,7 @@ namespace PluginBuilder.Controllers
             AuthorizationService = authorizationService;
             Env = env;
         }
+
         [HttpGet("/")]
         public async Task<IActionResult> HomePage()
         {
@@ -55,87 +51,6 @@ namespace PluginBuilder.Controllers
         {
             await SignInManager.SignOutAsync();
             return RedirectToAction(nameof(Login));
-        }
-
-        [AllowAnonymous]
-        [HttpGet("/api/v1/version")]
-        public IActionResult GetVersion()
-        {
-            return Ok(new JObject()
-            {
-                ["version"] = typeof(HomeController).GetTypeInfo().Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion,
-                ["commit"] = typeof(HomeController).GetTypeInfo().Assembly.GetCustomAttribute<GitCommitAttribute>()?.SHA
-            });
-        }
-
-        [AllowAnonymous]
-        [HttpGet("/api/v1/plugins/{pluginSelector}/versions/{version}/download")]
-        public async Task<IActionResult> Download(
-            [ModelBinder(typeof(ModelBinders.PluginSelectorModelBinder))]
-            PluginSelector pluginSelector,
-            [ModelBinder(typeof(ModelBinders.PluginVersionModelBinder))]
-            PluginVersion version)
-        {
-            if (pluginSelector is null || version is null)
-                return NotFound();
-            using var conn = await ConnectionFactory.Open();
-            var slug = await conn.GetPluginSlug(pluginSelector);
-            if (slug is null)
-                return NotFound();
-            var url = await conn.ExecuteScalarAsync<string?>(
-            "SELECT b.build_info->>'url' FROM versions v " +
-            "JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id " +
-            "WHERE v.plugin_slug=@plugin_slug AND v.ver=@version",
-            new
-            {
-                plugin_slug = slug.ToString(),
-                version = version.VersionParts
-            });
-            if (url is null)
-                return NotFound();
-
-            await conn.InsertEvent("Download", new JObject()
-            {
-                ["pluginSlug"] = slug.ToString(),
-                ["version"] = version.ToString()
-            });
-            return Redirect(url);
-        }
-
-        [AllowAnonymous]
-        [HttpGet("/api/v1/plugins")]
-        public async Task<IActionResult> Plugins(
-            [ModelBinder(typeof(ModelBinders.PluginVersionModelBinder))]
-            PluginVersion? btcpayVersion = null,
-            bool? includePreRelease = null)
-        {
-            includePreRelease ??= false;
-            using var conn = await ConnectionFactory.Open();
-            // This query probably doesn't have right indexes
-            var rows = await conn.QueryAsync<(string plugin_slug, string settings, long id, string manifest_info, string build_info)>(
-                "SELECT lv.plugin_slug, p.settings, b.id, b.manifest_info, b.build_info FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv " +
-                "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
-                "JOIN plugins p ON b.plugin_slug = p.slug " +
-                "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL " +
-                "ORDER BY manifest_info->>'Name'",
-                new
-                {
-                    btcpayVersion = btcpayVersion?.VersionParts,
-                    includePreRelease = includePreRelease.Value
-                });
-            rows.TryGetNonEnumeratedCount(out var count);
-            List<PublishedVersion> versions = new List<PublishedVersion>(count);
-            foreach (var r in rows)
-            {
-                var v = new PublishedVersion();
-                v.ProjectSlug = r.plugin_slug;
-                v.BuildId = r.id;
-                v.BuildInfo = JObject.Parse(r.build_info);
-                v.ManifestInfo = JObject.Parse(r.manifest_info);
-                v.Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation;
-                versions.Add(v);
-            }
-            return Json(versions);
         }
 
         [AllowAnonymous]
@@ -168,19 +83,6 @@ namespace PluginBuilder.Controllers
             }
             return RedirectToLocal(returnUrl);
         }
-
-        private IActionResult RedirectToLocal(string? returnUrl = null)
-        {
-            if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
-            {
-                return Redirect(returnUrl);
-            }
-            else
-            {
-                return RedirectToAction(nameof(HomeController.HomePage), "Home");
-            }
-        }
-
 
         [AllowAnonymous]
         [HttpGet("/register")]
@@ -247,18 +149,16 @@ namespace PluginBuilder.Controllers
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 
-        [HttpPost("/plugins/add")]
-        public IActionResult AddPlugin(
-            string name,
-            string repository,
-            string reference,
-            string csprojPath)
+        private IActionResult RedirectToLocal(string? returnUrl = null)
         {
-
-            // Wouter style: https://github.com/storefront-bvba/btcpayserver-kraken-plugin
-            // Dennis style: https://github.com/dennisreimann/btcpayserver
-            // Kukks sytle: https://github.com/Kukks/btcpayserver/tree/plugins/collection/Plugins
-            return View();
+            if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+            {
+                return Redirect(returnUrl);
+            }
+            else
+            {
+                return RedirectToAction(nameof(HomePage), "Home");
+            }
         }
     }
 }
