@@ -20,16 +20,16 @@ VOLUME /datadir
 
 ENV DEBIAN_FRONTEND=noninteractive 
 
-COPY --from=docker/buildx-bin:latest /buildx /usr/libexec/docker/cli-plugins/docker-buildx
-
 # Install curl
 RUN apt-get -qq update \
   && apt-get -qq install apt-transport-https ca-certificates curl gnupg lsb-release --no-install-recommends \
-  && rm -rf /var/lib/apt/lists/* && \
-    chmod +x /usr/libexec/docker/cli-plugins/docker-buildx
+  && rm -rf /var/lib/apt/lists/*
 
 # Install docker
-
+RUN curl -o cli.deb https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/docker-ce-cli_24.0.1-1~debian.11~bullseye_amd64.deb && \
+    curl -o buildx.deb https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/docker-buildx-plugin_0.10.4-1~debian.11~bullseye_amd64.deb && \
+    dpkg -i cli.deb buildx.deb && \
+    rm cli.deb buildx.deb
 
 COPY --from=builder "/app" .
 ENTRYPOINT ["/app/PluginBuilder"]
