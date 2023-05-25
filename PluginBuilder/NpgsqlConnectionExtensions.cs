@@ -1,7 +1,9 @@
+#nullable enable
 using Dapper;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using PluginBuilder.Services;
 
 namespace PluginBuilder
 {
@@ -97,7 +99,15 @@ namespace PluginBuilder
             }
         }
 
-        public static async Task<PluginSlug?> GetPluginSlug(this NpgsqlConnection connection, PluginSelector selector)
+        public static async Task<PluginSlug?> ResolvePluginSlug(this DBConnectionFactory connectionFactory, PluginSelector selector)
+        {
+            if (selector is PluginSelectorBySlug s)
+                return s.PluginSlug;
+            await using var conn = await connectionFactory.Open();
+            return await conn.ResolvePluginSlug(selector);
+        }
+
+        public static async Task<PluginSlug?> ResolvePluginSlug(this NpgsqlConnection connection, PluginSelector selector)
         {
             if (selector is PluginSelectorBySlug s)
                 return s.PluginSlug;

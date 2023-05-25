@@ -28,11 +28,17 @@ namespace PluginBuilder
                 {
                     return;
                 }
-                if (v is not string v2 || !PluginSlug.TryParse(v2, out slug))
+                if (v is not string v2 || !PluginSelectorBySlug.TryParse(v2, out var slugSelector))
                 {
                     context.Fail();
                     return;
                 }
+                slug = await ConnectionFactory.ResolvePluginSlug(slugSelector);
+            }
+            if (slug is null)
+            {
+                context.Fail();
+                return;
             }
             using var conn = await ConnectionFactory.Open();
             var userId = UserManager.GetUserId(context.User);

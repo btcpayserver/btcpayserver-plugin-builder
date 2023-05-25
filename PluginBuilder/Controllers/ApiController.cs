@@ -95,21 +95,17 @@ public class ApiController : ControllerBase
     [AllowAnonymous]
     [HttpGet("plugins/{pluginSlug}/versions/{version}/download")]
     public async Task<IActionResult> Download(
-        [ModelBinder(typeof(PluginSelectorModelBinder))] PluginSelector pluginSlug,
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
         [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion version)
     {
         await using var conn = await ConnectionFactory.Open();
-        var slug = await conn.GetPluginSlug(pluginSlug);
-        if (slug is null)
-            return NotFound();
-        
         var url = await conn.ExecuteScalarAsync<string?>(
             "SELECT b.build_info->>'url' FROM versions v " +
             "JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id " +
             "WHERE v.plugin_slug=@plugin_slug AND v.ver=@version",
             new
             {
-                plugin_slug = slug.ToString(),
+                plugin_slug = pluginSlug.ToString(),
                 version = version.VersionParts
             });
         if (url is null)
@@ -117,7 +113,7 @@ public class ApiController : ControllerBase
 
         await conn.InsertEvent("Download", new JObject
         {
-            ["pluginSlug"] = slug.ToString(),
+            ["pluginSlug"] = pluginSlug.ToString(),
             ["version"] = version.ToString()
         });
         return Redirect(url);

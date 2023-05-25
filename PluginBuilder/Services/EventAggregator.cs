@@ -87,8 +87,6 @@ namespace PluginBuilder.Services
             }
 
             var log = evt.ToString();
-            if (!String.IsNullOrEmpty(log))
-                Logger.LogInformation(log);
             foreach (var sub in actionList)
             {
                 try

@@ -1,23 +1,41 @@
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using PluginBuilder.Services;
 
 namespace PluginBuilder.ModelBinders
 {
     public class PluginSlugModelBinder : IModelBinder
     {
-        public Task BindModelAsync(ModelBindingContext bindingContext)
+        private readonly DBConnectionFactory _connectionFactory;
+
+        public PluginSlugModelBinder(DBConnectionFactory connectionFactory)
+        {
+            _connectionFactory = connectionFactory;
+        }
+        public async Task BindModelAsync(ModelBindingContext bindingContext)
         {
             ValueProviderResult val = bindingContext.ValueProvider.GetValue(bindingContext.ModelName);
             string? v = val.FirstValue as string;
             if (v is null)
-                return Task.CompletedTask;
-            if (PluginSlug.TryParse(v, out var slug))
-                bindingContext.Result = ModelBindingResult.Success(slug);
+                return;
+            if (PluginSelector.TryParse(v, out var s))
+            {
+                var pluginSlug = await _connectionFactory.ResolvePluginSlug(s);
+                if (pluginSlug != null)
+                {
+                    bindingContext.Result = ModelBindingResult.Success(pluginSlug);
+                }
+                else
+                {
+                    bindingContext.Result = ModelBindingResult.Failed();
+                    bindingContext.ModelState.AddModelError(bindingContext.ModelName, "Unknown plugin identifier");
+                }
+            }
             else
             {
                 bindingContext.Result = ModelBindingResult.Failed();
-                bindingContext.ModelState.AddModelError(bindingContext.ModelName, "Invalid plugin slug");
+                bindingContext.ModelState.AddModelError(bindingContext.ModelName, "Invalid plugin selector");
             }
-            return Task.CompletedTask;
+            return;
         }
     }
 }
