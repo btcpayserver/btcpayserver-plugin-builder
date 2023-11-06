@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0
+FROM mcr.microsoft.com/dotnet/sdk:6.0
 
 RUN apt-get update && apt-get install -y git jq openssh-client && rm -rf /var/lib/apt/lists/*
 
@@ -8,7 +8,7 @@ USER dotnet
 
 WORKDIR /build-tools
 ENV PLUGIN_PACKER_VERSION=https://github.com/btcpayserver/btcpayserver
-RUN git clone --depth 1 -b v1.13.x --single-branch https://github.com/btcpayserver/btcpayserver && \
+RUN git clone --depth 1 -b v1.11.7 --single-branch https://github.com/btcpayserver/btcpayserver && \
     cd btcpayserver/BTCPayServer.PluginPacker && \
     dotnet build -c Release -o "/build-tools/PluginPacker" && \
     rm -rf /build-tools/btcpayserver
