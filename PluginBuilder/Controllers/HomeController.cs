@@ -46,6 +46,8 @@ namespace PluginBuilder.Controllers
             return View();
         }
 
+        // auth methods
+
         [HttpGet("/logout")]
         public async Task<IActionResult> Logout()
         {
@@ -124,6 +126,8 @@ namespace PluginBuilder.Controllers
             await SignInManager.SignInAsync(user, isPersistent: false);
             return RedirectToLocal(returnUrl);
         }
+
+        // plugin methods
 
         [HttpGet("/plugins/create")]
         public IActionResult CreatePlugin()
