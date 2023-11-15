@@ -70,6 +70,8 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             return View("Views/Plugin/Dashboard",vm);
         }
 
+        // auth methods
+
         [HttpGet("/logout")]
         public async Task<IActionResult> Logout()
         {
@@ -148,6 +150,8 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             await SignInManager.SignInAsync(user, isPersistent: false);
             return RedirectToLocal(returnUrl);
         }
+
+        // plugin methods
 
         [HttpGet("/plugins/create")]
         public IActionResult CreatePlugin()
