@@ -63,9 +63,7 @@ public class Program
         app.UseAuthorization();
         app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/hub");
         app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/builds/{buildId}/hub");
-        //        app.MapControllerRoute(
-        //name: "default",
-        //pattern: "{controller=Home}/{action=Index}/{id?}");
+        // no default routes
         app.MapControllers();
     }
 
