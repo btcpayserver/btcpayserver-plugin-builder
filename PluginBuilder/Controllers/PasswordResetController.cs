@@ -5,47 +5,43 @@ using Microsoft.AspNetCore.Identity;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Http;
 
 namespace PluginBuilder.Controllers
 {
     public class PasswordResetController : Controller
     {
-        private DBConnectionFactory ConnectionFactory { get; }
         private UserManager<IdentityUser> UserManager { get; }
         public RoleManager<IdentityRole> RoleManager { get; }
-        private SignInManager<IdentityUser> SignInManager { get; }
-        private IAuthorizationService AuthorizationService { get; }
         private ServerEnvironment Env { get; }
 
         public PasswordResetController(
-            DBConnectionFactory connectionFactory,
             UserManager<IdentityUser> userManager,
             RoleManager<IdentityRole> roleManager,
-            SignInManager<IdentityUser> signInManager,
-            IAuthorizationService authorizationService,
             ServerEnvironment env)
         {
-            ConnectionFactory = connectionFactory;
             UserManager = userManager;
             RoleManager = roleManager;
-            SignInManager = signInManager;
-            AuthorizationService = authorizationService;
             Env = env;
         }
 
         [HttpGet("/admin/initpasswordreset")]
-        public IActionResult InitPasswordReset()
+        public IActionResult InitPasswordReset(string adminAuthString)
         {
-            return View();
-        }
-        public IActionResult Children()
-        {
+            if (String.IsNullOrEmpty(Env.AdminAuthString) || adminAuthString != Env.AdminAuthString)
+                return Unauthorized();
+
+            ViewData["adminAuthString"] = adminAuthString;
             return View();
         }
 
         [HttpPost("/admin/initpasswordreset")]
-        public async Task<IActionResult> InitPasswordReset(InitPasswordResetViewModel model)
+        public async Task<IActionResult> InitPasswordReset(InitPasswordResetViewModel model, string adminAuthString)
         {
+            if (String.IsNullOrEmpty(Env.AdminAuthString) || adminAuthString != Env.AdminAuthString)
+                return Unauthorized();
+
+
             if (!ModelState.IsValid)
                 return View(model);
             // Require the user to have a confirmed email before they can log on.
@@ -60,6 +56,8 @@ namespace PluginBuilder.Controllers
             model.PasswordResetToken = result;
             return View(model);
         }
+
+        // password reset flow
 
         [HttpGet("/passwordreset")]
         public IActionResult PasswordReset()
