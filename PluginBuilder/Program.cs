@@ -41,6 +41,7 @@ public class Program
         builder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
 #endif
         builder.Logging.AddFilter("Microsoft", LogLevel.Error);
+        builder.Logging.AddFilter("Microsoft.Hosting", LogLevel.Information);
         builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Critical);
         builder.Logging.AddFilter("Microsoft.AspNetCore.Antiforgery.Internal", LogLevel.Critical);
         AddServices(builder.Configuration, builder.Services);
