@@ -26,8 +26,8 @@ RUN apt-get -qq update \
   && rm -rf /var/lib/apt/lists/*
 
 # Install docker
-RUN curl -o cli.deb https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/docker-ce-cli_24.0.1-1~debian.11~bullseye_amd64.deb && \
-    curl -o buildx.deb https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/docker-buildx-plugin_0.10.4-1~debian.11~bullseye_amd64.deb && \
+RUN curl -o cli.deb https://download.docker.com/linux/debian/dists/bookworm/pool/stable/amd64/docker-ce-cli_24.0.7-1~debian.12~bookworm_amd64.deb && \
+    curl -o buildx.deb https://download.docker.com/linux/debian/dists/bookworm/pool/stable/amd64/docker-buildx-plugin_0.11.2-1~debian.12~bookworm_amd64.deb && \
     dpkg -i cli.deb buildx.deb && \
     rm cli.deb buildx.deb
 
