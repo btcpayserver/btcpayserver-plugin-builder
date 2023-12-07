@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:6.0.403-bullseye-slim AS builder
+FROM mcr.microsoft.com/dotnet/sdk:8.0.100-bookworm-slim AS builder
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 
 WORKDIR /source
@@ -9,7 +9,7 @@ ARG VERSION
 ARG GIT_COMMIT
 RUN cd PluginBuilder && dotnet publish -p:Version=${VERSION} -p:GitCommit=${GIT_COMMIT} --output /app/ --configuration ${CONFIGURATION_NAME}
 
-FROM mcr.microsoft.com/dotnet/aspnet:6.0.11-bullseye-slim
+FROM mcr.microsoft.com/dotnet/aspnet:8.0.0-bookworm-slim
 ENV LC_ALL en_US.UTF-8
 ENV LANG en_US.UTF-8
 WORKDIR /datadir

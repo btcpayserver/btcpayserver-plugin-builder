@@ -145,7 +145,7 @@ namespace PluginBuilder.Controllers
                 ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
                 return View(model);
             }
-            await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User));
+            await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 

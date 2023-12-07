@@ -41,7 +41,7 @@ namespace PluginBuilder
                 return;
             }
             using var conn = await ConnectionFactory.Open();
-            var userId = UserManager.GetUserId(context.User);
+            var userId = UserManager.GetUserId(context.User)!;
             if (await conn.UserOwnsPlugin(userId, slug))
             {
                 context.Succeed(requirement);

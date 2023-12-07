@@ -19,9 +19,8 @@ namespace PluginBuilder.Authentication
             IOptionsMonitor<PluginBuilderAuthenticationOptions> options,
             ILoggerFactory logger,
             UrlEncoder encoder,
-            ISystemClock clock,
             SignInManager<IdentityUser> signInManager,
-            UserManager<IdentityUser> userManager) : base(options, logger, encoder, clock)
+            UserManager<IdentityUser> userManager) : base(options, logger, encoder)
         {
             _identityOptions = identityOptions;
             _signInManager = signInManager;
@@ -30,9 +29,9 @@ namespace PluginBuilder.Authentication
 
         protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
         {
-            string authHeader = Context.Request.Headers["Authorization"];
+            string? authHeader = Context.Request.Headers["Authorization"];
 
-            if (authHeader == null || !authHeader.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+            if (authHeader is null || !authHeader.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
                 return AuthenticateResult.NoResult();
             
             var encodedUsernamePassword = authHeader.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries)[1].Trim();

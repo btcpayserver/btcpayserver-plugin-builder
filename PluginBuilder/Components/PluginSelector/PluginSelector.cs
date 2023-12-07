@@ -24,7 +24,7 @@ namespace PluginBuilder.Components.PluginSelector
         public async Task<IViewComponentResult> InvokeAsync()
         {
             using var connection = await ConnectionFactory.Open();
-            var userId = _userManager.GetUserId(UserClaimsPrincipal);
+            var userId = _userManager.GetUserId(UserClaimsPrincipal)!;
             var plugins = await connection.GetPluginsByUserId(userId);
 
             PluginSlug? currentPluginSlug = HttpContext.GetPluginSlug();
