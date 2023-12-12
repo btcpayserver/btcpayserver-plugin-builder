@@ -12,9 +12,9 @@ namespace PluginBuilder.Tests
     public static class HttpClientExtensions
     {
         static JsonSerializerSettings serializerSettings = new JsonSerializerSettings() { ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver() };
-        public static async Task<PublishedVersion[]> GetPublishedVersions(this HttpClient httpClient, string btcpayVersion, bool includePreRelease)
+        public static async Task<PublishedVersion[]> GetPublishedVersions(this HttpClient httpClient, string btcpayVersion, bool includePreRelease, bool includeAllVersions = false)
         {
-            var result = await httpClient.GetStringAsync($"api/v1/plugins?btcpayVersion={btcpayVersion}&includePreRelease={includePreRelease}");
+            var result = await httpClient.GetStringAsync($"api/v1/plugins?btcpayVersion={btcpayVersion}&includePreRelease={includePreRelease}&includeAllVersions={includeAllVersions}");
             return JsonConvert.DeserializeObject<PublishedVersion[]>(result, serializerSettings) ?? throw new InvalidOperationException();
         }
         public static async Task<byte[]> DownloadPlugin(this HttpClient httpClient, PluginSelector pluginSelector, PluginVersion pluginVersion)
