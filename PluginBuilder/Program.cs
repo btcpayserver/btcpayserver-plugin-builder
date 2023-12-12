@@ -62,6 +62,7 @@ public class Program
         app.UseRouting();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.MapHub<Hubs.PluginHub>("hub");
         app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/hub");
         app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/builds/{buildId}/hub");
         //        app.MapControllerRoute(

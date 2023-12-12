@@ -4,7 +4,7 @@
 	<div class="d-flex align-items-center gap-1">
 		@if (Model.Published)
 		{
-			<div><a asp-action="Version" asp-controller="Plugin" asp-route-pluginSlug="@Context.GetRouteValue("pluginSlug")" asp-route-version="@Model.Version">@Model.Version</a></div>
+			<div><a asp-action="Version" asp-controller="Plugin" asp-route-pluginSlug="@Model.PluginSlug" asp-route-version="@Model.Version">@Model.Version</a></div>
 		}
 		else
 		{

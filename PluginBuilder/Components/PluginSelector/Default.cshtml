@@ -4,19 +4,9 @@
 @model PluginBuilder.Components.PluginSelector.PluginSelectorViewModel
 
 
-@if (Model.PluginSlug == null)
-{
-    <a href="~/" class="navbar-brand py-2 js-scroll-trigger">
-		<svg xmlns="http://www.w3.org/2000/svg" role="img" alt="BTCPay Server" class="logo"><use href="/img/logo.svg#small" class="logo-small" /><use href="/img/logo.svg#large" class="logo-large" /></svg>
-	</a>
-}
-else
-{
-	<a asp-controller="Home" asp-action="Dashboard" asp-route-pluginSlug="@Model.PluginSlug" class="navbar-brand py-2 js-scroll-trigger">
-		<svg xmlns="http://www.w3.org/2000/svg" role="img" alt="BTCPay Server" class="logo"><use href="/img/logo.svg#small" class="logo-small" /><use href="/img/logo.svg#large" class="logo-large" /></svg>
-	</a>   
-}
-
+<a asp-controller="Home" asp-action="HomePage" class="navbar-brand py-2 js-scroll-trigger">
+    <svg xmlns="http://www.w3.org/2000/svg" role="img" alt="BTCPay Server" class="logo"><use href="/img/logo.svg#small" class="logo-small" /><use href="/img/logo.svg#large" class="logo-large" /></svg>
+</a>   
 <div id="StoreSelector">
     @if (Model.Options.Count > 0)
     {

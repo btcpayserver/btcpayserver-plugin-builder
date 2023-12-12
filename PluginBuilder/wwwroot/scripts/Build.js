@@ -22,7 +22,7 @@
     }
 
     connection.on('build-changed', ({ eventName, buildInfo, manifestInfo }) => {
-        if (['running', 'failed', 'uploaded'].includes(eventName)) {
+        if (['running', 'failed', 'uploaded', 'removed'].includes(eventName)) {
             return window.location.reload();
         }
         if (buildInfo) {

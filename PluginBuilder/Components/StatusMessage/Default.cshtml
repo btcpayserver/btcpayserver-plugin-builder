@@ -5,3 +5,9 @@
         <span style="white-space: pre-wrap;">@TempData[TempDataConstant.SuccessMessage]</span>
     </div>
 }
+@if (TempData[TempDataConstant.WarningMessage] != null)
+{
+    <div class="alert alert-warning text-break" role="alert">
+        <span style="white-space: pre-wrap;">@TempData[TempDataConstant.WarningMessage]</span>
+    </div>
+}

@@ -17,6 +17,8 @@ namespace PluginBuilder.ViewModels
             public string RepositoryLink { get; set; }
             public string DownloadLink { get; set; }
             public string Error { get; set; }
+            public string PluginSlug { get; set; }
+            public string PluginIdentifier { get; set; }
         }
 
         public List<BuildViewModel> Builds { get; set; } = new List<BuildViewModel>();

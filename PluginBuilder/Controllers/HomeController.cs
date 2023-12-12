@@ -1,3 +1,4 @@
+using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -33,17 +34,40 @@ namespace PluginBuilder.Controllers
         }
 
         [HttpGet("/")]
+        
         public async Task<IActionResult> HomePage()
         {
-            if (HttpContext.Request.Cookies.TryGetValue(Cookies.PluginSlug, out var s) && s is not null && PluginSlug.TryParse(s, out var p))
+            await using var conn = await ConnectionFactory.Open();
+            var rows = await conn.QueryAsync<(long id, string state, string? manifest_info, string? build_info, DateTimeOffset created_at, bool published, bool pre_release, string slug, string? identifier)>
+            (@"SELECT id, state, manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release, p.slug, p.identifier
+FROM builds b 
+    LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id
+    JOIN plugins p ON p.slug = b.plugin_slug
+    JOIN users_plugins up ON up.plugin_slug = b.plugin_slug 
+WHERE up.user_id = @userId
+ORDER BY created_at DESC
+LIMIT 50", new { userId = UserManager.GetUserId(User) });
+            var vm = new BuildListViewModel();
+            foreach (var row in rows)
             {
-                var auth = await AuthorizationService.AuthorizeAsync(User, p, new OwnPluginRequirement());
-                if (auth.Succeeded)
-                    return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = p.ToString() });
-                else
-                    HttpContext.Response.Cookies.Delete(Cookies.PluginSlug);
+                var b = new BuildListViewModel.BuildViewModel();
+                var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
+                var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
+                vm.Builds.Add(b);
+                b.BuildId = row.id;
+                b.State = row.state;
+                b.Commit = buildInfo?.GitCommit?.Substring(0, 8);
+                b.Repository = buildInfo?.GitRepository;
+                b.GitRef = buildInfo?.GitRef;
+                b.Version = Components.PluginVersion.PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.slug);
+                b.Date = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
+                b.RepositoryLink = PluginController.GetUrl(buildInfo);
+                b.DownloadLink = buildInfo?.Url;
+                b.Error = buildInfo?.Error;
+                b.PluginSlug = row.slug;
+                b.PluginIdentifier = row.identifier ?? row.slug;
             }
-            return View();
+            return View("Views/Plugin/Dashboard",vm);
         }
 
         [HttpGet("/logout")]

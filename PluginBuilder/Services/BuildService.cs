@@ -32,113 +32,137 @@ namespace PluginBuilder.Services
         public DBConnectionFactory ConnectionFactory { get; }
         public EventAggregator EventAggregator { get; }
         public AzureStorageClient AzureStorageClient { get; }
+        private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(5);
 
         public async Task Build(FullBuildId fullBuildId)
         {
-            using var buildLogCapture = new BuildOutputCapture(fullBuildId, ConnectionFactory);
-            List<string> args = new List<string>();
-            var buildParameters = await GetBuildInfo(fullBuildId);
-            // Create the volumes where the artifacts will be stored
-            args.AddRange(new[] { "volume", "create" });
-            args.AddRange(new[] { "--label", $"BTCPAY_PLUGIN_BUILD={fullBuildId}" });
-            var output = new OutputCapture();
-            var code = await ProcessRunner.RunAsync(new ProcessSpec
-            {
-                Executable = "docker",
-                Arguments = args.ToArray(),
-                OutputCapture = output
-            }, default);
-            if (code != 0)
-                throw new BuildServiceException("docker volume create failed");
-            var volume = output.ToString().Trim();
-            args.Clear();
-
-            // Then let's build by running our image plugin-builder (built in DockerStartupHostedService)
-            var info = new JObject();
-
-            args.Add("run");
-            args.AddRange(new[] { "--env", $"GIT_REPO={buildParameters.GitRepository}" });
-            info["gitRepository"] = buildParameters.GitRepository;
-            info["dockerVolume"] = volume;
-            if (buildParameters.GitRef != null)
-            {
-                args.AddRange(new[] { "--env", $"GIT_REF={buildParameters.GitRef}" });
-                info["gitRef"] = buildParameters.GitRef;
-            }
-            if (buildParameters.PluginDir != null)
-            {
-                args.AddRange(new[] { "--env", $"PLUGIN_DIR={buildParameters.PluginDir}" });
-                info["pluginDir"] = buildParameters.PluginDir;
-            }
-            if (buildParameters.BuildConfig != null)
-            {
-                args.AddRange(new[] { "--env", $"BUILD_CONFIG={buildParameters.BuildConfig}" });
-                info["buildConfig"] = buildParameters.BuildConfig;
-            }
-
-            args.AddRange(new[] { "-v", $"{volume}:/out" });
-            args.AddRange(new[] { "--rm" });
-            args.Add("plugin-builder");
-            await UpdateBuild(fullBuildId, "running", info);
-            JObject buildEnv;
+            await UpdateBuild(fullBuildId, "scheduled", null);
+            await _semaphore.WaitAsync();
             try
             {
-                code = await ProcessRunner.RunAsync(new ProcessSpec
+                using var buildLogCapture = new BuildOutputCapture(fullBuildId, ConnectionFactory);
+                List<string> args = new List<string>();
+                var buildParameters = await GetBuildInfo(fullBuildId);
+                // Create the volumes where the artifacts will be stored
+                args.AddRange(new[] {"volume", "create"});
+                args.AddRange(new[] {"--label", $"BTCPAY_PLUGIN_BUILD={fullBuildId}"});
+                int code;
+                string volume;
+                try
                 {
-                    Executable = "docker",
-                    Arguments = args.ToArray(),
-                    OutputCapture = buildLogCapture,
-                    ErrorCapture = buildLogCapture,
-                    OnOutput = (_, eventArgs) =>
+                    var output = new OutputCapture();
+                    code = await ProcessRunner.RunAsync(
+                        new ProcessSpec {Executable = "docker", Arguments = args.ToArray(), OutputCapture = output},
+                        default);
+                    if (code != 0)
+                        throw new BuildServiceException("docker volume create failed");
+                    volume = output.ToString().Trim();
+                    args.Clear();
+
+                    // Then let's build by running our image plugin-builder (built in DockerStartupHostedService)
+                    var info = new JObject();
+
+                    args.Add("run");
+                    args.AddRange(new[] {"--env", $"GIT_REPO={buildParameters.GitRepository}"});
+                    info["gitRepository"] = buildParameters.GitRepository;
+                    info["dockerVolume"] = volume;
+                    if (buildParameters.GitRef != null)
                     {
-                        if (!string.IsNullOrEmpty(eventArgs.Data))
-                            EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
-                    },
-                    OnError = (_, eventArgs) =>
-                    {
-                        if (!string.IsNullOrEmpty(eventArgs.Data))
-                            EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
+                        args.AddRange(new[] {"--env", $"GIT_REF={buildParameters.GitRef}"});
+                        info["gitRef"] = buildParameters.GitRef;
                     }
-                }, default);
-                if (code != 0)
-                    throw new BuildServiceException("docker build failed");
 
-                string buildEnvStr = await ReadFileInVolume(volume, "build-env.json");
-                buildEnv = JObject.Parse(buildEnvStr);
-            }
-            catch (Exception err)
-            {
-                await UpdateBuild(fullBuildId, "failed", new JObject { ["error"] = err.Message });
-                throw;
-            }
-            var assemblyName = buildEnv["assemblyName"]!.Value<string>();
-            string manifestStr = await ReadFileInVolume(volume, $"{assemblyName}.btcpay.json");
+                    if (buildParameters.PluginDir != null)
+                    {
+                        args.AddRange(new[] {"--env", $"PLUGIN_DIR={buildParameters.PluginDir}"});
+                        info["pluginDir"] = buildParameters.PluginDir;
+                    }
 
-            PluginManifest manifest;
-            try
-            {
-                manifest = PluginManifest.Parse(manifestStr);
-                await UpdateBuild(fullBuildId, "waiting-upload", buildEnv, manifest);
-            }
-            catch (Exception err)
-            {
-                await UpdateBuild(fullBuildId, "failed", new JObject { ["error"] = "Invalid plugin manifest: " + err.Message });
-                throw;
-            }
+                    if (buildParameters.BuildConfig != null)
+                    {
+                        args.AddRange(new[] {"--env", $"BUILD_CONFIG={buildParameters.BuildConfig}"});
+                        info["buildConfig"] = buildParameters.BuildConfig;
+                    }
 
-            await UpdateBuild(fullBuildId, "uploading", null);
-            string url;
-            try
-            {
-                url = await AzureStorageClient.Upload(volume, $"{assemblyName}.btcpay", $"{fullBuildId}/{assemblyName}.btcpay");
+                    args.AddRange(new[] {"-v", $"{volume}:/out"});
+                    args.AddRange(new[] {"--rm"});
+                    args.Add("plugin-builder");
+                    await UpdateBuild(fullBuildId, "running", info);
+                }
+                catch (Exception err)
+                {
+                    await UpdateBuild(fullBuildId, "failed", new JObject {["error"] = err.Message});
+                    throw;
+                }
+
+                JObject buildEnv;
+                try
+                {
+                    code = await ProcessRunner.RunAsync(new ProcessSpec
+                    {
+                        Executable = "docker",
+                        Arguments = args.ToArray(),
+                        OutputCapture = buildLogCapture,
+                        ErrorCapture = buildLogCapture,
+                        OnOutput = (_, eventArgs) =>
+                        {
+                            if (!string.IsNullOrEmpty(eventArgs.Data))
+                                EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
+                        },
+                        OnError = (_, eventArgs) =>
+                        {
+                            if (!string.IsNullOrEmpty(eventArgs.Data))
+                                EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
+                        }
+                    }, default);
+                    if (code != 0)
+                        throw new BuildServiceException("docker build failed");
+
+                    string buildEnvStr = await ReadFileInVolume(volume, "build-env.json");
+                    buildEnv = JObject.Parse(buildEnvStr);
+                }
+                catch (Exception err)
+                {
+                    await UpdateBuild(fullBuildId, "failed", new JObject {["error"] = err.Message});
+                    throw;
+                }
+
+                var assemblyName = buildEnv["assemblyName"]!.Value<string>();
+                string manifestStr = await ReadFileInVolume(volume, $"{assemblyName}.btcpay.json");
+
+                PluginManifest manifest;
+                try
+                {
+                    manifest = PluginManifest.Parse(manifestStr);
+                    await UpdateBuild(fullBuildId, "waiting-upload", buildEnv, manifest);
+                }
+                catch (Exception err)
+                {
+                    await UpdateBuild(fullBuildId, "failed",
+                        new JObject {["error"] = "Invalid plugin manifest: " + err.Message});
+                    throw;
+                }
+
+                await UpdateBuild(fullBuildId, "uploading", null);
+                string url;
+                try
+                {
+                    url = await AzureStorageClient.Upload(volume, $"{assemblyName}.btcpay",
+                        $"{fullBuildId}/{assemblyName}.btcpay");
+                }
+                catch (Exception err)
+                {
+                    await UpdateBuild(fullBuildId, "failed", new JObject {["error"] = err.Message});
+                    throw;
+                }
+
+                await UpdateBuild(fullBuildId, "uploaded", new JObject {["url"] = url});
+                await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
             }
-            catch (Exception err)
+            finally
             {
-                await UpdateBuild(fullBuildId, "failed", new JObject { ["error"] = err.Message });
-                throw;
+                _semaphore.Release();
             }
-            await UpdateBuild(fullBuildId, "uploaded", new JObject { ["url"] = url });
-            await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
         }
 
         private async Task<BuildInfo> GetBuildInfo(FullBuildId fullBuildId)

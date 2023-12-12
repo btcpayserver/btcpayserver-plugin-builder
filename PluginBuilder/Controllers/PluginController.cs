@@ -7,31 +7,38 @@ using PluginBuilder.ViewModels;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using PluginBuilder.Components.PluginVersion;
+using PluginBuilder.Events;
 
 namespace PluginBuilder.Controllers
 {
+    
     [Authorize(Policy = Policies.OwnPlugin)]
     [Route("/plugins/{pluginSlug}")]
     public class PluginController : Controller
     {
         public PluginController(
             DBConnectionFactory connectionFactory,
-            BuildService buildService)
+            BuildService buildService,
+            EventAggregator eventAggregator)
         {
             ConnectionFactory = connectionFactory;
             BuildService = buildService;
+            EventAggregator = eventAggregator;
         }
 
         public DBConnectionFactory ConnectionFactory { get; }
         public BuildService BuildService { get; }
+        public EventAggregator EventAggregator { get; }
 
         [HttpGet("settings")]
         public async Task<IActionResult> Settings(
             [ModelBinder(typeof(PluginSlugModelBinder))]
             PluginSlug pluginSlug)
         {
-            using var conn = await ConnectionFactory.Open();
+            await using var conn = await ConnectionFactory.Open();
             var settings = await conn.GetSettings(pluginSlug);
+            
+            
             if (settings is null)
                 return NotFound();
             return View(settings);
@@ -115,16 +122,51 @@ namespace PluginBuilder.Controllers
             [ModelBinder(typeof(PluginSlugModelBinder))]
             PluginSlug pluginSlug,
             [ModelBinder(typeof(PluginVersionModelBinder))]
-            PluginBuilder.PluginVersion version)
+            PluginBuilder.PluginVersion version, string command )
         {
-            using var conn = await ConnectionFactory.Open();
-            await conn.ExecuteAsync("UPDATE versions SET pre_release='f' WHERE plugin_slug=@pluginSlug AND ver=@version",
+            await using var conn = await ConnectionFactory.Open();
+
+            if (command == "remove")
+            {
+                var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)>("SELECT v.build_id, p.identifier FROM versions v JOIN plugins p ON v.plugin_slug = p.slug WHERE plugin_slug=@pluginSlug AND ver=@version",
+                    new
+                    {
+                        pluginSlug = pluginSlug.ToString(),
+                        version = version.VersionParts
+                    });
+                await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
+                    new {pluginSlug = pluginSlug.ToString(), version = version.VersionParts});
+                
+                await conn.ExecuteAsync("UPDATE builds SET state='removed' WHERE plugin_slug=@pluginSlug AND id=@buildId",
+                    new {pluginSlug = pluginSlug.ToString(), buildId = pluginBuild.buildId});
+                EventAggregator.Publish(new BuildChanged(new FullBuildId(pluginSlug, pluginBuild.buildId), "removed"));
+                try
+                {
+                    await BuildService.AzureStorageClient.Delete($"{new FullBuildId(pluginSlug, pluginBuild.buildId)}/{pluginBuild.identifier}.btcpay");
+                    TempData[TempDataConstant.SuccessMessage] = $"Version {version} removed";
+                }
+                catch (Exception e)
+                {
+                    TempData[TempDataConstant.WarningMessage] = $"Version {version} removed but failed to delete the file from storage: {e.Message}";
+                  
+                }
+                return RedirectToAction(nameof(Build), new
+                {
+                    pluginSlug = pluginSlug.ToString(),
+                    buildId = pluginBuild.buildId
+                });
+                  
+            }
+            
+            await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease WHERE plugin_slug=@pluginSlug AND ver=@version",
                 new
                 {
                     pluginSlug = pluginSlug.ToString(),
-                    version = version.VersionParts
+                    version = version.VersionParts,
+                    preRelease = command == "unrelease"
                 });
-            TempData[TempDataConstant.SuccessMessage] = "New release published";
+            TempData[TempDataConstant.SuccessMessage] =
+                $"Version {version} {(command == "release" ? "released" : "unreleased")}";
             return RedirectToAction(nameof(Version), new
             {
                 pluginSlug = pluginSlug.ToString(),
@@ -192,7 +234,7 @@ namespace PluginBuilder.Controllers
             vm.Commit = buildInfo?.GitCommit?.Substring(0, 8);
             vm.Repository = buildInfo?.GitRepository;
             vm.GitRef = buildInfo?.GitRef;
-            vm.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release);
+            vm.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, pluginSlug.ToString());
             vm.RepositoryLink = GetUrl(buildInfo);
             vm.DownloadLink = buildInfo?.Url;
             //vm.Error = buildInfo?.Error;
@@ -213,12 +255,11 @@ namespace PluginBuilder.Controllers
             return data.ToString(Newtonsoft.Json.Formatting.Indented);
         }
 
-        [HttpGet]
+        [HttpGet("")]
         public async Task<IActionResult> Dashboard(
             [ModelBinder(typeof(PluginSlugModelBinder))]
             PluginSlug pluginSlug)
         {
-            HttpContext.Response.Cookies.Append(Cookies.PluginSlug, pluginSlug.ToString());
             using var conn = await ConnectionFactory.Open();
             var rows = await conn.QueryAsync<(long id, string state, string? manifest_info, string? build_info, DateTimeOffset created_at, bool published, bool pre_release)>
                 ("SELECT id, state, manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release " +
@@ -239,7 +280,7 @@ namespace PluginBuilder.Controllers
                 b.Commit = buildInfo?.GitCommit?.Substring(0, 8);
                 b.Repository = buildInfo?.GitRepository;
                 b.GitRef = buildInfo?.GitRef;
-                b.Version = Components.PluginVersion.PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release);
+                b.Version = Components.PluginVersion.PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, pluginSlug.ToString());
                 b.Date = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
                 b.RepositoryLink = GetUrl(buildInfo);
                 b.DownloadLink = buildInfo?.Url;
@@ -248,7 +289,7 @@ namespace PluginBuilder.Controllers
             return View(vm);
         }
 
-        private static string? GetUrl(BuildInfo? buildInfo)
+        public static string? GetUrl(BuildInfo? buildInfo)
         {
             if (buildInfo?.GitRepository is String repo && buildInfo?.GitCommit is String commit)
             {
