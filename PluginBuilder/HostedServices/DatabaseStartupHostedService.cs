@@ -45,8 +45,7 @@ retry:
 
         private async Task CleanupScript(Npgsql.NpgsqlConnection conn)
         {
-            await conn.ExecuteAsync("UPDATE builds SET state = 'failed' WHERE state = 'running' OR state = 'scheduled' OR state = 'uploading'");
-            
+            await conn.ExecuteAsync("UPDATE builds SET state = 'failed', build_info = '{\"error\": \"Interrupted because the server restarted\"}'::JSONB WHERE state IN ('running', 'queued', 'uploading');");
         }
 
         private async Task RunScripts(Npgsql.NpgsqlConnection conn)

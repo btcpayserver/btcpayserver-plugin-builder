@@ -68,7 +68,7 @@
     			@foreach (var item in Model.Builds)
                 {
                     <tr id="plugin_@item.BuildId" class="invoice-row">
-                        @if (pluginSlug is null)
+                        @if (string.IsNullOrEmpty(pluginSlug))
                         {
                             <td>
                                 <a asp-action="Dashboard" asp-controller="Plugin" asp-route-pluginSlug="@item.PluginSlug">@item.PluginIdentifier</a>
@@ -79,11 +79,7 @@
                         <td>
                             <vc:plugin-version model="@item.Version"></vc:plugin-version>
                         </td>
-                        <td>
-                            @{
-                                ToBadge(item.State, item.Error);
-                            }
-                        </td>
+                        <td>@{ ToBadge(item.State, item.Error); }</td>
                         <td><a href="@item.Repository" target="_blank" rel="noreferrer noopener">@item.Repository</a></td>
                         <td>@item.GitRef</td>
                         @if (item.RepositoryLink is null)
@@ -95,13 +91,16 @@
                             <td><a href="@item.RepositoryLink" target="_blank" rel="noreferrer noopener">@item.Commit</a></td>
                         }
                         <td class="text-end text-nowrap">
-                            @if (item.DownloadLink != null)
+                            @if (!string.IsNullOrEmpty(item.DownloadLink) && item.State != "removed")
                             {
                                 <a href="@item.DownloadLink" rel="noreferrer noopener">Download</a>
                                 <span> - </span>
                             }
-                            
-                            <a asp-action="CreateBuild" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug?? item.PluginSlug)" asp-route-copyBuild="@item.BuildId">Retry</a><span> - </span>
+                            @if (item.State == "failed")
+                            {
+                                <a asp-action="CreateBuild" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug?? item.PluginSlug)" asp-route-copyBuild="@item.BuildId">Retry</a>
+                                <span> - </span>
+                            }
                             <a asp-action="Build" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug?? item.PluginSlug)" asp-route-buildId="@item.BuildId">Details</a>
                         </td>
                     </tr>

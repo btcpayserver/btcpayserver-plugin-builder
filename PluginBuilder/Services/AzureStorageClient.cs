@@ -58,21 +58,6 @@ namespace PluginBuilder.Services
             return ToJson(output)["created"]!.Value<bool>();
         }
 
-        public async Task Delete(string blobName)
-        {
-            var error = new OutputCapture();
-            var output = new OutputCapture();
-            var code = await ProcessRunner.RunAsync(new ProcessSpec()
-            {
-                Executable = "docker",
-                Arguments = CreateArguments("az", "storage", "blob", "delete", "--container-name", DefaultContainer, "--name", blobName),
-                ErrorCapture = error,
-                OutputCapture = output
-            }, default);
-            if (code != 0)
-                throw new AzureStorageClientException($"Impossible to remove blob ({error})");
-        }
-
         public async Task<string> Upload(string volume, string fileInVolume, string blobName)
         {
             var error = new OutputCapture();

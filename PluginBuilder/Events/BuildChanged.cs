@@ -1,7 +1,12 @@
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion.Internal;
+
 namespace PluginBuilder.Events;
 
 public class BuildChanged
 {
+    public BuildChanged(FullBuildId fullBuildId, BuildStates buildState) : this(fullBuildId, buildState.ToEventName())
+    {
+    }
     public BuildChanged(FullBuildId fullBuildId, string eventName)
     {
         FullBuildId = fullBuildId;

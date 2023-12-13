@@ -36,7 +36,6 @@ namespace PluginBuilder.Services
 
         public async Task Build(FullBuildId fullBuildId)
         {
-            await UpdateBuild(fullBuildId, "scheduled", null);
             await _semaphore.WaitAsync();
             try
             {
@@ -87,11 +86,11 @@ namespace PluginBuilder.Services
                     args.AddRange(new[] {"-v", $"{volume}:/out"});
                     args.AddRange(new[] {"--rm"});
                     args.Add("plugin-builder");
-                    await UpdateBuild(fullBuildId, "running", info);
+                    await UpdateBuild(fullBuildId, BuildStates.Running, info);
                 }
                 catch (Exception err)
                 {
-                    await UpdateBuild(fullBuildId, "failed", new JObject {["error"] = err.Message});
+                    await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject {["error"] = err.Message});
                     throw;
                 }
 
@@ -123,7 +122,7 @@ namespace PluginBuilder.Services
                 }
                 catch (Exception err)
                 {
-                    await UpdateBuild(fullBuildId, "failed", new JObject {["error"] = err.Message});
+                    await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject {["error"] = err.Message});
                     throw;
                 }
 
@@ -134,16 +133,16 @@ namespace PluginBuilder.Services
                 try
                 {
                     manifest = PluginManifest.Parse(manifestStr);
-                    await UpdateBuild(fullBuildId, "waiting-upload", buildEnv, manifest);
+                    await UpdateBuild(fullBuildId, BuildStates.WaitingUpload, buildEnv, manifest);
                 }
                 catch (Exception err)
                 {
-                    await UpdateBuild(fullBuildId, "failed",
+                    await UpdateBuild(fullBuildId, BuildStates.Failed,
                         new JObject {["error"] = "Invalid plugin manifest: " + err.Message});
                     throw;
                 }
 
-                await UpdateBuild(fullBuildId, "uploading", null);
+                await UpdateBuild(fullBuildId, BuildStates.Uploading, null);
                 string url;
                 try
                 {
@@ -152,11 +151,11 @@ namespace PluginBuilder.Services
                 }
                 catch (Exception err)
                 {
-                    await UpdateBuild(fullBuildId, "failed", new JObject {["error"] = err.Message});
+                    await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject {["error"] = err.Message});
                     throw;
                 }
 
-                await UpdateBuild(fullBuildId, "uploaded", new JObject {["url"] = url});
+                await UpdateBuild(fullBuildId, BuildStates.Uploaded, new JObject {["url"] = url});
                 await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
             }
             finally
@@ -204,7 +203,7 @@ namespace PluginBuilder.Services
             return output.ToString();
         }
 
-        private async Task UpdateBuild(FullBuildId fullBuildId, string newState, JObject? buildInfo, PluginManifest? manifestInfo = null)
+        public async Task UpdateBuild(FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo, PluginManifest? manifestInfo = null)
         {
             await using var connection = await ConnectionFactory.Open();
             await connection.UpdateBuild(fullBuildId, newState, buildInfo, manifestInfo);

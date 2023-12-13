@@ -11,6 +11,7 @@ namespace PluginBuilder.ViewModels
         public string BuildInfo { get; internal set; }
         public string CreatedDate { get; set; }
         public string DownloadLink { get; set; }
+        public string State { get; set; }
         public bool Published { get; set; }
         public string Commit { get; internal set; }
         public string Repository { get; internal set; }
