@@ -163,7 +163,8 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
                 return View(model);
             }
-            using var conn = await ConnectionFactory.Open();
+
+            await using var conn = await ConnectionFactory.Open();
             if (!await conn.NewPlugin(pluginSlug))
             {
                 ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");

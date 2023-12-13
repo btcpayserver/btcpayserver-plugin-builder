@@ -21,6 +21,6 @@ namespace PluginBuilder.ViewModels
             public string PluginIdentifier { get; set; }
         }
 
-        public List<BuildViewModel> Builds { get; set; } = new List<BuildViewModel>();
+        public List<BuildViewModel> Builds { get; set; } = [];
     }
 }

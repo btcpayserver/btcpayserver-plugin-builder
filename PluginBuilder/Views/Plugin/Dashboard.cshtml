@@ -1,8 +1,8 @@
 @model BuildListViewModel
 @{
-	Layout = "_Layout";
-	ViewData.SetActivePage(PluginNavPages.Dashboard, "Builds");
-    var pluginSlug =Context.GetRouteValue("pluginSlug")?.ToString();
+    Layout = "_Layout";
+    ViewData.SetActivePage(PluginNavPages.Dashboard, "Builds");
+    var pluginSlug = Context.GetRouteValue("pluginSlug")?.ToString();
 }
 
 @functions
@@ -35,14 +35,13 @@
     <h2 class="mb-0">
         @ViewData["Title"]
     </h2>
-    @if(pluginSlug != null)
+    @if (!string.IsNullOrEmpty(pluginSlug))
     {
         <a id="CreateNewBuild" asp-action="CreateBuild" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary mt-3 mt-sm-0">
             <span class="fa fa-plus"></span>
             Create a new build
         </a>
     }
-
 </div>
 
 @if (Model.Builds.Any())
@@ -69,14 +68,13 @@
     			@foreach (var item in Model.Builds)
                 {
                     <tr id="plugin_@item.BuildId" class="invoice-row">
-                        
-                @if (pluginSlug is null)
-                {
-                    <td>
-                        <a asp-action="Dashboard" asp-controller="Plugin" asp-route-pluginSlug="@item.PluginSlug">@item.PluginIdentifier</a>
-                    </td>
-                }
-                <td>@item.Date</td>
+                        @if (pluginSlug is null)
+                        {
+                            <td>
+                                <a asp-action="Dashboard" asp-controller="Plugin" asp-route-pluginSlug="@item.PluginSlug">@item.PluginIdentifier</a>
+                            </td>
+                        }
+                        <td>@item.Date</td>
                         <td>@item.BuildId</td>
                         <td>
                             <vc:plugin-version model="@item.Version"></vc:plugin-version>
@@ -86,7 +84,7 @@
                                 ToBadge(item.State, item.Error);
                             }
                         </td>
-                        <td>@item.Repository</td>
+                        <td><a href="@item.Repository" target="_blank" rel="noreferrer noopener">@item.Repository</a></td>
                         <td>@item.GitRef</td>
                         @if (item.RepositoryLink is null)
                         {
