@@ -22,9 +22,11 @@ All parameters are configured via environment variables.
 
 #### Get published versions
 
-`HTTP GET /api/v1/plugins?btcpayVersion=1.2.3.4&includePreRelease=true`
+`HTTP GET /api/v1/plugins?btcpayVersion=1.2.3.4&includePreRelease=true&includeAllVersions=false`
 
 List the published versions of the server compatible with `btcpayVersion`. (optionally include `includePreRelease`)
+
+If `includeAllVersions` is set to `true`, all versions will be returned, otherwise only the latest version for each plugin will be returned.
 
 #### Download a version
 
