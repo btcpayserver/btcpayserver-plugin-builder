@@ -40,7 +40,8 @@ namespace PluginBuilder
                 context.Fail();
                 return;
             }
-            using var conn = await ConnectionFactory.Open();
+
+            await using var conn = await ConnectionFactory.Open();
             var userId = UserManager.GetUserId(context.User)!;
             if (await conn.UserOwnsPlugin(userId, slug))
             {

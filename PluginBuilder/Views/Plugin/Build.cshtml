@@ -10,19 +10,42 @@
 			@ViewData["Title"]
 		</h2>
 	</div>
-	<div class="d-flex gap-3 mt-3 mt-sm-0">
-		@if (Model.Version?.PreRelease is true)
-		{
-			<form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
-				<button type="submit" class="btn btn-primary">Release</button>
-			</form>
-		}
-        <a asp-action="CreateBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-copyBuild="@Model.FullBuildId.BuildId" class="btn btn-secondary">Retry</a>
-		@if (Model.DownloadLink != null)
-		{
-			<a href="@Model.DownloadLink" rel="noreferrer noopener" class="btn btn-info">Download</a>
-		}
-	</div>
+    <div class="d-flex gap-3 mt-3 mt-sm-0">
+        @switch (Model.State)
+        {
+            case "running":
+                <span class="badge bg-info">@Model.State</span>
+                break;
+            case "removed":
+                <span class="badge bg-warning">@Model.State</span>
+                break;
+            case "failed":
+                <a asp-action="CreateBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-copyBuild="@Model.FullBuildId.BuildId" class="btn btn-secondary">Retry</a>
+                break;
+            case "uploaded":
+                if (Model.Version is null || Model.Version?.PreRelease is true)
+                {
+                    <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
+                        <button type="submit" name="command" value="release" class="btn btn-primary">Release</button>
+                    </form>
+                }
+                else if (Model.Version?.Published is true)
+                {
+                    <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
+                        <button type="submit" name="command" value="unrelease" class="btn btn-outline-danger">Revert release</button>
+                    </form>
+                }
+
+                <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
+                    <button type="submit" name="command" value="remove" class="btn btn-outline-danger">Remove version</button>
+                </form>
+                if (Model.DownloadLink != null)
+                {
+                    <a href="@Model.DownloadLink" rel="noreferrer noopener" class="btn btn-outline-info">Download</a>
+                }
+                break;
+        }
+    </div>
 </div>
 
 <table class="table">

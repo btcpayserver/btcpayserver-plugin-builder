@@ -58,7 +58,7 @@ namespace PluginBuilder
                 });
             return count == 1;
         }
-        public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, string newState, JObject? buildInfo, PluginManifest? manifestInfo = null)
+        public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo, PluginManifest? manifestInfo = null)
         {
             await connection.ExecuteAsync(
                 "UPDATE builds " +
@@ -68,7 +68,7 @@ namespace PluginBuilder
                 "WHERE plugin_slug=@plugin_slug AND id=@buildId",
                 new
                 {
-                    state = newState,
+                    state = newState.ToEventName(),
                     build_info = buildInfo?.ToString(),
                     manifest_info = manifestInfo?.ToString(),
                     plugin_slug = fullBuildId.PluginSlug.ToString(),
@@ -168,7 +168,7 @@ namespace PluginBuilder
                 new
                 {
                     plugin_slug = pluginSlug.ToString(),
-                    state = "queued",
+                    state = BuildStates.Queued.ToEventName(),
                     buildInfo = bi.ToString()
                 });
         }

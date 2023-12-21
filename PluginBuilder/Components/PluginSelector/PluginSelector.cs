@@ -23,7 +23,7 @@ namespace PluginBuilder.Components.PluginSelector
 
         public async Task<IViewComponentResult> InvokeAsync()
         {
-            using var connection = await ConnectionFactory.Open();
+            await using var connection = await ConnectionFactory.Open();
             var userId = _userManager.GetUserId(UserClaimsPrincipal)!;
             var plugins = await connection.GetPluginsByUserId(userId);
 
