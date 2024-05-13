@@ -1,0 +1,37 @@
+@model AccountSettings
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage("Account Settings");
+}
+
+<h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+<div class="row">
+    <div class="col-xl-8 col-xxl-constrain">
+        <form asp-action="UpdateAccountDetail">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div class="form-group">
+                <label asp-for="Github" class="form-label" data-required></label>
+                <input asp-for="Github" class="form-control" placeholder="https://github.com/Kukks" required />
+                <span asp-validation-for="Github" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Twitter" class="form-label"></label>
+                <input asp-for="Twitter" class="form-control" placeholder="https://twitter.com/r0ckstardev" />
+                <span asp-validation-for="Nostr" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Nostr" class="form-label"></label>
+                <input asp-for="Nostr" class="form-control" placeholder="primal.net/rockstar" />
+                <span asp-validation-for="Nostr" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Email" class="form-label"></label>
+                <input asp-for="Email" class="form-control" type="email" placeholder="plugins@kukks.com" />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </div>
+            <div class="form-group mt-4">
+                <input type="submit" class="btn btn-primary" id="Save" />
+            </div>
+        </form>
+    </div>
+</div>

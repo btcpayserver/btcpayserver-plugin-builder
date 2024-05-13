@@ -1,5 +1,6 @@
 #nullable enable
 using Dapper;
+using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
@@ -30,6 +31,42 @@ namespace PluginBuilder
                 });
             return count == 1;
         }
+        public static async Task CreateOrUpdateAccountSettings(this NpgsqlConnection connection, AccountSettings accountSettings, string userId, bool newRecord)
+        {
+            if (newRecord)
+            {
+                await connection.ExecuteAsync("INSERT INTO accountsettings VALUES (@userId, @github, @nostr, @twitter, @email) ON CONFLICT DO NOTHING",
+                new
+                {
+                    github = accountSettings.Github,
+                    nostr = accountSettings.Nostr,
+                    twitter = accountSettings.Twitter,
+                    email = accountSettings.Email,
+                    userId = userId
+                });
+            }
+            else
+            {
+                await connection.ExecuteAsync("UPDATE accountsettings SET github=@github, nostr=@nostr, twitter=@twitter, email=@email WHERE userId=@userId",
+                new
+                {
+                    github = accountSettings.Github,
+                    nostr = accountSettings.Nostr,
+                    twitter = accountSettings.Twitter,
+                    email = accountSettings.Email,
+                    userId = userId
+                });
+            }
+        }
+        public static async Task<AccountSettings?> GetAccountSettings(this NpgsqlConnection connection, string userId)
+        {
+            return await connection.QueryFirstOrDefaultAsync<AccountSettings>("SELECT * FROM accountsettings WHERE userId=@userId",
+            new
+            {
+                userId = userId
+            });
+        }
+
         public static async Task<bool> UserOwnsPlugin(this NpgsqlConnection connection, string userId, PluginSlug pluginSlug)
         {
             return await connection.QuerySingleAsync<bool>(
