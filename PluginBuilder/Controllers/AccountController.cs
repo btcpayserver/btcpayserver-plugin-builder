@@ -25,7 +25,7 @@ namespace PluginBuilder.Controllers
         public async Task<IActionResult> AccountDetails()
         {
             await using var conn = await ConnectionFactory.Open();
-            var settings = await conn.GetAccountSettings(UserManager.GetUserId(User)!);
+            var settings = await conn.GetAccountDetailSettings(UserManager.GetUserId(User)!);
             return View(settings);
         }
 
@@ -40,14 +40,16 @@ namespace PluginBuilder.Controllers
 
             await using var conn = await ConnectionFactory.Open();
             var user = UserManager.GetUserId(User)!;
-            var accountSettings = await conn.GetAccountSettings(user) ?? model;
+            var accountSettings = await conn.GetAccountDetailSettings(user) ?? model;
 
             accountSettings.Nostr = model.Nostr ?? accountSettings.Nostr;
             accountSettings.Twitter = model.Twitter ?? accountSettings.Twitter;
             accountSettings.Github = model.Github ?? accountSettings.Github;
             accountSettings.Email = model.Email ?? accountSettings.Email;
 
-            await conn.CreateOrUpdateAccountSettings(accountSettings, user, accountSettings == null);
+            await conn.SetAccountDetailSettings(accountSettings, user);
+
+            TempData[TempDataConstant.SuccessMessage] = "Account details updated successfully";
             return RedirectToAction(nameof(AccountDetails));
         }
     }

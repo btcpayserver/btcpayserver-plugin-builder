@@ -31,40 +31,26 @@ namespace PluginBuilder
                 });
             return count == 1;
         }
-        public static async Task CreateOrUpdateAccountSettings(this NpgsqlConnection connection, AccountSettings accountSettings, string userId, bool newRecord)
+        public static async Task SetAccountDetailSettings(this NpgsqlConnection connection, AccountSettings accountSettings, string userId)
         {
-            if (newRecord)
-            {
-                await connection.ExecuteAsync("INSERT INTO accountsettings VALUES (@userId, @github, @nostr, @twitter, @email) ON CONFLICT DO NOTHING",
+            await connection.ExecuteAsync(
+                "UPDATE \"AspNetUsers\" SET \"AccountDetail\" = @settings::JSONB WHERE \"Id\" = @userId",
                 new
                 {
-                    github = accountSettings.Github,
-                    nostr = accountSettings.Nostr,
-                    twitter = accountSettings.Twitter,
-                    email = accountSettings.Email,
-                    userId = userId
-                });
-            }
-            else
-            {
-                await connection.ExecuteAsync("UPDATE accountsettings SET github=@github, nostr=@nostr, twitter=@twitter, email=@email WHERE userId=@userId",
-                new
-                {
-                    github = accountSettings.Github,
-                    nostr = accountSettings.Nostr,
-                    twitter = accountSettings.Twitter,
-                    email = accountSettings.Email,
-                    userId = userId
-                });
-            }
+                    userId,
+                    settings = JsonConvert.SerializeObject(accountSettings, CamelCaseSerializerSettings.Instance)
+                }
+            );
         }
-        public static async Task<AccountSettings?> GetAccountSettings(this NpgsqlConnection connection, string userId)
+        public static async Task<AccountSettings?> GetAccountDetailSettings(this NpgsqlConnection connection, string userId)
         {
-            return await connection.QueryFirstOrDefaultAsync<AccountSettings>("SELECT * FROM accountsettings WHERE userId=@userId",
-            new
-            {
-                userId = userId
-            });
+            var accountDetail = await connection.QueryFirstOrDefaultAsync<string>(
+                "SELECT \"AccountDetail\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId",
+                new { userId }
+            );
+            if (accountDetail is null)
+                return null;
+            return JsonConvert.DeserializeObject<AccountSettings>(accountDetail, CamelCaseSerializerSettings.Instance);
         }
 
         public static async Task<bool> UserOwnsPlugin(this NpgsqlConnection connection, string userId, PluginSlug pluginSlug)
