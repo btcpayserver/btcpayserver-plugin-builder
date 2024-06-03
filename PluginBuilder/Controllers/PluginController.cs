@@ -59,10 +59,6 @@ namespace PluginBuilder.Controllers
             {
                 ModelState.AddModelError(nameof(settings.GitRepository), "Git repository should be an absolute URL");
             }
-            if (settings.PluginTags == null || !settings.PluginTags.Any())
-            {
-                ModelState.AddModelError(nameof(settings.PluginTags), "Please select minimum of one tag to update the plugin settings");
-            }
             if (!ModelState.IsValid)
                 return View(settings);
             await using var conn = await ConnectionFactory.Open();
