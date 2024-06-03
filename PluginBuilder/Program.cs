@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using PluginBuilder.Authentication;
+using PluginBuilder.DataModels;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 
@@ -65,9 +67,7 @@ public class Program
         app.MapHub<Hubs.PluginHub>("hub");
         app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/hub");
         app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/builds/{buildId}/hub");
-        //        app.MapControllerRoute(
-        //name: "default",
-        //pattern: "{controller=Home}/{action=Index}/{id?}");
+        // no default routes
         app.MapControllers();
     }
 
@@ -98,11 +98,16 @@ public class Program
         services.AddSingleton<AzureStorageClient>();
         services.AddSingleton<ServerEnvironment>();
         services.AddSingleton<EventAggregator>();
+        services.AddHttpClient();
+        services.AddSingleton<ExternalAccountVerificationService>();
+        services.AddSingleton<EmailService>();
 
         services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
         {
             b.UseNpgsql(configuration.GetRequired("POSTGRES"));
         });
+        NpgsqlConnection.GlobalTypeMapper.MapEnum<PluginVisibilityEnum>("plugin_visibility_enum");
+
         services.AddIdentity<IdentityUser, IdentityRole>(options =>
         {
             options.Password.RequireDigit = false;
@@ -115,6 +120,7 @@ public class Program
             options.Lockout.AllowedForNewUsers = true;
             options.Password.RequireUppercase = false;
         })
+        .AddDefaultTokenProviders()
         .AddEntityFrameworkStores<IdentityDbContext<IdentityUser>>();
 
         services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, opt =>

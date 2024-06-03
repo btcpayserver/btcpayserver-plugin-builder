@@ -1,6 +1,5 @@
 #nullable disable
 using System.ComponentModel.DataAnnotations;
-using PluginBuilder.Views.Enums;
 
 namespace PluginBuilder.ViewModels
 {
@@ -11,6 +10,8 @@ namespace PluginBuilder.ViewModels
         [MaxLength(30)]
         [MinLength(4)]
         public string PluginSlug { get; set; }
-        public List<PluginTags> Tags { get; set; } = new List<PluginTags>();
+
+        [Display(Name = "Plugin tags")]
+        public string Tags { get; set; }
     }
 }

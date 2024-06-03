@@ -28,6 +28,7 @@
                     <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
                         <button type="submit" name="command" value="release" class="btn btn-primary">Release</button>
                     </form>
+					<a asp-action="CreateBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-copyBuild="@Model.FullBuildId.BuildId" class="btn btn-secondary">Retry</a>
                 }
                 else if (Model.Version?.Published is true)
                 {

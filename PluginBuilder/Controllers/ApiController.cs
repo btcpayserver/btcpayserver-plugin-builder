@@ -16,34 +16,24 @@ namespace PluginBuilder.Controllers;
 [ApiController]
 [Route("~/api/v1")]
 [Authorize(Policy = Policies.OwnPlugin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.BasicAuth)]
-public class ApiController : ControllerBase
+public class ApiController(
+    DBConnectionFactory connectionFactory,
+    UserManager<IdentityUser> userManager,
+    RoleManager<IdentityRole> roleManager,
+    SignInManager<IdentityUser> signInManager,
+    IAuthorizationService authorizationService,
+    BuildService buildService,
+    ServerEnvironment env)
+    : ControllerBase
 {
-    private DBConnectionFactory ConnectionFactory { get; }
-    public UserManager<IdentityUser> UserManager { get; }
-    public RoleManager<IdentityRole> RoleManager { get; }
-    public SignInManager<IdentityUser> SignInManager { get; }
-    public IAuthorizationService AuthorizationService { get; }
-    public BuildService BuildService { get; }
-    public ServerEnvironment Env { get; }
+    private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
+    public UserManager<IdentityUser> UserManager { get; } = userManager;
+    public RoleManager<IdentityRole> RoleManager { get; } = roleManager;
+    public SignInManager<IdentityUser> SignInManager { get; } = signInManager;
+    public IAuthorizationService AuthorizationService { get; } = authorizationService;
+    public BuildService BuildService { get; } = buildService;
+    public ServerEnvironment Env { get; } = env;
 
-    public ApiController(
-        DBConnectionFactory connectionFactory,
-        UserManager<IdentityUser> userManager,
-        RoleManager<IdentityRole> roleManager,
-        SignInManager<IdentityUser> signInManager,
-        IAuthorizationService authorizationService,
-        BuildService buildService,
-        ServerEnvironment env)
-    {
-        ConnectionFactory = connectionFactory;
-        BuildService = buildService;
-        UserManager = userManager;
-        RoleManager = roleManager;
-        SignInManager = signInManager;
-        AuthorizationService = authorizationService;
-        Env = env;
-    }
-    
     [AllowAnonymous]
     [HttpGet("version")]
     public IActionResult GetVersion()
@@ -59,7 +49,7 @@ public class ApiController : ControllerBase
     [HttpGet("plugins")]
     public async Task<IActionResult> Plugins(
         [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null,
-        bool? includePreRelease = null, bool? includeAllVersions = null)
+        bool? includePreRelease = null, bool? includeAllVersions = null, string? searchPluginName = null)
     {
         includePreRelease ??= false;
         includeAllVersions ??= false;
@@ -69,18 +59,27 @@ public class ApiController : ControllerBase
             false => "get_latest_versions"
         };
         await using var conn = await ConnectionFactory.Open();
-        // This query probably doesn't have right indexes
+        
+        // This query definitely doesn't have right indexes
+        var query = $"""
+                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info
+                     FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
+                     JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
+                     JOIN plugins p ON b.plugin_slug = p.slug
+                     WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL 
+                     AND (p.visibility = 'unlisted' OR p.visibility = 'listed')
+                     {(!string.IsNullOrWhiteSpace(searchPluginName) ? "AND (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)" : "")}
+                     ORDER BY manifest_info->>'Name'
+                     """;
         var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(
-            $"SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info FROM {getVersions}(@btcpayVersion, @includePreRelease) lv " +
-            "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
-            "JOIN plugins p ON b.plugin_slug = p.slug " +
-            "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL " +
-            "ORDER BY manifest_info->>'Name'",
+            query,
             new
             {
                 btcpayVersion = btcpayVersion?.VersionParts,
-                includePreRelease = includePreRelease.Value
+                includePreRelease = includePreRelease.Value,
+                searchPattern = $"%{searchPluginName}%"
             });
+        
         rows.TryGetNonEnumeratedCount(out var count);
         var versions = new List<PublishedVersion>(count);
         foreach (var r in rows)
@@ -97,6 +96,42 @@ public class ApiController : ControllerBase
             versions.Add(v);
         }
         return Ok(versions);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("plugins/{pluginSlug}/versions/{version}")]
+    public async Task<IActionResult> GetPlugin(
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion version)
+    {
+        await using var conn = await ConnectionFactory.Open();
+        var query = $"""
+                     SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info
+                     FROM versions v
+                     JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
+                     JOIN plugins p ON b.plugin_slug = p.slug
+                     WHERE v.plugin_slug = @pluginSlug AND v.ver = @version
+                     AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL 
+                     LIMIT 1
+                     """;
+        var r = await conn.QueryFirstOrDefaultAsync(
+            query,
+            new
+            {
+                pluginSlug = pluginSlug.ToString(),
+                version = version.VersionParts
+            });
+        if (r is null)
+            return NotFound();
+        return Ok(new PublishedVersion
+        {
+            ProjectSlug = pluginSlug.ToString(),
+            Version = version.Version,
+            BuildId = (long)r.build_id,
+            BuildInfo = JObject.Parse(r.build_info),
+            ManifestInfo = JObject.Parse(r.manifest_info),
+            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+        });
     }
 
     [AllowAnonymous]

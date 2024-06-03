@@ -1,0 +1,61 @@
+@model EmailSettingsViewModel
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage(AdminNavPages.EmailSettings, "Email Settings");
+}
+
+<form asp-action="Edit">
+    <div class="form-group">
+        <label asp-for="Server" class="form-label"></label>
+        <input asp-for="Server" class="form-control"/>
+        <span asp-validation-for="Server" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Port" class="form-label"></label>
+        <input asp-for="Port" class="form-control"/>
+        <span asp-validation-for="Port" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Username" class="form-label"></label>
+        <input asp-for="Username" class="form-control"/>
+        <span asp-validation-for="Username" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        @if (!Model.PasswordSet)
+        {
+            <label asp-for="Password" class="form-label"></label>
+            <input asp-for="Password" type="password" class="form-control"/>
+            <span asp-validation-for="Password" class="text-danger"></span>
+        }
+        else
+        {
+            <label asp-for="Password" class="form-label"></label>
+            <div class="input-group">
+                <input value="Configured" type="text" readonly class="form-control"/>
+                <button type="submit" class="btn btn-danger" name="command" value="ResetPassword" id="ResetPassword">Reset</button>
+            </div>
+        }
+    </div>
+    <input asp-for="PasswordSet" type="hidden"/>
+    <div class="form-group">
+        <label asp-for="From" class="form-label"></label>
+        <input asp-for="From" class="form-control"/>
+        <span asp-validation-for="From" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <div class="form-check">
+            <input asp-for="DisableCertificateCheck" class="form-check-input" type="checkbox"/>
+            <label asp-for="DisableCertificateCheck" class="form-check-label"></label>
+        </div>
+        <span asp-validation-for="DisableCertificateCheck" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <input type="submit" class="btn btn-primary" id="Save" value="Save"/>
+        @if (Model.PasswordSet)
+        {
+            <a asp-action="EmailSender" asp-route-subject="Test email from BTCPay Plugin Builder"
+               asp-route-message="This is a test email from BTCPay Plugin Builder"
+               class="btn btn-link">Test Email Sending</a>
+        }
+    </div>
+</form>

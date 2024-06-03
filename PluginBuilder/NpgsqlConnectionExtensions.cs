@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 
 namespace PluginBuilder
@@ -21,7 +22,7 @@ namespace PluginBuilder
                 return null;
             return JsonConvert.DeserializeObject<PluginSettings>(r, CamelCaseSerializerSettings.Instance);
         }
-        public static async Task<bool> SetSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings pluginSettings)
+        public static async Task<bool> SetPluginSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings pluginSettings)
         {
             var count = await connection.ExecuteAsync("UPDATE plugins SET settings=@settings::JSONB WHERE slug=@pluginSlug",
                 new
@@ -51,6 +52,23 @@ namespace PluginBuilder
             if (accountDetail is null)
                 return null;
             return JsonConvert.DeserializeObject<AccountSettings>(accountDetail, CamelCaseSerializerSettings.Instance);
+        }
+
+        public static async Task VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl)
+        {
+            await connection.ExecuteAsync(
+                "UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = @gistUrl WHERE \"Id\" = @userId",
+                new { userId, gistUrl }
+            );
+        }
+
+        public static async Task<bool> IsGithubAccountVerified(this NpgsqlConnection connection, string userId)
+        {
+            var githubGistUrl = await connection.QuerySingleOrDefaultAsync<string>(
+                "SELECT \"GithubGistUrl\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId",
+                new { userId }
+            );
+            return !string.IsNullOrEmpty(githubGistUrl);
         }
 
         public static async Task<bool> UserOwnsPlugin(this NpgsqlConnection connection, string userId, PluginSlug pluginSlug)
@@ -194,6 +212,40 @@ namespace PluginBuilder
                     state = BuildStates.Queued.ToEventName(),
                     buildInfo = bi.ToString()
                 });
+        }
+        
+        // Methods related to getting / setting settings in the DB 
+        public static Task<IEnumerable<(string key, string value)>> SettingsGetAllAsync(this NpgsqlConnection connection)
+        {
+            var query = "SELECT key, value FROM settings";
+            return connection.QueryAsync<(string key, string value)>(query);
+        }
+        
+            
+        public static Task<string> SettingsGetAsync(this NpgsqlConnection connection, string key)
+        {
+            var query = "SELECT value FROM settings WHERE key = @key";
+            return connection.QuerySingleOrDefaultAsync<string>(query, new { key });
+        }
+
+        public static Task<int> SettingsSetAsync(this NpgsqlConnection connection, string key, string value)
+        {
+            var query = $"""
+                INSERT INTO settings(key, value) 
+                VALUES(@key, @value)
+                ON CONFLICT (key) DO UPDATE 
+                SET value = EXCLUDED.value
+                """;
+            return connection.ExecuteAsync(query, new { key, value });
+        }
+
+        public static Task<int> SettingsDeleteAsync(this NpgsqlConnection connection, string key)
+        {
+            var query = $"""
+                         DELETE FROM settings
+                         WHERE key = @key
+                         """;
+            return connection.ExecuteAsync(query, new { key });
         }
     }
 }

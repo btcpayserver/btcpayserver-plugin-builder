@@ -1,0 +1,148 @@
+@model IEnumerable<(string key, string value)>
+@{
+Layout = "_Layout";
+ViewData.SetActivePage(AdminNavPages.Users, "Settings Editor");
+}
+
+<div class="d-sm-flex align-items-center justify-content-between">
+    <h2 class="mb-0">
+        @ViewData["Title"]
+    </h2>
+</div>
+
+<form id="settingsForm" asp-action="SettingsEditor" method="post">
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+            <tr>
+                <th style="width:30%;">Key</th>
+                <th style="width:50%;">Value</th>
+                <th style="min-width:190px;">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var setting in Model)
+            {
+                <tr data-key="@setting.key">
+                    <td>@setting.key</td>
+                    <td class="value">@setting.value</td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-primary edit-btn">Edit</button>
+                        <button type="button" class="btn btn-sm btn-danger delete-btn">Delete</button>
+                        
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <button type="button" class="btn btn-primary" id="add-btn">Add</button>
+</form>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.edit-btn').forEach(button => {
+            button.addEventListener('click', function () {
+                document.querySelectorAll('.edit-btn').forEach(btn => btn.disabled = true);
+                const row = this.closest('tr');
+                const key = row.dataset.key;
+                const valueCell = row.querySelector('.value');
+                const value = valueCell.textContent;
+
+                valueCell.innerHTML = `
+                    <textarea class="form-control">${value}</textarea>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-success save-btn">Save</button>
+                        <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                    </div>
+                `;
+
+                row.querySelector('.save-btn').addEventListener('click', function () {
+                    const newValue = valueCell.querySelector('textarea').value;
+                    const form = document.getElementById('settingsForm');
+                    const inputKey = document.createElement('input');
+                    inputKey.type = 'hidden';
+                    inputKey.name = 'key';
+                    inputKey.value = key;
+                    form.appendChild(inputKey);
+
+                    const inputValue = document.createElement('input');
+                    inputValue.type = 'hidden';
+                    inputValue.name = 'value';
+                    inputValue.value = newValue;
+                    form.appendChild(inputValue);
+
+                    form.submit();
+                });
+
+                row.querySelector('.cancel-btn').addEventListener('click', function () {
+                    valueCell.innerHTML = value;
+                    document.querySelectorAll('.edit-btn').forEach(btn => btn.disabled = false);
+                });
+            });
+        });
+
+        document.getElementById('add-btn').addEventListener('click', function () {
+            const tbody = document.querySelector('tbody');
+            const newRow = document.createElement('tr');
+            newRow.innerHTML = `
+                <td><input type="text" class="form-control" name="newKey" placeholder="Enter key"></td>
+                <td class="value"><textarea class="form-control" name="newValue" placeholder="Enter value"></textarea>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-success save-new-btn">Save</button>
+                        <button type="button" class="btn btn-secondary cancel-new-btn">Cancel</button>
+                    </div>
+                </td>
+                <td>&nbsp;</td>
+            `;
+            tbody.appendChild(newRow);
+            document.getElementById('add-btn').disabled = true;
+
+            newRow.querySelector('.save-new-btn').addEventListener('click', function () {
+                document.querySelectorAll('.edit-btn').forEach(btn => btn.disabled = true);
+                
+                const newKey = newRow.querySelector('input[name="newKey"]').value;
+                const newValue = newRow.querySelector('textarea[name="newValue"]').value;
+                const form = document.getElementById('settingsForm');
+
+                const inputKey = document.createElement('input');
+                inputKey.type = 'hidden';
+                inputKey.name = 'key';
+                inputKey.value = newKey;
+                form.appendChild(inputKey);
+
+                const inputValue = document.createElement('input');
+                inputValue.type = 'hidden';
+                inputValue.name = 'value';
+                inputValue.value = newValue;
+                form.appendChild(inputValue);
+
+                form.submit();
+            });
+
+            newRow.querySelector('.cancel-new-btn').addEventListener('click', function () {
+                newRow.remove();
+                
+                document.querySelectorAll('.edit-btn').forEach(btn => btn.disabled = false);
+                document.getElementById('add-btn').disabled = false;
+            });
+        });
+
+        document.querySelectorAll('.delete-btn').forEach(button => {
+            button.addEventListener('click', function () {
+                const row = this.closest('tr');
+                const key = row.dataset.key;
+
+                fetch(`/admin/SettingsEditor?key=${encodeURIComponent(key)}`, {
+                    method: 'DELETE'
+                }).then(response => {
+                    if (response.ok) {
+                        row.remove();
+                    } else {
+                        alert('Failed to delete the setting.');
+                    }
+                });
+            });
+        });
+    });
+</script>

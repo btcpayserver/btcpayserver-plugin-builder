@@ -4,34 +4,27 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Home;
 
 namespace PluginBuilder.Controllers
 {
     [Authorize]
-    public class HomeController : Controller
+    public class HomeController(
+        DBConnectionFactory connectionFactory,
+        UserManager<IdentityUser> userManager,
+        RoleManager<IdentityRole> roleManager,
+        SignInManager<IdentityUser> signInManager,
+        IAuthorizationService authorizationService,
+        EmailService emailService,
+        ServerEnvironment env)
+        : Controller
     {
-        private DBConnectionFactory ConnectionFactory { get; }
-        private UserManager<IdentityUser> UserManager { get; }
-        public RoleManager<IdentityRole> RoleManager { get; }
-        private SignInManager<IdentityUser> SignInManager { get; }
-        private IAuthorizationService AuthorizationService { get; }
-        private ServerEnvironment Env { get; }
-
-        public HomeController(
-            DBConnectionFactory connectionFactory,
-            UserManager<IdentityUser> userManager,
-            RoleManager<IdentityRole> roleManager,
-            SignInManager<IdentityUser> signInManager,
-            IAuthorizationService authorizationService,
-            ServerEnvironment env)
-        {
-            ConnectionFactory = connectionFactory;
-            UserManager = userManager;
-            RoleManager = roleManager;
-            SignInManager = signInManager;
-            AuthorizationService = authorizationService;
-            Env = env;
-        }
+        private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
+        private UserManager<IdentityUser> UserManager { get; } = userManager;
+        public RoleManager<IdentityRole> RoleManager { get; } = roleManager;
+        private SignInManager<IdentityUser> SignInManager { get; } = signInManager;
+        private IAuthorizationService AuthorizationService { get; } = authorizationService;
+        private ServerEnvironment Env { get; } = env;
 
         [HttpGet("/")]
         
@@ -69,6 +62,8 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             }
             return View("Views/Plugin/Dashboard",vm);
         }
+
+        // auth methods
 
         [HttpGet("/logout")]
         public async Task<IActionResult> Logout()
@@ -138,16 +133,94 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 }
                 return View(model);
             }
+            
+            await using var conn = await ConnectionFactory.Open();
 
             var admins = await UserManager.GetUsersInRoleAsync(Roles.ServerAdmin);
-            if (admins.Count == 0 || (model.IsAdmin && Env.CheatMode))
+            var isAdminReg = admins.Count == 0 || (model.IsAdmin && Env.CheatMode);
+            if (isAdminReg)
             {
                 await UserManager.AddToRoleAsync(user, Roles.ServerAdmin);
             }
 
-            await SignInManager.SignInAsync(user, isPersistent: false);
-            return RedirectToLocal(returnUrl);
+            // check if it's not admin and we are requiring email verifications
+            var emailSettings = await emailService.GetEmailSettingsFromDb();
+            if (!isAdminReg && emailSettings?.PasswordSet == true)
+            {
+                var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+                var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
+                    Request.Scheme, Request.Host.ToString());
+
+                await emailService.SendVerifyEmail(model.Email, link);
+
+                return RedirectToAction(nameof(VerifyEmail), new { email = user.Email });
+            }
+            else
+            {
+                await SignInManager.SignInAsync(user, isPersistent: false);
+                return RedirectToLocal(returnUrl);
+            }
         }
+
+        //
+        [AllowAnonymous]
+        [HttpGet("/VerifyEmail")]
+        public IActionResult VerifyEmail(string email)
+        {
+            return View(email);
+        }
+        [AllowAnonymous]
+        [HttpGet("/ConfirmEmail")]
+        public async Task<IActionResult> ConfirmEmail(string uid, string token)
+        {
+            var model = new ConfirmEmailViewModel();
+            
+            var user = await UserManager.FindByIdAsync(uid);
+            if (user is not null)
+            {
+                var result = await UserManager.ConfirmEmailAsync(user, token);
+                model.Email = user.Email!;
+                model.EmailConfirmed = result.Succeeded;
+            }
+
+            return View(model);
+        }
+        
+
+        // password reset flow
+
+        [AllowAnonymous]
+        [HttpGet("/passwordreset")]
+        public IActionResult PasswordReset()
+        {
+            return View(new PasswordResetViewModel());
+        }
+
+        [AllowAnonymous]
+        [HttpPost("/passwordreset")]
+        public async Task<IActionResult> PasswordReset(PasswordResetViewModel model)
+        {
+            if (!ModelState.IsValid)
+                return View(model);
+
+            // TODO: Require the user to have a confirmed email before they can log on.
+            var user = await UserManager.FindByEmailAsync(model.Email);
+            if (user is null)
+            {
+                ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
+                return View(model);
+            }
+
+            var result = await UserManager.ResetPasswordAsync(user, model.PasswordResetToken, model.Password);
+            model.PasswordSuccessfulyReset = result.Succeeded;
+
+            foreach (var err in result.Errors)
+                ModelState.AddModelError("PasswordResetToken", $"{err.Description}");
+            
+            return View(model);
+        }
+
+        // plugin methods
 
         [HttpGet("/plugins/create")]
         public IActionResult CreatePlugin()
@@ -163,11 +236,6 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
                 return View(model);
             }
-            if (!model.Tags.Any())
-            {
-                ModelState.AddModelError(nameof(model.Tags), "Please select minimum of one tag to create a plugin");
-                return View(model);
-            }
             await using var conn = await ConnectionFactory.Open();
             if (!await conn.NewPlugin(pluginSlug))
             {
@@ -175,13 +243,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 return View(model);
             }
             await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);
-
-            var pluginTags = model.Tags.Select(c => new Tag
-            {
-                Id = (int)c,
-                Name = c.ToString()
-            }).ToList();
-            await conn.SetSettings(pluginSlug, new PluginSettings { PluginTags = pluginTags });
+            await conn.SetPluginSettings(pluginSlug, new PluginSettings { Tags = model.Tags });
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 
