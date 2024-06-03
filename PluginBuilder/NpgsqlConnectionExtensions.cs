@@ -1,5 +1,6 @@
 #nullable enable
 using Dapper;
+using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
@@ -30,6 +31,28 @@ namespace PluginBuilder
                 });
             return count == 1;
         }
+        public static async Task SetAccountDetailSettings(this NpgsqlConnection connection, AccountSettings accountSettings, string userId)
+        {
+            await connection.ExecuteAsync(
+                "UPDATE \"AspNetUsers\" SET \"AccountDetail\" = @settings::JSONB WHERE \"Id\" = @userId",
+                new
+                {
+                    userId,
+                    settings = JsonConvert.SerializeObject(accountSettings, CamelCaseSerializerSettings.Instance)
+                }
+            );
+        }
+        public static async Task<AccountSettings?> GetAccountDetailSettings(this NpgsqlConnection connection, string userId)
+        {
+            var accountDetail = await connection.QueryFirstOrDefaultAsync<string>(
+                "SELECT \"AccountDetail\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId",
+                new { userId }
+            );
+            if (accountDetail is null)
+                return null;
+            return JsonConvert.DeserializeObject<AccountSettings>(accountDetail, CamelCaseSerializerSettings.Instance);
+        }
+
         public static async Task<bool> UserOwnsPlugin(this NpgsqlConnection connection, string userId, PluginSlug pluginSlug)
         {
             return await connection.QuerySingleAsync<bool>(

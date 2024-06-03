@@ -13,7 +13,6 @@ namespace PluginBuilder
         [MaxLength(200)]
         [Display(Name = "Git repository")]
         public string GitRepository { get; set; }
-        
         [MaxLength(200)]
         [Display(Name = "Git branch or tag")]
         public string GitRef { get; set; }
