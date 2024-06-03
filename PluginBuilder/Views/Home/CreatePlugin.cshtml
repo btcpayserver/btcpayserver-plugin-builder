@@ -1,7 +1,8 @@
+@using PluginBuilder.Views.Enums
 @model PluginBuilder.ViewModels.CreatePluginViewModel
 @{
-	Layout = "_Layout";
-	ViewData["Title"] = "Create a new plugin";
+    Layout = "_Layout";
+    ViewData["Title"] = "Create a new plugin";
 }
 
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
@@ -14,9 +15,58 @@
                 <input asp-for="PluginSlug" class="form-control" placeholder="my-awesome-plugin" required />
                 <span asp-validation-for="PluginSlug" class="text-danger"></span>
             </div>
+
+            <div class="form-group">
+                <label class="form-label">Select Tags</label>
+                <div class="dropdown">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                        Select tags
+                    </button>
+                    <ul class="dropdown-menu p-3" aria-labelledby="dropdownMenuButton">
+                        @foreach (var tag in Enum.GetValues(typeof(PluginTags)).Cast<PluginTags>())
+                        {
+                            <li class="form-check">
+                                <input type="checkbox" class="form-check-input category-checkbox" value="@((int)tag)" id="tag@(tag)"
+                                       name="Tags" @(Model.Tags != null && Model.Tags.Contains(tag) ? "checked" : "")>
+                                <label class="form-check-label" for="tag@(tag)">@tag</label>
+                            </li>
+                        }
+                    </ul>
+                </div>
+                <span asp-validation-for="Tags" class="text-danger"></span>
+                <input type="hidden" name="SelectedCategories" id="SelectedCategories">
+            </div>
+
             <div class="form-group mt-4">
                 <input type="submit" value="Create" class="btn btn-primary" id="Create" />
             </div>
         </form>
     </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var checkboxes = document.querySelectorAll('.category-checkbox');
+        var selectedCategoriesInput = document.getElementById('SelectedCategories');
+        var dropdownButton = document.getElementById('dropdownMenuButton');
+        function updateButtonLabel() {
+            var selectedCategories = [];
+            checkboxes.forEach(function (cb) {
+                if (cb.checked) {
+                    selectedCategories.push(cb.value);
+                }
+            });
+            selectedCategoriesInput.value = selectedCategories.join(',');
+
+            if (selectedCategories.length > 0) {
+                dropdownButton.textContent = selectedCategories.length + ' tag' + (selectedCategories.length > 1 ? 's' : '') + ' selected';
+            } else {
+                dropdownButton.textContent = 'Select tags';
+            }
+        }
+        checkboxes.forEach(function (checkbox) {
+            checkbox.addEventListener('change', updateButtonLabel);
+        });
+        updateButtonLabel();
+    });
+</script>
