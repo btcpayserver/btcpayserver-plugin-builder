@@ -96,11 +96,8 @@
                                 <a href="@item.DownloadLink" rel="noreferrer noopener">Download</a>
                                 <span> - </span>
                             }
-                            @if (item.State == "failed")
-                            {
-                                <a asp-action="CreateBuild" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug?? item.PluginSlug)" asp-route-copyBuild="@item.BuildId">Retry</a>
-                                <span> - </span>
-                            }
+							<a asp-action="CreateBuild" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug?? item.PluginSlug)" asp-route-copyBuild="@item.BuildId">Retry</a>
+							<span> - </span>
                             <a asp-action="Build" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug?? item.PluginSlug)" asp-route-buildId="@item.BuildId">Details</a>
                         </td>
                     </tr>
