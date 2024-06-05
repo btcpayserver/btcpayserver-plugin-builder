@@ -7,7 +7,7 @@ namespace PluginBuilder
         [Display(Name = "Github username")]
         public string Github { get; set; }
 
-        [Display(Name = "Nostr username")]
+        [Display(Name = "Nostr Npub key")]
         public string? Nostr { get; set; }
 
         [Display(Name = "Twitter handle")]
