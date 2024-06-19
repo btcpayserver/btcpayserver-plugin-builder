@@ -11,6 +11,5 @@ namespace PluginBuilder.ViewModels
         [MaxLength(30)]
         [MinLength(4)]
         public string PluginSlug { get; set; }
-        public List<PluginTags> Tags { get; set; } = new List<PluginTags>();
     }
 }

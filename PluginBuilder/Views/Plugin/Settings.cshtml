@@ -1,5 +1,5 @@
 @using PluginBuilder.Views.Enums
-@model PluginBuilder.PluginSettings
+@model PluginSettings
 @{
 	Layout = "_Layout";
 	ViewData.SetActivePage(PluginNavPages.Settings, "Plugin settings");
@@ -34,26 +34,13 @@
                 <label asp-for="BuildConfig" class="form-label"></label>
                 <input asp-for="BuildConfig" class="form-control" placeholder="Release" />
                 <span asp-validation-for="BuildConfig" class="text-danger"></span>
-            </div> 
+            </div>
+
             <div class="form-group">
-                <label class="form-label">Select Tags</label>
-                <div class="dropdown">
-                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
-                        Select Tags
-                    </button>
-                    <ul class="dropdown-menu p-3" aria-labelledby="dropdownMenuButton">
-                        @foreach (var tag in Enum.GetValues(typeof(PluginTags)).Cast<PluginTags>())
-                        {
-                            <li class="form-check">
-                                <input type="checkbox" class="form-check-input category-checkbox" value="@((int)tag)" id="tag@(tag)"
-                                       name="Tags" @(Model.PluginTags != null && Model.PluginTags.Any(t => t.Name == tag.ToString()) ? "checked" : "")>
-                                <label class="form-check-label" for="tag@(tag)">@tag</label>
-                            </li>
-                        }
-                    </ul>
-                </div>
-                <span asp-validation-for="PluginTags" class="text-danger"></span>
-                <input type="hidden" name="SelectedCategories" id="SelectedCategories">
+                <label asp-for="Tags" class="form-label">Tags</label>
+                <input asp-for="Tags" id="pluginTags" class="form-control" placeholder="Type and press Enter to add tags">
+                <div class="form-text">Easily filter the different items using tags, used in the plugin list.</div>
+                <span asp-validation-for="BuildConfig" class="text-danger"></span>
             </div>
 
             <div class="form-group mt-4">
@@ -63,30 +50,17 @@
     </div>
 </div>
 
+<link href="~/vendor/tom-select/tom-select.bootstrap5.min.css" asp-append-version="true" rel="stylesheet">
+<script src="~/vendor/tom-select/tom-select.complete.min.js" asp-append-version="true"></script>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        var checkboxes = document.querySelectorAll('.category-checkbox');
-        var selectedCategoriesInput = document.getElementById('SelectedCategories');
-        var dropdownButton = document.getElementById('dropdownMenuButton');
-        function updateButtonLabel() {
-            var selectedCategories = [];
-            checkboxes.forEach(function (cb) {
-                if (cb.checked) {
-                    selectedCategories.push(cb.value);
-                }
-            });
-            selectedCategoriesInput.value = selectedCategories.join(',');
-
-            if (selectedCategories.length > 0) {
-                dropdownButton.textContent = selectedCategories.length + ' tag' + (selectedCategories.length > 1 ? 's' : '') + ' selected';
-            } else {
-                dropdownButton.textContent = 'Select tags';
-            }
-        }
-        checkboxes.forEach(function (checkbox) {
-            checkbox.addEventListener('change', updateButtonLabel);
+        new TomSelect('#pluginTags', {
+            plugins: ['remove_button'],
+            persist: false,
+            createOnBlur: true,
+            create: true,
+            delimiter: ','
         });
-        updateButtonLabel();
     });
 </script>

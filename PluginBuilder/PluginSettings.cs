@@ -24,12 +24,6 @@ namespace PluginBuilder
         [MaxLength(200)]
         [Display(Name = "Dotnet build configuration ")]
         public string BuildConfig { get; set; }
-        public List<Tag> PluginTags { get; set; }
-    }
-
-    public class Tag
-    {
-        public int Id { get; set; }
-        public string Name { get; set; }
+        public string Tags { get; set; }
     }
 }
