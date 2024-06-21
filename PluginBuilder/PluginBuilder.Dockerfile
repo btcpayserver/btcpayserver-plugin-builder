@@ -8,7 +8,7 @@ USER dotnet
 
 WORKDIR /build-tools
 ENV PLUGIN_PACKER_VERSION=https://github.com/btcpayserver/btcpayserver
-RUN git clone --depth 1 -b v1.12.0-rc2 --single-branch https://github.com/btcpayserver/btcpayserver && \
+RUN git clone --depth 1 -b v1.13.2 --single-branch https://github.com/btcpayserver/btcpayserver && \
     cd btcpayserver/BTCPayServer.PluginPacker && \
     dotnet build -c Release -o "/build-tools/PluginPacker" && \
     rm -rf /build-tools/btcpayserver
