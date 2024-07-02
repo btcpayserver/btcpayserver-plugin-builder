@@ -1,4 +1,5 @@
 using Microsoft.WindowsAzure.Storage;
+using Microsoft.WindowsAzure.Storage.Blob;
 using Newtonsoft.Json.Linq;
 
 namespace PluginBuilder.Services
@@ -28,10 +29,14 @@ namespace PluginBuilder.Services
     {
         string scheme;
         bool isLocalhost;
+        private readonly CloudBlobClient blobClient;
         public AzureStorageClient(ProcessRunner processRunner, IConfiguration configuration)
         {
             ProcessRunner = processRunner;
             StorageConnectionString = configuration.GetRequired("STORAGE_CONNECTION_STRING");
+            CloudStorageAccount storageAccount = CloudStorageAccount.Parse(StorageConnectionString);
+            blobClient = storageAccount.CreateCloudBlobClient();
+
             if (!CloudStorageAccount.TryParse(StorageConnectionString, out var acc))
                 throw new ConfigurationException("STORAGE_CONNECTION_STRING", "Invalid storage connection string");
             scheme = acc.BlobEndpoint.Scheme;
@@ -56,6 +61,27 @@ namespace PluginBuilder.Services
             if (code != 0)
                 throw new AzureStorageClientException($"Impossible to create container ({error})");
             return ToJson(output)["created"]!.Value<bool>();
+        }
+
+        public async Task<bool> EnsureDefaultContainerExists()
+        {
+            var container = blobClient.GetContainerReference(DefaultContainer);
+            return await container.CreateIfNotExistsAsync();
+        }
+
+        public async Task<string> UploadFileAsync(IFormFile file, string blobName)
+        {
+            var container = blobClient.GetContainerReference(DefaultContainer);
+            var blob = container.GetBlockBlobReference(blobName);
+
+            blob.Properties.ContentType = file.ContentType;
+
+            using (var stream = file.OpenReadStream())
+            {
+                await blob.UploadFromStreamAsync(stream);
+            }
+
+            return blob.Uri.ToString();
         }
 
         public async Task<string> Upload(string volume, string fileInVolume, string blobName)

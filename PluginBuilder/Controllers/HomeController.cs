@@ -1,7 +1,9 @@
+using System.Reflection;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 
@@ -15,6 +17,7 @@ namespace PluginBuilder.Controllers
         public RoleManager<IdentityRole> RoleManager { get; }
         private SignInManager<IdentityUser> SignInManager { get; }
         private IAuthorizationService AuthorizationService { get; }
+        public AzureStorageClient AzureStorageClient { get; }
         private ServerEnvironment Env { get; }
 
         public HomeController(
@@ -23,6 +26,7 @@ namespace PluginBuilder.Controllers
             RoleManager<IdentityRole> roleManager,
             SignInManager<IdentityUser> signInManager,
             IAuthorizationService authorizationService,
+            AzureStorageClient azureStorageClient,
             ServerEnvironment env)
         {
             ConnectionFactory = connectionFactory;
@@ -30,6 +34,7 @@ namespace PluginBuilder.Controllers
             RoleManager = roleManager;
             SignInManager = signInManager;
             AuthorizationService = authorizationService;
+            AzureStorageClient = azureStorageClient;
             Env = env;
         }
 
@@ -158,6 +163,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
         [HttpPost("/plugins/create")]
         public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
         {
+            string url = string.Empty;
             if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
             {
                 ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
@@ -170,7 +176,22 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
                 return View(model);
             }
+
+            if (model.Logo != null)
+            {
+                try
+                {
+                    url = await AzureStorageClient.UploadFileAsync(model.Logo, $"{model.Logo.FileName}");
+                }
+                catch (Exception)
+                {
+                    ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. An error occurred while uploading logo");
+                }
+            }
             await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);
+
+            await conn.SetSettings(pluginSlug, new PluginSettings { Logo = url, Description = model.Description });
+
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 

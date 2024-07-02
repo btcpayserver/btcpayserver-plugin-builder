@@ -1,10 +1,8 @@
-#nullable disable
 using System.ComponentModel.DataAnnotations;
-using Newtonsoft.Json;
 
-namespace PluginBuilder
+namespace PluginBuilder.ViewModels
 {
-    public class PluginSettings
+    public class PluginSettingViewModel
     {
         [MaxLength(200)]
         [Display(Name = "Documentation link")]
@@ -20,7 +18,7 @@ namespace PluginBuilder
         [MaxLength(200)]
         [Display(Name = "Directory to the plugin's project")]
         public string PluginDirectory { get; set; }
-        
+
         [MaxLength(200)]
         [Display(Name = "Dotnet build configuration ")]
         public string BuildConfig { get; set; }
@@ -29,5 +27,9 @@ namespace PluginBuilder
         public string Description { get; set; }
 
         public string Logo { get; set; }
+
+        [Display(Name = "Logo")]
+        public IFormFile PluginLogo { get; set; }
+
     }
 }
