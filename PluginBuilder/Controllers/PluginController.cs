@@ -7,7 +7,7 @@ using PluginBuilder.ViewModels;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using PluginBuilder.Components.PluginVersion;
-using PluginBuilder.Events;
+using PluginBuilder.Extension;
 
 namespace PluginBuilder.Controllers
 {
@@ -18,8 +18,10 @@ namespace PluginBuilder.Controllers
         public PluginController(
             DBConnectionFactory connectionFactory,
             BuildService buildService,
+            AzureStorageClient azureStorageClient,
             EventAggregator eventAggregator)
         {
+            AzureStorageClient = azureStorageClient;
             ConnectionFactory = connectionFactory;
             BuildService = buildService;
             EventAggregator = eventAggregator;
@@ -28,6 +30,7 @@ namespace PluginBuilder.Controllers
         private DBConnectionFactory ConnectionFactory { get; }
         private BuildService BuildService { get; }
         private EventAggregator EventAggregator { get; }
+        public AzureStorageClient AzureStorageClient { get; }
 
         [HttpGet("settings")]
         public async Task<IActionResult> Settings(
@@ -40,27 +43,44 @@ namespace PluginBuilder.Controllers
             
             if (settings is null)
                 return NotFound();
-            return View(settings);
+
+            var viewModel = settings.ToPluginSettingViewModel();
+            return View(viewModel);
         }
         
         [HttpPost("settings")]
         public async Task<IActionResult> Settings(
           [ModelBinder(typeof(PluginSlugModelBinder))]
             PluginSlug pluginSlug,
-            PluginSettings settings)
+            PluginSettingViewModel settingViewModel)
         {
-            if (settings is null)
+            if (settingViewModel is null)
                 return NotFound();
-            if (!string.IsNullOrEmpty(settings.Documentation) && !Uri.TryCreate(settings.Documentation, UriKind.Absolute, out _))
+            string url = settingViewModel.Logo;
+            if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
             {
-                ModelState.AddModelError(nameof(settings.Documentation), "Documentation should be an absolute URL");
+                ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
             }
-            if (!string.IsNullOrEmpty(settings.GitRepository) && !Uri.TryCreate(settings.GitRepository, UriKind.Absolute, out _))
+            if (!string.IsNullOrEmpty(settingViewModel.GitRepository) && !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
             {
-                ModelState.AddModelError(nameof(settings.GitRepository), "Git repository should be an absolute URL");
+                ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository should be an absolute URL");
             }
+            if (settingViewModel.PluginLogo != null)
+            {
+                try
+                {
+                    url = await AzureStorageClient.UploadFileAsync(settingViewModel.PluginLogo, $"{settingViewModel.PluginLogo.FileName}");
+                }
+                catch (Exception)
+                {
+                    ModelState.AddModelError(nameof(settingViewModel.Logo), "Could not complete settings upload. An error occurred while uploading logo");
+                }
+            }
+
             if (!ModelState.IsValid)
-                return View(settings);
+                return View(settingViewModel);
+            settingViewModel.Logo = url;
+            var settings = settingViewModel.ToPluginSettings();
             await using var conn = await ConnectionFactory.Open();
             await conn.SetSettings(pluginSlug, settings);
             TempData[TempDataConstant.SuccessMessage] = "Settings updated";

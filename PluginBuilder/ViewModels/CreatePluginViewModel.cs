@@ -10,5 +10,10 @@ namespace PluginBuilder.ViewModels
         [MaxLength(30)]
         [MinLength(4)]
         public string PluginSlug { get; set; }
+        [Display(Name = "Plugin description")]
+        public string Description { get; set; }
+
+        [Display(Name = "Logo")]
+        public IFormFile Logo { get; set; }
     }
 }
