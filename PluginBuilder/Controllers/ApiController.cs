@@ -56,6 +56,29 @@ public class ApiController : ControllerBase
     }
 
     [AllowAnonymous]
+    [HttpGet("testfunctions")]
+    public async Task<IActionResult> TestFunctions([ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null)
+    {
+        bool includePreRelease = false;
+        bool includeAllVersions = false;
+        var getVersions = includeAllVersions switch
+        {
+            true => "get_all_versions",
+            false => "get_latest_versions"
+        };
+        await using var conn = await ConnectionFactory.Open();
+        // This query probably doesn't have right indexes
+        var rows = await conn.QueryAsync(
+            $"SELECT lv.download_stat FROM {getVersions}(@btcpayVersion, @includePreRelease) lv ",
+            new
+            {
+                includePreRelease = includePreRelease,
+                btcpayVersion = btcpayVersion?.VersionParts,
+            });
+        return Ok(rows);
+    }
+
+    [AllowAnonymous]
     [HttpGet("plugins")]
     public async Task<IActionResult> Plugins(
         [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null,
@@ -70,10 +93,11 @@ public class ApiController : ControllerBase
         };
         await using var conn = await ConnectionFactory.Open();
         // This query probably doesn't have right indexes
-        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(
-            $"SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info FROM {getVersions}(@btcpayVersion, @includePreRelease) lv " +
+        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, long download_stat)>(
+            $"SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info, v.download_stat FROM {getVersions}(@btcpayVersion, @includePreRelease) lv " +
             "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
             "JOIN plugins p ON b.plugin_slug = p.slug " +
+            "JOIN versions v ON v.plugin_slug = lv.plugin_slug " +
             "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL " +
             "ORDER BY manifest_info->>'Name'",
             new
@@ -88,6 +112,7 @@ public class ApiController : ControllerBase
             var v = new PublishedVersion
             {
                 ProjectSlug = r.plugin_slug,
+                DownloadStat = r.download_stat,
                 Version = string.Join('.', r.ver),
                 BuildId = r.id,
                 BuildInfo = JObject.Parse(r.build_info),
@@ -124,6 +149,23 @@ public class ApiController : ControllerBase
             ["version"] = version.ToString()
         });
         return Redirect(url);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("plugins/{pluginSlug}/record-download")]
+    public async Task<IActionResult> RecordDownload(string pluginSlug, string? action = null, string? version = null)
+    {
+        await using var conn = await ConnectionFactory.Open();
+        var count = await conn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM versions v WHERE v.plugin_slug = @plugin_slug AND v.pre_release IS FALSE",
+            new { plugin_slug = pluginSlug }
+        );
+
+        if (count == 0)
+            return NotFound();
+
+        await conn.RecordPluginDownloadStatistics(pluginSlug, action, version);
+        return Ok("Download statistics recorded successfully");
     }
 
     [HttpPost("plugins/{pluginSlug}/builds")]

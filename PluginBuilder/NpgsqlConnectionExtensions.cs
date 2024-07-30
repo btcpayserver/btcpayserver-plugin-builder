@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using Dapper;
 using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
@@ -194,6 +195,38 @@ namespace PluginBuilder
                     state = BuildStates.Queued.ToEventName(),
                     buildInfo = bi.ToString()
                 });
+        }
+
+        public static async Task RecordPluginDownloadStatistics(this NpgsqlConnection connection, PluginSlug pluginSlug, string action, string? version = null)
+        {
+            int[] versionArray = version?.Split('.').Select(int.Parse).ToArray();
+            string sql;
+            if (versionArray != null)
+            {
+                sql = action.ToLower() switch
+                {
+                    "install" => "UPDATE versions AS v SET download_stat = v.download_stat + 1 WHERE v.pre_release IS FALSE AND plugin_slug = @plugin_slug AND ver = @version;",
+                    "delete" => "UPDATE versions AS v SET download_stat = GREATEST(v.download_stat - 1, 0) WHERE v.pre_release IS FALSE AND plugin_slug = @plugin_slug AND ver = @version;",
+                    _ => null
+                };
+            }
+            else
+            {
+                sql = action.ToLower() switch
+                {
+                    "install" => "UPDATE versions AS v SET download_stat = v.download_stat + 1 WHERE v.pre_release IS FALSE AND plugin_slug = @plugin_slug AND ver = (SELECT MAX(ver) FROM versions WHERE plugin_slug = @plugin_slug AND pre_release IS FALSE);",
+                    "delete" => "UPDATE versions AS v SET download_stat = GREATEST(v.download_stat - 1, 0) WHERE v.pre_release IS FALSE AND plugin_slug = @plugin_slug AND ver = (SELECT MAX(ver) FROM versions WHERE plugin_slug = @plugin_slug AND pre_release IS FALSE);",
+                    _ => null
+                };
+            }
+            if (sql != null)
+            {
+                await connection.ExecuteAsync(sql, new
+                {
+                    plugin_slug = pluginSlug.ToString(),
+                    version = versionArray
+                });
+            }
         }
     }
 }
