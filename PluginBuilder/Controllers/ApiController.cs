@@ -56,29 +56,6 @@ public class ApiController : ControllerBase
     }
 
     [AllowAnonymous]
-    [HttpGet("testfunctions")]
-    public async Task<IActionResult> TestFunctions([ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null)
-    {
-        bool includePreRelease = false;
-        bool includeAllVersions = false;
-        var getVersions = includeAllVersions switch
-        {
-            true => "get_all_versions",
-            false => "get_latest_versions"
-        };
-        await using var conn = await ConnectionFactory.Open();
-        // This query probably doesn't have right indexes
-        var rows = await conn.QueryAsync(
-            $"SELECT lv.download_stat FROM {getVersions}(@btcpayVersion, @includePreRelease) lv ",
-            new
-            {
-                includePreRelease = includePreRelease,
-                btcpayVersion = btcpayVersion?.VersionParts,
-            });
-        return Ok(rows);
-    }
-
-    [AllowAnonymous]
     [HttpGet("plugins")]
     public async Task<IActionResult> Plugins(
         [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null,
