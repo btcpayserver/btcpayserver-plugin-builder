@@ -1,9 +1,8 @@
-using System.Reflection;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json.Linq;
+using PluginBuilder.Extension;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 
@@ -12,6 +11,7 @@ namespace PluginBuilder.Controllers
     [Authorize]
     public class HomeController : Controller
     {
+        private readonly long _maxFileSize = 1 * 1024 * 1024;
         private DBConnectionFactory ConnectionFactory { get; }
         private UserManager<IdentityUser> UserManager { get; }
         public RoleManager<IdentityRole> RoleManager { get; }
@@ -181,11 +181,27 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             {
                 try
                 {
+                    if (!model.Logo.Length.IsImageValidSize())
+                    {
+                        ModelState.AddModelError(nameof(model.Logo), "The file size exceeds the 1 MB limit");
+                        return View(model);
+                    }
+                    if (!model.Logo.FileName.IsFileValidImage())
+                    {
+                        ModelState.AddModelError(nameof(model.Logo), "Invalid file type. Only images are allowed");
+                        return View(model);
+                    }
+                    if (!model.Logo.FileName.IsValidFileName())
+                    {
+                        ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. File has invalid name");
+                        return View(model);
+                    }
                     url = await AzureStorageClient.UploadFileAsync(model.Logo, $"{model.Logo.FileName}");
                 }
                 catch (Exception)
                 {
                     ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. An error occurred while uploading logo");
+                    return View(model);
                 }
             }
             await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);

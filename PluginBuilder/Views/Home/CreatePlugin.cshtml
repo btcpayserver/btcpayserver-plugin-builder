@@ -66,6 +66,7 @@
                 <div id="drop-area" class="form-control rounded p-4 text-center">
                     <p class="mb-0">Drag and drop file or <span class="text-primary">browse file</span></p>
                     <input asp-for="Logo" type="file" class="custom-file-input" id="fileInput" name="Logo" accept="image/*">
+                    <span asp-validation-for="PluginSlug" class="text-danger"></span>
                     <div class="form-text">If empty a placeholder would be used in the plugin marketplace.</div>
                 </div>
                 <div id="preview" class="mt-4"></div>

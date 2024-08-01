@@ -60,26 +60,42 @@ namespace PluginBuilder.Controllers
             if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
             {
                 ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
+                return View(settingViewModel);
             }
             if (!string.IsNullOrEmpty(settingViewModel.GitRepository) && !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
             {
                 ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository should be an absolute URL");
+                return View(settingViewModel);
             }
             if (settingViewModel.PluginLogo != null)
             {
                 try
                 {
+                    if (!settingViewModel.PluginLogo.Length.IsImageValidSize())
+                    {
+                        ModelState.AddModelError(nameof(settingViewModel.PluginLogo), "The file size exceeds the 1 MB limit");
+                        return View(settingViewModel);
+                    }
+                    if (!settingViewModel.PluginLogo.FileName.IsFileValidImage())
+                    {
+                        ModelState.AddModelError(nameof(settingViewModel.PluginLogo), "Invalid file type. Only images are allowed");
+                        return View(settingViewModel);
+                    }
+                    if (!settingViewModel.PluginLogo.FileName.IsValidFileName())
+                    {
+                        ModelState.AddModelError(nameof(settingViewModel.PluginLogo), "Could not complete plugin creation. File has invalid name");
+                        return View(settingViewModel);
+                    }
                     url = await AzureStorageClient.UploadFileAsync(settingViewModel.PluginLogo, $"{settingViewModel.PluginLogo.FileName}");
+                    settingViewModel.Logo = url;
                 }
                 catch (Exception)
                 {
                     ModelState.AddModelError(nameof(settingViewModel.Logo), "Could not complete settings upload. An error occurred while uploading logo");
+                    return View(settingViewModel);
                 }
             }
 
-            if (!ModelState.IsValid)
-                return View(settingViewModel);
-            settingViewModel.Logo = url;
             var settings = settingViewModel.ToPluginSettings();
             await using var conn = await ConnectionFactory.Open();
             await conn.SetSettings(pluginSlug, settings);
