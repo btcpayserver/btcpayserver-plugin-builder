@@ -81,10 +81,18 @@ public class ApiController : ControllerBase
                 btcpayVersion = btcpayVersion?.VersionParts,
                 includePreRelease = includePreRelease.Value
             });
+
         rows.TryGetNonEnumeratedCount(out var count);
         var versions = new List<PublishedVersion>(count);
         foreach (var r in rows)
         {
+            var publisherAccountDetails = await conn.QueryFirstAsync<string>(
+            $"SELECT a.\"AccountDetail\" FROM  \"AspNetUsers\" a JOIN users_plugins up ON a.\"Id\" = up.user_id WHERE up.plugin_slug = @plugin_slug",
+            new
+            {
+                plugin_slug = r.plugin_slug
+            });
+            
             var v = new PublishedVersion
             {
                 ProjectSlug = r.plugin_slug,
@@ -92,6 +100,7 @@ public class ApiController : ControllerBase
                 BuildId = r.id,
                 BuildInfo = JObject.Parse(r.build_info),
                 ManifestInfo = JObject.Parse(r.manifest_info),
+                PublisherAccountDetails = JObject.Parse(publisherAccountDetails),
                 PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
                 Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
             };
