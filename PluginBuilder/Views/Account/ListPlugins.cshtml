@@ -1,0 +1,80 @@
+@using PluginBuilder.APIModels
+@model List<PublishedVersion>
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage("Plugin Approval");
+
+    var categories = new Dictionary<string, string>
+    {
+        { "All", "All" },
+        { "Pending", "Pending" },
+        { "Approved", "Approved" },
+        { "Rejected", "Rejected" }
+    };
+}
+<h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+
+@if (Model.Any())
+{
+    <form id="searchForm" class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-controller="Account" asp-action="ListPlugins" method="get">
+        <input id="searchInput" class="form-control" placeholder="Search…" />
+    </form>
+
+    <ul class="nav nav-tabs" id="pluginTabs" role="tablist">
+        @foreach (var category in categories)
+        {
+            <li class="nav-item" role="presentation">
+                <a class="nav-link @(category.Key == "All" ? "active" : "")" id="@category.Key-tab" data-bs-toggle="tab" href="#@category.Key" role="tab" aria-controls="@category.Key" aria-selected="@(category.Key == "All" ? "true" : "false")">
+                    @category.Value
+                </a>
+            </li>
+        }
+    </ul>
+
+    <div class="tab-content mt-4" id="pluginTabsContent">
+        @foreach (var category in categories)
+        {
+            <div class="tab-pane fade show @(category.Key == "All" ? "active" : "")" id="@category.Key" role="tabpanel" aria-labelledby="@category.Key-tab">
+                <div class="row g-4">
+                    @foreach (var plugin in Model)
+                    {
+                        <div class="col col-12 col-md-6 col-lg-4">
+                            <a href="@Url.Action("PluginDetails", "Account", new { pluginSlug = plugin.ProjectSlug })" class="text-decoration-none" style="color: inherit;">
+                                <div class="card h-100 bg-transparent border-0" id="@plugin.ProjectSlug">
+                                    <div class="card-body d-flex">
+                                        <div class="me-3 d-flex justify-content-center align-items-center">
+                                            <img src="/img/icon-512x512.png" alt="@plugin.ProjectSlug Image" class="rounded-4" style="width: 80px; height: 80px;">
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <h4 class="card-title mb-0">@plugin.ProjectSlug</h4>
+                                            </div>
+                                            <p class="card-text" style="overflow: hidden; text-overflow: ellipsis; word-wrap: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-clamp: 2;">
+                                                @((string)plugin.ManifestInfo["Description"])
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+<p class="text-secondary">No plugin found.</p>
+}
+
+
+@* @section PageFootContent {
+    <script>
+        document.getElementById('searchInput').addEventListener('input', function () {
+            if (!this.value) {
+                document.getElementById('searchForm').submit();
+            }
+        });
+    </script>
+} *@
