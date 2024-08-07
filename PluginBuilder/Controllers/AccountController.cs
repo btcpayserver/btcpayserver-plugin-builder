@@ -8,6 +8,7 @@ using PluginBuilder.APIModels;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
+using System.Text;
 
 namespace PluginBuilder.Controllers
 {
@@ -16,12 +17,15 @@ namespace PluginBuilder.Controllers
     {
         private DBConnectionFactory ConnectionFactory { get; }
         private UserManager<IdentityUser> UserManager { get; }
+        private readonly PgpKeyService _pgpKeyService;
 
         public AccountController(
+            PgpKeyService pgpKeyService,
             DBConnectionFactory connectionFactory,
             UserManager<IdentityUser> userManager)
         {
             ConnectionFactory = connectionFactory;
+            _pgpKeyService = pgpKeyService;
             UserManager = userManager;
         }
 
@@ -31,6 +35,66 @@ namespace PluginBuilder.Controllers
             await using var conn = await ConnectionFactory.Open();
             var settings = await conn.GetAccountDetailSettings(UserManager.GetUserId(User)!);
             return View(settings);
+        }
+
+
+        [HttpPost("details")]
+        public async Task<IActionResult> AccountDetails(AccountSettings model)
+        {
+            if (!ModelState.IsValid)
+            {
+                return View(model);
+            }
+
+            await using var conn = await ConnectionFactory.Open();
+            var user = UserManager.GetUserId(User)!;
+            var accountSettings = await conn.GetAccountDetailSettings(user) ?? model;
+
+            accountSettings.Nostr = model.Nostr ?? accountSettings.Nostr;
+            accountSettings.Twitter = model.Twitter ?? accountSettings.Twitter;
+            accountSettings.Github = model.Github ?? accountSettings.Github;
+            accountSettings.Email = model.Email ?? accountSettings.Email;
+
+            await conn.SetAccountDetailSettings(accountSettings, user);
+
+            TempData[TempDataConstant.SuccessMessage] = "Account details updated successfully";
+            return RedirectToAction(nameof(AccountDetails));
+        }
+
+        [HttpGet("accountkeysettings")]
+        public async Task<IActionResult> AccountKeySettings()
+        {
+            var publicKey = TempData["PublicKey"] as string;
+            var privateKey = TempData["PrivateKey"] as string;
+            var model = new AccountKeySettingsViewModel
+            {
+                PublicKey = publicKey,
+                PrivateKey = privateKey
+            };
+            return View(model);
+        }
+
+        [HttpPost("generateaccountkeys")]
+        public async Task<IActionResult> GenerateAccountKeys()
+        {
+            await using var conn = await ConnectionFactory.Open();
+            string userId = UserManager.GetUserId(User);
+            var user = await UserManager.FindByIdAsync(userId);
+            var keys = _pgpKeyService.GenerateKeyPair(userId, user.PasswordHash);
+            TempData["PublicKey"] = keys.publicKey;
+            TempData["PrivateKey"] = keys.privateKey;
+            return RedirectToAction("AccountKeySettings");
+        }
+
+
+        [HttpPost("downloadkeys")]
+        public async Task<IActionResult> DownloadKeys(AccountKeySettingsViewModel model)
+        {
+            string fileContent = model.PublicKey + "\n\n\n\n\n" + model.PrivateKey;
+            byte[] byteArray = Encoding.UTF8.GetBytes(fileContent);
+            var stream = new MemoryStream(byteArray);
+
+            return File(stream, "text/plain", $"{DateTime.Now.Ticks}_PGPKeys.txt");
         }
 
 
@@ -99,31 +163,6 @@ namespace PluginBuilder.Controllers
                 Documentation = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Documentation
             };
             return View(plugin);
-        }
-
-
-
-        [HttpPost("details")]
-        public async Task<IActionResult> AccountDetails(AccountSettings model)
-        {
-            if (!ModelState.IsValid)
-            {
-                return View(model);
-            }
-
-            await using var conn = await ConnectionFactory.Open();
-            var user = UserManager.GetUserId(User)!;
-            var accountSettings = await conn.GetAccountDetailSettings(user) ?? model;
-
-            accountSettings.Nostr = model.Nostr ?? accountSettings.Nostr;
-            accountSettings.Twitter = model.Twitter ?? accountSettings.Twitter;
-            accountSettings.Github = model.Github ?? accountSettings.Github;
-            accountSettings.Email = model.Email ?? accountSettings.Email;
-
-            await conn.SetAccountDetailSettings(accountSettings, user);
-
-            TempData[TempDataConstant.SuccessMessage] = "Account details updated successfully";
-            return RedirectToAction(nameof(AccountDetails));
         }
     }
 }
