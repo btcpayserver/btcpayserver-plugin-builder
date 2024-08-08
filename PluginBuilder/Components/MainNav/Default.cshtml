@@ -60,6 +60,7 @@
 					<span>Account</span>
 				</a>
 				<ul class="dropdown-menu py-0 w-100" aria-labelledby="Nav-Account">
+
 					<li class="p-3">
 						<strong class="d-block text-truncate" style="max-width:195px">@User.Identity.Name</strong>
 						@if (User.IsInRole(Roles.ServerAdmin))
@@ -68,19 +69,19 @@
 						}
 					</li>
                     <li class="border-top py-1 px-3">
-                        <a asp-area="" asp-controller="Account" asp-action="AccountDetails" class="nav-link id="Nav-ManageAccount">
+                        <a asp-area="" asp-controller="Account" asp-action="AccountDetails" class="nav-link @ViewData.ActivePageClass(PluginNavPages.ManageAccount)" id="Nav-ManageAccount">
                             <span>Manage Account</span>
                         </a>
                     </li>
                     <li class="border-top py-1 px-3">
-                        <a asp-area="" asp-controller="Account" asp-action="AccountKeySettings" class="nav-link id="Nav-ManageAccount">
+                        <a asp-area="" asp-controller="Account" asp-action="AccountKeySettings" class="nav-link @ViewData.ActivePageClass(PluginNavPages.ManageKeys)" id="Nav-ManageKeys">
                             <span>Manage Keys</span>
                         </a>
                     </li>
                     @if (User.IsInRole(Roles.ServerAdmin))
                     {
                         <li class="border-top py-1 px-3">
-                            <a asp-area="" asp-controller="Account" asp-action="ListPlugins" class="nav-link id="Nav-ManageAccount">
+                            <a asp-area="" asp-controller="Account" asp-action="ListPlugins" class="nav-link @ViewData.ActivePageClass(PluginNavPages.PluginApproval)" id="Nav-ManageAccount">
                                 <span>Plugin Approval</span>
                             </a>
                         </li>

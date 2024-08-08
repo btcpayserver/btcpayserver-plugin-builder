@@ -93,8 +93,32 @@ namespace PluginBuilder.Controllers
             string fileContent = model.PublicKey + "\n\n\n\n\n" + model.PrivateKey;
             byte[] byteArray = Encoding.UTF8.GetBytes(fileContent);
             var stream = new MemoryStream(byteArray);
-
             return File(stream, "text/plain", $"{DateTime.Now.Ticks}_PGPKeys.txt");
+        }
+
+
+        [HttpPost("~/plugins/bigcommerce/pluginapprovalstatus/{action}")]
+        public async Task<IActionResult> PluginApprovalStatus(PluginApprovalStatusUpdateViewModel model, string action)
+        {
+            var keyUser = _pgpKeyService.GetIdentityFromPublicKey(model.PublicKey);
+            if (string.IsNullOrEmpty(keyUser) || !keyUser.Equals(UserManager.GetUserId(User)))
+            {
+                ModelState.AddModelError(nameof(model.PublicKey), "Invalid plugin");
+                return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
+            }
+            switch (action)
+            {
+                case "approve":
+                    // Approve plugin
+                    break;
+                case "reject":
+                    // Reject plugin
+                    break;
+                default:
+                    ModelState.AddModelError(nameof(model.PublicKey), "Invalid action");
+                    return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
+            }
+            return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
         }
 
 

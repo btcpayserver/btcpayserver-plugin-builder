@@ -9,6 +9,27 @@ namespace PluginBuilder.Services;
 
 public class PgpKeyService
 {
+    public bool IsValidPgpKey(string pgpKey)
+    {
+        try
+        {
+            using var keyStream = new MemoryStream(Encoding.UTF8.GetBytes(pgpKey));
+            using var armoredStream = new ArmoredInputStream(keyStream);
+            var pgpObjectFactory = new PgpObjectFactory(PgpUtilities.GetDecoderStream(armoredStream));
+            var pgpObject = pgpObjectFactory.NextPgpObject();
+
+            if (pgpObject is PgpPublicKeyRing || pgpObject is PgpSecretKeyRing)
+            {
+                return true;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+        return false;
+    }
+
     public (string publicKey, string privateKey) GenerateKeyPair(string identity, string password)
     {
         var keyRingGenerator = GenerateKeyRingGenerator(identity, password.ToCharArray());
@@ -78,11 +99,11 @@ public class PgpKeyService
         return sb.ToString();
     }
 
-    public string GetIdentityFromPublicKey(string publicKeyPath)
+    public string GetIdentityFromPublicKey(string publicKey)
     {
-        using (Stream keyIn = File.OpenRead(publicKeyPath))
+        using (var keyIn = new MemoryStream(Encoding.UTF8.GetBytes(publicKey)))
         {
-            using (Stream inputStream = PgpUtilities.GetDecoderStream(keyIn))
+            using (var inputStream = PgpUtilities.GetDecoderStream(keyIn))
             {
                 PgpPublicKeyRingBundle keyRingBundle = new PgpPublicKeyRingBundle(inputStream);
                 foreach (PgpPublicKeyRing keyRing in keyRingBundle.GetKeyRings())
