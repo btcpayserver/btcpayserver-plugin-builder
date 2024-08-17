@@ -9,6 +9,7 @@ using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using System.Text;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace PluginBuilder.Controllers
 {
@@ -64,38 +65,38 @@ namespace PluginBuilder.Controllers
         [HttpGet("accountkeysettings")]
         public async Task<IActionResult> AccountKeySettings()
         {
-            var publicKey = TempData["PublicKey"] as string;
-            var privateKey = TempData["PrivateKey"] as string;
-            var model = new AccountKeySettingsViewModel
-            {
-                PublicKey = publicKey,
-                PrivateKey = privateKey
-            };
-            return View(model);
-        }
-
-        [HttpPost("generateaccountkeys")]
-        public async Task<IActionResult> GenerateAccountKeys()
-        {
             await using var conn = await ConnectionFactory.Open();
             string userId = UserManager.GetUserId(User);
-            var user = await UserManager.FindByIdAsync(userId);
-            var keys = _pgpKeyService.GenerateKeyPair(userId, user.PasswordHash);
-            TempData["PublicKey"] = keys.publicKey;
-            TempData["PrivateKey"] = keys.privateKey;
-            return RedirectToAction("AccountKeySettings");
-        }
+            var accountSettings = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
 
-
-        [HttpPost("downloadkeys")]
-        public async Task<IActionResult> DownloadKeys(AccountKeySettingsViewModel model)
+            var pgpKeyViewModels = accountSettings.PgpKeys
+        .GroupBy(k => k.KeyBatchId)
+        .Select(g => new PgpKeyViewModel
         {
-            string fileContent = model.PublicKey + "\n\n\n\n\n" + model.PrivateKey;
-            byte[] byteArray = Encoding.UTF8.GetBytes(fileContent);
-            var stream = new MemoryStream(byteArray);
-            return File(stream, "text/plain", $"{DateTime.Now.Ticks}_PGPKeys.txt");
+            Title = g.FirstOrDefault()?.Title,
+            KeyUserId = g.FirstOrDefault()?.KeyUserId,
+            KeyId = g.FirstOrDefault(k => k.IsMasterKey)?.KeyId, 
+            Subkeys = string.Join(", ", g.Where(k => !k.IsMasterKey).Select(k => k.KeyId)),
+            AddedDate = g.FirstOrDefault()?.AddedDate
+        })
+        .ToList();
+            return View(pgpKeyViewModels);
         }
 
+        [HttpPost("saveaccountkeys")]
+        public async Task<IActionResult> SaveAccountPgpKeys(AccountKeySettingsViewModel model)
+        {
+            try
+            {
+                await _pgpKeyService.AddNewPGGKeyAsync(model.PublicKey, model.Title, UserManager.GetUserId(User));
+                return RedirectToAction("AccountKeySettings");
+            }
+            catch (Exception ex)
+            {
+                ModelState.AddModelError("", ex.Message);
+                return RedirectToAction("AccountKeySettings");
+            }
+        }
 
         [HttpPost("~/plugins/bigcommerce/pluginapprovalstatus/{action}")]
         public async Task<IActionResult> PluginApprovalStatus(PluginApprovalStatusUpdateViewModel model, string action)

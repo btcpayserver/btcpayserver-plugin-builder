@@ -1,47 +1,67 @@
-@model AccountKeySettingsViewModel
+@model List<PgpKeyViewModel>
 @{
     Layout = "_Layout";
     ViewData["Title"] = "Account Key Settings";
 }
 
+<div class="d-sm-flex align-items-center justify-content-between">
+    <h2 class="mb-0">
+        @ViewData["Title"]
+    </h2>
 
-<h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generateKeyModal">New GPG Key</button>
+</div>
 
-<div class="row mt-3">
-    <div class="col-xl-8 col-xxl-constrain">
-        <form id="generateKeysForm" asp-action="GenerateAccountKeys" method="post">
-            <div class="form-group">
-                <button type="submit" class="btn btn-secondary">Generate Keys</button>
-            </div>
-        </form>
-
-        @if (!string.IsNullOrEmpty(Model.PublicKey) && !string.IsNullOrEmpty(Model.PrivateKey))
+@if (Model != null && Model.Any())
+{
+    <div class="row mt-4">
+        @foreach (var key in Model)
         {
-            <div class="card mt-4">
-                <div class="card-header">
-                    <h5 class="mb-0">Public Key</h5>
-                </div>
-                <div class="card-body">
-                    <textarea asp-for="PublicKey" id="PublicKey" class="form-control" rows="10" readonly>@Model.PublicKey</textarea>
-                </div>
-            </div>
-
-            <div class="card mt-4">
-                <div class="card-header">
-                    <h5 class="mb-0">Private Key</h5>
-                </div>
-                <div class="card-body">
-                    <textarea asp-for="PrivateKey" id="PrivateKey" class="form-control" rows="10" readonly>@Model.PrivateKey</textarea>
+            <div class="col-md-4">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title">@key.Title</h5>
+                        <p class="card-text"><strong>User ID:</strong> @key.KeyUserId</p>
+                        <p class="card-text"><strong>Key ID:</strong> @key.KeyId</p>
+                        <p class="card-text"><strong>Sub Keys:</strong> @key.Subkeys</p>
+                        <p class="card-text"><strong>Added Date:</strong> @key.AddedDate.ToString()</p>
+                    </div>
                 </div>
             </div>
+        }
+    </div>
+}
+else
+{
+    <p>No available keys. Click on the button to create a new PGP Key</p>
+}
 
-            <form id="downloadKeysForm" asp-action="DownloadKeys" method="post" class="mt-4">
-                <input type="hidden" name="PublicKey" value="@Model.PublicKey" />
-                <input type="hidden" name="PrivateKey" value="@Model.PrivateKey" />
-                <div class="form-group">
-                    <button type="submit" class="btn btn-primary">Download Keys</button>
+
+<div class="modal fade" id="generateKeyModal" tabindex="-1" aria-labelledby="pgpKeyModalLabel-approve" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form asp-action="SaveAccountPgpKeys" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="pgpKeyModalLabel-approve">Add new PGP key</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="KeyTitle" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="KeyTitle" name="Title" placeholder="Enter title" required />
+                    </div>
+                    <div class="mb-3">
+                        <label for="pgpKey-approve" class="form-label">PGP Public Key</label>
+                        <textarea id="pgpKey-approve" name="PublicKey" class="form-control" rows="5"
+                                  placeholder="Paste the complete PGP public key here. It should start with `-----BEGIN PGP PUBLIC KEY BLOCK-----`&#13;&#10;&#13;&#10;and end with `-----END PGP PUBLIC KEY BLOCK-----`."
+                                  required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Add PGP Key</button>
                 </div>
             </form>
-        }
+        </div>
     </div>
 </div>
