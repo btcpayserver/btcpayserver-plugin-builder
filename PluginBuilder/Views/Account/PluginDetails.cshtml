@@ -5,6 +5,23 @@
     ViewData.SetActivePage($"Plugin - {Model.ProjectSlug}");
 }
 
+<div class="alert alert-warning alert-dismissible mb-4" role="alert">
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">
+        <vc:icon symbol="close" />
+    </button>
+    <h5 class="alert-heading">Important notice about plugin approval/rejection</h5>
+    <p class="mb-0">
+        You cannot approve or reject a plugin that was created by you. To approve or reject a plugin, you'd need to sign the plugin title with your PGP private key.
+        <a href="#warning-details" data-bs-toggle="collapse" class="alert-link">Read more</a>
+    </p>
+    <div class="collapse" id="warning-details">
+        <p class="my-3"><strong>Sign off a plugin:</strong> To sign a plugin for approval or rejection, copy the the plugin name and in your local system you can run the sign command using your PGP private key.</p>
+        <p class="mb-3"><strong>For Example:</strong> Assuming we have a plugin with name BTCPayPlugin, open your command prompt, and run the command: echo -n "BTCPayPlugin" | gpg --armor --sign --default-key {KEYID}. Replace {KEYID} with your Key Id.</p>
+        <p class="mb-3">This should print out your signature, which is your signed version of the plugin. This signature is what you would use to approve or reject a plugin</p>
+    </div>
+</div>
+
+
 <div class="d-sm-flex align-items-center justify-content-between">
     <div class="d-sm-flex align-items-center">
         <h2 class="mb-0">
@@ -21,6 +38,7 @@
         <a href="@((string)Model.BuildInfo["url"])" rel="noreferrer noopener" class="btn btn-outline-info">Download</a>
     </div>
 </div>
+
 
 <table class="table mt-6">
     <tr class="mb-4">
@@ -92,17 +110,18 @@
 <div class="modal fade" id="pgpKeyModal-approve" tabindex="-1" aria-labelledby="pgpKeyModalLabel-approve" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form asp-action="PluginApprovalStatus" method="post">
+            <form asp-action="PluginStatusUpdate" method="post">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="pgpKeyModalLabel-approve">Enter Your PGP Public Key to Approve</h5>
+                    <h4 class="modal-title mb-0" id="pgpKeyModalLabel-reject">Enter signature for @Model.ProjectSlug approval</h4>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" name="action" value="approve" />
                     <input type="hidden" name="PluginSlug" value="@Model.ProjectSlug" />
                     <div class="form-group">
-                        <label for="pgpKey-approve">PGP Public Key</label>
-                        <textarea id="pgpKey-approve" name="PublicKey" class="form-control" rows="5" required></textarea>
+                        <label for="pgpKey-approve">PGP Signature message</label>
+                        <textarea id="pgpKey-approve" name="ArmoredMessage" class="form-control" rows="5"
+                                  placeholder="It should start with `-----BEGIN PGP MESSAGE-----`&#13;&#10;&#13;&#10;&#13;&#10;and end with `-----END PGP MESSAGE-----`." required></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -118,9 +137,9 @@
 <div class="modal fade" id="pgpKeyModal-reject" tabindex="-1" aria-labelledby="pgpKeyModalLabel-reject" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form asp-action="PluginApprovalStatus" method="post">
+            <form asp-action="PluginStatusUpdate" method="post">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="pgpKeyModalLabel-reject">Enter Your PGP Public Key to Reject</h5>
+                    <h4 class="modal-title mb-0" id="pgpKeyModalLabel-reject">Enter signature for @Model.ProjectSlug rejection</h4>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -131,8 +150,9 @@
                         <textarea id="rejectionReason" name="RejectionReason" class="form-control" rows="3" required></textarea>
                     </div>
                     <div class="form-group">
-                        <label for="pgpKey-reject">PGP Public Key</label>
-                        <textarea id="pgpKey-reject" name="PublicKey" class="form-control" rows="5" required></textarea>
+                        <label for="pgpKey-reject">PGP Signature message</label>
+                        <textarea id="pgpKey-reject" name="ArmoredMessage" class="form-control" rows="5"
+                                  placeholder="It should start with `-----BEGIN PGP MESSAGE-----`&#13;&#10;&#13;&#10;&#13;&#10;and end with `-----END PGP MESSAGE-----`." required></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">

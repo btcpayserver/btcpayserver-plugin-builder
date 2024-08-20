@@ -8,8 +8,8 @@ using PluginBuilder.APIModels;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
-using System.Text;
-using static System.Runtime.InteropServices.JavaScript.JSType;
+using PluginBuilder.Constants;
+using Microsoft.AspNetCore.Http;
 
 namespace PluginBuilder.Controllers
 {
@@ -62,27 +62,6 @@ namespace PluginBuilder.Controllers
             return RedirectToAction(nameof(AccountDetails));
         }
 
-        [HttpGet("accountkeysettings")]
-        public async Task<IActionResult> AccountKeySettings()
-        {
-            await using var conn = await ConnectionFactory.Open();
-            string userId = UserManager.GetUserId(User);
-            var accountSettings = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
-
-            var pgpKeyViewModels = accountSettings.PgpKeys
-        .GroupBy(k => k.KeyBatchId)
-        .Select(g => new PgpKeyViewModel
-        {
-            Title = g.FirstOrDefault()?.Title,
-            KeyUserId = g.FirstOrDefault()?.KeyUserId,
-            KeyId = g.FirstOrDefault(k => k.IsMasterKey)?.KeyId, 
-            Subkeys = string.Join(", ", g.Where(k => !k.IsMasterKey).Select(k => k.KeyId)),
-            AddedDate = g.FirstOrDefault()?.AddedDate
-        })
-        .ToList();
-            return View(pgpKeyViewModels);
-        }
-
         [HttpPost("saveaccountkeys")]
         public async Task<IActionResult> SaveAccountPgpKeys(AccountKeySettingsViewModel model)
         {
@@ -98,27 +77,95 @@ namespace PluginBuilder.Controllers
             }
         }
 
-        [HttpPost("~/plugins/bigcommerce/pluginapprovalstatus/{action}")]
-        public async Task<IActionResult> PluginApprovalStatus(PluginApprovalStatusUpdateViewModel model, string action)
+        [HttpGet("accountkeysettings")]
+        public async Task<IActionResult> AccountKeySettings()
         {
-            var keyUser = _pgpKeyService.GetIdentityFromPublicKey(model.PublicKey);
-            if (string.IsNullOrEmpty(keyUser) || !keyUser.Equals(UserManager.GetUserId(User)))
+            await using var conn = await ConnectionFactory.Open();
+            string userId = UserManager.GetUserId(User);
+            var accountSettings = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
+
+            var pgpKeyViewModels = accountSettings.PgpKeys
+            .GroupBy(k => k.KeyBatchId)
+            .Select(g => new PgpKeyViewModel
             {
-                ModelState.AddModelError(nameof(model.PublicKey), "Invalid plugin");
+                BatchId = g.FirstOrDefault()?.KeyBatchId,
+                Title = g.FirstOrDefault()?.Title,
+                KeyUserId = g.FirstOrDefault()?.KeyUserId,
+                KeyId = g.FirstOrDefault(k => k.IsMasterKey)?.KeyId, 
+                Subkeys = string.Join(", ", g.Where(k => !k.IsMasterKey).Select(k => k.KeyId)),
+                AddedDate = g.FirstOrDefault()?.AddedDate
+            })
+            .ToList();
+            return View(pgpKeyViewModels);
+        }
+
+        [HttpPost("deleteaccountkey/{batchId}")]
+        public async Task<IActionResult> DeleteAccountPgpKey(string batchId)
+        {
+            await using var conn = await ConnectionFactory.Open();
+            string userId = UserManager.GetUserId(User);
+            var accountSettings = await conn.GetAccountDetailSettings(userId);
+            if (accountSettings == null)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Account settings not found";
+                return RedirectToAction("AccountKeySettings");
+            }
+            int removedCount = accountSettings.PgpKeys?.RemoveAll(k => k.KeyBatchId == batchId) ?? 0;
+            if (removedCount == 0)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Invalid key batch";
+                return RedirectToAction("AccountKeySettings");
+            }
+            await conn.SetAccountDetailSettings(accountSettings, userId);
+            TempData[WellKnownTempData.SuccessMessage] = "Account key deleted successfully";
+            return RedirectToAction("AccountKeySettings");
+        }
+
+        [HttpPost("pluginstatus/update/{action}")]
+        public async Task<IActionResult> PluginStatusUpdate(PluginApprovalStatusUpdateViewModel model, string action)
+        {
+            await using var conn = await ConnectionFactory.Open();
+            string userId = UserManager.GetUserId(User);
+            if (await conn.UserOwnsPlugin(userId, model.PluginSlug))
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Cannot approve or reject plugin you created";
                 return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
             }
+            var accountSettings = await conn.GetAccountDetailSettings(userId);
+            if (accountSettings == null)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Account settings not found";
+                return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
+            }
+            List<string> publicKeys = accountSettings.PgpKeys
+            .Select(key => key.PublicKey).ToList();
+            if (!publicKeys.Any())
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Kindly add new GPG Keys to proceed with plugin action";
+                return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
+            }
+            var validateSignature = _pgpKeyService.VerifyPgpMessage(model, publicKeys);
+            if (!validateSignature.success)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = validateSignature.response;
+                return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
+            }
+            string message = string.Empty;
             switch (action)
             {
                 case "approve":
+                    message = $"{model.PluginSlug} approved successfully";
                     // Approve plugin
                     break;
                 case "reject":
+                    message = $"{model.PluginSlug} rejected successfully";
                     // Reject plugin
                     break;
                 default:
-                    ModelState.AddModelError(nameof(model.PublicKey), "Invalid action");
+                    ModelState.AddModelError(nameof(model.ArmoredMessage), "Invalid action");
                     return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
             }
+            TempData[WellKnownTempData.SuccessMessage] = message;
             return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
         }
 

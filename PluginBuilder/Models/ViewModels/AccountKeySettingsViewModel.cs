@@ -8,6 +8,7 @@ namespace PluginBuilder.ViewModels
 
     public class PgpKeyViewModel
     {
+        public string BatchId { get; set; }
         public string Title { get; set; }
         public string KeyUserId { get; set; }
         public string KeyId { get; set; }
@@ -18,7 +19,7 @@ namespace PluginBuilder.ViewModels
     public class PluginApprovalStatusUpdateViewModel
     {
         public string PluginSlug { get; set; }
-        public string PublicKey { get; set; }
+        public string ArmoredMessage { get; set; }
         public string RejectionReason { get; set; }
     }
 }
