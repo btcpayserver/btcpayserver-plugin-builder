@@ -194,18 +194,16 @@ namespace PluginBuilder.Controllers
                     ProjectSlug = r.plugin_slug,
                     ManifestInfo = JObject.Parse(r.manifest_info),
                     Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)?.Documentation
-                })
-                .ToList();
-
+                }).ToList();
             return View(versions);
         }
-
-
+        
         [HttpGet("plugindetails/{pluginSlug}")]
         public async Task<IActionResult> PluginDetails(string pluginSlug,
         [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null)
         {
             await using var conn = await ConnectionFactory.Open();
+            string userId = UserManager.GetUserId(User);
 
             var row = await conn.QueryFirstOrDefaultAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(
                 $"SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info FROM get_all_versions(@btcpayVersion, @includePreRelease) lv " +
@@ -217,22 +215,22 @@ namespace PluginBuilder.Controllers
                 {
                     btcpayVersion = btcpayVersion?.VersionParts,
                     includePreRelease = false,
-                    pluginSlug = pluginSlug
+                    pluginSlug
                 });
 
             if (string.IsNullOrEmpty(row.plugin_slug))
             {
                 return NotFound();
             }
-
-            var plugin = new PublishedVersion
+            var plugin = new ExtendedPublishedVersion
             {
                 ProjectSlug = row.plugin_slug,
                 Version = string.Join('.', row.ver),
                 BuildId = row.id,
                 BuildInfo = JObject.Parse(row.build_info),
                 ManifestInfo = JObject.Parse(row.manifest_info),
-                Documentation = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Documentation
+                Documentation = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Documentation,
+                HasPublishedPlugin = await conn.UserHasPublishedPlugin(userId)
             };
             return View(plugin);
         }

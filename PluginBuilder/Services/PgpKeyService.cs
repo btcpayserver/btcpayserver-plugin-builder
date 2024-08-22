@@ -138,5 +138,4 @@ public class PgpKeyService
 
         return (false, "Unable to validate signature message with account public keys");
     }
-
 }

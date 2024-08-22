@@ -63,6 +63,22 @@ namespace PluginBuilder
                     userId = userId
                 });
         }
+
+        public static async Task<bool> UserHasPublishedPlugin(this NpgsqlConnection connection, string userId)
+        {
+            return await connection.QuerySingleAsync<bool>(
+                "SELECT EXISTS (" +
+                "SELECT 1 " +
+                "FROM versions v " +
+                "JOIN users_plugins up ON v.plugin_slug = up.plugin_slug " +
+                "WHERE up.user_id = @userId " +
+                "AND v.pre_release = false);",
+                new
+                {
+                    userId
+                });
+        }
+
         public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
         {
             await connection.ExecuteAsync("INSERT INTO users_plugins VALUES (@userId, @pluginSlug) ON CONFLICT DO NOTHING",
