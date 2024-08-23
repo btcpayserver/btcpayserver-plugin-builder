@@ -150,20 +150,28 @@ namespace PluginBuilder.Controllers
                 TempData[WellKnownTempData.ErrorMessage] = validateSignature.response;
                 return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
             }
-            var row = await conn.QueryFirstOrDefaultAsync<(int[] ver, bool pre_release)>(
-            "SELECT v.ver, v.pre_release FROM versions v " +
+            var row = await conn.QueryFirstOrDefaultAsync<(int[] ver, bool pre_release, string reviews)>(
+            "SELECT v.ver, v.pre_release, v.reviews FROM versions v " +
             "LEFT JOIN users_plugins up ON v.plugin_slug=up.plugin_slug WHERE up.plugin_slug=@pluginSlug",
             new { pluginSlug = model.PluginSlug });
 
+            var reviews = string.IsNullOrEmpty(row.reviews) ? new List<PluginReview>() : JsonConvert.DeserializeObject<List<PluginReview>>(row.reviews);
+            bool hasUserReviewed = reviews?.Any(review => review.UserId == userId) ?? false;
+            if (hasUserReviewed)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Cannot complete action as you have already actioned on this plugin";
+                return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
+            }
+
             if (action == "approve" || action == "reject")
             {
-                var review = new PluginReview
+                reviews.Add(new PluginReview
                 {
                     Comment = model.Message,
                     Status = action,
                     UserId = userId
-                };
-                await conn.SetVersionReview(model.PluginSlug, row.ver, new List<PluginReview> { review });
+                });
+                await conn.SetVersionReview(model.PluginSlug, row.ver, reviews);
                 string actionMessage = action == "approve" ? "approved" : "rejected";
                 TempData[WellKnownTempData.SuccessMessage] = $"{model.PluginSlug} {actionMessage} successfully";
             }
