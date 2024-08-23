@@ -187,6 +187,20 @@ namespace PluginBuilder
                         pre_release = preRelease
                     })) == 1;
         }
+
+        public static async Task<bool> SetVersionReview(this NpgsqlConnection connection, string pluginSlug, int[] version, List<PluginReview> reviews)
+        {
+            var reviewsJson = JsonConvert.SerializeObject(reviews);
+            return (await connection.ExecuteAsync(
+                "UPDATE versions SET reviews = @reviews::jsonb WHERE plugin_slug = @plugin_slug AND ver = @ver;",
+                new
+                {
+                    plugin_slug = pluginSlug,
+                    ver = version,
+                    reviews = reviewsJson
+                })) == 1;
+        }
+
         public static Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
         {
             var bi = new BuildInfo()

@@ -84,7 +84,7 @@ namespace PluginBuilder.Controllers
             string userId = UserManager.GetUserId(User);
             var accountSettings = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
 
-            var pgpKeyViewModels = accountSettings.PgpKeys
+            var pgpKeyViewModels = accountSettings?.PgpKeys?
             .GroupBy(k => k.KeyBatchId)
             .Select(g => new PgpKeyViewModel
             {
@@ -121,6 +121,7 @@ namespace PluginBuilder.Controllers
             return RedirectToAction("AccountKeySettings");
         }
 
+
         [HttpPost("pluginstatus/update/{action}")]
         public async Task<IActionResult> PluginStatusUpdate(PluginApprovalStatusUpdateViewModel model, string action)
         {
@@ -128,7 +129,7 @@ namespace PluginBuilder.Controllers
             string userId = UserManager.GetUserId(User);
             if (await conn.UserOwnsPlugin(userId, model.PluginSlug))
             {
-                TempData[WellKnownTempData.ErrorMessage] = "Cannot approve or reject plugin you created";
+                TempData[WellKnownTempData.ErrorMessage] = "Cannot approve or reject plugin created by you";
                 return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
             }
             var accountSettings = await conn.GetAccountDetailSettings(userId);
@@ -137,8 +138,7 @@ namespace PluginBuilder.Controllers
                 TempData[WellKnownTempData.ErrorMessage] = "Account settings not found";
                 return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
             }
-            List<string> publicKeys = accountSettings.PgpKeys
-            .Select(key => key.PublicKey).ToList();
+            List<string> publicKeys = accountSettings.PgpKeys.Select(key => key.PublicKey).ToList();
             if (!publicKeys.Any())
             {
                 TempData[WellKnownTempData.ErrorMessage] = "Kindly add new GPG Keys to proceed with plugin action";
@@ -150,22 +150,28 @@ namespace PluginBuilder.Controllers
                 TempData[WellKnownTempData.ErrorMessage] = validateSignature.response;
                 return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
             }
-            string message = string.Empty;
-            switch (action)
+            var row = await conn.QueryFirstOrDefaultAsync<(int[] ver, bool pre_release)>(
+            "SELECT v.ver, v.pre_release FROM versions v " +
+            "LEFT JOIN users_plugins up ON v.plugin_slug=up.plugin_slug WHERE up.plugin_slug=@pluginSlug",
+            new { pluginSlug = model.PluginSlug });
+
+            if (action == "approve" || action == "reject")
             {
-                case "approve":
-                    message = $"{model.PluginSlug} approved successfully";
-                    // Approve plugin
-                    break;
-                case "reject":
-                    message = $"{model.PluginSlug} rejected successfully";
-                    // Reject plugin
-                    break;
-                default:
-                    ModelState.AddModelError(nameof(model.ArmoredMessage), "Invalid action");
-                    return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
+                var review = new PluginReview
+                {
+                    Comment = model.Message,
+                    Status = action,
+                    UserId = userId
+                };
+                await conn.SetVersionReview(model.PluginSlug, row.ver, new List<PluginReview> { review });
+                string actionMessage = action == "approve" ? "approved" : "rejected";
+                TempData[WellKnownTempData.SuccessMessage] = $"{model.PluginSlug} {actionMessage} successfully";
             }
-            TempData[WellKnownTempData.SuccessMessage] = message;
+            else
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Invalid action";
+                return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
+            }
             return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
         }
 
@@ -205,10 +211,11 @@ namespace PluginBuilder.Controllers
             await using var conn = await ConnectionFactory.Open();
             string userId = UserManager.GetUserId(User);
 
-            var row = await conn.QueryFirstOrDefaultAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(
-                $"SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info FROM get_all_versions(@btcpayVersion, @includePreRelease) lv " +
+            var row = await conn.QueryFirstOrDefaultAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, string reviews)>(
+                $"SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info, v.reviews  FROM get_all_versions(@btcpayVersion, @includePreRelease) lv " +
                 "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
                 "JOIN plugins p ON b.plugin_slug = p.slug " +
+                "JOIN versions v ON v.plugin_slug = lv.plugin_slug " +
                 "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL AND lv.plugin_slug = @pluginSlug " +
                 "ORDER BY manifest_info->>'Name'",
                 new
@@ -222,6 +229,7 @@ namespace PluginBuilder.Controllers
             {
                 return NotFound();
             }
+
             var plugin = new ExtendedPublishedVersion
             {
                 ProjectSlug = row.plugin_slug,
@@ -229,6 +237,7 @@ namespace PluginBuilder.Controllers
                 BuildId = row.id,
                 BuildInfo = JObject.Parse(row.build_info),
                 ManifestInfo = JObject.Parse(row.manifest_info),
+                Reviews = string.IsNullOrEmpty(row.reviews) ? new List<PluginReview>() : JsonConvert.DeserializeObject<List<PluginReview>>(row.reviews),
                 Documentation = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Documentation,
                 HasPublishedPlugin = await conn.UserHasPublishedPlugin(userId)
             };

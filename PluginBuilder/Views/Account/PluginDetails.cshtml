@@ -16,6 +16,26 @@
     </nav>
 </div>
 
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @TempData["SuccessMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">
+            <vc:icon symbol="close" />
+        </button>
+    </div>
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @TempData["ErrorMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">
+            <vc:icon symbol="close" />
+        </button>
+    </div>
+}
+
 @if (Model.HasPublishedPlugin)
 {
     <div class="alert alert-warning alert-dismissible mb-4" role="alert">
@@ -112,12 +132,13 @@
     </div>
 </div>
 
+
 <!-- Approvers and Rejectors section -->
 <div class="card p-4 mb-5">
     <h4 class="mb-4">Actors (Approvers and Rejectors)</h4>
     <p class="text-muted mb-4">The "Run Code Analysis" button will be available only when there are at least two approvers. Only after analysis is successful will the plugin be open to be published successfully.</p>
 
-    @if (/* check if there are any reviews */ true)
+    @if (Model.Reviews.Any())
     {
         <div class="table-responsive">
             <table class="table table-hover">
@@ -129,13 +150,16 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @for (int i = 0; i < 5; i++)
+                    @{
+                        int reviewerCount = 1;
+                    }
+                    @foreach (var review in Model.Reviews)
                     {
-                        var detailsId = $"user_details_{i}";
+                        var detailsId = $"user_details_{review.UserId}";
                         <tr style="transition: background-color 0.3s; line-height: 1.2;">
-                            <td class="fw-bold" style="padding: 0.5rem 0;">Reviewer @i</td>
-                            <td style="padding: 0.5rem 0;">
-                                <span class="badge bg-@(i % 2 == 0 ? "success" : "danger")">@((i % 2 == 0) ? "Approved" : "Rejected")</span>
+                            <td class="fw-bold align-middle" style="padding: 0.5rem 0;">Reviewer @reviewerCount</td>
+                            <td class="align-middle" style="padding: 0.5rem 0;">
+                                <span class="badge bg-@(review.Status == "approve" ? "success" : "danger")">@(review.Status == "approve" ? "Approved" : "Rejected")</span>
                             </td>
                             <td class="text-end">
                                 <div class="d-inline-flex">
@@ -148,26 +172,30 @@
 
                         <tr id="@detailsId" class="user-details-row collapse" style="background-color: #f8f9fa;">
                             <td colspan="3" class="border-top-0" style="padding: 0.5rem;">
-                                @* @if comments { <span class="badge bg-info">display comment</span> }
-                        else { <span class="text-secondary">No Comments</span> } *@
-                                <span class="badge bg-info">archived</span>
+                                @if (!string.IsNullOrEmpty(review.Comment))
+                                {
+                                    @* <span class="badge bg-info">@review.Comment</span> *@
+                                    <span>@review.Comment</span>
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">No Comments</span>
+                                }
                             </td>
                         </tr>
+                        reviewerCount++;
                     }
                 </tbody>
             </table>
         </div>
 
+
         <div class="d-flex justify-content-end mt-4">
             @{
-                int approversCount = 3; // Example count for demonstration
-                bool isButtonEnabled = approversCount >= 2;
+                bool isButtonEnabled = Model.Reviews.Count(c => c.Status == "approve") >= 2;
             }
-            <button type="button"
-                    class="btn @(isButtonEnabled ? "btn-primary" : "btn-secondary text-muted")"
-            @(isButtonEnabled ? "" : "disabled")>
-                Run Code Analysis
-            </button>
+            <button type="button" class="btn @(isButtonEnabled ? "btn-primary" : "btn-secondary text-muted")" @(isButtonEnabled ? "" : "disabled")>
+                Run Code Analysis </button>
         </div>
     }
     else
@@ -175,7 +203,6 @@
         <p class="text-muted">No approval action yet.</p>
     }
 </div>
-
 
 
 <!-- Approval Modal -->
@@ -190,6 +217,10 @@
                 <div class="modal-body">
                     <input type="hidden" name="action" value="approve" />
                     <input type="hidden" name="PluginSlug" value="@Model.ProjectSlug" />
+                    <div class="form-group mt-3">
+                        <label for="message">Message</label>
+                        <textarea id="message" name="Message" class="form-control" rows="3"></textarea>
+                    </div>
                     <div class="form-group">
                         <label for="pgpKey-approve">PGP Signature message</label>
                         <textarea id="pgpKey-approve" name="ArmoredMessage" class="form-control" rows="5"
@@ -219,8 +250,8 @@
                     <input type="hidden" name="action" value="reject" />
                     <input type="hidden" name="PluginSlug" value="@Model.ProjectSlug" />
                     <div class="form-group mt-3">
-                        <label for="rejectionReason">Rejection Reason</label>
-                        <textarea id="rejectionReason" name="RejectionReason" class="form-control" rows="3" required></textarea>
+                        <label for="message">Rejection Reason</label>
+                        <textarea id="message" name="Message" class="form-control" rows="3" required></textarea>
                     </div>
                     <div class="form-group">
                         <label for="pgpKey-reject">PGP Signature message</label>

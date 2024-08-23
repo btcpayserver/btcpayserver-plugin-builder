@@ -20,6 +20,6 @@ namespace PluginBuilder.ViewModels
     {
         public string PluginSlug { get; set; }
         public string ArmoredMessage { get; set; }
-        public string RejectionReason { get; set; }
+        public string Message { get; set; }
     }
 }
