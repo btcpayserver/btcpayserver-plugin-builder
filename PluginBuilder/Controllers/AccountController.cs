@@ -68,6 +68,7 @@ namespace PluginBuilder.Controllers
             try
             {
                 await _pgpKeyService.AddNewPGGKeyAsync(model.PublicKey, model.Title, UserManager.GetUserId(User));
+                TempData[WellKnownTempData.SuccessMessage] = "Account key added successfully";
                 return RedirectToAction("AccountKeySettings");
             }
             catch (Exception ex)
@@ -155,7 +156,7 @@ namespace PluginBuilder.Controllers
             "LEFT JOIN users_plugins up ON v.plugin_slug=up.plugin_slug WHERE up.plugin_slug=@pluginSlug",
             new { pluginSlug = model.PluginSlug });
 
-            var reviews = string.IsNullOrEmpty(row.reviews) ? new List<PluginReview>() : JsonConvert.DeserializeObject<List<PluginReview>>(row.reviews);
+            var reviews = string.IsNullOrEmpty(row.reviews) || row.reviews == "{}" ? new List<PluginReview>() : JsonConvert.DeserializeObject<List<PluginReview>>(row.reviews);
             bool hasUserReviewed = reviews?.Any(review => review.UserId == userId) ?? false;
             if (hasUserReviewed)
             {
@@ -168,6 +169,7 @@ namespace PluginBuilder.Controllers
                 reviews.Add(new PluginReview
                 {
                     Comment = model.Message,
+                    DateActioned = DateTime.Now,
                     Status = action,
                     UserId = userId
                 });
@@ -245,7 +247,7 @@ namespace PluginBuilder.Controllers
                 BuildId = row.id,
                 BuildInfo = JObject.Parse(row.build_info),
                 ManifestInfo = JObject.Parse(row.manifest_info),
-                Reviews = string.IsNullOrEmpty(row.reviews) ? new List<PluginReview>() : JsonConvert.DeserializeObject<List<PluginReview>>(row.reviews),
+                Reviews = string.IsNullOrEmpty(row.reviews) || row.reviews == "{}" ? new List<PluginReview>() : JsonConvert.DeserializeObject<List<PluginReview>>(row.reviews),
                 Documentation = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Documentation,
                 HasPublishedPlugin = await conn.UserHasPublishedPlugin(userId)
             };

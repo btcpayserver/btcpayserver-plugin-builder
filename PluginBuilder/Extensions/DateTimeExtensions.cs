@@ -2,6 +2,10 @@ namespace PluginBuilder
 {
     public static class DateTimeExtensions
     {
+        public static string ToTimeAgo(this DateTimeOffset date) => (DateTimeOffset.UtcNow - date).ToTimeAgo();
+
+        public static string ToTimeAgo(this DateTime date) => (DateTimeOffset.UtcNow - date).ToTimeAgo();
+
         public static string ToTimeAgo(this TimeSpan diff) => diff.TotalSeconds > 0 ? $"{diff.TimeString()} ago" : $"in {diff.Negate().TimeString()}";
 
         public static string TimeString(this TimeSpan timeSpan)

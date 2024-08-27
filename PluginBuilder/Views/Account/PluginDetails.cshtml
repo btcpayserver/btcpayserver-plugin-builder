@@ -136,16 +136,16 @@
 <!-- Approvers and Rejectors section -->
 <div class="card p-4 mb-5">
     <h4 class="mb-4">Actors (Approvers and Rejectors)</h4>
-    <p class="text-muted mb-4">The "Run Code Analysis" button will be available only when there are at least two approvers. Only after analysis is successful will the plugin be open to be published successfully.</p>
-
     @if (Model.Reviews.Any())
     {
+        <p class="text-muted mb-4">The "Run Code Analysis" button will be available only when there are at least two approvers. Only after analysis is successful will the plugin be open to be published successfully.</p>
         <div class="table-responsive">
             <table class="table table-hover">
                 <thead>
                     <tr>
                         <th>Name</th>
                         <th>Status</th>
+                        <th>Date</th>
                         <th class="actions-col text-end">Comment</th>
                     </tr>
                 </thead>
@@ -161,6 +161,9 @@
                             <td class="align-middle" style="padding: 0.5rem 0;">
                                 <span class="badge bg-@(review.Status == "approve" ? "success" : "danger")">@(review.Status == "approve" ? "Approved" : "Rejected")</span>
                             </td>
+                            <td class="align-middle" style="padding: 0.5rem 0;">
+                                @review.DateActioned.ToTimeAgo()
+                            </td>
                             <td class="text-end">
                                 <div class="d-inline-flex">
                                     <button class="accordion-button collapsed only-for-js ms-0 d-inline-block" type="button" data-bs-toggle="collapse" data-bs-target="#@detailsId" aria-expanded="false" aria-controls="@detailsId">
@@ -174,7 +177,6 @@
                             <td colspan="3" class="border-top-0" style="padding: 0.5rem;">
                                 @if (!string.IsNullOrEmpty(review.Comment))
                                 {
-                                    @* <span class="badge bg-info">@review.Comment</span> *@
                                     <span>@review.Comment</span>
                                 }
                                 else
@@ -211,7 +213,10 @@
         <div class="modal-content">
             <form asp-action="PluginStatusUpdate" method="post">
                 <div class="modal-header">
-                    <h4 class="modal-title mb-0" id="pgpKeyModalLabel-reject">Enter signature for @Model.ProjectSlug approval</h4>
+                    <div>
+                        <h4 class="modal-title mb-0" id="pgpKeyModalLabel-reject">Enter signature for approval</h4>
+                        <p class="text-muted mt-2 mb-0">Use the plugin slug: <strong>@Model.ProjectSlug</strong> as message to sign with your keys.</p>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -243,7 +248,10 @@
         <div class="modal-content">
             <form asp-action="PluginStatusUpdate" method="post">
                 <div class="modal-header">
-                    <h4 class="modal-title mb-0" id="pgpKeyModalLabel-reject">Enter signature for @Model.ProjectSlug rejection</h4>
+                    <div>
+                        <h4 class="modal-title mb-0" id="pgpKeyModalLabel-reject">Enter signature for rejection</h4>
+                        <p class="text-muted mt-2 mb-0">Use the plugin slug: <strong>@Model.ProjectSlug</strong> as message to sign with your keys.</p>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
