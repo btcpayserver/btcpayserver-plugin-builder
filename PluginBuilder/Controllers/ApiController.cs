@@ -75,6 +75,7 @@ public class ApiController : ControllerBase
             "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
             "JOIN plugins p ON b.plugin_slug = p.slug " +
             "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL " +
+            "AND p.is_plugin_approved = TRUE " +
             "ORDER BY manifest_info->>'Name'",
             new
             {

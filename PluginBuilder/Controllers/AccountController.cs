@@ -124,8 +124,14 @@ namespace PluginBuilder.Controllers
 
 
         [HttpPost("pluginstatus/update/{action}")]
-        public async Task<IActionResult> PluginStatusUpdate(PluginApprovalStatusUpdateViewModel model, string action)
+        public async Task<IActionResult> PluginStatusUpdate(PluginApprovalStatusUpdateViewModel model, string action,
+            [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null)
         {
+            if (action != "approve" && action != "reject")
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Invalid action";
+                return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
+            }
             await using var conn = await ConnectionFactory.Open();
             string userId = UserManager.GetUserId(User);
             if (await conn.UserOwnsPlugin(userId, model.PluginSlug))
@@ -133,58 +139,62 @@ namespace PluginBuilder.Controllers
                 TempData[WellKnownTempData.ErrorMessage] = "Cannot approve or reject plugin created by you";
                 return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
             }
+
             var accountSettings = await conn.GetAccountDetailSettings(userId);
-            if (accountSettings == null)
-            {
-                TempData[WellKnownTempData.ErrorMessage] = "Account settings not found";
-                return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
-            }
-            List<string> publicKeys = accountSettings.PgpKeys.Select(key => key.PublicKey).ToList();
-            if (!publicKeys.Any())
+            if (accountSettings == null || accountSettings.PgpKeys == null || !accountSettings.PgpKeys.Any())
             {
                 TempData[WellKnownTempData.ErrorMessage] = "Kindly add new GPG Keys to proceed with plugin action";
                 return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
             }
+
+            List<string> publicKeys = accountSettings.PgpKeys.Select(key => key.PublicKey).ToList();
             var validateSignature = _pgpKeyService.VerifyPgpMessage(model, publicKeys);
             if (!validateSignature.success)
             {
                 TempData[WellKnownTempData.ErrorMessage] = validateSignature.response;
                 return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
             }
-            var row = await conn.QueryFirstOrDefaultAsync<(int[] ver, bool pre_release, string reviews)>(
-            "SELECT v.ver, v.pre_release, v.reviews FROM versions v " +
-            "LEFT JOIN users_plugins up ON v.plugin_slug=up.plugin_slug WHERE up.plugin_slug=@pluginSlug",
-            new { pluginSlug = model.PluginSlug });
 
-            var reviews = string.IsNullOrEmpty(row.reviews) || row.reviews == "{}" ? new List<PluginReview>() : JsonConvert.DeserializeObject<List<PluginReview>>(row.reviews);
-            bool hasUserReviewed = reviews?.Any(review => review.UserId == userId) ?? false;
-            if (hasUserReviewed)
+            var getVersions = "get_latest_versions";
+
+            var row = await conn.QueryFirstOrDefaultAsync<(int[] ver, bool pre_release, string reviews)>(
+                $"SELECT lv.ver, v.pre_release, v.reviews FROM {getVersions}(@btcpayVersion, false) lv " +
+                "JOIN versions v ON lv.plugin_slug = v.plugin_slug AND lv.ver = v.ver " +
+                "LEFT JOIN users_plugins up ON lv.plugin_slug = up.plugin_slug " +
+                "WHERE up.plugin_slug = @pluginSlug",
+                new
+                {
+                    btcpayVersion = btcpayVersion?.VersionParts,
+                    pluginSlug = model.PluginSlug
+                });
+
+            var reviews = string.IsNullOrEmpty(row.reviews) || row.reviews == "{}"
+                ? new List<PluginReview>()
+                : JsonConvert.DeserializeObject<List<PluginReview>>(row.reviews);
+
+            if (reviews.Any(review => review.UserId == userId))
             {
                 TempData[WellKnownTempData.ErrorMessage] = "Cannot complete action as you have already actioned on this plugin";
                 return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
             }
 
-            if (action == "approve" || action == "reject")
+            reviews.Add(new PluginReview
             {
-                reviews.Add(new PluginReview
-                {
-                    Comment = model.Message,
-                    DateActioned = DateTime.Now,
-                    Status = action,
-                    UserId = userId
-                });
-                await conn.SetVersionReview(model.PluginSlug, row.ver, reviews);
-                string actionMessage = action == "approve" ? "approved" : "rejected";
-                TempData[WellKnownTempData.SuccessMessage] = $"{model.PluginSlug} {actionMessage} successfully";
-            }
-            else
+                Comment = model.Message,
+                DateActioned = DateTime.Now,
+                Status = action,
+                UserId = userId
+            });
+            await conn.SetVersionReview(model.PluginSlug, row.ver, reviews);
+            if (reviews.Count(c => c.Status.Equals("approve", StringComparison.OrdinalIgnoreCase)) >= 2)
             {
-                TempData[WellKnownTempData.ErrorMessage] = "Invalid action";
-                return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
+                await conn.ApprovePluginVersion(model.PluginSlug, row.ver);
             }
+
+            string actionMessage = action == "approve" ? "approved" : "rejected";
+            TempData[WellKnownTempData.SuccessMessage] = $"{model.PluginSlug} {actionMessage} successfully";
             return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
         }
-
 
         [HttpGet("listplugins")]
         public async Task<IActionResult> ListPlugins(
@@ -205,7 +215,7 @@ namespace PluginBuilder.Controllers
             });
 
             var versions = rows
-                .Select(r => new PublishedVersion
+                .Select(r => new ExtendedPublishedVersion
                 {
                     ProjectSlug = r.plugin_slug,
                     ManifestInfo = JObject.Parse(r.manifest_info),
@@ -249,7 +259,7 @@ namespace PluginBuilder.Controllers
                 ManifestInfo = JObject.Parse(row.manifest_info),
                 Reviews = string.IsNullOrEmpty(row.reviews) || row.reviews == "{}" ? new List<PluginReview>() : JsonConvert.DeserializeObject<List<PluginReview>>(row.reviews),
                 Documentation = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Documentation,
-                HasPublishedPlugin = await conn.UserHasPublishedPlugin(userId)
+                HasOwnerPublishedPlugin = await conn.UserHasPublishedPlugin(userId)
             };
             return View(plugin);
         }

@@ -201,6 +201,17 @@ namespace PluginBuilder
                 })) == 1;
         }
 
+        public static async Task<bool> ApprovePluginVersion(this NpgsqlConnection connection, string pluginSlug, int[] version)
+        {
+            return (await connection.ExecuteAsync(
+                "UPDATE versions SET is_plugin_approved = TRUE WHERE plugin_slug = @plugin_slug AND ver = @ver;",
+                new
+                {
+                    plugin_slug = pluginSlug,
+                    ver = version
+                })) == 1;
+        }
+
         public static Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
         {
             var bi = new BuildInfo()
