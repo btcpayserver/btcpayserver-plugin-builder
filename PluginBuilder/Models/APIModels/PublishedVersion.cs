@@ -15,7 +15,7 @@ namespace PluginBuilder.APIModels
 
     public class ExtendedPublishedVersion : PublishedVersion
     {
-        public bool IsPluginPublished { get; set; }
+        public bool IsPluginApproved { get; set; }
         public bool HasOwnerPublishedPlugin { get; set; }
         public List<PluginReview> Reviews { get; set; }
     }

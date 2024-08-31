@@ -1,7 +1,8 @@
+@using PluginBuilder.Views.Account
 @model AccountSettings
 @{
     Layout = "_Layout";
-    ViewData.SetActivePage("Account Settings");
+    ViewData.SetActivePage(AccountNavPages.Settings, "Account Settings");
 }
 
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>

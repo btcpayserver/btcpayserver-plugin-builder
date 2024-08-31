@@ -1,7 +1,8 @@
+@using PluginBuilder.Views.Account
 @model List<PgpKeyViewModel>
 @{
     Layout = "_Layout";
-    ViewData["Title"] = "Account Key Settings";
+    ViewData.SetActivePage(AccountNavPages.Keys, "Account Key Settings");
 }
 
 <div class="d-sm-flex align-items-center justify-content-between">

@@ -10,13 +10,15 @@
         { "Pending", "Pending" },
         { "Approved", "Approved" }
     };
+    string searchTerm = Context.Request.Query["searchTerm"];
 }
+
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
 
 @if (Model.Any())
 {
     <form id="searchForm" class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-controller="Account" asp-action="ListPlugins" method="get">
-        <input id="searchInput" class="form-control" placeholder="Search…" />
+        <input id="searchInput" name="searchTerm" class="form-control" placeholder="Search…" value="@searchTerm" />
     </form>
 
     <ul class="nav nav-tabs" id="pluginTabs" role="tablist">
@@ -35,8 +37,8 @@
         {
             var filteredPlugins = category.Key switch
             {
-                "Approved" => Model.Where(plugin => plugin.IsPluginPublished),
-                "Pending" => Model.Where(plugin => !plugin.IsPluginPublished),
+                "Approved" => Model.Where(plugin => plugin.IsPluginApproved),
+                "Pending" => Model.Where(plugin => !plugin.IsPluginApproved),
                 _ => Model // "All" category
             };
 
@@ -81,7 +83,7 @@ else
     <p class="text-secondary">No plugin found.</p>
 }
 
-@* @section PageFootContent {
+@section FooterScripts {
     <script>
         document.getElementById('searchInput').addEventListener('input', function () {
             if (!this.value) {
@@ -89,4 +91,4 @@ else
             }
         });
     </script>
-} *@
+}

@@ -74,8 +74,9 @@ public class ApiController : ControllerBase
             $"SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info FROM {getVersions}(@btcpayVersion, @includePreRelease) lv " +
             "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
             "JOIN plugins p ON b.plugin_slug = p.slug " +
+            "JOIN versions v ON lv.plugin_slug = v.plugin_slug " +
             "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL " +
-            "AND p.is_plugin_approved = TRUE " +
+            "AND v.is_plugin_approved = TRUE " +
             "ORDER BY manifest_info->>'Name'",
             new
             {

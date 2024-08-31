@@ -1,3 +1,4 @@
+@using PluginBuilder.Views.Account
 @inject Microsoft.AspNetCore.Identity.SignInManager<Microsoft.AspNetCore.Identity.IdentityUser> SignInManager
 @model PluginBuilder.Components.MainNav.MainNavViewModel
 
@@ -69,13 +70,8 @@
 						}
 					</li>
                     <li class="border-top py-1 px-3">
-                        <a asp-area="" asp-controller="Account" asp-action="AccountDetails" class="nav-link @ViewData.ActivePageClass(PluginNavPages.ManageAccount)" id="Nav-ManageAccount">
+                        <a asp-area="" asp-controller="Account" asp-action="AccountDetails" class="nav-link" id="Nav-ManageAccount">
                             <span>Manage Account</span>
-                        </a>
-                    </li>
-                    <li class="border-top py-1 px-3">
-                        <a asp-area="" asp-controller="Account" asp-action="AccountKeySettings" class="nav-link @ViewData.ActivePageClass(PluginNavPages.ManageKeys)" id="Nav-ManageKeys">
-                            <span>Manage Keys</span>
                         </a>
                     </li>
                     @if (User.IsInRole(Roles.ServerAdmin))
@@ -93,6 +89,16 @@
 					</li>
 				</ul>
 			</li>
+            @if (ViewData.IsActiveCategory(typeof(AccountNavPages)))
+            {
+                <li class="nav-item nav-item-sub">
+                    <a id="SectionNav-@AccountNavPages.Settings.ToString()" class="nav-link @ViewData.ActivePageClass(AccountNavPages.Settings)" asp-controller="Account" asp-action="AccountDetails" text-translate="true">Account Settings</a>
+                </li>
+                <li class="nav-item nav-item-sub">
+                    <a id="SectionNav-@AccountNavPages.Keys.ToString()" class="nav-link @ViewData.ActivePageClass(AccountNavPages.Keys)" asp-controller="Account" asp-action="AccountKeySettings" text-translate="true">Key Settings</a>
+                </li>
+                <vc:ui-extension-point location="user-nav" model="@Model" />
+            }
 		</ul>
 	}
 </nav>
