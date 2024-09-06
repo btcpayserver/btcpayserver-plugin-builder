@@ -1,0 +1,24 @@
+@using Ganss.Xss
+@using PluginBuilder.Extensions
+@using PluginBuilder.Services
+@{
+    var safeHelper = new Safe(Html, Json, new HtmlSanitizer());
+    var parsedModel = TempData.GetStatusMessageModel();
+}
+
+@if (parsedModel != null)
+{
+    <div class="alert alert-@parsedModel.SeverityCSS alert-dismissible @(ViewData["Margin"] ?? "mb-4") text-break" role="alert" v-pre>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">
+            <vc:icon symbol="close" />
+        </button>
+        @if (!string.IsNullOrEmpty(parsedModel.Message))
+        {
+            <span style="white-space: pre-wrap;">@parsedModel.Message</span>
+        }
+        @if (!string.IsNullOrEmpty(parsedModel.Html))
+        {
+            @safeHelper.Raw(Model.Description)
+        }
+    </div>
+}

@@ -1,3 +1,4 @@
+@using PluginBuilder.Views.Account
 @inject Microsoft.AspNetCore.Identity.SignInManager<Microsoft.AspNetCore.Identity.IdentityUser> SignInManager
 @model PluginBuilder.Components.MainNav.MainNavViewModel
 
@@ -60,6 +61,7 @@
 					<span>Account</span>
 				</a>
 				<ul class="dropdown-menu py-0 w-100" aria-labelledby="Nav-Account">
+
 					<li class="p-3">
 						<strong class="d-block text-truncate" style="max-width:195px">@User.Identity.Name</strong>
 						@if (User.IsInRole(Roles.ServerAdmin))
@@ -68,10 +70,18 @@
 						}
 					</li>
                     <li class="border-top py-1 px-3">
-                        <a asp-area="" asp-controller="Account" asp-action="AccountDetails" class="nav-link id="Nav-ManageAccount">
+                        <a asp-area="" asp-controller="Account" asp-action="AccountDetails" class="nav-link" id="Nav-ManageAccount">
                             <span>Manage Account</span>
                         </a>
                     </li>
+                    @if (User.IsInRole(Roles.ServerAdmin))
+                    {
+                        <li class="border-top py-1 px-3">
+                            <a asp-area="" asp-controller="Account" asp-action="ListPlugins" class="nav-link @ViewData.ActivePageClass(PluginNavPages.PluginApproval)" id="Nav-ManageAccount">
+                                <span>Plugin Approval</span>
+                            </a>
+                        </li>
+                    }
 					<li class="border-top py-1 px-3">
 						<a asp-area="" asp-controller="Home" asp-action="Logout" class="nav-link text-danger" id="Nav-Logout">
 							<span>Logout</span>
@@ -79,6 +89,16 @@
 					</li>
 				</ul>
 			</li>
+            @if (ViewData.IsActiveCategory(typeof(AccountNavPages)))
+            {
+                <li class="nav-item nav-item-sub">
+                    <a id="SectionNav-@AccountNavPages.Settings.ToString()" class="nav-link @ViewData.ActivePageClass(AccountNavPages.Settings)" asp-controller="Account" asp-action="AccountDetails" text-translate="true">Account Settings</a>
+                </li>
+                <li class="nav-item nav-item-sub">
+                    <a id="SectionNav-@AccountNavPages.Keys.ToString()" class="nav-link @ViewData.ActivePageClass(AccountNavPages.Keys)" asp-controller="Account" asp-action="AccountKeySettings" text-translate="true">Key Settings</a>
+                </li>
+                <vc:ui-extension-point location="user-nav" model="@Model" />
+            }
 		</ul>
 	}
 </nav>

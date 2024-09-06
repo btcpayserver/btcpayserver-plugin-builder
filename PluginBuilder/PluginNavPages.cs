@@ -3,6 +3,6 @@ namespace PluginBuilder
     public enum PluginNavPages
     {
         Dashboard,
-        Settings
+        Settings, AccountSetting, ManageAccount, ManageKeys, PluginApproval
     }
 }

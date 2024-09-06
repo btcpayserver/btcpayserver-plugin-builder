@@ -12,4 +12,12 @@ namespace PluginBuilder.APIModels
         public JObject ManifestInfo { get; set; }
         public string Documentation { get; set; }
     }
+
+    public class ExtendedPublishedVersion : PublishedVersion
+    {
+        public bool IsPluginApproved { get; set; }
+        public bool HasOwnerPublishedPlugin { get; set; }
+        public List<PluginReview> Reviews { get; set; }
+    }
+
 }

@@ -1,4 +1,9 @@
+using System.Diagnostics;
 using Dapper;
+using LibGit2Sharp;
+using Microsoft.Build.Locator;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.MSBuild;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Events;
 
@@ -11,6 +16,7 @@ namespace PluginBuilder.Services
 
         }
     }
+
     public class BuildService
     {
         public BuildService(
@@ -167,15 +173,7 @@ namespace PluginBuilder.Services
         private async Task<BuildInfo> GetBuildInfo(FullBuildId fullBuildId)
         {
             await using var connection = await ConnectionFactory.Open();
-            var buildInfo = await connection.QueryFirstOrDefaultAsync<string>("SELECT build_info FROM builds WHERE plugin_slug=@pluginSlug AND id=@buildId",
-                new
-                {
-                    pluginSlug = fullBuildId.PluginSlug.ToString(),
-                    buildId = fullBuildId.BuildId
-                });
-            if (buildInfo is null)
-                throw new BuildServiceException("This build doesn't exists");
-            return BuildInfo.Parse(buildInfo);
+            return await connection.GetBuildInfo(fullBuildId);
         }
 
         private async Task SetVersionBuild(FullBuildId fullBuildId, PluginManifest manifest, IOutputCapture buildLogs)

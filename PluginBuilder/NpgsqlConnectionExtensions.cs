@@ -1,6 +1,5 @@
 #nullable enable
 using Dapper;
-using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
@@ -63,6 +62,22 @@ namespace PluginBuilder
                     userId = userId
                 });
         }
+
+        public static async Task<bool> UserHasPublishedPlugin(this NpgsqlConnection connection, string userId)
+        {
+            return await connection.QuerySingleAsync<bool>(
+                "SELECT EXISTS (" +
+                "SELECT 1 " +
+                "FROM versions v " +
+                "JOIN users_plugins up ON v.plugin_slug = up.plugin_slug " +
+                "WHERE up.user_id = @userId " +
+                "AND v.pre_release = false);",
+                new
+                {
+                    userId
+                });
+        }
+
         public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
         {
             await connection.ExecuteAsync("INSERT INTO users_plugins VALUES (@userId, @pluginSlug) ON CONFLICT DO NOTHING",
@@ -171,6 +186,31 @@ namespace PluginBuilder
                         pre_release = preRelease
                     })) == 1;
         }
+
+        public static async Task<bool> SetVersionReview(this NpgsqlConnection connection, string pluginSlug, int[] version, List<PluginReview> reviews)
+        {
+            var reviewsJson = JsonConvert.SerializeObject(reviews);
+            return (await connection.ExecuteAsync(
+                "UPDATE versions SET reviews = @reviews::jsonb WHERE plugin_slug = @plugin_slug AND ver = @ver;",
+                new
+                {
+                    plugin_slug = pluginSlug,
+                    ver = version,
+                    reviews = reviewsJson
+                })) == 1;
+        }
+
+        public static async Task<bool> ApprovePluginVersion(this NpgsqlConnection connection, string pluginSlug, int[] version)
+        {
+            return (await connection.ExecuteAsync(
+                "UPDATE versions SET is_plugin_approved = TRUE WHERE plugin_slug = @plugin_slug AND ver = @ver;",
+                new
+                {
+                    plugin_slug = pluginSlug,
+                    ver = version,
+                })) == 1;
+        }
+
         public static Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
         {
             var bi = new BuildInfo()
@@ -180,7 +220,8 @@ namespace PluginBuilder
                 GitRef = buildParameters.GitRef,
                 PluginDir = buildParameters.PluginDirectory
             };
-            return connection.ExecuteScalarAsync<long>("" +
+            return connection.ExecuteScalarAsync<long>(
+                "" +
                 "WITH cte AS " +
                 "( " +
                 " INSERT INTO builds_ids AS bi VALUES (@plugin_slug, 0)" +
@@ -194,6 +235,20 @@ namespace PluginBuilder
                     state = BuildStates.Queued.ToEventName(),
                     buildInfo = bi.ToString()
                 });
+        }
+
+
+        public static async Task<BuildInfo> GetBuildInfo(this NpgsqlConnection connection, FullBuildId fullBuildId)
+        {
+            var buildInfo = await connection.QueryFirstOrDefaultAsync<string>("SELECT build_info FROM builds WHERE plugin_slug=@pluginSlug AND id=@buildId",
+                new
+                {
+                    pluginSlug = fullBuildId.PluginSlug.ToString(),
+                    buildId = fullBuildId.BuildId
+                });
+            if (buildInfo is null)
+                throw new BuildServiceException("This build doesn't exists");
+            return BuildInfo.Parse(buildInfo);
         }
     }
 }
