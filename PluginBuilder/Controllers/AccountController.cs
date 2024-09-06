@@ -9,24 +9,26 @@ using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.Constants;
-using Microsoft.AspNetCore.Http;
 
 namespace PluginBuilder.Controllers
 {
     [Authorize]
     public class AccountController : Controller
     {
+        private BuildService BuildService { get; }
         private DBConnectionFactory ConnectionFactory { get; }
         private UserManager<IdentityUser> UserManager { get; }
         private readonly PgpKeyService _pgpKeyService;
 
         public AccountController(
+            BuildService buildService,
             PgpKeyService pgpKeyService,
             DBConnectionFactory connectionFactory,
             UserManager<IdentityUser> userManager)
         {
             ConnectionFactory = connectionFactory;
             _pgpKeyService = pgpKeyService;
+            BuildService = buildService;
             UserManager = userManager;
         }
 
@@ -195,49 +197,6 @@ namespace PluginBuilder.Controllers
             TempData[WellKnownTempData.SuccessMessage] = $"{model.PluginSlug} {actionMessage} successfully";
             return RedirectToAction(nameof(PluginDetails), "Account", new { pluginSlug = model.PluginSlug });
         }
-
-
-        [HttpPost("codeanalysis/{pluginSlug}")]
-        public async Task<IActionResult> RunCodeAnalysis(string pluginSlug,
-        [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null)
-        {
-            await using var conn = await ConnectionFactory.Open();
-            string userId = UserManager.GetUserId(User);
-
-            var row = await conn.QueryFirstOrDefaultAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, string reviews, bool is_plugin_approved)>(
-                $"SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info, v.reviews, v.is_plugin_approved FROM get_all_versions(@btcpayVersion, @includePreRelease) lv " +
-                "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
-                "JOIN plugins p ON b.plugin_slug = p.slug " +
-                "JOIN versions v ON v.plugin_slug = lv.plugin_slug " +
-                "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL AND lv.plugin_slug = @pluginSlug " +
-                "ORDER BY manifest_info->>'Name'",
-                new
-                {
-                    btcpayVersion = btcpayVersion?.VersionParts,
-                    includePreRelease = false,
-                    pluginSlug
-                });
-
-            if (string.IsNullOrEmpty(row.plugin_slug))
-            {
-                return NotFound();
-            }
-
-            var plugin = new ExtendedPublishedVersion
-            {
-                IsPluginApproved = row.is_plugin_approved,
-                ProjectSlug = row.plugin_slug,
-                Version = string.Join('.', row.ver),
-                BuildId = row.id,
-                BuildInfo = JObject.Parse(row.build_info),
-                ManifestInfo = JObject.Parse(row.manifest_info),
-                Reviews = string.IsNullOrEmpty(row.reviews) || row.reviews == "{}" ? new List<PluginReview>() : JsonConvert.DeserializeObject<List<PluginReview>>(row.reviews),
-                Documentation = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Documentation,
-                HasOwnerPublishedPlugin = await conn.UserHasPublishedPlugin(userId)
-            };
-            return View(plugin);
-        }
-
 
         [HttpGet("listplugins")]
         public async Task<IActionResult> ListPlugins(

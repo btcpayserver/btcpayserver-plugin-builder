@@ -7,8 +7,6 @@ using PluginBuilder.ViewModels;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using PluginBuilder.Components.PluginVersion;
-using PluginBuilder.Events;
-using PluginBuilder.APIModels;
 
 namespace PluginBuilder.Controllers
 {

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Dapper;
 using LibGit2Sharp;
 using Microsoft.Build.Locator;
@@ -172,15 +173,7 @@ namespace PluginBuilder.Services
         private async Task<BuildInfo> GetBuildInfo(FullBuildId fullBuildId)
         {
             await using var connection = await ConnectionFactory.Open();
-            var buildInfo = await connection.QueryFirstOrDefaultAsync<string>("SELECT build_info FROM builds WHERE plugin_slug=@pluginSlug AND id=@buildId",
-                new
-                {
-                    pluginSlug = fullBuildId.PluginSlug.ToString(),
-                    buildId = fullBuildId.BuildId
-                });
-            if (buildInfo is null)
-                throw new BuildServiceException("This build doesn't exists");
-            return BuildInfo.Parse(buildInfo);
+            return await connection.GetBuildInfo(fullBuildId);
         }
 
         private async Task SetVersionBuild(FullBuildId fullBuildId, PluginManifest manifest, IOutputCapture buildLogs)
@@ -217,91 +210,6 @@ namespace PluginBuilder.Services
                 BuildInfo = buildInfo?.ToString(),
                 ManifestInfo = manifestInfo?.ToString()
             });
-        }
-
-        public string CloneRepository(string repositoryUrl)
-        {
-            string localPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-            try
-            {
-                Repository.Clone(repositoryUrl, localPath);
-                Console.WriteLine($"Repository cloned to {localPath}");
-                return localPath;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Failed to clone repository: {ex.Message}");
-                return null;
-            }
-        }
-
-        public async Task<bool> RunStyleCopAnalysisAsync(string repoPath)
-        {
-            // Ensure MSBuild is available
-            MSBuildLocator.RegisterDefaults();
-
-            using var workspace = MSBuildWorkspace.Create();
-
-            // Load the solution or project
-            var solutionPath = FindSolutionFile(repoPath);
-            if (solutionPath == null)
-            {
-                Console.WriteLine("Solution or project file not found.");
-                return false;
-            }
-
-            var solution = await workspace.OpenSolutionAsync(solutionPath);
-
-            // Analyze projects for StyleCop issues
-            bool issuesFound = false;
-            foreach (var project in solution.Projects)
-            {
-                var compilation = await project.GetCompilationAsync();
-                var diagnostics = compilation.GetDiagnostics()
-                    .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Warning || diagnostic.Severity == DiagnosticSeverity.Error);
-
-                foreach (var diagnostic in diagnostics)
-                {
-                    Console.WriteLine($"{diagnostic.Severity}: {diagnostic.GetMessage()}");
-                    issuesFound = true;
-                }
-            }
-
-            if (issuesFound)
-            {
-                Console.WriteLine("StyleCop found issues.");
-                return false;
-            }
-
-            Console.WriteLine("StyleCop checks passed.");
-            return true;
-        }
-
-        public string FindSolutionFile(string repoPath)
-        {
-            if (!Directory.Exists(repoPath))
-            {
-                return null;
-            }
-
-            // Search for .sln file first
-            var solutionFiles = Directory.GetFiles(repoPath, "*.sln", SearchOption.AllDirectories);
-            if (solutionFiles.Any())
-            {
-                Console.WriteLine($"Found solution file: {solutionFiles.First()}");
-                return solutionFiles.First();
-            }
-
-            // If no .sln file is found, search for .csproj files
-            var projectFiles = Directory.GetFiles(repoPath, "*.csproj", SearchOption.AllDirectories);
-            if (projectFiles.Any())
-            {
-                Console.WriteLine($"Found project file: {projectFiles.First()}");
-                return projectFiles.First();
-            }
-
-            Console.WriteLine("No solution or project files found.");
-            return null;
         }
     }
 }

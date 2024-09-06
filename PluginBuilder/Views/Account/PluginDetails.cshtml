@@ -186,8 +186,11 @@
             @{
                 bool isButtonEnabled = Model.Reviews.Count(c => c.Status == "approve") >= 2;
             }
-            <button type="button" class="btn @(isButtonEnabled ? "btn-primary" : "btn-secondary text-muted")" @(isButtonEnabled ? "" : "disabled")>
-                Run Code Analysis </button>
+            <form asp-action="RunCodeAnalysis" asp-route-pluginSlug="@Model.ProjectSlug" method="post">
+                <button type="submit" class="btn @(isButtonEnabled ? "btn-primary" : "btn-secondary text-muted")" @(isButtonEnabled ? "" : "disabled")>
+                    Run Code Analysis
+                </button>
+            </form>
         </div>
     }
     else
@@ -213,7 +216,7 @@
                     <input type="hidden" name="action" value="approve" />
                     <input type="hidden" name="PluginSlug" value="@Model.ProjectSlug" />
                     <div class="form-group mt-3">
-                        <label for="message">Message</label>
+                        <label for="message">Comment (If any)</label>
                         <textarea id="message" name="Message" class="form-control" rows="3"></textarea>
                     </div>
                     <div class="form-group">

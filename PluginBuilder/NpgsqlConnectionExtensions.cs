@@ -1,6 +1,5 @@
 #nullable enable
 using Dapper;
-using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
@@ -208,7 +207,7 @@ namespace PluginBuilder
                 new
                 {
                     plugin_slug = pluginSlug,
-                    ver = version
+                    ver = version,
                 })) == 1;
         }
 
@@ -221,7 +220,8 @@ namespace PluginBuilder
                 GitRef = buildParameters.GitRef,
                 PluginDir = buildParameters.PluginDirectory
             };
-            return connection.ExecuteScalarAsync<long>("" +
+            return connection.ExecuteScalarAsync<long>(
+                "" +
                 "WITH cte AS " +
                 "( " +
                 " INSERT INTO builds_ids AS bi VALUES (@plugin_slug, 0)" +
@@ -235,6 +235,20 @@ namespace PluginBuilder
                     state = BuildStates.Queued.ToEventName(),
                     buildInfo = bi.ToString()
                 });
+        }
+
+
+        public static async Task<BuildInfo> GetBuildInfo(this NpgsqlConnection connection, FullBuildId fullBuildId)
+        {
+            var buildInfo = await connection.QueryFirstOrDefaultAsync<string>("SELECT build_info FROM builds WHERE plugin_slug=@pluginSlug AND id=@buildId",
+                new
+                {
+                    pluginSlug = fullBuildId.PluginSlug.ToString(),
+                    buildId = fullBuildId.BuildId
+                });
+            if (buildInfo is null)
+                throw new BuildServiceException("This build doesn't exists");
+            return BuildInfo.Parse(buildInfo);
         }
     }
 }
