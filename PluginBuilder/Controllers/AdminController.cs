@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -21,9 +22,8 @@ public class AdminController : Controller
     [HttpGet("users")]
     public async Task<IActionResult> Users()
     {
-        var users = _userManager.Users.ToList(); // Retrieve all users
+        var users = _userManager.Users.ToList();
 
-        // Create a list of UserRoleViewModel to store user details with roles
         var model = new List<AdminUsersViewModel>();
         foreach (var user in users)
         {
@@ -64,7 +64,6 @@ public class AdminController : Controller
         return View(model);
     }
 
-    // POST: Update User Roles
     [HttpPost("editroles/{userId}")]
     public async Task<IActionResult> EditRoles(string userId, List<string> userRoles)
     {
@@ -77,11 +76,30 @@ public class AdminController : Controller
         var currentRoles = await _userManager.GetRolesAsync(user);
         var rolesToAdd = userRoles.Except(currentRoles).ToList();
         var rolesToRemove = currentRoles.Except(userRoles).ToList();
+        
+        // Validate if this is the last admin user and prevent it from being removed from the ServerAdmin role
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (currentUserId == userId && rolesToRemove.Contains("ServerAdmin"))
+        {
+            var admins = await _userManager.GetUsersInRoleAsync("ServerAdmin");
 
-        // Add new roles
+            if (admins.Count == 1)
+            {
+                ModelState.AddModelError("", "You cannot remove yourself as the last ServerAdmin.");
+
+                // Rebuild the view model to pass it back to the view
+                var model = new EditUserRolesViewModel
+                {
+                    UserId = userId,
+                    UserRoles = currentRoles.ToList(),
+                    AvailableRoles = _roleManager.Roles.ToList()
+                };
+
+                return View(model);
+            }
+        }
+
         await _userManager.AddToRolesAsync(user, rolesToAdd);
-
-        // Remove unselected roles
         await _userManager.RemoveFromRolesAsync(user, rolesToRemove);
 
         return RedirectToAction("Users");
