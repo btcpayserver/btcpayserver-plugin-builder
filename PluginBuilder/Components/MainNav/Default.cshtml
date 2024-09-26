@@ -2,23 +2,23 @@
 @model PluginBuilder.Components.MainNav.MainNavViewModel
 
 <nav id="mainNav" class="d-flex flex-column justify-content-between">
-	<div class="accordion px-3 px-lg-4">
-		@if (SignInManager.IsSignedIn(User))
-		{
-			@if (Model.PluginSlug != null)
-			{
-			    <div class="accordion-item">
+    <div class="accordion px-3 px-lg-4">
+        @if (SignInManager.IsSignedIn(User))
+        {
+            @if (Model.PluginSlug != null)
+            {
+                <div class="accordion-item">
                     <div class="accordion-body">
                         <ul class="navbar-nav">
                             <li class="nav-item">
                                 <a asp-area="" asp-controller="Plugin" asp-action="Dashboard" asp-route-pluginSlug="@Model.PluginSlug" class="nav-link js-scroll-trigger @ViewData.IsActivePage(PluginNavPages.Dashboard)" id="StoreNav-Dashboard">
-                                    <vc:icon symbol="home" />
+                                    <vc:icon symbol="home"/>
                                     <span>Builds</span>
                                 </a>
                             </li>
                             <li class="nav-item">
                                 <a asp-area="" asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug" class="nav-link js-scroll-trigger @ViewData.IsActivePage(PluginNavPages.Settings)" id="StoreNav-Settings">
-                                    <vc:icon symbol="settings" />
+                                    <vc:icon symbol="settings"/>
                                     <span>Settings</span>
                                 </a>
                             </li>
@@ -39,7 +39,9 @@
                                     @foreach (var version in Model.Versions)
                                     {
                                         <li class="nav-item">
-                                            <span class="nav-link"><vc:plugin-version model="@version"></vc:plugin-version></span>
+                                            <span class="nav-link">
+                                                <vc:plugin-version model="@version"></vc:plugin-version>
+                                            </span>
                                         </li>
                                     }
 
@@ -48,15 +50,40 @@
                         </div>
                     </div>
                 }
-			}
-		}
-	</div>
-	@if (SignInManager.IsSignedIn(User))
-	{
+            }
+
+            // Server settings
+            @if (User.IsInRole(Roles.ServerAdmin))
+            {
+                <div class="accordion-item">
+                    <header class="accordion-header" id="Nav-Server-Admin-Header">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#Nav-Server-Admin" aria-expanded="true" aria-controls="Nav-Server-Admin">
+                            <span text-translate="true">Server Administration</span>
+                            <vc:icon symbol="caret-down"/>
+                        </button>
+                    </header>
+                    <div id="Nav-Server-Admin" class="accordion-collapse collapse show" aria-labelledby="Nav-Server-Admin-Header">
+                        <div class="accordion-body">
+                            <ul class="navbar-nav">
+                                <li class="nav-item">
+                                    <a asp-area="" asp-controller="Admin" asp-action="Users" class="nav-link" id="Nav-AdminUsers">
+                                        <vc:icon symbol="nav-plugins-explore"/>
+                                        <span text-translate="true">Users</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+    @if (SignInManager.IsSignedIn(User))
+    {
         <ul id="mainNavSettings" class="navbar-nav border-top p-3 px-lg-4">
             <li class="nav-item dropup">
                 <a class="nav-link js-scroll-trigger" role="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" id="Nav-Account">
-                    <vc:icon symbol="account" />
+                    <vc:icon symbol="account"/>
                     <span>Account</span>
                 </a>
                 <ul class="dropdown-menu py-0 w-100" aria-labelledby="Nav-Account">
