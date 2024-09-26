@@ -1,0 +1,26 @@
+@model EditUserRolesViewModel
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage(AdminNavPages.Users, "Edit User Roles - " + Model.UserName);
+}
+
+<h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+<div class="row">
+    <div class="col-xl-8 col-xxl-constrain">
+        <form asp-action="EditRoles" method="post">
+            <input type="hidden" asp-for="UserId"/>
+
+            <div class="form-group">
+                <label asp-for="UserRoles" class="form-label">Roles</label>
+                <select asp-for="UserRoles" class="form-control" multiple="multiple"
+                        asp-items="@(new MultiSelectList(Model.AvailableRoles, "Name", "Name", Model.UserRoles))">
+                </select>
+            </div>
+
+            <div class="form-group mt-4">
+                <input type="submit" class="btn btn-primary" id="Save" value="Save" />
+                <a asp-action="Users" class="btn btn-link">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
