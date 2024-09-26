@@ -65,8 +65,8 @@ public class AdminController : Controller
     }
 
     // POST: Update User Roles
-    [HttpGet("editroles")]
-    public async Task<IActionResult> EditRoles(string userId, List<string> selectedRoles)
+    [HttpPost("editroles/{userId}")]
+    public async Task<IActionResult> EditRoles(string userId, List<string> userRoles)
     {
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
@@ -75,8 +75,8 @@ public class AdminController : Controller
         }
 
         var currentRoles = await _userManager.GetRolesAsync(user);
-        var rolesToAdd = selectedRoles.Except(currentRoles).ToList();
-        var rolesToRemove = currentRoles.Except(selectedRoles).ToList();
+        var rolesToAdd = userRoles.Except(currentRoles).ToList();
+        var rolesToRemove = currentRoles.Except(userRoles).ToList();
 
         // Add new roles
         await _userManager.AddToRolesAsync(user, rolesToAdd);
