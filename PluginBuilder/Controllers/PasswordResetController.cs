@@ -9,41 +9,29 @@ using Microsoft.AspNetCore.Http;
 
 namespace PluginBuilder.Controllers
 {
+    [Authorize(Roles="ServerAdmin")]
     public class PasswordResetController : Controller
     {
         private UserManager<IdentityUser> UserManager { get; }
-        public RoleManager<IdentityRole> RoleManager { get; }
-        private ServerEnvironment Env { get; }
 
-        public PasswordResetController(
-            UserManager<IdentityUser> userManager,
-            RoleManager<IdentityRole> roleManager,
-            ServerEnvironment env)
+        public PasswordResetController(UserManager<IdentityUser> userManager)
         {
             UserManager = userManager;
-            RoleManager = roleManager;
-            Env = env;
         }
 
         [HttpGet("/admin/initpasswordreset")]
         public IActionResult InitPasswordReset(string adminAuthString)
         {
-            if (String.IsNullOrEmpty(Env.AdminAuthString) || adminAuthString != Env.AdminAuthString)
-                return Unauthorized();
-
             ViewData["adminAuthString"] = adminAuthString;
             return View();
         }
 
         [HttpPost("/admin/initpasswordreset")]
-        public async Task<IActionResult> InitPasswordReset(InitPasswordResetViewModel model, string adminAuthString)
+        public async Task<IActionResult> InitPasswordReset(InitPasswordResetViewModel model)
         {
-            if (String.IsNullOrEmpty(Env.AdminAuthString) || adminAuthString != Env.AdminAuthString)
-                return Unauthorized();
-
-
             if (!ModelState.IsValid)
                 return View(model);
+            
             // Require the user to have a confirmed email before they can log on.
             var user = await UserManager.FindByEmailAsync(model.Email);
             if (user is null)
