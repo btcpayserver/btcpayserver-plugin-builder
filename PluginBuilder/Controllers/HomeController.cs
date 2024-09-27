@@ -151,6 +151,39 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             return RedirectToLocal(returnUrl);
         }
 
+        // password reset flow
+
+        [AllowAnonymous]
+        [HttpGet("/passwordreset")]
+        public IActionResult PasswordReset()
+        {
+            return View(new PasswordResetViewModel());
+        }
+
+        [AllowAnonymous]
+        [HttpPost("/passwordreset")]
+        public async Task<IActionResult> PasswordReset(PasswordResetViewModel model)
+        {
+            if (!ModelState.IsValid)
+                return View(model);
+
+            // TODO: Require the user to have a confirmed email before they can log on.
+            var user = await UserManager.FindByEmailAsync(model.Email);
+            if (user is null)
+            {
+                ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
+                return View(model);
+            }
+
+            var result = await UserManager.ResetPasswordAsync(user, model.PasswordResetToken, model.Password);
+            model.PasswordSuccessfulyReset = result.Succeeded;
+
+            foreach (var err in result.Errors)
+                ModelState.AddModelError("PasswordResetToken", $"{err.Description}");
+            
+            return View(model);
+        }
+
         // plugin methods
 
         [HttpGet("/plugins/create")]
