@@ -65,9 +65,7 @@ public class Program
         app.MapHub<Hubs.PluginHub>("hub");
         app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/hub");
         app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/builds/{buildId}/hub");
-        //        app.MapControllerRoute(
-        //name: "default",
-        //pattern: "{controller=Home}/{action=Index}/{id?}");
+        // no default routes
         app.MapControllers();
     }
 
@@ -115,6 +113,7 @@ public class Program
             options.Lockout.AllowedForNewUsers = true;
             options.Password.RequireUppercase = false;
         })
+        .AddDefaultTokenProviders()
         .AddEntityFrameworkStores<IdentityDbContext<IdentityUser>>();
 
         services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, opt =>

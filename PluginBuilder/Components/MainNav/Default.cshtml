@@ -53,32 +53,32 @@
 	</div>
 	@if (SignInManager.IsSignedIn(User))
 	{
-		<ul id="mainNavSettings" class="navbar-nav border-top p-3 px-lg-4">
-			<li class="nav-item dropup">
-				<a class="nav-link js-scroll-trigger" role="button" data-bs-toggle="dropdown" aria-expanded="false" id="Nav-Account">
-					<vc:icon symbol="account" />
-					<span>Account</span>
-				</a>
-				<ul class="dropdown-menu py-0 w-100" aria-labelledby="Nav-Account">
-					<li class="p-3">
-						<strong class="d-block text-truncate" style="max-width:195px">@User.Identity.Name</strong>
-						@if (User.IsInRole(Roles.ServerAdmin))
-						{
-							<div class="text-secondary">Administrator</div>
-						}
-					</li>
+        <ul id="mainNavSettings" class="navbar-nav border-top p-3 px-lg-4">
+            <li class="nav-item dropup">
+                <a class="nav-link js-scroll-trigger" role="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" id="Nav-Account">
+                    <vc:icon symbol="account" />
+                    <span>Account</span>
+                </a>
+                <ul class="dropdown-menu py-0 w-100" aria-labelledby="Nav-Account">
+                    <li class="p-3">
+                        <strong class="d-block text-truncate" style="max-width:195px">@User.Identity?.Name</strong>
+                        @if (User.IsInRole(Roles.ServerAdmin))
+                        {
+                            <div class="text-secondary">Administrator</div>
+                        }
+                    </li>
                     <li class="border-top py-1 px-3">
-                        <a asp-area="" asp-controller="Account" asp-action="AccountDetails" class="nav-link id="Nav-ManageAccount">
+                        <a asp-area="" asp-controller="Account" asp-action="AccountDetails" class="nav-link" id="Nav-ManageAccount">
                             <span>Manage Account</span>
                         </a>
                     </li>
-					<li class="border-top py-1 px-3">
-						<a asp-area="" asp-controller="Home" asp-action="Logout" class="nav-link text-danger" id="Nav-Logout">
-							<span>Logout</span>
-						</a>
-					</li>
-				</ul>
-			</li>
-		</ul>
-	}
+                    <li class="border-top py-1 px-3">
+                        <a asp-area="" asp-controller="Home" asp-action="Logout" class="nav-link text-danger" id="Nav-Logout">
+                            <span>Logout</span>
+                        </a>
+                    </li>
+                </ul>
+            </li>
+        </ul>
+    }
 </nav>
