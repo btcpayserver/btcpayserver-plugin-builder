@@ -113,7 +113,7 @@ public class Program
             options.Lockout.AllowedForNewUsers = true;
             options.Password.RequireUppercase = false;
         })
-        .AddTokenProvider("Default", typeof(SimpleTwoFactorTokenProvider<IdentityUser>))
+        .AddDefaultTokenProviders()
         .AddEntityFrameworkStores<IdentityDbContext<IdentityUser>>();
 
         services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, opt =>
