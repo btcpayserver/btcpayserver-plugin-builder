@@ -33,7 +33,9 @@
                         @(user.Roles.Any() ? string.Join(", ", user.Roles) : "No Roles")
                     </a>
                 </td>
-                <td></td>
+                <td><a asp-action="InitPasswordReset" asp-route-userId="@user.Id">
+                    Reset Password
+                </a></td>
             </tr>
         }
         </tbody>

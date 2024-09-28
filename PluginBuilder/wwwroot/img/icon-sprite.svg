@@ -48,4 +48,5 @@
 <symbol id="invoice-expired" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22.5" stroke="currentColor" stroke-width="3"/><path d="m17 31 14-14m-14 0 14 14" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 <symbol id="payment-sent" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22.5" stroke="currentColor" stroke-width="3"/><path d="M24 16v16m5.71-10.29L24 16l-6.29 6.29" stroke="currentColor" stroke-width="3" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 <symbol id="payment-complete" viewBox="0 0 48 48" fill="none"><path d="M47 24a22.5 22.5 0 1 1-45 0 22.5 22.5 0 0 1 45 0Z" stroke="currentColor" stroke-width="3"/><path d="m15.23 24.8 7.1 7.1 12.8-12.8" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="users" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6v2H4v-2Z" fill="currentColor"/></symbol>
 </svg>

@@ -19,6 +19,7 @@ public class AdminController : Controller
         _roleManager = roleManager;
     }
 
+    // list users
     [HttpGet("users")]
     public async Task<IActionResult> Users()
     {
@@ -39,8 +40,9 @@ public class AdminController : Controller
         }
 
         return View(model);
-    }    
+    }
     
+    // edit roles
     [HttpGet("editroles/{userId}")]
     public async Task<IActionResult> EditRoles(string userId)
     {
@@ -103,5 +105,39 @@ public class AdminController : Controller
         await _userManager.RemoveFromRolesAsync(user, rolesToRemove);
 
         return RedirectToAction("Users");
+    }
+
+    // init reset password
+    [HttpGet("/admin/initpasswordreset")]
+    public async Task<IActionResult> InitPasswordReset(string userId)
+    {
+        var model = new InitPasswordResetViewModel();
+        
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user != null)
+        {
+            model.Email = user.Email;
+        }
+        
+        return View(model);
+    }
+
+    [HttpPost("/admin/initpasswordreset")]
+    public async Task<IActionResult> InitPasswordReset(InitPasswordResetViewModel model)
+    {
+        if (!ModelState.IsValid)
+            return View(model);
+            
+        // Require the user to have a confirmed email before they can log on.
+        var user = await _userManager.FindByEmailAsync(model.Email);
+        if (user is null)
+        {
+            ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
+            return View(model);
+        }
+
+        var result = await _userManager.GeneratePasswordResetTokenAsync(user);
+        model.PasswordResetToken = result;
+        return View(model);
     }
 }
