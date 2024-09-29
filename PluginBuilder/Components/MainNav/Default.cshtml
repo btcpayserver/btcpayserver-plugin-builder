@@ -68,10 +68,17 @@
                         <div class="accordion-body">
                             <ul class="navbar-nav">
                                 <li class="nav-item">
-                                    <a asp-area="" asp-controller="Admin" asp-action="Users" 
+                                    <a asp-area="" asp-controller="Admin" asp-action="Users"
                                        class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.Users)" id="AdminNav-Users">
                                         <vc:icon symbol="users"/>
                                         <span text-translate="true">Users</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a asp-area="" asp-controller="Admin" asp-action="ListPlugins"
+                                       class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.Plugins)" id="AdminNav-Plugins">
+                                        <vc:icon symbol="plugins"/>
+                                        <span text-translate="true">Plugins</span>
                                     </a>
                                 </li>
                             </ul>
