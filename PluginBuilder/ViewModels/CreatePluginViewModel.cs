@@ -15,5 +15,8 @@ namespace PluginBuilder.ViewModels
 
         [Display(Name = "Logo")]
         public IFormFile Logo { get; set; }
+
+        [Display(Name = "Logo")]
+        public string LogoUrl { get; set; }
     }
 }

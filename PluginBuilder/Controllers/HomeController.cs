@@ -11,7 +11,6 @@ namespace PluginBuilder.Controllers
     [Authorize]
     public class HomeController : Controller
     {
-        private readonly long _maxFileSize = 1 * 1024 * 1024;
         private DBConnectionFactory ConnectionFactory { get; }
         private UserManager<IdentityUser> UserManager { get; }
         public RoleManager<IdentityRole> RoleManager { get; }
@@ -163,20 +162,11 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
         [HttpPost("/plugins/create")]
         public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
         {
-            string url = string.Empty;
             if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
             {
                 ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
                 return View(model);
             }
-
-            await using var conn = await ConnectionFactory.Open();
-            if (!await conn.NewPlugin(pluginSlug))
-            {
-                ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
-                return View(model);
-            }
-
             if (model.Logo != null)
             {
                 try
@@ -196,7 +186,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                         ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. File has invalid name");
                         return View(model);
                     }
-                    url = await AzureStorageClient.UploadFileAsync(model.Logo, $"{model.Logo.FileName}");
+                    model.LogoUrl = await AzureStorageClient.UploadFileAsync(model.Logo, $"{model.Logo.FileName}");
                 }
                 catch (Exception)
                 {
@@ -204,10 +194,14 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                     return View(model);
                 }
             }
+            await using var conn = await ConnectionFactory.Open();
+            if (!await conn.NewPlugin(pluginSlug))
+            {
+                ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+                return View(model);
+            }
             await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);
-
-            await conn.SetSettings(pluginSlug, new PluginSettings { Logo = url, Description = model.Description });
-
+            await conn.SetSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl, Description = model.Description });
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 

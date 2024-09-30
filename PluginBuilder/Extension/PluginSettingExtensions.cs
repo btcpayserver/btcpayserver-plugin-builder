@@ -14,7 +14,7 @@ namespace PluginBuilder.Extension
                 GitRef = viewModel.GitRef,
                 PluginDirectory = viewModel.PluginDirectory,
                 BuildConfig = viewModel.BuildConfig,
-                Logo = viewModel.Logo
+                Logo = viewModel.LogoUrl
             };
         }
 
@@ -28,7 +28,7 @@ namespace PluginBuilder.Extension
                 GitRef = settings.GitRef,
                 PluginDirectory = settings.PluginDirectory,
                 BuildConfig = settings.BuildConfig,
-                Logo = settings.Logo
+                LogoUrl = settings.Logo
             };
         }
     }

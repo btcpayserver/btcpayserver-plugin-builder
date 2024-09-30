@@ -39,8 +39,6 @@ namespace PluginBuilder.Controllers
         {
             await using var conn = await ConnectionFactory.Open();
             var settings = await conn.GetSettings(pluginSlug);
-            
-            
             if (settings is null)
                 return NotFound();
 
@@ -50,13 +48,12 @@ namespace PluginBuilder.Controllers
         
         [HttpPost("settings")]
         public async Task<IActionResult> Settings(
-          [ModelBinder(typeof(PluginSlugModelBinder))]
-            PluginSlug pluginSlug,
-            PluginSettingViewModel settingViewModel)
+          [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+            PluginSettingViewModel settingViewModel, [FromForm] bool RemoveLogoFile = false)
         {
             if (settingViewModel is null)
                 return NotFound();
-            string url = settingViewModel.Logo;
+            string? url = settingViewModel.LogoUrl;
             if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
             {
                 ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
@@ -67,35 +64,40 @@ namespace PluginBuilder.Controllers
                 ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository should be an absolute URL");
                 return View(settingViewModel);
             }
-            if (settingViewModel.PluginLogo != null)
+            if (settingViewModel.Logo != null)
             {
                 try
                 {
-                    if (!settingViewModel.PluginLogo.Length.IsImageValidSize())
+                    if (!settingViewModel.Logo.Length.IsImageValidSize())
                     {
-                        ModelState.AddModelError(nameof(settingViewModel.PluginLogo), "The file size exceeds the 1 MB limit");
+                        ModelState.AddModelError(nameof(settingViewModel.Logo), "The file size exceeds the 1 MB limit");
                         return View(settingViewModel);
                     }
-                    if (!settingViewModel.PluginLogo.FileName.IsFileValidImage())
+                    if (!settingViewModel.Logo.FileName.IsFileValidImage())
                     {
-                        ModelState.AddModelError(nameof(settingViewModel.PluginLogo), "Invalid file type. Only images are allowed");
+                        ModelState.AddModelError(nameof(settingViewModel.Logo), "Invalid file type. Only images are allowed");
                         return View(settingViewModel);
                     }
-                    if (!settingViewModel.PluginLogo.FileName.IsValidFileName())
+                    if (!settingViewModel.Logo.FileName.IsValidFileName())
                     {
-                        ModelState.AddModelError(nameof(settingViewModel.PluginLogo), "Could not complete plugin creation. File has invalid name");
+                        ModelState.AddModelError(nameof(settingViewModel.Logo), "Could not complete plugin creation. File has invalid name");
                         return View(settingViewModel);
                     }
-                    url = await AzureStorageClient.UploadFileAsync(settingViewModel.PluginLogo, $"{settingViewModel.PluginLogo.FileName}");
-                    settingViewModel.Logo = url;
+                    url = await AzureStorageClient.UploadFileAsync(settingViewModel.Logo, $"{settingViewModel.Logo.FileName}");
+                    settingViewModel.LogoUrl = url;
                 }
                 catch (Exception)
                 {
-                    ModelState.AddModelError(nameof(settingViewModel.Logo), "Could not complete settings upload. An error occurred while uploading logo");
+                    ModelState.AddModelError(nameof(settingViewModel.LogoUrl), "Could not complete settings upload. An error occurred while uploading logo");
                     return View(settingViewModel);
                 }
             }
-
+            else if (RemoveLogoFile)
+            {
+                url = null;
+                settingViewModel.Logo = null;
+                settingViewModel.LogoUrl = null;
+            }
             var settings = settingViewModel.ToPluginSettings();
             await using var conn = await ConnectionFactory.Open();
             await conn.SetSettings(pluginSlug, settings);
