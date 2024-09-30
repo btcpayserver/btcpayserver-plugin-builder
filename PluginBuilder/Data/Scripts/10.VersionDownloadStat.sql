@@ -1,1 +1,0 @@
-ALTER TABLE versions ADD COLUMN download_stat BIGINT NOT NULL DEFAULT 0;

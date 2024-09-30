@@ -146,13 +146,32 @@ namespace PluginBuilder
             return null;
         }
 
-        public static Task InsertEvent(this NpgsqlConnection connection, string evtType, JObject data)
+        public static async Task<bool> InsertEvent(this NpgsqlConnection connection, string evtType, JObject data, string? ipAddress, PluginSlug pluginSlug, long buildId)
         {
-            return connection.ExecuteAsync("INSERT INTO evts VALUES (@evtType, @evt::JSONB);", new
-            {
-                evtType = evtType,
-                evt = data.ToString()
-            });
+            var result = await connection.ExecuteScalarAsync<int>(
+                @"INSERT INTO evts (type, data, ip, plugin_slug, build_id) 
+                  VALUES (@evtType, @evt::JSONB, @ip, @plugin_slug, @build_id)
+                  ON CONFLICT (ip, plugin_slug, type) DO UPDATE SET created_at = NOW()
+                  RETURNING (xmax = 0)::int;",
+                new
+                {
+                    evtType,
+                    evt = data.ToString(),
+                    ip = ipAddress,
+                    plugin_slug = pluginSlug.ToString(),
+                    build_id = buildId
+                });
+            return result == 1;
+        }
+
+        public static async Task<string?> GetLastEventTypeForIpAsync(this NpgsqlConnection connection, string? ipAddress, PluginSlug pluginSlug)
+        {
+            return await connection.QuerySingleOrDefaultAsync<string?>(
+                @"SELECT type FROM evts 
+                  WHERE @ip IS NOT NULL 
+                  AND ip = @ip AND plugin_slug = @plugin_slug 
+                  ORDER BY created_at DESC LIMIT 1",
+                new { ip = ipAddress, plugin_slug = pluginSlug.ToString() });
         }
 
         public static async Task<bool> SetVersionBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, PluginVersion version, PluginVersion? minBTCPayVersion, bool preRelease)
@@ -197,34 +216,25 @@ namespace PluginBuilder
                 });
         }
 
-        public static async Task RecordPluginDownloadStatistics(this NpgsqlConnection connection, PluginSlug pluginSlug, string action, string? version = null)
+        public static async Task RecordPluginDownloadStatistics(this NpgsqlConnection connection, PluginSlug pluginSlug, string action, int[]? version = null)
         {
-            int[] versionArray = version?.Split('.').Select(int.Parse).ToArray();
-            string sql;
-            if (versionArray != null)
+            string versionCondition = version != null
+                ? "ver = @version"
+                : "ver = (SELECT MAX(ver) FROM versions WHERE plugin_slug = @plugin_slug AND pre_release IS FALSE)";
+
+            string updateStat = action.ToLower() switch
             {
-                sql = action.ToLower() switch
-                {
-                    "install" => "UPDATE versions AS v SET download_stat = v.download_stat + 1 WHERE v.pre_release IS FALSE AND plugin_slug = @plugin_slug AND ver = @version;",
-                    "delete" => "UPDATE versions AS v SET download_stat = GREATEST(v.download_stat - 1, 0) WHERE v.pre_release IS FALSE AND plugin_slug = @plugin_slug AND ver = @version;",
-                    _ => null
-                };
-            }
-            else
+                "install" => "UPDATE versions AS v SET download_stat = v.download_stat + 1 WHERE v.pre_release IS FALSE AND plugin_slug = @plugin_slug AND " + versionCondition,
+                "delete" => "UPDATE versions AS v SET download_stat = GREATEST(v.download_stat - 1, 0) WHERE v.pre_release IS FALSE AND plugin_slug = @plugin_slug AND " + versionCondition,
+                _ => null
+            };
+
+            if (updateStat != null)
             {
-                sql = action.ToLower() switch
-                {
-                    "install" => "UPDATE versions AS v SET download_stat = v.download_stat + 1 WHERE v.pre_release IS FALSE AND plugin_slug = @plugin_slug AND ver = (SELECT MAX(ver) FROM versions WHERE plugin_slug = @plugin_slug AND pre_release IS FALSE);",
-                    "delete" => "UPDATE versions AS v SET download_stat = GREATEST(v.download_stat - 1, 0) WHERE v.pre_release IS FALSE AND plugin_slug = @plugin_slug AND ver = (SELECT MAX(ver) FROM versions WHERE plugin_slug = @plugin_slug AND pre_release IS FALSE);",
-                    _ => null
-                };
-            }
-            if (sql != null)
-            {
-                await connection.ExecuteAsync(sql, new
+                await connection.ExecuteAsync(updateStat, new
                 {
                     plugin_slug = pluginSlug.ToString(),
-                    version = versionArray
+                    version
                 });
             }
         }
