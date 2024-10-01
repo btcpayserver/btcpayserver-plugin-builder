@@ -1,0 +1,40 @@
+@using Microsoft.AspNetCore.Mvc.TagHelpers
+@using PluginBuilder.DataModels
+@model PluginEditViewModel
+@{
+Layout = "_Layout";
+ViewData.SetActivePage(AdminNavPages.Plugins, "Edit Plugin");
+}
+
+<div class="d-sm-flex align-items-center justify-content-between">
+    <h2 class="mb-0">
+        @ViewData["Title"]
+    </h2>
+</div>
+
+<form asp-action="Edit">
+    <div class="form-group">
+        <label asp-for="Slug" class="control-label"></label>
+        <input asp-for="Slug" class="form-control" readonly="readonly" />
+        <span asp-validation-for="Slug" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Identifier" class="control-label"></label>
+        <input asp-for="Identifier" class="form-control" readonly="readonly" />
+        <span asp-validation-for="Identifier" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Settings" class="control-label"></label>
+        <textarea asp-for="Settings" class="form-control" rows="5"></textarea>
+        <span asp-validation-for="Settings" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Visibility" class="control-label"></label>
+        <select asp-for="Visibility" class="form-control" asp-items="Html.GetEnumSelectList<PluginVisibilityEnum>()"></select>
+        <span asp-validation-for="Visibility" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <input type="submit" class="btn btn-primary" id="Save" value="Save" />
+        <a asp-action="ListPlugins" class="btn btn-link">Cancel</a>
+    </div>
+</form>

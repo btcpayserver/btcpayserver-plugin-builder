@@ -32,16 +32,15 @@ public class AdminController : Controller
     public async Task<IActionResult> ListPlugins()
     {
         await using var conn = await _connectionFactory.Open();
-        var rows = await conn.QueryAsync(
-            $"""
-              SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
-              FROM plugins p 
-              JOIN versions v ON p.slug = v.plugin_slug
-              JOIN users_plugins up ON v.plugin_slug = up.plugin_slug 
-              JOIN "AspNetUsers" u ON up.user_id = u."Id"
-              WHERE v.ver = (SELECT MAX(ver) FROM versions WHERE plugin_slug = p.slug)
-              ORDER BY p.slug
-              """);
+        var rows = await conn.QueryAsync($"""
+                                          SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
+                                          FROM plugins p 
+                                          JOIN versions v ON p.slug = v.plugin_slug
+                                          JOIN users_plugins up ON v.plugin_slug = up.plugin_slug 
+                                          JOIN "AspNetUsers" u ON up.user_id = u."Id"
+                                          WHERE v.ver = (SELECT MAX(ver) FROM versions WHERE plugin_slug = p.slug)
+                                          ORDER BY p.slug
+                                          """);
         var plugins = new List<AdminPluginViewModel>();
         foreach (var row in rows)
         {
@@ -50,7 +49,7 @@ public class AdminController : Controller
                 ProjectSlug = row.slug,
                 Version = string.Join('.', row.ver),
                 BuildId = row.build_id,
-                BtccpayMinVer = string.Join('.', row.btcpay_min_ver),
+                BtcPayMinVer = string.Join('.', row.btcpay_min_ver),
                 PreRelease = row.pre_release,
                 UpdatedAt = row.updated_at,
                 PublisherEmail = row.email,
@@ -60,6 +59,51 @@ public class AdminController : Controller
         }
 
         return View(plugins);
+    }
+
+    // GET method to display the plugin edit form
+    [HttpGet("plugins/edit/{slug}")]
+    public async Task<IActionResult> PluginEdit(string slug)
+    {
+        await using var conn = await _connectionFactory.Open();
+        var plugin = await conn.QueryFirstOrDefaultAsync<PluginEditViewModel>(
+            "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
+        if (plugin == null)
+        {
+            return NotFound();
+        }
+
+        return View(plugin);
+    }
+
+// POST method to handle the form submission
+    [HttpPost("plugins/edit/{slug}")]
+    public async Task<IActionResult> PluginEdit(string slug, PluginEditViewModel model)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        await using var conn = await _connectionFactory.Open();
+        var affectedRows = await conn.ExecuteAsync(
+            $"""
+                 UPDATE plugins 
+                 SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum
+                 WHERE slug = @slug
+                """, 
+            new
+            {
+                settings = model.Settings, 
+                visibility = model.Visibility.ToString().ToLowerInvariant(),
+                slug
+            });
+        if (affectedRows == 0)
+        {
+            return NotFound();
+        }
+
+        return RedirectToAction("ListPlugins");
     }
 
     // list users
