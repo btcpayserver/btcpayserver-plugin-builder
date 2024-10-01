@@ -171,6 +171,41 @@ namespace PluginBuilder
                         pre_release = preRelease
                     })) == 1;
         }
+
+        public static async Task DeletePluginDetails(this NpgsqlConnection connection, PluginSlug pluginSlug)
+        {
+            using var transaction = connection.BeginTransaction();
+            try
+            {
+                await connection.ExecuteAsync(
+                    "DELETE FROM builds WHERE plugin_slug = @pluginSlug",
+                    new { pluginSlug = pluginSlug.ToString() }, transaction);
+
+                await connection.ExecuteAsync(
+                    "DELETE FROM builds_ids WHERE plugin_slug = @pluginSlug",
+                    new { pluginSlug = pluginSlug.ToString() }, transaction);
+
+                await connection.ExecuteAsync(
+                    "DELETE FROM users_plugins WHERE plugin_slug = @pluginSlug",
+                    new { pluginSlug = pluginSlug.ToString() }, transaction);
+
+                await connection.ExecuteAsync(
+                    "DELETE FROM versions WHERE plugin_slug = @pluginSlug",
+                    new { pluginSlug = pluginSlug.ToString() }, transaction);
+
+                await connection.ExecuteAsync(
+                    "DELETE FROM plugins WHERE slug = @pluginSlug",
+                    new { pluginSlug = pluginSlug.ToString() }, transaction);
+
+                transaction.Commit();
+            }
+            catch (Exception)
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
         public static Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
         {
             var bi = new BuildInfo()

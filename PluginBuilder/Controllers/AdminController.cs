@@ -148,6 +148,7 @@ public class AdminController : Controller
         if (string.IsNullOrEmpty(plugin))
             return NotFound();
 
+        await conn.DeletePluginDetails(pluginSlug);
         return RedirectToAction(nameof(ListPlugins));
     }
 
