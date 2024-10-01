@@ -120,7 +120,7 @@ public class ApiController : ControllerBase
                 version = version.VersionParts
             });
 
-        if (result == default || result.Url is null)
+        if (result.Url is null)
             return NotFound();
 
         var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
@@ -131,11 +131,7 @@ public class ApiController : ControllerBase
             ["pluginSlug"] = pluginSlug.ToString(),
             ["version"] = version.ToString()
         }, clientIp, pluginSlug, result.BuildId);
-        if (eventInsertionResponse)
-        {
-            await conn.RecordPluginDownloadStatistics(pluginSlug, "install", version.VersionParts);
-        }
-        else if (lastEventType?.ToLower() == "uninstall")
+        if (eventInsertionResponse || lastEventType?.ToLower() == "uninstall")
         {
             await conn.RecordPluginDownloadStatistics(pluginSlug, "install", version.VersionParts);
         }
@@ -166,11 +162,7 @@ public class ApiController : ControllerBase
             ["version"] = version.ToString()
         }, clientIp, pluginSlug, buildId);
 
-        if (eventInsertionResponse)
-        {
-            await conn.RecordPluginDownloadStatistics(pluginSlug, "delete", version.VersionParts);
-        }
-        else if (lastEventType?.ToLower() == "download")
+        if (eventInsertionResponse || lastEventType?.ToLower() == "download")
         {
             await conn.RecordPluginDownloadStatistics(pluginSlug, "delete", version.VersionParts);
         }
