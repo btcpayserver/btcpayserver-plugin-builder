@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
@@ -33,7 +34,7 @@ public class AdminController : Controller
         await using var conn = await _connectionFactory.Open();
         var rows = await conn.QueryAsync(
             $"""
-              SELECT p.slug, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
+              SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
               FROM plugins p 
               JOIN versions v ON p.slug = v.plugin_slug
               JOIN users_plugins up ON v.plugin_slug = up.plugin_slug 
@@ -52,16 +53,13 @@ public class AdminController : Controller
                 BtccpayMinVer = string.Join('.', row.btcpay_min_ver),
                 PreRelease = row.pre_release,
                 UpdatedAt = row.updated_at,
-                PublisherEmail = row.email
+                PublisherEmail = row.email,
+                Visibility = row.visibility
             };
             plugins.Add(plugin);
         }
 
         return View(plugins);
-        
-        
-        
-        
     }
 
     // list users

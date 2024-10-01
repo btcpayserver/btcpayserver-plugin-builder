@@ -1,3 +1,5 @@
+using PluginBuilder.DataModels;
+
 namespace PluginBuilder.ViewModels.Admin;
 
 public class AdminPluginViewModel
@@ -9,4 +11,5 @@ public class AdminPluginViewModel
     public bool PreRelease { get; set; }
     public DateTime UpdatedAt { get; set; }
     public string PublisherEmail { get; set; }
+    public PluginVisibilityEnum Visibility { get; set; }
 }
