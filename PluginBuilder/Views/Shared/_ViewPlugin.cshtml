@@ -1,0 +1,38 @@
+@model AdminPluginViewModel
+@{
+}
+
+<div class="d-flex justify-content-between mt-3 flex-wrap">
+    <div class="d-flex flex-column gap-3 col-12 col-lg-7 mb-3 mb-md-0">
+        <div class="d-flex flex-column gap-2 h-100">
+            <div class="flex-grow-1" style="background-color: rgba(128, 128, 128, 0.3); min-height: 100px; flex-basis: 100px;"></div>
+            <div class="d-flex gap-2 flex-grow-1">
+                <div class="flex-grow-1" style="background-color: rgba(128, 128, 128, 0.3); min-height: 100px; flex-basis: 100px;"></div>
+                <div class="flex-grow-1" style="background-color: rgba(128, 128, 128, 0.3); min-height: 100px; flex-basis: 100px;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4 mt-3">
+        <ul class="list-group list-group-flush">
+            <li class="list-group-item d-flex justify-content-between bg-transparent px-0">
+                <strong>Version:</strong>
+                <span>@Model.Version</span>
+            </li>
+            @if (!string.IsNullOrEmpty(Model.PublisherEmail))
+            {
+                <li class="list-group-item d-flex justify-content-between bg-transparent px-0">
+                    <strong>Published By:</strong>
+                    <span><a href="@Model.PublisherEmail" rel="noreferrer noopener" target="_blank" class="text-success">@Model.PublisherEmail</a></span>
+                </li>
+            }
+            <li class="list-group-item d-flex justify-content-between bg-transparent px-0">
+                <strong>Last Updated:</strong>
+                <span>@Model.UpdatedAt</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between bg-transparent px-0">
+                <strong>BTCPay Min Version:</strong>
+                <span>@Model.BtccpayMinVer</span>
+            </li>
+        </ul>
+    </div>
+</div>

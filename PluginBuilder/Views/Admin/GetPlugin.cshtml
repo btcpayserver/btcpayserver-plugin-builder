@@ -1,0 +1,100 @@
+@model AdminPluginViewModel
+@{
+Layout = "_Layout";
+ViewData.SetActivePage(AdminNavPages.Plugins, $"Plugins: {@Model.ProjectSlug}");
+}
+
+@functions
+{
+    void ToBadge(string state, string error)
+    {
+        @if (state == "failed")
+        {
+            <span class="badge bg-danger" tooltip="@error">
+                @state
+                <small>
+                    <a href="#" class="ms-1" target="_blank" rel="noreferrer noopener">
+                        <span class="fa fa-question-circle-o" style="color: var(--btcpay-danger-text)" title="@error"></span>
+                    </a>
+                </small>
+            </span>
+        }
+        else if (state == "uploaded")
+        {
+            <span class="badge bg-success">@state</span>
+        }
+        else
+        {
+            <span class="badge bg-warning">@state</span>
+        }
+    }
+}
+
+<div class="sticky-header" style="margin-top: 0; padding-top: 0;">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb" style="margin-bottom: 0;">
+                <li class="breadcrumb-item">
+                    <a asp-controller="Admin" asp-action="ListPlugins">Plugins</a>
+                </li>
+                <li class="breadcrumb-item active" aria-current="page" style="color: black;">@Model.ProjectSlug</li>
+            </ol>
+        </nav>
+        <a asp-controller="Admin"
+           asp-action="DeletePlugin"
+           asp-route-pluginSlug="@Model.ProjectSlug"
+           class="btn btn-primary mt-2 mt-md-0">
+            Delete Plugin
+        </a>
+    </div>
+</div>
+
+
+<partial name="_ViewPlugin" model="Model" />
+
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th class="w-150px">Date</th>
+                <th class="text-nowrap">Build Id</th>
+                <th class="text-nowrap">Version</th>
+                <th class="text-nowrap">Repository</th>
+                <th class="text-nowrap">Git ref</th>
+                <th>Commit</th>
+                <th class="text-end">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var build in Model.PluginSlugBuilds)
+            {
+                @foreach (var item in build.Value)
+                {
+                    <tr id="plugin_@item.BuildId" class="invoice-row">
+                        <td>@item.Date</td>
+                        <td>@item.BuildId</td>
+                        <td>
+                            <vc:plugin-version model="@item.Version"></vc:plugin-version>
+                        </td>
+                        <td><a href="@item.Repository" target="_blank" rel="noreferrer noopener">@item.Repository</a></td>
+                        <td>@item.GitRef</td>
+                        @if (item.RepositoryLink is null)
+                        {
+                            <td>@item.Commit</td>
+                        }
+                        else
+                        {
+                            <td><a href="@item.RepositoryLink" target="_blank" rel="noreferrer noopener">@item.Commit</a></td>
+                        }
+                        <td class="text-end text-nowrap">
+                            @if (!string.IsNullOrEmpty(item.DownloadLink) && item.State != "removed")
+                            {
+                                <a href="@item.DownloadLink" rel="noreferrer noopener">Download</a>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

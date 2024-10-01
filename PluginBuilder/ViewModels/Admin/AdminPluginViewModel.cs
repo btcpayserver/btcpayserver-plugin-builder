@@ -9,4 +9,5 @@ public class AdminPluginViewModel
     public bool PreRelease { get; set; }
     public DateTime UpdatedAt { get; set; }
     public string PublisherEmail { get; set; }
+    public Dictionary<string, List<BuildListViewModel.BuildViewModel>> PluginSlugBuilds { get; set; } = new();
 }
