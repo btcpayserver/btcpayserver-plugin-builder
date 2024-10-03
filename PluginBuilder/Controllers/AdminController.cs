@@ -61,12 +61,12 @@ public class AdminController : Controller
         return View(plugins);
     }
 
-    // GET method to display the plugin edit form
+    // Plugin Edit
     [HttpGet("plugins/edit/{slug}")]
     public async Task<IActionResult> PluginEdit(string slug)
     {
         await using var conn = await _connectionFactory.Open();
-        var plugin = await conn.QueryFirstOrDefaultAsync<PluginEditViewModel>(
+        var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
             "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
         if (plugin == null)
         {
@@ -76,9 +76,9 @@ public class AdminController : Controller
         return View(plugin);
     }
 
-// POST method to handle the form submission
+    // 
     [HttpPost("plugins/edit/{slug}")]
-    public async Task<IActionResult> PluginEdit(string slug, PluginEditViewModel model)
+    public async Task<IActionResult> PluginEdit(string slug, PluginViewModel model)
     {
         if (!ModelState.IsValid)
         {
@@ -98,6 +98,42 @@ public class AdminController : Controller
                 visibility = model.Visibility.ToString().ToLowerInvariant(),
                 slug
             });
+        if (affectedRows == 0)
+        {
+            return NotFound();
+        }
+
+        return RedirectToAction("ListPlugins");
+    }
+    
+    // Plugin Delete
+    [HttpGet("plugins/delete/{slug}")]
+    public async Task<IActionResult> PluginDelete(string slug)
+    {
+        await using var conn = await _connectionFactory.Open();
+        var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
+            "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
+        if (plugin == null)
+        {
+            return NotFound();
+        }
+
+        return View(plugin);
+    }
+
+    [HttpPost("plugins/delete/{slug}")]
+    public async Task<IActionResult> PluginDeleteConfirmed(string slug)
+    {
+        await using var conn = await _connectionFactory.Open();
+        var affectedRows = await conn.ExecuteAsync(
+    $"""
+    DELETE FROM builds WHERE plugin_slug = @Slug;
+    DELETE FROM builds_ids WHERE plugin_slug = @Slug;
+    DELETE FROM builds_logs WHERE plugin_slug = @Slug;
+    DELETE FROM users_plugins WHERE plugin_slug = @Slug;
+    DELETE FROM versions WHERE plugin_slug = @Slug;
+    DELETE FROM plugins WHERE slug = @Slug;
+    """, new { Slug = slug });
         if (affectedRows == 0)
         {
             return NotFound();

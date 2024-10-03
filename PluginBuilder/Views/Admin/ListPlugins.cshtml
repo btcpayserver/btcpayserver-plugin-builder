@@ -5,7 +5,7 @@ ViewData.SetActivePage(AdminNavPages.Plugins, "Plugins");
 }
 
 <div class="d-sm-flex align-items-center justify-content-between">
-    <h2 class="mb-0">
+    <h2 class="mb-4">
         @ViewData["Title"]
     </h2>
 </div>
@@ -36,7 +36,10 @@ ViewData.SetActivePage(AdminNavPages.Plugins, "Plugins");
                 <td>@plugin.UpdatedAt</td>
                 <td>@plugin.PublisherEmail</td>
                 <td>@plugin.Visibility</td>
-                <td><a asp-controller="Admin" asp-action="PluginEdit" asp-route-slug="@plugin.ProjectSlug">Edit</a></td>
+                <td>
+                    <a asp-controller="Admin" asp-action="PluginEdit" asp-route-slug="@plugin.ProjectSlug">Edit</a> |
+                    <a asp-controller="Admin" asp-action="PluginDelete" asp-route-slug="@plugin.ProjectSlug">Delete</a>
+                </td>
             </tr>
         }
     </tbody>

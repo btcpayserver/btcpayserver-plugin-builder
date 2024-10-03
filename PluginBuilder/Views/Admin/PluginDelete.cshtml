@@ -3,16 +3,16 @@
 @model PluginViewModel
 @{
 Layout = "_Layout";
-ViewData.SetActivePage(AdminNavPages.Plugins, "Edit Plugin");
+ViewData.SetActivePage(AdminNavPages.Plugins, "Are you sure you want to delete this Plugin?");
 }
 
 <div class="d-sm-flex align-items-center justify-content-between">
-    <h2 class="mb-0">
+    <h2 class="mb-4">
         @ViewData["Title"]
     </h2>
 </div>
 
-<form asp-action="Edit">
+<form asp-action="Delete">
     <div class="form-group">
         <label asp-for="Slug" class="control-label"></label>
         <input asp-for="Slug" class="form-control" readonly="readonly" />
@@ -24,17 +24,7 @@ ViewData.SetActivePage(AdminNavPages.Plugins, "Edit Plugin");
         <span asp-validation-for="Identifier" class="text-danger"></span>
     </div>
     <div class="form-group">
-        <label asp-for="Settings" class="control-label"></label>
-        <textarea asp-for="Settings" class="form-control" rows="5"></textarea>
-        <span asp-validation-for="Settings" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <label asp-for="Visibility" class="control-label"></label>
-        <select asp-for="Visibility" class="form-control" asp-items="Html.GetEnumSelectList<PluginVisibilityEnum>()"></select>
-        <span asp-validation-for="Visibility" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <input type="submit" class="btn btn-primary" id="Save" value="Save" />
+        <input type="submit" class="btn btn-primary" id="Delete" value="Delete" />
         <a asp-action="ListPlugins" class="btn btn-link">Cancel</a>
     </div>
 </form>
