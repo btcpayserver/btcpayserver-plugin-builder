@@ -33,28 +33,32 @@ public class AdminController : Controller
     {
         await using var conn = await _connectionFactory.Open();
         var rows = await conn.QueryAsync($"""
-                                          SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
+                                          SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email 
                                           FROM plugins p 
-                                          JOIN versions v ON p.slug = v.plugin_slug
-                                          JOIN users_plugins up ON v.plugin_slug = up.plugin_slug 
-                                          JOIN "AspNetUsers" u ON up.user_id = u."Id"
-                                          WHERE v.ver = (SELECT MAX(ver) FROM versions WHERE plugin_slug = p.slug)
-                                          ORDER BY p.slug
+                                          LEFT JOIN (
+                                              SELECT plugin_slug, MAX(ver) AS ver, build_id, btcpay_min_ver, pre_release, updated_at
+                                              FROM versions
+                                              GROUP BY plugin_slug, build_id, btcpay_min_ver, pre_release, updated_at
+                                          ) v ON p.slug = v.plugin_slug
+                                          LEFT JOIN users_plugins up ON v.plugin_slug = up.plugin_slug 
+                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
+                                          ORDER BY p.slug;
                                           """);
         var plugins = new List<AdminPluginViewModel>();
         foreach (var row in rows)
         {
-            var plugin = new AdminPluginViewModel
+            var plugin = new AdminPluginViewModel { ProjectSlug = row.slug, Visibility = row.visibility };
+            
+            if (row.ver != null)
             {
-                ProjectSlug = row.slug,
-                Version = string.Join('.', row.ver),
-                BuildId = row.build_id,
-                BtcPayMinVer = string.Join('.', row.btcpay_min_ver),
-                PreRelease = row.pre_release,
-                UpdatedAt = row.updated_at,
-                PublisherEmail = row.email,
-                Visibility = row.visibility
-            };
+                plugin.Version = string.Join('.', row.ver);
+                plugin.BuildId = row.build_id;
+                plugin.BtcPayMinVer = string.Join('.', row.btcpay_min_ver);
+                plugin.PreRelease = row.pre_release;
+                plugin.UpdatedAt = row.updated_at;
+                plugin.PublisherEmail = row.email;
+            }
+            
             plugins.Add(plugin);
         }
 
