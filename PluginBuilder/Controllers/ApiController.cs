@@ -71,11 +71,14 @@ public class ApiController : ControllerBase
         await using var conn = await ConnectionFactory.Open();
         // This query probably doesn't have right indexes
         var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(
-            $"SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info FROM {getVersions}(@btcpayVersion, @includePreRelease) lv " +
-            "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
-            "JOIN plugins p ON b.plugin_slug = p.slug " +
-            "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL " +
-            "ORDER BY manifest_info->>'Name'",
+            $"""
+SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info
+FROM {getVersions}(@btcpayVersion, @includePreRelease) lv 
+JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
+JOIN plugins p ON b.plugin_slug = p.slug
+WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL AND (p.visibility = 'unlisted' OR p.visibility = 'listed')
+ORDER BY manifest_info->>'Name'
+""",
             new
             {
                 btcpayVersion = btcpayVersion?.VersionParts,
