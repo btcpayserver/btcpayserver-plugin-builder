@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using PluginBuilder.Extension;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 
@@ -15,6 +16,7 @@ namespace PluginBuilder.Controllers
         public RoleManager<IdentityRole> RoleManager { get; }
         private SignInManager<IdentityUser> SignInManager { get; }
         private IAuthorizationService AuthorizationService { get; }
+        public AzureStorageClient AzureStorageClient { get; }
         private ServerEnvironment Env { get; }
 
         public HomeController(
@@ -23,6 +25,7 @@ namespace PluginBuilder.Controllers
             RoleManager<IdentityRole> roleManager,
             SignInManager<IdentityUser> signInManager,
             IAuthorizationService authorizationService,
+            AzureStorageClient azureStorageClient,
             ServerEnvironment env)
         {
             ConnectionFactory = connectionFactory;
@@ -30,6 +33,7 @@ namespace PluginBuilder.Controllers
             RoleManager = roleManager;
             SignInManager = signInManager;
             AuthorizationService = authorizationService;
+            AzureStorageClient = azureStorageClient;
             Env = env;
         }
 
@@ -200,7 +204,33 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
                 return View(model);
             }
-
+            if (model.Logo != null)
+            {
+                try
+                {
+                    if (!model.Logo.Length.IsImageValidSize())
+                    {
+                        ModelState.AddModelError(nameof(model.Logo), "The file size exceeds the 1 MB limit");
+                        return View(model);
+                    }
+                    if (!model.Logo.FileName.IsFileValidImage())
+                    {
+                        ModelState.AddModelError(nameof(model.Logo), "Invalid file type. Only images are allowed");
+                        return View(model);
+                    }
+                    if (!model.Logo.FileName.IsValidFileName())
+                    {
+                        ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. File has invalid name");
+                        return View(model);
+                    }
+                    model.LogoUrl = await AzureStorageClient.UploadFileAsync(model.Logo, $"{model.Logo.FileName}");
+                }
+                catch (Exception)
+                {
+                    ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. An error occurred while uploading logo");
+                    return View(model);
+                }
+            }
             await using var conn = await ConnectionFactory.Open();
             if (!await conn.NewPlugin(pluginSlug))
             {
@@ -208,6 +238,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 return View(model);
             }
             await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);
+            await conn.SetSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl, Description = model.Description });
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 
