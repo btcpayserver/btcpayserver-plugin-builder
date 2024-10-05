@@ -256,4 +256,17 @@ public class AdminController : Controller
         model.PasswordResetToken = result;
         return View(model);
     }
+    
+    [HttpGet("emailsettings")]
+    public async Task<IActionResult> EmailSettings()
+    {
+        await using var conn = await _connectionFactory.Open();
+        var emailSettings = await conn.GetSettingAsync("EmailSettings");
+
+        var settings = string.IsNullOrEmpty(emailSettings)
+            ? new EmailSettingsViewModel()
+            : JsonConvert.DeserializeObject<EmailSettingsViewModel>(emailSettings);
+        
+        return View(settings);
+    }
 }

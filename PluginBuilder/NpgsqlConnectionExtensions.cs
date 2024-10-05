@@ -195,5 +195,25 @@ namespace PluginBuilder
                     buildInfo = bi.ToString()
                 });
         }
+        
+        
+            
+        public static Task<string> GetSettingAsync(this NpgsqlConnection connection, string key)
+        {
+            // SQL query to fetch the value from settings table
+            var query = "SELECT value FROM settings WHERE key = @key";
+            return connection.QuerySingleOrDefaultAsync<string>(query, new { key });
+        }
+
+        public static Task<int> SaveSettingAsync(this NpgsqlConnection connection, string key, string value)
+        {
+            var query = $"""
+                INSERT INTO settings(key, value) 
+                VALUES(@key, @value)
+                ON CONFLICT (key) DO UPDATE 
+                SET value = EXCLUDED.value
+                """;
+            return connection.ExecuteAsync(query, new { key, value });
+        }
     }
 }
