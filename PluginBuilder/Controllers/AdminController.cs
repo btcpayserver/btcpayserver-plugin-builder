@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using MimeKit;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
@@ -50,7 +51,6 @@ public class AdminController : Controller
         foreach (var row in rows)
         {
             var plugin = new AdminPluginViewModel { ProjectSlug = row.slug, Visibility = row.visibility };
-            
             if (row.ver != null)
             {
                 plugin.Version = string.Join('.', row.ver);
@@ -60,7 +60,7 @@ public class AdminController : Controller
                 plugin.UpdatedAt = row.updated_at;
                 plugin.PublisherEmail = row.email;
             }
-            
+
             plugins.Add(plugin);
         }
 
@@ -92,18 +92,12 @@ public class AdminController : Controller
         }
 
         await using var conn = await _connectionFactory.Open();
-        var affectedRows = await conn.ExecuteAsync(
-            $"""
-                 UPDATE plugins 
-                 SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum
-                 WHERE slug = @slug
-                """, 
-            new
-            {
-                settings = model.Settings, 
-                visibility = model.Visibility.ToString().ToLowerInvariant(),
-                slug
-            });
+        var affectedRows = await conn.ExecuteAsync($"""
+                                                     UPDATE plugins 
+                                                     SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum
+                                                     WHERE slug = @slug
+                                                    """,
+            new { settings = model.Settings, visibility = model.Visibility.ToString().ToLowerInvariant(), slug });
         if (affectedRows == 0)
         {
             return NotFound();
@@ -111,7 +105,7 @@ public class AdminController : Controller
 
         return RedirectToAction("ListPlugins");
     }
-    
+
     // Plugin Delete
     [HttpGet("plugins/delete/{slug}")]
     public async Task<IActionResult> PluginDelete(string slug)
@@ -131,15 +125,14 @@ public class AdminController : Controller
     public async Task<IActionResult> PluginDeleteConfirmed(string slug)
     {
         await using var conn = await _connectionFactory.Open();
-        var affectedRows = await conn.ExecuteAsync(
-    $"""
-    DELETE FROM builds WHERE plugin_slug = @Slug;
-    DELETE FROM builds_ids WHERE plugin_slug = @Slug;
-    DELETE FROM builds_logs WHERE plugin_slug = @Slug;
-    DELETE FROM users_plugins WHERE plugin_slug = @Slug;
-    DELETE FROM versions WHERE plugin_slug = @Slug;
-    DELETE FROM plugins WHERE slug = @Slug;
-    """, new { Slug = slug });
+        var affectedRows = await conn.ExecuteAsync($"""
+                                                    DELETE FROM builds WHERE plugin_slug = @Slug;
+                                                    DELETE FROM builds_ids WHERE plugin_slug = @Slug;
+                                                    DELETE FROM builds_logs WHERE plugin_slug = @Slug;
+                                                    DELETE FROM users_plugins WHERE plugin_slug = @Slug;
+                                                    DELETE FROM versions WHERE plugin_slug = @Slug;
+                                                    DELETE FROM plugins WHERE slug = @Slug;
+                                                    """, new { Slug = slug });
         if (affectedRows == 0)
         {
             return NotFound();
@@ -256,20 +249,14 @@ public class AdminController : Controller
         model.PasswordResetToken = result;
         return View(model);
     }
-    
+
     [HttpGet("emailsettings")]
     public async Task<IActionResult> EmailSettings()
     {
-        await using var conn = await _connectionFactory.Open();
-        var emailSettings = await conn.GetSettingAsync("EmailSettings");
-
-        var settings = string.IsNullOrEmpty(emailSettings)
-            ? new EmailSettingsViewModel { Port = 465 }
-            : JsonConvert.DeserializeObject<EmailSettingsViewModel>(emailSettings);
-        
-        return View(settings);
+        var emailSettings = await getEmailSettingsFromDb() ?? new EmailSettingsViewModel { Port = 465 };
+        return View(emailSettings);
     }
-    
+
     [HttpPost("emailsettings")]
     public async Task<IActionResult> EmailSettings(EmailSettingsViewModel model)
     {
@@ -277,7 +264,7 @@ public class AdminController : Controller
         {
             return View(model);
         }
-        
+
         try
         {
             var smtpClient = await _emailService.CreateSmtpClient(model);
@@ -292,8 +279,72 @@ public class AdminController : Controller
         await using var conn = await _connectionFactory.Open();
         var emailSettingsJson = JsonConvert.SerializeObject(model);
         await conn.SetSettingAsync("EmailSettings", emailSettingsJson);
-        
         TempData[TempDataConstant.SuccessMessage] = $"SMTP settings updated. Emails will be sent from {model.From}.";
         return RedirectToAction(nameof(EmailSettings));
+    }
+
+    [HttpGet("emailtest")]
+    public async Task<IActionResult> EmailTest()
+    {
+        EmailSettingsViewModel? emailSettings = await getEmailSettingsFromDb();
+        if (emailSettings == null)
+        {
+            TempData[TempDataConstant.WarningMessage] = $"Email testing can't be done before SMTP is set";
+            return RedirectToAction(nameof(EmailSettings));
+        }
+
+        var model = new EmailTestViewModel
+        {
+            From = emailSettings.From,
+            Subject = "Test email from BTCPay Plugin Builder",
+            Message = "This is a test email from BTCPay Plugin Builder"
+        };
+        return View(model);
+    }
+
+    [HttpPost("emailtest")]
+    public async Task<IActionResult> EmailTest(EmailTestViewModel model)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        EmailSettingsViewModel? emailSettings = await getEmailSettingsFromDb();
+        if (emailSettings == null)
+        {
+            ModelState.AddModelError(string.Empty, "Email settings not found.");
+            return View(model);
+        }
+
+        try
+        {
+            var smtpClient = await _emailService.CreateSmtpClient(emailSettings);
+            var message = new MimeMessage();
+            message.From.Add(MailboxAddress.Parse(emailSettings.From));
+            message.To.Add(MailboxAddress.Parse(model.To));
+            message.Subject = model.Subject;
+            message.Body = new TextPart("plain") { Text = model.Message };
+            await smtpClient.SendAsync(message);
+            await smtpClient.DisconnectAsync(true);
+            TempData[TempDataConstant.SuccessMessage] = $"Test email sent successfully to {model.To}.";
+        }
+        catch (Exception ex)
+        {
+            ModelState.AddModelError(string.Empty, $"Failed to send test email: {ex.Message}");
+            return View(model);
+        }
+
+        return View(model);
+    }
+
+    private async Task<EmailSettingsViewModel?> getEmailSettingsFromDb()
+    {
+        await using var conn = await _connectionFactory.Open();
+        var jsonEmail = await conn.GetSettingAsync("EmailSettings");
+        var emailSettings = string.IsNullOrEmpty(jsonEmail)
+            ? null
+            : JsonConvert.DeserializeObject<EmailSettingsViewModel>(jsonEmail);
+        return emailSettings;
     }
 }
