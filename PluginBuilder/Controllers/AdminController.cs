@@ -19,13 +19,15 @@ public class AdminController : Controller
     private readonly UserManager<IdentityUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly DBConnectionFactory _connectionFactory;
+    private readonly EmailService _emailService;
 
     public AdminController(UserManager<IdentityUser> userManager, RoleManager<IdentityRole> roleManager,
-        DBConnectionFactory connectionFactory)
+        DBConnectionFactory connectionFactory, EmailService emailService)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _connectionFactory = connectionFactory;
+        _emailService = emailService;
     }
 
     [HttpGet("plugins")]
@@ -264,9 +266,36 @@ public class AdminController : Controller
         var emailSettings = await conn.GetSettingAsync("EmailSettings");
 
         var settings = string.IsNullOrEmpty(emailSettings)
-            ? new EmailSettingsViewModel()
+            ? new EmailSettingsViewModel { Port = 465 }
             : JsonConvert.DeserializeObject<EmailSettingsViewModel>(emailSettings);
         
         return View(settings);
+    }
+    
+    [HttpPost("emailsettings")]
+    public async Task<IActionResult> EmailSettings(EmailSettingsViewModel model)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+        
+        try
+        {
+            var smtpClient = await _emailService.CreateSmtpClient(model);
+            await smtpClient.DisconnectAsync(true);
+        }
+        catch (Exception ex)
+        {
+            ModelState.AddModelError(string.Empty, $"Failed to connect to SMTP server: {ex.Message}");
+            return View(model);
+        }
+
+        await using var conn = await _connectionFactory.Open();
+        var emailSettingsJson = JsonConvert.SerializeObject(model);
+        await conn.SetSettingAsync("EmailSettings", emailSettingsJson);
+        
+        TempData[TempDataConstant.SuccessMessage] = $"SMTP settings updated. Emails will be sent from {model.From}.";
+        return RedirectToAction(nameof(EmailSettings));
     }
 }

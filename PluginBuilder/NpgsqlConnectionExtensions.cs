@@ -205,7 +205,7 @@ namespace PluginBuilder
             return connection.QuerySingleOrDefaultAsync<string>(query, new { key });
         }
 
-        public static Task<int> SaveSettingAsync(this NpgsqlConnection connection, string key, string value)
+        public static Task<int> SetSettingAsync(this NpgsqlConnection connection, string key, string value)
         {
             var query = $"""
                 INSERT INTO settings(key, value) 
