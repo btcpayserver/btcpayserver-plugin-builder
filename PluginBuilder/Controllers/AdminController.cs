@@ -325,7 +325,10 @@ public class AdminController : Controller
             var smtpClient = await _emailService.CreateSmtpClient(emailSettings);
             var message = new MimeMessage();
             message.From.Add(MailboxAddress.Parse(emailSettings.From));
-            message.To.Add(MailboxAddress.Parse(model.To));
+            foreach (var address in model.To.Split([","], StringSplitOptions.RemoveEmptyEntries))
+            {
+                message.To.Add(MailboxAddress.Parse(address.Trim()));
+            }
             message.Subject = model.Subject;
             message.Body = new TextPart("plain") { Text = model.Message };
             await smtpClient.SendAsync(message);
