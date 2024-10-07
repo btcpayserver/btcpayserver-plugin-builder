@@ -39,5 +39,9 @@
     </div>
     <div class="form-group">
         <input type="submit" class="btn btn-primary" id="Save" value="Save"/>
+        @if (Model.Password != null)
+        {
+            <a asp-action="EmailTest" class="btn btn-link">Test Email</a>
+        }
     </div>
 </form>
