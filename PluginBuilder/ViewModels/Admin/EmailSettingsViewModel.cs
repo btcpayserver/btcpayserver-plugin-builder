@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using Newtonsoft.Json;
+
 // ReSharper disable PropertyCanBeMadeInitOnly.Global
 #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
 
@@ -20,6 +22,9 @@ public class EmailSettingsViewModel
     [Required]
     [Display(Prompt = "Password on SMTP server")]
     public string Password { get; set; }
+
+    [JsonIgnore]
+    public bool PasswordSet { get { return !string.IsNullOrEmpty(Password); } }
 
     [Required]
     [Display(Prompt = "Provide from email in format: Full Name <email@server.com>")]
