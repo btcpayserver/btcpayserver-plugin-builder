@@ -261,8 +261,15 @@ public class AdminController : Controller
     }
 
     [HttpPost("emailsettings")]
-    public async Task<IActionResult> EmailSettings(EmailSettingsViewModel model)
+    public async Task<IActionResult> EmailSettings(EmailSettingsViewModel model, bool passwordSet)
     {
+        if (passwordSet)
+        {
+            var dbModel = await getEmailSettingsFromDb();
+            if (dbModel != null)
+                model.Password = dbModel.Password;
+        }
+
         if (!ModelState.IsValid)
         {
             return View(model);
@@ -285,6 +292,8 @@ public class AdminController : Controller
         TempData[TempDataConstant.SuccessMessage] = $"SMTP settings updated. Emails will be sent from {model.From}.";
         return RedirectToAction(nameof(EmailSettings));
     }
+    
+    // TODO: Implement Reset Password on server side
 
     [HttpGet("emailtest")]
     public async Task<IActionResult> EmailTest()
