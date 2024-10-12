@@ -34,21 +34,24 @@ public class AdminController : Controller
         await using var conn = await _connectionFactory.Open();
         var rows = await conn.QueryAsync($"""
                                           SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email 
-                                          FROM plugins p 
-                                          LEFT JOIN (
-                                              SELECT plugin_slug, MAX(ver) AS ver, build_id, btcpay_min_ver, pre_release, updated_at
-                                              FROM versions
-                                              GROUP BY plugin_slug, build_id, btcpay_min_ver, pre_release, updated_at
-                                          ) v ON p.slug = v.plugin_slug
-                                          LEFT JOIN users_plugins up ON v.plugin_slug = up.plugin_slug 
+                                          FROM plugins p
+                                          LEFT JOIN users_plugins up ON p.slug = up.plugin_slug 
                                           LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
+                                          LEFT JOIN (
+                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
+                                              FROM versions
+                                              ORDER BY plugin_slug, build_id DESC
+                                          ) v ON p.slug = v.plugin_slug
                                           ORDER BY p.slug;
                                           """);
         var plugins = new List<AdminPluginViewModel>();
         foreach (var row in rows)
         {
-            var plugin = new AdminPluginViewModel { ProjectSlug = row.slug, Visibility = row.visibility };
-            
+            var plugin = new AdminPluginViewModel
+            {
+                ProjectSlug = row.slug, Visibility = row.visibility, PublisherEmail = row.email
+            };
+
             if (row.ver != null)
             {
                 plugin.Version = string.Join('.', row.ver);
@@ -56,7 +59,6 @@ public class AdminController : Controller
                 plugin.BtcPayMinVer = string.Join('.', row.btcpay_min_ver);
                 plugin.PreRelease = row.pre_release;
                 plugin.UpdatedAt = row.updated_at;
-                plugin.PublisherEmail = row.email;
             }
             
             plugins.Add(plugin);
