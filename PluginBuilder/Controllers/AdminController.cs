@@ -268,6 +268,9 @@ public class AdminController : Controller
             var dbModel = await getEmailSettingsFromDb();
             if (dbModel != null)
                 model.Password = dbModel.Password;
+            
+            // if the password is set, clean the error on model.Password for ModelState
+            ModelState.Remove("Password");
         }
 
         if (!ModelState.IsValid)
