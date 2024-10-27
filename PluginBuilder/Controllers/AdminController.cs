@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Claims;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using MimeKit;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Npgsql;
 using PluginBuilder.APIModels;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
@@ -261,16 +263,24 @@ public class AdminController : Controller
     }
 
     [HttpPost("emailsettings")]
-    public async Task<IActionResult> EmailSettings(EmailSettingsViewModel model, bool passwordSet)
+    public async Task<IActionResult> EmailSettings(EmailSettingsViewModel model, bool passwordSet, string? command)
     {
         if (passwordSet)
         {
             var dbModel = await getEmailSettingsFromDb();
             if (dbModel != null)
+            {
                 model.Password = dbModel.Password;
-            
-            // if the password is set, clean the error on model.Password for ModelState
+            }
             ModelState.Remove("Password");
+
+            if (command?.Equals("resetpassword", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                model.Password = null!;
+                await SaveEmailSettingsToDatabase(model);
+                TempData[TempDataConstant.SuccessMessage] = "SMTP password reset.";
+                return RedirectToAction(nameof(EmailSettings));
+            }
         }
 
         if (!ModelState.IsValid)
@@ -278,6 +288,18 @@ public class AdminController : Controller
             return View(model);
         }
 
+        if (!await ValidateSmtpConnection(model))
+        {
+            return View(model);
+        }
+
+        await SaveEmailSettingsToDatabase(model);
+        TempData[TempDataConstant.SuccessMessage] = $"SMTP settings updated. Emails will be sent from {model.From}.";
+        return RedirectToAction(nameof(EmailSettings));
+    }
+
+    private async Task<bool> ValidateSmtpConnection(EmailSettingsViewModel model)
+    {
         try
         {
             var smtpClient = await _emailService.CreateSmtpClient(model);
@@ -286,17 +308,19 @@ public class AdminController : Controller
         catch (Exception ex)
         {
             ModelState.AddModelError(string.Empty, $"Failed to connect to SMTP server: {ex.Message}");
-            return View(model);
+            return false;
         }
 
+        return true;
+    }
+
+    private async Task SaveEmailSettingsToDatabase(EmailSettingsViewModel model)
+    {
         await using var conn = await _connectionFactory.Open();
         var emailSettingsJson = JsonConvert.SerializeObject(model);
         await conn.SetSettingAsync("EmailSettings", emailSettingsJson);
-        TempData[TempDataConstant.SuccessMessage] = $"SMTP settings updated. Emails will be sent from {model.From}.";
-        return RedirectToAction(nameof(EmailSettings));
     }
-    
-    // TODO: Implement Reset Password on server side
+    //
 
     [HttpGet("emailtest")]
     public async Task<IActionResult> EmailTest()
