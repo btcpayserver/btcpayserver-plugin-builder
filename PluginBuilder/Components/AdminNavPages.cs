@@ -4,6 +4,7 @@ namespace PluginBuilder
     {
         Users,
         Plugins,
-        EmailSettings
+        EmailSettings,
+        Settings
     }
 }

@@ -389,4 +389,20 @@ public class AdminController : Controller
             : JsonConvert.DeserializeObject<EmailSettingsViewModel>(jsonEmail);
         return emailSettings;
     }
+    
+    [HttpGet("editsettings")]
+    public async Task<IActionResult> EditSettings()
+    {
+        await using var conn = await _connectionFactory.Open();
+        var settings = await conn.GetAllSettingsAsync();
+        return View(settings);
+    }
+    
+    [HttpPost("editsettings")]
+    public async Task<IActionResult> EditSettings(string key, string value)
+    {
+        await using var conn = await _connectionFactory.Open();
+        var result = await conn.SetSettingAsync(key, value);
+        return RedirectToAction("EditSettings");
+    }
 }

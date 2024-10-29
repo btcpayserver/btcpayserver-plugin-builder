@@ -1,0 +1,77 @@
+@model IEnumerable<(string key, string value)>
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage(AdminNavPages.Users, "Edit Settings");
+}
+
+<h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+<div class="row">
+    <div class="col-xl-8 col-xxl-constrain">
+        <form id="settingsForm" asp-action="EditSettings" method="post">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Key</th>
+                        <th>Value</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var setting in Model)
+                    {
+                        <tr data-key="@setting.key">
+                            <td>@setting.key</td>
+                            <td class="value">@setting.value</td>
+                            <td>
+                                <button type="button" class="btn btn-primary edit-btn">Edit</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </form>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.edit-btn').forEach(button => {
+            button.addEventListener('click', function () {
+                document.querySelectorAll('.edit-btn').forEach(btn => btn.disabled = true);
+                const row = this.closest('tr');
+                const key = row.dataset.key;
+                const valueCell = row.querySelector('.value');
+                const value = valueCell.textContent;
+
+                valueCell.innerHTML = `
+                    <textarea class="form-control">${value}</textarea>
+                    <button type="button" class="btn btn-success save-btn">Save</button>
+                    <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                `;
+
+                row.querySelector('.save-btn').addEventListener('click', function () {
+                    const newValue = valueCell.querySelector('textarea').value;
+                    const form = document.getElementById('settingsForm');
+                    const inputKey = document.createElement('input');
+                    inputKey.type = 'hidden';
+                    inputKey.name = 'key';
+                    inputKey.value = key;
+                    form.appendChild(inputKey);
+
+                    const inputValue = document.createElement('input');
+                    inputValue.type = 'hidden';
+                    inputValue.name = 'value';
+                    inputValue.value = newValue;
+                    form.appendChild(inputValue);
+
+                    form.submit();
+                });
+
+                row.querySelector('.cancel-btn').addEventListener('click', function () {
+                    valueCell.innerHTML = value;
+                    document.querySelectorAll('.edit-btn').forEach(btn => btn.disabled = false);
+                });
+            });
+        });
+    });
+</script>

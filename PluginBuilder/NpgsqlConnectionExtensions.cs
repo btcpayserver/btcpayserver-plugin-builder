@@ -196,6 +196,13 @@ namespace PluginBuilder
                 });
         }
         
+        // Add the method to get all the settings from database 
+        public static Task<IEnumerable<(string key, string value)>> GetAllSettingsAsync(this NpgsqlConnection connection)
+        {
+            // SQL query to fetch all the settings from settings table
+            var query = "SELECT key, value FROM settings";
+            return connection.QueryAsync<(string key, string value)>(query);
+        }
         
             
         public static Task<string> GetSettingAsync(this NpgsqlConnection connection, string key)
