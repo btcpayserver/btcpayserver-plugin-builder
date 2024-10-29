@@ -394,8 +394,11 @@ public class AdminController : Controller
     public async Task<IActionResult> EditSettings()
     {
         await using var conn = await _connectionFactory.Open();
-        var settings = await conn.GetAllSettingsAsync();
-        return View(settings);
+        var result = await conn.GetAllSettingsAsync();
+        var list = result.ToList();
+        list.RemoveAll(setting => setting.key == "EmailSettings");
+        
+        return View(list);
     }
     
     [HttpPost("editsettings")]
