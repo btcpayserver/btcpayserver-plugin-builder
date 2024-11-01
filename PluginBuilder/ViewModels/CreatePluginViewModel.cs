@@ -1,6 +1,5 @@
 #nullable disable
 using System.ComponentModel.DataAnnotations;
-using PluginBuilder.Views.Enums;
 
 namespace PluginBuilder.ViewModels
 {

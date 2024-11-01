@@ -1,4 +1,3 @@
-@using PluginBuilder.Views.Enums
 @model PluginBuilder.ViewModels.CreatePluginViewModel
 @{
     Layout = "_Layout";
@@ -15,7 +14,6 @@
                 <input asp-for="PluginSlug" class="form-control" placeholder="my-awesome-plugin" required />
                 <span asp-validation-for="PluginSlug" class="text-danger"></span>
             </div>
-
             <div class="form-group mt-4">
                 <input type="submit" value="Create" class="btn btn-primary" id="Create" />
             </div>

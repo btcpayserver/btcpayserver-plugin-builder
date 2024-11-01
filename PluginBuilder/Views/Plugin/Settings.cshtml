@@ -1,5 +1,4 @@
-@using PluginBuilder.Views.Enums
-@model PluginSettings
+@model PluginBuilder.PluginSettings
 @{
 	Layout = "_Layout";
 	ViewData.SetActivePage(PluginNavPages.Settings, "Plugin settings");
@@ -35,32 +34,9 @@
                 <input asp-for="BuildConfig" class="form-control" placeholder="Release" />
                 <span asp-validation-for="BuildConfig" class="text-danger"></span>
             </div>
-
-            <div class="form-group">
-                <label asp-for="Tags" class="form-label">Tags</label>
-                <input asp-for="Tags" id="pluginTags" class="form-control" placeholder="Type and press Enter to add tags">
-                <div class="form-text">Easily filter the different items using tags, used in the plugin list.</div>
-                <span asp-validation-for="BuildConfig" class="text-danger"></span>
-            </div>
-
             <div class="form-group mt-4">
                 <input type="submit" value="Update" class="btn btn-primary" id="Update" />
             </div>
         </form>
     </div>
 </div>
-
-<link href="~/vendor/tom-select/tom-select.bootstrap5.min.css" asp-append-version="true" rel="stylesheet">
-<script src="~/vendor/tom-select/tom-select.complete.min.js" asp-append-version="true"></script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        new TomSelect('#pluginTags', {
-            plugins: ['remove_button'],
-            persist: false,
-            createOnBlur: true,
-            create: true,
-            delimiter: ','
-        });
-    });
-</script>

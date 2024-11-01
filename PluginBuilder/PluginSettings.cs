@@ -1,5 +1,6 @@
 #nullable disable
 using System.ComponentModel.DataAnnotations;
+using Newtonsoft.Json;
 
 namespace PluginBuilder
 {
@@ -12,7 +13,6 @@ namespace PluginBuilder
         [MaxLength(200)]
         [Display(Name = "Git repository")]
         public string GitRepository { get; set; }
-
         [MaxLength(200)]
         [Display(Name = "Git branch or tag")]
         public string GitRef { get; set; }
@@ -24,6 +24,5 @@ namespace PluginBuilder
         [MaxLength(200)]
         [Display(Name = "Dotnet build configuration ")]
         public string BuildConfig { get; set; }
-        public string Tags { get; set; }
     }
 }
