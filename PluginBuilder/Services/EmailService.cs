@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using MailKit.Net.Smtp;
 using MimeKit;
+using Newtonsoft.Json;
+using Npgsql;
 using PluginBuilder.ViewModels.Admin;
 
 namespace PluginBuilder.Services;
@@ -30,6 +32,38 @@ public class EmailService
     //     mm.Bcc.AddRange(bcc ?? System.Array.Empty<InternetAddress>());
     //     return mm;
     // }
+    private readonly DBConnectionFactory _connectionFactory;
+
+    public EmailService(DBConnectionFactory connectionFactory)
+    {
+        _connectionFactory = connectionFactory;
+    }
+
+    public async Task SendEmail(string to, string subject, string messageText)
+    {
+        var emailSettings = await GetEmailSettingsFromDb();
+        var smtpClient = await CreateSmtpClient(emailSettings);
+        var message = new MimeMessage();
+        message.From.Add(MailboxAddress.Parse(emailSettings.From));
+        foreach (var address in to.Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            message.To.Add(MailboxAddress.Parse(address.Trim()));
+        }
+        message.Subject = subject;
+        message.Body = new TextPart("plain") { Text = messageText };
+        await smtpClient.SendAsync(message);
+        await smtpClient.DisconnectAsync(true);
+    }
+
+    public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb()
+    {
+        await using var conn = await _connectionFactory.Open();
+        var jsonEmail = await conn.GetSettingAsync("EmailSettings");
+        var emailSettings = string.IsNullOrEmpty(jsonEmail)
+            ? null
+            : JsonConvert.DeserializeObject<EmailSettingsViewModel>(jsonEmail);
+        return emailSettings;
+    }
 
     public async Task<SmtpClient> CreateSmtpClient(EmailSettingsViewModel settings)
     {
