@@ -14,9 +14,19 @@
                 <input asp-for="PluginSlug" class="form-control" placeholder="my-awesome-plugin" required />
                 <span asp-validation-for="PluginSlug" class="text-danger"></span>
             </div>
+
+            <div class="form-group mt-3">
+                <label asp-for="Tags" class="form-label"></label>
+                <input asp-for="Tags" type="text" class="form-control" id="Tags" name="Tags" placeholder="Enter tags, e.g., 'plugin, extension, tool'" />
+            </div>
+
             <div class="form-group mt-4">
                 <input type="submit" value="Create" class="btn btn-primary" id="Create" />
             </div>
         </form>
     </div>
 </div>
+
+<link href="~/vendor/tom-select/tom-select.bootstrap5.min.css" asp-append-version="true" rel="stylesheet">
+<script src="~/vendor/tom-select/tom-select.complete.min.js" asp-append-version="true"></script>
+<script src="~/scripts/template-editor.js" asp-append-version="true"></script>
