@@ -30,13 +30,17 @@ List the published versions of the server compatible with `btcpayVersion`. (opti
 
 If `includeAllVersions` is set to `true`, all versions will be returned, otherwise only the latest version for each plugin will be returned.
 
-#### Download a version
+#### Get a version
 
 `HTTP GET /api/v1/plugins/{pluginSelector}/versions/{version}`
 
-Download the binaries of the plugin.
-
 `pluginSelector` can be either a plugin slug (example: `rockstar-stylist`) or a plugin identifier surrounded by brackets (example: `[BTCPayServer.Plugins.RockstarStylist]`).
+
+#### Download a version
+
+`HTTP GET /api/v1/plugins/{pluginSelector}/versions/{version}/download`
+
+Download the binaries of the plugin.
 
 ### Authenticated endpoints
 
