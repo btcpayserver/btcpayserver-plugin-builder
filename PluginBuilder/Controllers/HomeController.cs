@@ -177,7 +177,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
         //
         [AllowAnonymous]
         [HttpGet("/VerifyEmailAddress")]
-        public async Task<IActionResult> VerifyEmailAddress(string email)
+        public IActionResult VerifyEmailAddress(string email)
         {
             return View(email);
         }
