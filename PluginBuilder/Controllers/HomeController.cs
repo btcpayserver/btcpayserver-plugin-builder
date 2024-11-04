@@ -2,7 +2,6 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using PluginBuilder.Extension;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 
@@ -11,12 +10,12 @@ namespace PluginBuilder.Controllers
     [Authorize]
     public class HomeController : Controller
     {
+        private readonly EmailService _emailService;
         private DBConnectionFactory ConnectionFactory { get; }
         private UserManager<IdentityUser> UserManager { get; }
         public RoleManager<IdentityRole> RoleManager { get; }
         private SignInManager<IdentityUser> SignInManager { get; }
         private IAuthorizationService AuthorizationService { get; }
-        public AzureStorageClient AzureStorageClient { get; }
         private ServerEnvironment Env { get; }
 
         public HomeController(
@@ -25,15 +24,15 @@ namespace PluginBuilder.Controllers
             RoleManager<IdentityRole> roleManager,
             SignInManager<IdentityUser> signInManager,
             IAuthorizationService authorizationService,
-            AzureStorageClient azureStorageClient,
+            EmailService emailService,
             ServerEnvironment env)
         {
+            _emailService = emailService;
             ConnectionFactory = connectionFactory;
             UserManager = userManager;
             RoleManager = roleManager;
             SignInManager = signInManager;
             AuthorizationService = authorizationService;
-            AzureStorageClient = azureStorageClient;
             Env = env;
         }
 
@@ -73,6 +72,8 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             }
             return View("Views/Plugin/Dashboard",vm);
         }
+
+        // auth methods
 
         [HttpGet("/logout")]
         public async Task<IActionResult> Logout()
@@ -142,16 +143,97 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 }
                 return View(model);
             }
+            
+            await using var conn = await ConnectionFactory.Open();
+            bool verifiedEmailReq = await conn.GetSettingAsync("RequireConfirmedEmail") == "true";
 
             var admins = await UserManager.GetUsersInRoleAsync(Roles.ServerAdmin);
-            if (admins.Count == 0 || (model.IsAdmin && Env.CheatMode))
+            var isAdminReg = admins.Count == 0 || (model.IsAdmin && Env.CheatMode);
+            if (isAdminReg)
             {
                 await UserManager.AddToRoleAsync(user, Roles.ServerAdmin);
             }
 
-            await SignInManager.SignInAsync(user, isPersistent: false);
-            return RedirectToLocal(returnUrl);
+            // check if it's not admin and we are requiring email verifications
+            var emailSettings = await _emailService.GetEmailSettingsFromDb();
+            if (!isAdminReg && verifiedEmailReq && emailSettings?.PasswordSet == true)
+            {
+                var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+                var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
+                    Request.Scheme, Request.Host.ToString());
+                var body = $"Please verify your account by visiting: {link}";
+
+                await _emailService.SendEmail(model.Email, "Verify your account on BTCPay Server Plugin Builder", body);
+                
+                return RedirectToAction(nameof(VerifyEmailAddress), new { email = user.Email });
+            }
+            else
+            {
+                await SignInManager.SignInAsync(user, isPersistent: false);
+                return RedirectToLocal(returnUrl);
+            }
         }
+        
+        //
+        [AllowAnonymous]
+        [HttpGet("/VerifyEmailAddress")]
+        public IActionResult VerifyEmailAddress(string email)
+        {
+            return View(email);
+        }
+        [AllowAnonymous]
+        [HttpGet("/ConfirmEmail")]
+        public async Task<IActionResult> ConfirmEmail(string uid, string token)
+        {
+            var user = await UserManager.FindByIdAsync(uid);
+            if (user is null)
+            {
+                return NotFound();
+            }
+            var result = await UserManager.ConfirmEmailAsync(user, token);
+            if (result.Succeeded)
+            {
+                await SignInManager.SignInAsync(user, isPersistent: false);
+                return RedirectToAction(nameof(HomePage));
+            }
+            return BadRequest();
+        }
+        
+
+        // password reset flow
+
+        [AllowAnonymous]
+        [HttpGet("/passwordreset")]
+        public IActionResult PasswordReset()
+        {
+            return View(new PasswordResetViewModel());
+        }
+
+        [AllowAnonymous]
+        [HttpPost("/passwordreset")]
+        public async Task<IActionResult> PasswordReset(PasswordResetViewModel model)
+        {
+            if (!ModelState.IsValid)
+                return View(model);
+
+            // TODO: Require the user to have a confirmed email before they can log on.
+            var user = await UserManager.FindByEmailAsync(model.Email);
+            if (user is null)
+            {
+                ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
+                return View(model);
+            }
+
+            var result = await UserManager.ResetPasswordAsync(user, model.PasswordResetToken, model.Password);
+            model.PasswordSuccessfulyReset = result.Succeeded;
+
+            foreach (var err in result.Errors)
+                ModelState.AddModelError("PasswordResetToken", $"{err.Description}");
+            
+            return View(model);
+        }
+
+        // plugin methods
 
         [HttpGet("/plugins/create")]
         public IActionResult CreatePlugin()
@@ -167,33 +249,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
                 return View(model);
             }
-            if (model.Logo != null)
-            {
-                try
-                {
-                    if (!model.Logo.Length.IsImageValidSize())
-                    {
-                        ModelState.AddModelError(nameof(model.Logo), "The file size exceeds the 1 MB limit");
-                        return View(model);
-                    }
-                    if (!model.Logo.FileName.IsFileValidImage())
-                    {
-                        ModelState.AddModelError(nameof(model.Logo), "Invalid file type. Only images are allowed");
-                        return View(model);
-                    }
-                    if (!model.Logo.FileName.IsValidFileName())
-                    {
-                        ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. File has invalid name");
-                        return View(model);
-                    }
-                    model.LogoUrl = await AzureStorageClient.UploadFileAsync(model.Logo, $"{model.Logo.FileName}");
-                }
-                catch (Exception)
-                {
-                    ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. An error occurred while uploading logo");
-                    return View(model);
-                }
-            }
+
             await using var conn = await ConnectionFactory.Open();
             if (!await conn.NewPlugin(pluginSlug))
             {
@@ -201,7 +257,6 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 return View(model);
             }
             await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);
-            await conn.SetSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl, Description = model.Description });
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 

@@ -59,7 +59,7 @@ public class ApiController : ControllerBase
     [HttpGet("plugins")]
     public async Task<IActionResult> Plugins(
         [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null,
-        bool? includePreRelease = null, bool? includeAllVersions = null)
+        bool? includePreRelease = null, bool? includeAllVersions = null, string? searchPluginName = null)
     {
         includePreRelease ??= false;
         includeAllVersions ??= false;
@@ -69,30 +69,31 @@ public class ApiController : ControllerBase
             false => "get_latest_versions"
         };
         await using var conn = await ConnectionFactory.Open();
-        // This query probably doesn't have right indexes
+        
+        // This query definitely doesn't have right indexes
+        var query = $"""
+                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info
+                     FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
+                     JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
+                     JOIN plugins p ON b.plugin_slug = p.slug
+                     WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL 
+                     AND (p.visibility = 'unlisted' OR p.visibility = 'listed')
+                     {(!string.IsNullOrWhiteSpace(searchPluginName) ? "AND (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)" : "")}
+                     ORDER BY manifest_info->>'Name'
+                     """;
         var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(
-            $"SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info FROM {getVersions}(@btcpayVersion, @includePreRelease) lv " +
-            "JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id " +
-            "JOIN plugins p ON b.plugin_slug = p.slug " +
-            "WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL " +
-            "ORDER BY manifest_info->>'Name'",
+            query,
             new
             {
                 btcpayVersion = btcpayVersion?.VersionParts,
-                includePreRelease = includePreRelease.Value
+                includePreRelease = includePreRelease.Value,
+                searchPattern = $"%{searchPluginName}%"
             });
-
+        
         rows.TryGetNonEnumeratedCount(out var count);
         var versions = new List<PublishedVersion>(count);
         foreach (var r in rows)
         {
-            var publisherAccountDetails = await conn.QueryFirstAsync<string>(
-            $"SELECT a.\"AccountDetail\" FROM  \"AspNetUsers\" a JOIN users_plugins up ON a.\"Id\" = up.user_id WHERE up.plugin_slug = @plugin_slug",
-            new
-            {
-                plugin_slug = r.plugin_slug
-            });
-            
             var v = new PublishedVersion
             {
                 ProjectSlug = r.plugin_slug,
@@ -100,13 +101,47 @@ public class ApiController : ControllerBase
                 BuildId = r.id,
                 BuildInfo = JObject.Parse(r.build_info),
                 ManifestInfo = JObject.Parse(r.manifest_info),
-                PublisherAccountDetails = JObject.Parse(publisherAccountDetails),
-                PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
                 Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
             };
             versions.Add(v);
         }
         return Ok(versions);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("plugins/{pluginSlug}/versions/{version}")]
+    public async Task<IActionResult> GetPlugin(
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion version)
+    {
+        await using var conn = await ConnectionFactory.Open();
+        var query = $"""
+                     SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info
+                     FROM versions v
+                     JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
+                     JOIN plugins p ON b.plugin_slug = p.slug
+                     WHERE v.plugin_slug = @pluginSlug AND v.ver = @version
+                     AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL 
+                     LIMIT 1
+                     """;
+        var r = await conn.QueryFirstOrDefaultAsync(
+            query,
+            new
+            {
+                pluginSlug = pluginSlug.ToString(),
+                version = version.VersionParts
+            });
+        if (r is null)
+            return NotFound();
+        return Ok(new PublishedVersion
+        {
+            ProjectSlug = pluginSlug.ToString(),
+            Version = version.Version,
+            BuildId = (long)r.build_id,
+            BuildInfo = JObject.Parse(r.build_info),
+            ManifestInfo = JObject.Parse(r.manifest_info),
+            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+        });
     }
 
     [AllowAnonymous]
