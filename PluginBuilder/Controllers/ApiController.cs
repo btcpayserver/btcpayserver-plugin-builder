@@ -109,6 +109,42 @@ public class ApiController : ControllerBase
     }
 
     [AllowAnonymous]
+    [HttpGet("plugins/{pluginSlug}/versions/{version}")]
+    public async Task<IActionResult> GetPlugin(
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion version)
+    {
+        await using var conn = await ConnectionFactory.Open();
+        var query = $"""
+                     SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info
+                     FROM versions v
+                     JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
+                     JOIN plugins p ON b.plugin_slug = p.slug
+                     WHERE v.plugin_slug = @pluginSlug AND v.ver = @version
+                     AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL 
+                     LIMIT 1
+                     """;
+        var r = await conn.QueryFirstOrDefaultAsync(
+            query,
+            new
+            {
+                pluginSlug = pluginSlug.ToString(),
+                version = version.VersionParts
+            });
+        if (r is null)
+            return NotFound();
+        return Ok(new PublishedVersion
+        {
+            ProjectSlug = pluginSlug.ToString(),
+            Version = version.Version,
+            BuildId = (long)r.build_id,
+            BuildInfo = JObject.Parse(r.build_info),
+            ManifestInfo = JObject.Parse(r.manifest_info),
+            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+        });
+    }
+
+    [AllowAnonymous]
     [HttpGet("plugins/{pluginSlug}/versions/{version}/download")]
     public async Task<IActionResult> Download(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
