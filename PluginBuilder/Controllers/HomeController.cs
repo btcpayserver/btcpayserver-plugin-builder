@@ -10,6 +10,7 @@ namespace PluginBuilder.Controllers
     [Authorize]
     public class HomeController : Controller
     {
+        private readonly EmailService _emailService;
         private DBConnectionFactory ConnectionFactory { get; }
         private UserManager<IdentityUser> UserManager { get; }
         public RoleManager<IdentityRole> RoleManager { get; }
@@ -23,8 +24,10 @@ namespace PluginBuilder.Controllers
             RoleManager<IdentityRole> roleManager,
             SignInManager<IdentityUser> signInManager,
             IAuthorizationService authorizationService,
+            EmailService emailService,
             ServerEnvironment env)
         {
+            _emailService = emailService;
             ConnectionFactory = connectionFactory;
             UserManager = userManager;
             RoleManager = roleManager;
@@ -140,16 +143,62 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 }
                 return View(model);
             }
+            
+            await using var conn = await ConnectionFactory.Open();
+            bool verifiedEmailReq = await conn.GetSettingAsync("RequireConfirmedEmail") == "true";
 
             var admins = await UserManager.GetUsersInRoleAsync(Roles.ServerAdmin);
-            if (admins.Count == 0 || (model.IsAdmin && Env.CheatMode))
+            var isAdminReg = admins.Count == 0 || (model.IsAdmin && Env.CheatMode);
+            if (isAdminReg)
             {
                 await UserManager.AddToRoleAsync(user, Roles.ServerAdmin);
             }
 
-            await SignInManager.SignInAsync(user, isPersistent: false);
-            return RedirectToLocal(returnUrl);
+            // check if it's not admin and we are requiring email verifications
+            var emailSettings = await _emailService.GetEmailSettingsFromDb();
+            if (!isAdminReg && verifiedEmailReq && emailSettings?.PasswordSet == true)
+            {
+                var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+                var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
+                    Request.Scheme, Request.Host.ToString());
+                var body = $"Please verify your account by visiting: {link}";
+
+                await _emailService.SendEmail(model.Email, "Verify your account on BTCPay Server Plugin Builder", body);
+                
+                return RedirectToAction(nameof(VerifyEmailAddress), new { email = user.Email });
+            }
+            else
+            {
+                await SignInManager.SignInAsync(user, isPersistent: false);
+                return RedirectToLocal(returnUrl);
+            }
         }
+        
+        //
+        [AllowAnonymous]
+        [HttpGet("/VerifyEmailAddress")]
+        public IActionResult VerifyEmailAddress(string email)
+        {
+            return View(email);
+        }
+        [AllowAnonymous]
+        [HttpGet("/ConfirmEmail")]
+        public async Task<IActionResult> ConfirmEmail(string uid, string token)
+        {
+            var user = await UserManager.FindByIdAsync(uid);
+            if (user is null)
+            {
+                return NotFound();
+            }
+            var result = await UserManager.ConfirmEmailAsync(user, token);
+            if (result.Succeeded)
+            {
+                await SignInManager.SignInAsync(user, isPersistent: false);
+                return RedirectToAction(nameof(HomePage));
+            }
+            return BadRequest();
+        }
+        
 
         // password reset flow
 

@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,6 +17,18 @@ namespace PluginBuilder.Tests
         {
             var result = await httpClient.GetStringAsync($"api/v1/plugins?btcpayVersion={btcpayVersion}&includePreRelease={includePreRelease}&includeAllVersions={includeAllVersions}");
             return JsonConvert.DeserializeObject<PublishedVersion[]>(result, serializerSettings) ?? throw new InvalidOperationException();
+        }
+        public static async Task<PublishedVersion?> GetPlugin(this HttpClient httpClient, string pluginSlug, string version)
+        {
+            try
+            {
+                var result = await httpClient.GetStringAsync($"api/v1/plugins/{pluginSlug}/versions/{version}");
+                return JsonConvert.DeserializeObject<PublishedVersion?>(result, serializerSettings);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return null;
+            }
         }
         public static async Task<byte[]> DownloadPlugin(this HttpClient httpClient, PluginSelector pluginSelector, PluginVersion pluginVersion)
         {

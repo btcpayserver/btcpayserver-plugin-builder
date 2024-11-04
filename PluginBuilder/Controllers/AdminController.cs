@@ -258,7 +258,7 @@ public class AdminController : Controller
     [HttpGet("emailsettings")]
     public async Task<IActionResult> EmailSettings()
     {
-        var emailSettings = await getEmailSettingsFromDb() ?? new EmailSettingsViewModel { Port = 465 };
+        var emailSettings = await _emailService.GetEmailSettingsFromDb() ?? new EmailSettingsViewModel { Port = 465 };
         return View(emailSettings);
     }
 
@@ -267,7 +267,7 @@ public class AdminController : Controller
     {
         if (passwordSet)
         {
-            var dbModel = await getEmailSettingsFromDb();
+            var dbModel = await _emailService.GetEmailSettingsFromDb();
             if (dbModel != null)
             {
                 model.Password = dbModel.Password;
@@ -325,7 +325,7 @@ public class AdminController : Controller
     [HttpGet("emailtest")]
     public async Task<IActionResult> EmailTest()
     {
-        EmailSettingsViewModel? emailSettings = await getEmailSettingsFromDb();
+        EmailSettingsViewModel? emailSettings = await _emailService.GetEmailSettingsFromDb();
         if (emailSettings == null)
         {
             TempData[TempDataConstant.WarningMessage] = $"Email testing can't be done before SMTP is set";
@@ -349,12 +349,25 @@ public class AdminController : Controller
             return View(model);
         }
 
-        EmailSettingsViewModel? emailSettings = await getEmailSettingsFromDb();
+        EmailSettingsViewModel? emailSettings = await _emailService.GetEmailSettingsFromDb();
         if (emailSettings == null)
         {
             ModelState.AddModelError(string.Empty, "Email settings not found.");
             return View(model);
         }
+        
+        try
+        {
+            await _emailService.SendEmail(model.To, model.Subject, model.Message);
+            TempData[TempDataConstant.SuccessMessage] = $"Test email sent successfully to {model.To}.";
+        }
+        catch (Exception ex)
+        {
+            ModelState.AddModelError(string.Empty, $"Failed to send test email: {ex.Message}");
+            return View(model);
+        }
+
+        return View(model);
 
         try
         {
@@ -378,16 +391,6 @@ public class AdminController : Controller
         }
 
         return View(model);
-    }
-
-    private async Task<EmailSettingsViewModel?> getEmailSettingsFromDb()
-    {
-        await using var conn = await _connectionFactory.Open();
-        var jsonEmail = await conn.GetSettingAsync("EmailSettings");
-        var emailSettings = string.IsNullOrEmpty(jsonEmail)
-            ? null
-            : JsonConvert.DeserializeObject<EmailSettingsViewModel>(jsonEmail);
-        return emailSettings;
     }
     
     [HttpGet("editsettings")]
