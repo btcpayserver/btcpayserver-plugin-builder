@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using PluginBuilder.Extension;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 
@@ -16,6 +17,7 @@ namespace PluginBuilder.Controllers
         public RoleManager<IdentityRole> RoleManager { get; }
         private SignInManager<IdentityUser> SignInManager { get; }
         private IAuthorizationService AuthorizationService { get; }
+        public AzureStorageClient AzureStorageClient { get; }
         private ServerEnvironment Env { get; }
 
         public HomeController(
@@ -24,6 +26,7 @@ namespace PluginBuilder.Controllers
             RoleManager<IdentityRole> roleManager,
             SignInManager<IdentityUser> signInManager,
             IAuthorizationService authorizationService,
+            AzureStorageClient azureStorageClient,
             EmailService emailService,
             ServerEnvironment env)
         {
@@ -33,6 +36,7 @@ namespace PluginBuilder.Controllers
             RoleManager = roleManager;
             SignInManager = signInManager;
             AuthorizationService = authorizationService;
+            AzureStorageClient = azureStorageClient;
             Env = env;
         }
 
@@ -249,14 +253,32 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
                 return View(model);
             }
-
             await using var conn = await ConnectionFactory.Open();
             if (!await conn.NewPlugin(pluginSlug))
             {
                 ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
                 return View(model);
             }
+            if (model.Logo != null)
+            {
+                string errorMessage;
+                if (!model.Logo.ValidateUploadedImage(out errorMessage))
+                {
+                    ModelState.AddModelError(nameof(model.Logo), $"Image upload validation failed: {errorMessage}");
+                    return View(model);
+                }
+                try
+                {
+                    model.LogoUrl = await AzureStorageClient.UploadFileAsync(model.Logo, $"{model.Logo.FileName}");
+                }
+                catch (Exception)
+                {
+                    ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. An error occurred while uploading logo image");
+                    return View(model);
+                }
+            }
             await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);
+            await conn.SetSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl, Description = model.Description });
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 

@@ -66,23 +66,14 @@ namespace PluginBuilder.Controllers
             }
             if (settingViewModel.Logo != null)
             {
+                string errorMessage;
+                if (!settingViewModel.Logo.ValidateUploadedImage(out errorMessage))
+                {
+                    ModelState.AddModelError(nameof(settingViewModel.Logo), $"Image upload validation failed: {errorMessage}");
+                    return View(settingViewModel);
+                }
                 try
                 {
-                    if (!settingViewModel.Logo.Length.IsImageValidSize())
-                    {
-                        ModelState.AddModelError(nameof(settingViewModel.Logo), "The file size exceeds the 1 MB limit");
-                        return View(settingViewModel);
-                    }
-                    if (!settingViewModel.Logo.FileName.IsFileValidImage())
-                    {
-                        ModelState.AddModelError(nameof(settingViewModel.Logo), "Invalid file type. Only images are allowed");
-                        return View(settingViewModel);
-                    }
-                    if (!settingViewModel.Logo.FileName.IsValidFileName())
-                    {
-                        ModelState.AddModelError(nameof(settingViewModel.Logo), "Could not complete plugin creation. File has invalid name");
-                        return View(settingViewModel);
-                    }
                     url = await AzureStorageClient.UploadFileAsync(settingViewModel.Logo, $"{settingViewModel.Logo.FileName}");
                     settingViewModel.LogoUrl = url;
                 }
@@ -94,7 +85,6 @@ namespace PluginBuilder.Controllers
             }
             else if (RemoveLogoFile)
             {
-                url = null;
                 settingViewModel.Logo = null;
                 settingViewModel.LogoUrl = null;
             }
