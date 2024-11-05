@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 
 namespace PluginBuilder

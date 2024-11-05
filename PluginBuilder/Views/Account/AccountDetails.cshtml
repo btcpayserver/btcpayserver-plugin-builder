@@ -1,8 +1,7 @@
-@using PluginBuilder.Enums
-@model AccountSettings
+@model AccountDetailsViewModel
 @{
     Layout = "_Layout";
-    ViewData.SetActivePage(AccountNavPages.Settings, "Account Settings");
+    ViewData.SetActivePage("Account Settings");
 }
 
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
@@ -11,27 +10,36 @@
         <form asp-action="UpdateAccountDetail">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
             <div class="form-group">
-                <label asp-for="Github" class="form-label" data-required></label>
-                <input asp-for="Github" class="form-control" placeholder="https://github.com/Kukks" required />
-                <span asp-validation-for="Github" class="text-danger"></span>
+                <label asp-for="AccountEmail" class="form-label" data-required></label>
+                <div class="input-group">
+                    <input asp-for="AccountEmail" class="form-control" placeholder="" readonly="readonly"/>
+                    @* <div class="input-group-append"> *@
+                    @*     <a asp-controller="Account" asp-action="ChangeEmail" class="btn btn-secondary">Change Email</a> *@
+                    @* </div> *@
+                </div>
             </div>
             <div class="form-group">
-                <label asp-for="Twitter" class="form-label"></label>
-                <input asp-for="Twitter" class="form-control" placeholder="https://twitter.com/r0ckstardev" />
-                <span asp-validation-for="Nostr" class="text-danger"></span>
+                <label asp-for="Settings.Github" class="form-label" data-required></label>
+                <input asp-for="Settings.Github" class="form-control" placeholder="https://github.com/Kukks" required/>
+                <span asp-validation-for="Settings.Github" class="text-danger"></span>
             </div>
             <div class="form-group">
-                <label asp-for="Nostr" class="form-label"></label>
-                <input asp-for="Nostr" class="form-control" placeholder="npub1h0dl0dkjp884wz3*********hlvp68v0lfngnscdjsuy8yqm" />
-                <span asp-validation-for="Nostr" class="text-danger"></span>
+                <label asp-for="Settings.Twitter" class="form-label"></label>
+                <input asp-for="Settings.Twitter" class="form-control" placeholder="https://twitter.com/r0ckstardev"/>
+                <span asp-validation-for="Settings.Twitter" class="text-danger"></span>
             </div>
             <div class="form-group">
-                <label asp-for="Email" class="form-label"></label>
-                <input asp-for="Email" class="form-control" type="email" placeholder="plugins@kukks.com" />
-                <span asp-validation-for="Email" class="text-danger"></span>
+                <label asp-for="Settings.Nostr" class="form-label"></label>
+                <input asp-for="Settings.Nostr" class="form-control" placeholder="npub1h0dl0dkjp884wz3*********hlvp68v0lfngnscdjsuy8yqm"/>
+                <span asp-validation-for="Settings.Nostr" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Settings.Email" class="form-label"></label>
+                <input asp-for="Settings.Email" class="form-control" type="email" placeholder="plugins@kukks.com"/>
+                <span asp-validation-for="Settings.Email" class="text-danger"></span>
             </div>
             <div class="form-group mt-4">
-                <input type="submit" class="btn btn-primary" id="Save" value="Save" />
+                <input type="submit" class="btn btn-primary" id="Save" value="Save"/>
             </div>
         </form>
     </div>
