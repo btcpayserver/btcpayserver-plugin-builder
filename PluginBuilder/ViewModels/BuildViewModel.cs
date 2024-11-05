@@ -18,5 +18,6 @@ namespace PluginBuilder.ViewModels
         public string GitRef { get; internal set; }
         public string RepositoryLink { get; internal set; }
         public string Logs { get; set; }
+        public bool IsBuildSigned { get; set; }
     }
 }

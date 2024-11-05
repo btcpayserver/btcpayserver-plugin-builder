@@ -91,7 +91,7 @@ public class Program
         services.AddHostedService<DockerStartupHostedService>();
         services.AddHostedService<AzureStartupHostedService>();
         services.AddHostedService<PluginHubHostedService>();
-
+        services.AddTransient<PgpKeyService>();
         services.AddSingleton<DBConnectionFactory>();
         services.AddSingleton<BuildService>();
         services.AddSingleton<ProcessRunner>();
