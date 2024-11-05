@@ -4,6 +4,15 @@
 	ViewData.SetActivePage(PluginNavPages.Dashboard, $"Build {Model.FullBuildId.BuildId}", Model.FullBuildId.ToString());
 }
 
+<div class="alert alert-warning alert-dismissible mb-4" role="alert">
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">
+        <vc:icon symbol="close" />
+    </button>
+    <h5 class="alert-heading">Important notice about plugin build release</h5>
+    <p class="mb-0">To enable release for a plugin build, authors will have to sign the shasum plugin manifest.</p>
+    <p class="mb-0">To sign off a build release, compute SHA256 of the content of the plugin manifest. You can then sign off the shasum string with your PGP private key and then submit the armored message for completiony.</p>
+</div>
+
 <div class="d-sm-flex align-items-center justify-content-between">
 	<div class="d-sm-flex align-items-center">
 		<h2 class="mb-0">
@@ -25,9 +34,18 @@
             case "uploaded":
                 if (Model.Version is null || Model.Version?.PreRelease is true)
                 {
-                    <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
-                        <button type="submit" name="command" value="release" class="btn btn-primary">Release</button>
-                    </form>
+                    if (Model.IsBuildSigned)
+                    {
+                        <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
+                            <button type="submit" name="command" value="release" class="btn btn-primary">Release</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#signBuildModal">
+                            Sign Build Release
+                        </button>
+                    }
 					<a asp-action="CreateBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-copyBuild="@Model.FullBuildId.BuildId" class="btn btn-secondary">Retry</a>
                 }
                 else if (Model.Version?.Published is true)
@@ -48,6 +66,32 @@
         }
     </div>
 </div>
+
+
+<div class="modal fade" id="signBuildModal" tabindex="-1" aria-labelledby="signBuildModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form asp-action="SignPluginBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-buildId="@Model.FullBuildId.BuildId" method="post">
+                <div class="modal-header border-0">
+                    <h4 class="modal-title mb-0" id="pgpKeyModalLabel-reject">Sign Build for Release</h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="pgpKey-approve">PGP Signature message</label>
+                        <textarea id="pgpKey-approve" name="ArmoredMessage" class="form-control" rows="5"
+                                  placeholder="It should start with `-----BEGIN PGP MESSAGE-----`&#13;&#10;&#13;&#10;&#13;&#10;and end with `-----END PGP MESSAGE-----`." required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Sign</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 
 <table class="table">
     @if (Model.Version != null)

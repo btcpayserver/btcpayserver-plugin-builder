@@ -1,3 +1,4 @@
+@using PluginBuilder.Enums
 @inject Microsoft.AspNetCore.Identity.SignInManager<Microsoft.AspNetCore.Identity.IdentityUser> SignInManager
 @model PluginBuilder.Components.MainNav.MainNavViewModel
 
@@ -130,6 +131,16 @@
                     </li>
                 </ul>
             </li>
+            @if (ViewData.IsActiveCategory(typeof(AccountNavPages)))
+            {
+                <li class="nav-item nav-item-sub">
+                    <a id="SectionNav-@AccountNavPages.Settings.ToString()" class="nav-link @ViewData.ActivePageClass(AccountNavPages.Settings)" asp-controller="Account" asp-action="AccountDetails" text-translate="true">Account Settings</a>
+                </li>
+                <li class="nav-item nav-item-sub">
+                    <a id="SectionNav-@AccountNavPages.Keys.ToString()" class="nav-link @ViewData.ActivePageClass(AccountNavPages.Keys)" asp-controller="Account" asp-action="AccountKeySettings" text-translate="true">Key Settings</a>
+                </li>
+                <vc:ui-extension-point location="user-nav" model="@Model" />
+            }
         </ul>
     }
 </nav>

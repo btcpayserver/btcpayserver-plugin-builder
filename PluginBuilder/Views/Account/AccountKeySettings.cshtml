@@ -1,0 +1,110 @@
+@using PluginBuilder.Enums
+@using PluginBuilder.ViewModels
+@model List<PgpKeyViewModel>
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage(AccountNavPages.Keys, "Account Key Settings");
+}
+
+<div class="d-sm-flex align-items-center justify-content-between">
+    <h2 class="mb-0">
+        @ViewData["Title"]
+    </h2>
+
+    <button type="button" class="btn btn-primary mt-md-0 mt-2" data-bs-toggle="modal" data-bs-target="#generateKeyModal">New GPG Key</button>
+</div>
+
+@if (Model != null && Model.Any())
+{
+    <div class="row mt-4">
+        @foreach (var key in Model)
+        {
+            <div class="col-md-12">
+                <div class="card mb-4">
+                    <div class="card-body d-md-flex justify-content-between">
+                        <div class="d-flex flex-md-row flex-column">
+                            <div class="d-md-flex align-items-center justify-content-center px-md-3 px-0 mb-md-0 mb-2">
+                                <span>
+                                    <svg height="32" aria-hidden="true" viewBox="0 0 24 24" version="1.1" width="32" data-view-component="true" class="octicon octicon-key">
+                                        <path d="M16.75 8.5a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5Z"></path>
+                                        <path d="M15.75 0a8.25 8.25 0 1 1-2.541 16.101l-1.636 1.636a1.744 1.744 0 0 1-1.237.513H9.25a.25.25 0 0 0-.25.25v1.448a.876.876 0 0 1-.256.619l-.214.213a.75.75 0 0 1-.545.22H5.25a.25.25 0 0 0-.25.25v1A1.75 1.75 0 0 1 3.25 24h-1.5A1.75 1.75 0 0 1 0 22.25v-2.836c0-.464.185-.908.513-1.236l7.386-7.388A8.249 8.249 0 0 1 15.75 0ZM9 8.25a6.733 6.733 0 0 0 .463 2.462.75.75 0 0 1-.168.804l-7.722 7.721a.25.25 0 0 0-.073.177v2.836c0 .138.112.25.25.25h1.5a.25.25 0 0 0 .25-.25v-1c0-.966.784-1.75 1.75-1.75H7.5v-1c0-.966.784-1.75 1.75-1.75h1.086a.25.25 0 0 0 .177-.073l1.971-1.972a.75.75 0 0 1 .804-.168A6.75 6.75 0 1 0 9 8.25Z"></path>
+                                    </svg>
+                                </span>
+                                @* <vc:icon symbol="key" /> *@
+                            </div>
+                            <div>
+                                <span class="card-title d-block mb-2" style="font-weight: bold;">@key.Title</span>
+                                <span class="d-block mb-1"><strong>User:</strong> @key.KeyUserId</span>
+                                <span class="d-block mb-1"><strong>Key ID:</strong> @key.KeyId</span>
+                                <span class="d-block mb-1"><strong>Sub Key(s):</strong> @key.Subkeys</span>
+                            </div>
+
+                        </div>
+                        <div class="d-md-flex mt-md-0 mt-2 align-items-center justify-content-center">
+                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
+                                Delete
+                            </button>
+
+                            <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteModalLabel" aria-hidden="true">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title" id="confirmDeleteModalLabel">Confirm Deletion</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            Are you sure you want to delete this key?
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                            <form method="post" asp-action="DeleteAccountPgpKey" asp-controller="Account" asp-route-batchId="@key.BatchId">
+                                                <button type="submit" class="btn btn-danger">Delete</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-footer text-muted text-end" style="background-color: #e9ecef; border-top: none;">
+                        <small>Added on <strong>@string.Format("{0:MMMM dd, yyyy}", key.AddedDate)</strong></small>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <p>No available keys. Click on the button to create a new PGP Key</p>
+}
+
+<div class="modal fade" id="generateKeyModal" tabindex="-1" aria-labelledby="pgpKeyModalLabel-approve" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form asp-action="SaveAccountPgpKeys" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="pgpKeyModalLabel-approve">Add new PGP key</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="KeyTitle" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="KeyTitle" name="Title" placeholder="Enter title" required />
+                    </div>
+                    <div class="mb-3">
+                        <label for="pgpKey-approve" class="form-label">GPG Public Key</label>
+                        <textarea id="pgpKey-approve" name="PublicKey" class="form-control" rows="5"
+                                  placeholder="It should start with `-----BEGIN PGP PUBLIC KEY BLOCK-----`&#13;&#10;&#13;&#10;&#13;&#10;and end with `-----END PGP PUBLIC KEY BLOCK-----`."
+                                  required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Add PGP Key</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

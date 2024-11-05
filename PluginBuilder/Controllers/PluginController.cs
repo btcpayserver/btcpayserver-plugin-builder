@@ -8,6 +8,8 @@ using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Events;
+using Microsoft.AspNetCore.Identity;
+using PluginBuilder.Constants;
 
 namespace PluginBuilder.Controllers
 {
@@ -17,17 +19,23 @@ namespace PluginBuilder.Controllers
     {
         public PluginController(
             DBConnectionFactory connectionFactory,
+            UserManager<IdentityUser> userManager,
             BuildService buildService,
-            EventAggregator eventAggregator)
+            EventAggregator eventAggregator,
+            PgpKeyService pgpKeyService)
         {
             ConnectionFactory = connectionFactory;
             BuildService = buildService;
             EventAggregator = eventAggregator;
+            _pgpKeyService = pgpKeyService;
+            UserManager = userManager;
         }
 
         private DBConnectionFactory ConnectionFactory { get; }
         private BuildService BuildService { get; }
         private EventAggregator EventAggregator { get; }
+        private UserManager<IdentityUser> UserManager { get; }
+        private readonly PgpKeyService _pgpKeyService;
 
         [HttpGet("settings")]
         public async Task<IActionResult> Settings(
@@ -190,8 +198,8 @@ namespace PluginBuilder.Controllers
            long buildId)
         {
             await using var conn = await ConnectionFactory.Open();
-            var row = await conn.QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release)>(
-                "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
+            var row = await conn.QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release, bool isbuildsigned)>(
+                "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release, isbuildsigned FROM builds b " +
                 "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                 "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
                 "LIMIT 1",
@@ -217,6 +225,7 @@ namespace PluginBuilder.Controllers
             vm.ManifestInfo = NiceJson(row.manifest_info);
             vm.BuildInfo = buildInfo?.ToString(Formatting.Indented);
             vm.DownloadLink = buildInfo?.Url;
+            vm.IsBuildSigned = row.isbuildsigned;
             vm.State = row.state;
             vm.CreatedDate = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
             vm.Commit = buildInfo?.GitCommit?.Substring(0, 8);
@@ -232,6 +241,45 @@ namespace PluginBuilder.Controllers
             if (logs != "")
                 vm.Logs = logs;
             return View(vm);
+        }
+
+
+        [HttpPost("builds/sign/{buildId}")]
+        public async Task<IActionResult> SignPluginBuild(PluginApprovalStatusUpdateViewModel model,
+            [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,long buildId)
+        {
+            await using var conn = await ConnectionFactory.Open();
+            string userId = UserManager.GetUserId(User);
+            var accountSettings = await conn.GetAccountDetailSettings(userId);
+            if (accountSettings == null || accountSettings.PgpKeys == null || !accountSettings.PgpKeys.Any())
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Kindly add new GPG Keys to proceed with plugin action";
+                return RedirectToAction(nameof(Build), new { pluginSlug, buildId });
+            }
+            var manifest_info = await conn.QueryFirstOrDefaultAsync<string>(
+                "SELECT manifest_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND id=@buildId LIMIT 1",
+                new
+                {
+                    pluginSlug = pluginSlug.ToString(),
+                    buildId
+                });
+            List<string> publicKeys = accountSettings.PgpKeys.Select(key => key.PublicKey).ToList();
+            string manifestShasum = _pgpKeyService.ComputeSHA256(NiceJson(manifest_info));
+            var validateSignature = _pgpKeyService.VerifyPgpMessage(model.ArmoredMessage, manifestShasum, publicKeys);
+            if (!validateSignature.success)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = validateSignature.response;
+                return RedirectToAction(nameof(Build), new { pluginSlug, buildId });
+            }
+            await conn.ExecuteAsync(
+            "UPDATE builds SET isbuildsigned = true WHERE plugin_slug = @pluginSlug AND id = @buildId",
+            new
+            {
+                pluginSlug = pluginSlug.ToString(),
+                buildId
+            });
+            TempData[WellKnownTempData.SuccessMessage] = $"{model.PluginSlug} signed and verified successfully";
+            return RedirectToAction(nameof(Build), new { pluginSlug, buildId });
         }
 
         private string? NiceJson(string? json)
