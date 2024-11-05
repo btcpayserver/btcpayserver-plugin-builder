@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using PluginBuilder.DataModels;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Account;
 
 namespace PluginBuilder.Controllers
 {
@@ -25,13 +27,20 @@ namespace PluginBuilder.Controllers
         public async Task<IActionResult> AccountDetails()
         {
             await using var conn = await ConnectionFactory.Open();
-            var settings = await conn.GetAccountDetailSettings(UserManager.GetUserId(User)!);
-            return View(settings);
+            var user = await UserManager.GetUserAsync(User);
+            
+            var settings = await conn.GetAccountDetailSettings(user!.Id);
+            var model = new AccountDetailsViewModel
+            {
+                AccountEmail = user.Email!,
+                Settings = settings!
+            };
+            return View(model);
         }
 
 
         [HttpPost("details")]
-        public async Task<IActionResult> AccountDetails(AccountSettings model)
+        public async Task<IActionResult> AccountDetails(AccountDetailsViewModel model)
         {
             if (!ModelState.IsValid)
             {
@@ -39,15 +48,14 @@ namespace PluginBuilder.Controllers
             }
 
             await using var conn = await ConnectionFactory.Open();
-            var user = UserManager.GetUserId(User)!;
-            var accountSettings = await conn.GetAccountDetailSettings(user) ?? model;
+            var user = await UserManager.GetUserAsync(User)!;
 
-            accountSettings.Nostr = model.Nostr ?? accountSettings.Nostr;
-            accountSettings.Twitter = model.Twitter ?? accountSettings.Twitter;
-            accountSettings.Github = model.Github ?? accountSettings.Github;
-            accountSettings.Email = model.Email ?? accountSettings.Email;
-
-            await conn.SetAccountDetailSettings(accountSettings, user);
+            var settings = model.Settings;
+            var accountSettings = new AccountSettings
+            {
+                Nostr = settings.Nostr, Twitter = settings.Twitter, Github = settings.Github, Email = settings.Email
+            };
+            await conn.SetAccountDetailSettings(accountSettings, user.Id);
 
             TempData[TempDataConstant.SuccessMessage] = "Account details updated successfully";
             return RedirectToAction(nameof(AccountDetails));
