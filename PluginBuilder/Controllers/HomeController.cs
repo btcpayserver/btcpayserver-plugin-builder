@@ -161,10 +161,9 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
                 var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
                     Request.Scheme, Request.Host.ToString());
-                var body = $"Please verify your account by visiting: {link}";
 
-                await _emailService.SendEmail(model.Email, "Verify your account on BTCPay Server Plugin Builder", body);
-                
+                await _emailService.SendVerifyEmail(model.Email, link);
+
                 return RedirectToAction(nameof(VerifyEmailAddress), new { email = user.Email });
             }
             else
@@ -173,7 +172,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 return RedirectToLocal(returnUrl);
             }
         }
-        
+
         //
         [AllowAnonymous]
         [HttpGet("/VerifyEmailAddress")]
