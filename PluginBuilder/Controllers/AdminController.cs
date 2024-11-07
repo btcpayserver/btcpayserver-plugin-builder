@@ -368,29 +368,6 @@ public class AdminController : Controller
         }
 
         return View(model);
-
-        try
-        {
-            var smtpClient = await _emailService.CreateSmtpClient(emailSettings);
-            var message = new MimeMessage();
-            message.From.Add(MailboxAddress.Parse(emailSettings.From));
-            foreach (var address in model.To.Split([","], StringSplitOptions.RemoveEmptyEntries))
-            {
-                message.To.Add(MailboxAddress.Parse(address.Trim()));
-            }
-            message.Subject = model.Subject;
-            message.Body = new TextPart("plain") { Text = model.Message };
-            await smtpClient.SendAsync(message);
-            await smtpClient.DisconnectAsync(true);
-            TempData[TempDataConstant.SuccessMessage] = $"Test email sent successfully to {model.To}.";
-        }
-        catch (Exception ex)
-        {
-            ModelState.AddModelError(string.Empty, $"Failed to send test email: {ex.Message}");
-            return View(model);
-        }
-
-        return View(model);
     }
     
     [HttpGet("editsettings")]

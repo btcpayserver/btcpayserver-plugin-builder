@@ -9,29 +9,6 @@ namespace PluginBuilder.Services;
 
 public class EmailService
 {
-    // public MimeMessage CreateMailMessage(MailboxAddress to, string subject, string message, bool isHtml) =>
-    //     CreateMailMessage(new[] { to }, null, null, subject, message, isHtml);
-    // public MimeMessage CreateMailMessage(MailboxAddress[] to, MailboxAddress[] cc, MailboxAddress[] bcc, string subject, string message, bool isHtml)
-    // {
-    //     var bodyBuilder = new BodyBuilder();
-    //     if (isHtml)
-    //     {
-    //         bodyBuilder.HtmlBody = message;
-    //     }
-    //     else
-    //     {
-    //         bodyBuilder.TextBody = message;
-    //     }
-    //
-    //     var mm = new MimeMessage();
-    //     mm.Body = bodyBuilder.ToMessageBody();
-    //     mm.Subject = subject;
-    //     mm.From.Add(MailboxAddressValidator.Parse(Settings.From));
-    //     mm.To.AddRange(to);
-    //     mm.Cc.AddRange(cc ?? System.Array.Empty<InternetAddress>());
-    //     mm.Bcc.AddRange(bcc ?? System.Array.Empty<InternetAddress>());
-    //     return mm;
-    // }
     private readonly DBConnectionFactory _connectionFactory;
 
     public EmailService(DBConnectionFactory connectionFactory)
@@ -53,6 +30,13 @@ public class EmailService
         message.Body = new TextPart("plain") { Text = messageText };
         await smtpClient.SendAsync(message);
         await smtpClient.DisconnectAsync(true);
+    }
+    
+    public Task SendVerifyEmail(string toEmail, string verifyUrl)
+    {
+        var body = $"Please verify your account by visiting: {verifyUrl}";
+
+        return SendEmail(toEmail, "Verify your account on BTCPay Server Plugin Builder", body);
     }
 
     public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb()
@@ -94,6 +78,31 @@ public class EmailService
         return client;
     }
 }
+
+
+// public MimeMessage CreateMailMessage(MailboxAddress to, string subject, string message, bool isHtml) =>
+//     CreateMailMessage(new[] { to }, null, null, subject, message, isHtml);
+// public MimeMessage CreateMailMessage(MailboxAddress[] to, MailboxAddress[] cc, MailboxAddress[] bcc, string subject, string message, bool isHtml)
+// {
+//     var bodyBuilder = new BodyBuilder();
+//     if (isHtml)
+//     {
+//         bodyBuilder.HtmlBody = message;
+//     }
+//     else
+//     {
+//         bodyBuilder.TextBody = message;
+//     }
+//
+//     var mm = new MimeMessage();
+//     mm.Body = bodyBuilder.ToMessageBody();
+//     mm.Subject = subject;
+//     mm.From.Add(MailboxAddressValidator.Parse(Settings.From));
+//     mm.To.AddRange(to);
+//     mm.Cc.AddRange(cc ?? System.Array.Empty<InternetAddress>());
+//     mm.Bcc.AddRange(bcc ?? System.Array.Empty<InternetAddress>());
+//     return mm;
+// }
 
 public static class MailboxAddressValidator
 {
