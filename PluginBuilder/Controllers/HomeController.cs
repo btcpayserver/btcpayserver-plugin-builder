@@ -146,7 +146,6 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             }
             
             await using var conn = await ConnectionFactory.Open();
-            bool verifiedEmailReq = await conn.GetSettingAsync("RequireConfirmedEmail") == "true";
 
             var admins = await UserManager.GetUsersInRoleAsync(Roles.ServerAdmin);
             var isAdminReg = admins.Count == 0 || (model.IsAdmin && Env.CheatMode);
@@ -157,7 +156,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
 
             // check if it's not admin and we are requiring email verifications
             var emailSettings = await _emailService.GetEmailSettingsFromDb();
-            if (!isAdminReg && verifiedEmailReq && emailSettings?.PasswordSet == true)
+            if (!isAdminReg && emailSettings?.PasswordSet == true)
             {
                 var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
                 var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
