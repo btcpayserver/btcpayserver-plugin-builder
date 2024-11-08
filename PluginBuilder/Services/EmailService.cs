@@ -42,7 +42,7 @@ public class EmailService
     public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb()
     {
         await using var conn = await _connectionFactory.Open();
-        var jsonEmail = await conn.GetSettingAsync("EmailSettings");
+        var jsonEmail = await conn.SettingsGetAsync("EmailSettings");
         var emailSettings = string.IsNullOrEmpty(jsonEmail)
             ? null
             : JsonConvert.DeserializeObject<EmailSettingsViewModel>(jsonEmail);

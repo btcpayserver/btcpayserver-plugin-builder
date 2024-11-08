@@ -319,7 +319,7 @@ public class AdminController : Controller
     {
         await using var conn = await _connectionFactory.Open();
         var emailSettingsJson = JsonConvert.SerializeObject(model);
-        await conn.SetSettingAsync("EmailSettings", emailSettingsJson);
+        await conn.SettingsSetAsync("EmailSettings", emailSettingsJson);
     }
     //
 
@@ -378,7 +378,7 @@ public class AdminController : Controller
     public async Task<IActionResult> SettingsEditor()
     {
         await using var conn = await _connectionFactory.Open();
-        var result = await conn.GetAllSettingsAsync();
+        var result = await conn.SettingsGetAllAsync();
         var list = result.ToList();
         list.RemoveAll(setting => setting.key == ProtectedKeys);
         
@@ -392,7 +392,7 @@ public class AdminController : Controller
             return BadRequest();
         
         await using var conn = await _connectionFactory.Open();
-        var result = await conn.SetSettingAsync(key, value);
+        var result = await conn.SettingsSetAsync(key, value);
         return RedirectToAction(nameof(SettingsEditor));
     }
     
