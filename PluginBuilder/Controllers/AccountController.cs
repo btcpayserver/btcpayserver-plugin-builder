@@ -34,6 +34,7 @@ namespace PluginBuilder.Controllers
             var model = new AccountDetailsViewModel
             {
                 AccountEmail = user.Email!,
+                AccountEmailConfirmed = user.EmailConfirmed,
                 NeedToVerifyEmail = needToVerifyEmail,
                 Settings = settings!
             };

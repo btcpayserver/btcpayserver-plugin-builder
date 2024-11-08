@@ -10,7 +10,11 @@
         <form asp-action="UpdateAccountDetail">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
             <div class="form-group">
-                <label asp-for="AccountEmail" class="form-label" data-required></label>
+                <label asp-for="AccountEmail" class="form-label"></label>
+                @if (Model.AccountEmailConfirmed)
+                {
+                    <span class="badge bg-success ml-2">Confirmed</span>
+                }
                 <div class="input-group">
                     <input asp-for="AccountEmail" class="form-control" placeholder="" readonly="readonly"/>
                     @if (Model.NeedToVerifyEmail)
