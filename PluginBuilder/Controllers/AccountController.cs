@@ -56,7 +56,7 @@ namespace PluginBuilder.Controllers
 
                 await _emailService.SendVerifyEmail(user.Email, link);
 
-                var action = nameof(HomeController.VerifyEmailAddress);
+                var action = nameof(HomeController.VerifyEmail);
                 var ctrl = nameof(HomeController).Replace("Controller", "");
                 return RedirectToAction(action, ctrl);
             }

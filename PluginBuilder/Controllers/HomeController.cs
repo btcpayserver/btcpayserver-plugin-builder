@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Home;
 
 namespace PluginBuilder.Controllers
 {
@@ -164,7 +165,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
 
                 await _emailService.SendVerifyEmail(model.Email, link);
 
-                return RedirectToAction(nameof(VerifyEmailAddress), new { email = user.Email });
+                return RedirectToAction(nameof(VerifyEmail), new { email = user.Email });
             }
             else
             {
@@ -175,8 +176,8 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
 
         //
         [AllowAnonymous]
-        [HttpGet("/VerifyEmailAddress")]
-        public IActionResult VerifyEmailAddress(string email)
+        [HttpGet("/VerifyEmail")]
+        public IActionResult VerifyEmail(string email)
         {
             return View(email);
         }
