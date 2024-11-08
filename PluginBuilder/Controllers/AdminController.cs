@@ -17,6 +17,7 @@ using PluginBuilder.ViewModels.Admin;
 namespace PluginBuilder.Controllers;
 
 [Authorize(Roles = "ServerAdmin")]
+[Route("/admin/")]
 public class AdminController : Controller
 {
     private readonly UserManager<IdentityUser> _userManager;
@@ -370,22 +371,39 @@ public class AdminController : Controller
         return View(model);
     }
     
-    [HttpGet("editsettings")]
-    public async Task<IActionResult> EditSettings()
+    // settings editor
+    private const string ProtectedKeys = "EmailSettings";
+    
+    [HttpGet("SettingsEditor")]
+    public async Task<IActionResult> SettingsEditor()
     {
         await using var conn = await _connectionFactory.Open();
         var result = await conn.GetAllSettingsAsync();
         var list = result.ToList();
-        list.RemoveAll(setting => setting.key == "EmailSettings");
+        list.RemoveAll(setting => setting.key == ProtectedKeys);
         
         return View(list);
     }
     
-    [HttpPost("editsettings")]
-    public async Task<IActionResult> EditSettings(string key, string value)
+    [HttpPost("SettingsEditor")]
+    public async Task<IActionResult> SettingsEditor(string key, string value)
     {
+        if (key == ProtectedKeys)
+            return BadRequest();
+        
         await using var conn = await _connectionFactory.Open();
         var result = await conn.SetSettingAsync(key, value);
-        return RedirectToAction("EditSettings");
+        return RedirectToAction(nameof(SettingsEditor));
+    }
+    
+    [HttpDelete("SettingsEditor")]
+    public async Task<IActionResult> SettingsEditorDelete(string key)
+    {
+        if (key == ProtectedKeys)
+            return BadRequest();
+        
+        await using var conn = await _connectionFactory.Open();
+        var result = await conn.SettingsDeleteAsync(key);
+        return Ok();
     }
 }

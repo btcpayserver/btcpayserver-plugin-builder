@@ -223,5 +223,14 @@ namespace PluginBuilder
                 """;
             return connection.ExecuteAsync(query, new { key, value });
         }
+
+        public static Task<int> SettingsDeleteAsync(this NpgsqlConnection connection, string key)
+        {
+            var query = $"""
+                         DELETE FROM settings
+                         WHERE key = @key
+                         """;
+            return connection.ExecuteAsync(query, new { key });
+        }
     }
 }

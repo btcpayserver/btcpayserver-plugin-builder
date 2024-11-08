@@ -1,7 +1,7 @@
 @model IEnumerable<(string key, string value)>
 @{
 Layout = "_Layout";
-ViewData.SetActivePage(AdminNavPages.Users, "Edit Settings");
+ViewData.SetActivePage(AdminNavPages.Users, "Settings Editor");
 }
 
 <div class="d-sm-flex align-items-center justify-content-between">
@@ -10,14 +10,14 @@ ViewData.SetActivePage(AdminNavPages.Users, "Edit Settings");
     </h2>
 </div>
 
-<form id="settingsForm" asp-action="EditSettings" method="post">
+<form id="settingsForm" asp-action="SettingsEditor" method="post">
     <div class="table-responsive">
         <table class="table table-hover">
             <thead>
             <tr>
                 <th style="width:30%;">Key</th>
-                <th style="width:70%;">Value</th>
-                <th>Actions</th>
+                <th style="width:50%;">Value</th>
+                <th style="min-width:190px;">Actions</th>
             </tr>
             </thead>
             <tbody>
@@ -27,7 +27,9 @@ ViewData.SetActivePage(AdminNavPages.Users, "Edit Settings");
                     <td>@setting.key</td>
                     <td class="value">@setting.value</td>
                     <td>
-                        <button type="button" class="btn btn-primary edit-btn">Edit</button>
+                        <button type="button" class="btn btn-sm btn-primary edit-btn">Edit</button>
+                        <button type="button" class="btn btn-sm btn-danger delete-btn">Delete</button>
+                        
                     </td>
                 </tr>
             }
@@ -123,6 +125,23 @@ ViewData.SetActivePage(AdminNavPages.Users, "Edit Settings");
                 
                 document.querySelectorAll('.edit-btn').forEach(btn => btn.disabled = false);
                 document.getElementById('add-btn').disabled = false;
+            });
+        });
+
+        document.querySelectorAll('.delete-btn').forEach(button => {
+            button.addEventListener('click', function () {
+                const row = this.closest('tr');
+                const key = row.dataset.key;
+
+                fetch(`/admin/SettingsEditor?key=${encodeURIComponent(key)}`, {
+                    method: 'DELETE'
+                }).then(response => {
+                    if (response.ok) {
+                        row.remove();
+                    } else {
+                        alert('Failed to delete the setting.');
+                    }
+                });
             });
         });
     });
