@@ -62,7 +62,7 @@ namespace PluginBuilder.Controllers
             if (!ModelState.IsValid)
                 return View(settings);
             await using var conn = await ConnectionFactory.Open();
-            await conn.SetSettings(pluginSlug, settings);
+            await conn.SetPluginSettings(pluginSlug, settings);
             TempData[TempDataConstant.SuccessMessage] = "Settings updated";
             return RedirectToAction(nameof(Settings),new { pluginSlug });
         }

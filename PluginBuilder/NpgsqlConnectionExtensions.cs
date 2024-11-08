@@ -22,7 +22,7 @@ namespace PluginBuilder
                 return null;
             return JsonConvert.DeserializeObject<PluginSettings>(r, CamelCaseSerializerSettings.Instance);
         }
-        public static async Task<bool> SetSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings pluginSettings)
+        public static async Task<bool> SetPluginSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings pluginSettings)
         {
             var count = await connection.ExecuteAsync("UPDATE plugins SET settings=@settings::JSONB WHERE slug=@pluginSlug",
                 new
