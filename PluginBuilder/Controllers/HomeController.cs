@@ -185,18 +185,17 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
         [HttpGet("/ConfirmEmail")]
         public async Task<IActionResult> ConfirmEmail(string uid, string token)
         {
+            var model = new ConfirmEmailViewModel();
+            
             var user = await UserManager.FindByIdAsync(uid);
-            if (user is null)
+            if (user is not null)
             {
-                return NotFound();
+                var result = await UserManager.ConfirmEmailAsync(user, token);
+                model.Email = user.Email!;
+                model.EmailConfirmed = result.Succeeded;
             }
-            var result = await UserManager.ConfirmEmailAsync(user, token);
-            if (result.Succeeded)
-            {
-                await SignInManager.SignInAsync(user, isPersistent: false);
-                return RedirectToAction(nameof(HomePage));
-            }
-            return BadRequest();
+
+            return View(model);
         }
         
 
