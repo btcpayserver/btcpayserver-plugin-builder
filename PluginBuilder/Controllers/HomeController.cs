@@ -9,33 +9,22 @@ using PluginBuilder.ViewModels.Home;
 namespace PluginBuilder.Controllers
 {
     [Authorize]
-    public class HomeController : Controller
+    public class HomeController(
+        DBConnectionFactory connectionFactory,
+        UserManager<IdentityUser> userManager,
+        RoleManager<IdentityRole> roleManager,
+        SignInManager<IdentityUser> signInManager,
+        IAuthorizationService authorizationService,
+        EmailService emailService,
+        ServerEnvironment env)
+        : Controller
     {
-        private readonly EmailService _emailService;
-        private DBConnectionFactory ConnectionFactory { get; }
-        private UserManager<IdentityUser> UserManager { get; }
-        public RoleManager<IdentityRole> RoleManager { get; }
-        private SignInManager<IdentityUser> SignInManager { get; }
-        private IAuthorizationService AuthorizationService { get; }
-        private ServerEnvironment Env { get; }
-
-        public HomeController(
-            DBConnectionFactory connectionFactory,
-            UserManager<IdentityUser> userManager,
-            RoleManager<IdentityRole> roleManager,
-            SignInManager<IdentityUser> signInManager,
-            IAuthorizationService authorizationService,
-            EmailService emailService,
-            ServerEnvironment env)
-        {
-            _emailService = emailService;
-            ConnectionFactory = connectionFactory;
-            UserManager = userManager;
-            RoleManager = roleManager;
-            SignInManager = signInManager;
-            AuthorizationService = authorizationService;
-            Env = env;
-        }
+        private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
+        private UserManager<IdentityUser> UserManager { get; } = userManager;
+        public RoleManager<IdentityRole> RoleManager { get; } = roleManager;
+        private SignInManager<IdentityUser> SignInManager { get; } = signInManager;
+        private IAuthorizationService AuthorizationService { get; } = authorizationService;
+        private ServerEnvironment Env { get; } = env;
 
         [HttpGet("/")]
         
@@ -155,14 +144,14 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             }
 
             // check if it's not admin and we are requiring email verifications
-            var emailSettings = await _emailService.GetEmailSettingsFromDb();
+            var emailSettings = await emailService.GetEmailSettingsFromDb();
             if (!isAdminReg && emailSettings?.PasswordSet == true)
             {
                 var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
                 var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
                     Request.Scheme, Request.Host.ToString());
 
-                await _emailService.SendVerifyEmail(model.Email, link);
+                await emailService.SendVerifyEmail(model.Email, link);
 
                 return RedirectToAction(nameof(VerifyEmail), new { email = user.Email });
             }

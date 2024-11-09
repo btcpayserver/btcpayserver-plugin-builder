@@ -17,7 +17,6 @@ namespace PluginBuilder.Controllers
         EmailService emailService)
         : Controller
     {
-        private EmailService _emailService = emailService;
         private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
         private UserManager<IdentityUser> UserManager { get; } = userManager;
 
@@ -27,7 +26,7 @@ namespace PluginBuilder.Controllers
             await using var conn = await ConnectionFactory.Open();
             var user = await UserManager.GetUserAsync(User);
             
-            var emailSettings = await _emailService.GetEmailSettingsFromDb();
+            var emailSettings = await emailService.GetEmailSettingsFromDb();
             var needToVerifyEmail = emailSettings.PasswordSet && !await UserManager.IsEmailConfirmedAsync(user!);
             
             var settings = await conn.GetAccountDetailSettings(user!.Id);
@@ -46,7 +45,7 @@ namespace PluginBuilder.Controllers
         {
             var user = await UserManager.GetUserAsync(User);
 
-            var emailSettings = await _emailService.GetEmailSettingsFromDb();
+            var emailSettings = await emailService.GetEmailSettingsFromDb();
             var needToVerifyEmail = emailSettings.PasswordSet && !await UserManager.IsEmailConfirmedAsync(user!);
             
             if (needToVerifyEmail)
@@ -55,7 +54,7 @@ namespace PluginBuilder.Controllers
                 var link = Url.Action("ConfirmEmail", "Home", new { uid = user.Id, token },
                     Request.Scheme, Request.Host.ToString());
 
-                await _emailService.SendVerifyEmail(user.Email, link);
+                await emailService.SendVerifyEmail(user.Email, link);
 
                 var action = nameof(HomeController.VerifyEmail);
                 var ctrl = nameof(HomeController).Replace("Controller", "");

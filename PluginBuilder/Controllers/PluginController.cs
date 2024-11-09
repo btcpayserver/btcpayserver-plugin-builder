@@ -13,21 +13,15 @@ namespace PluginBuilder.Controllers
 {
     [Authorize(Policy = Policies.OwnPlugin)]
     [Route("/plugins/{pluginSlug}")]
-    public class PluginController : Controller
+    public class PluginController(
+        DBConnectionFactory connectionFactory,
+        BuildService buildService,
+        EventAggregator eventAggregator)
+        : Controller
     {
-        public PluginController(
-            DBConnectionFactory connectionFactory,
-            BuildService buildService,
-            EventAggregator eventAggregator)
-        {
-            ConnectionFactory = connectionFactory;
-            BuildService = buildService;
-            EventAggregator = eventAggregator;
-        }
-
-        private DBConnectionFactory ConnectionFactory { get; }
-        private BuildService BuildService { get; }
-        private EventAggregator EventAggregator { get; }
+        private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
+        private BuildService BuildService { get; } = buildService;
+        private EventAggregator EventAggregator { get; } = eventAggregator;
 
         [HttpGet("settings")]
         public async Task<IActionResult> Settings(

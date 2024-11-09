@@ -16,34 +16,24 @@ namespace PluginBuilder.Controllers;
 [ApiController]
 [Route("~/api/v1")]
 [Authorize(Policy = Policies.OwnPlugin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.BasicAuth)]
-public class ApiController : ControllerBase
+public class ApiController(
+    DBConnectionFactory connectionFactory,
+    UserManager<IdentityUser> userManager,
+    RoleManager<IdentityRole> roleManager,
+    SignInManager<IdentityUser> signInManager,
+    IAuthorizationService authorizationService,
+    BuildService buildService,
+    ServerEnvironment env)
+    : ControllerBase
 {
-    private DBConnectionFactory ConnectionFactory { get; }
-    public UserManager<IdentityUser> UserManager { get; }
-    public RoleManager<IdentityRole> RoleManager { get; }
-    public SignInManager<IdentityUser> SignInManager { get; }
-    public IAuthorizationService AuthorizationService { get; }
-    public BuildService BuildService { get; }
-    public ServerEnvironment Env { get; }
+    private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
+    public UserManager<IdentityUser> UserManager { get; } = userManager;
+    public RoleManager<IdentityRole> RoleManager { get; } = roleManager;
+    public SignInManager<IdentityUser> SignInManager { get; } = signInManager;
+    public IAuthorizationService AuthorizationService { get; } = authorizationService;
+    public BuildService BuildService { get; } = buildService;
+    public ServerEnvironment Env { get; } = env;
 
-    public ApiController(
-        DBConnectionFactory connectionFactory,
-        UserManager<IdentityUser> userManager,
-        RoleManager<IdentityRole> roleManager,
-        SignInManager<IdentityUser> signInManager,
-        IAuthorizationService authorizationService,
-        BuildService buildService,
-        ServerEnvironment env)
-    {
-        ConnectionFactory = connectionFactory;
-        BuildService = buildService;
-        UserManager = userManager;
-        RoleManager = roleManager;
-        SignInManager = signInManager;
-        AuthorizationService = authorizationService;
-        Env = env;
-    }
-    
     [AllowAnonymous]
     [HttpGet("version")]
     public IActionResult GetVersion()
