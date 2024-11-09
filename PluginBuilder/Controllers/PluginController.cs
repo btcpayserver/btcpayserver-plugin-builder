@@ -7,7 +7,7 @@ using PluginBuilder.ViewModels;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using PluginBuilder.Components.PluginVersion;
-using PluginBuilder.Events;
+using PluginBuilder.Extension;
 
 namespace PluginBuilder.Controllers
 {
@@ -18,8 +18,10 @@ namespace PluginBuilder.Controllers
         public PluginController(
             DBConnectionFactory connectionFactory,
             BuildService buildService,
+            AzureStorageClient azureStorageClient,
             EventAggregator eventAggregator)
         {
+            AzureStorageClient = azureStorageClient;
             ConnectionFactory = connectionFactory;
             BuildService = buildService;
             EventAggregator = eventAggregator;
@@ -28,6 +30,7 @@ namespace PluginBuilder.Controllers
         private DBConnectionFactory ConnectionFactory { get; }
         private BuildService BuildService { get; }
         private EventAggregator EventAggregator { get; }
+        public AzureStorageClient AzureStorageClient { get; }
 
         [HttpGet("settings")]
         public async Task<IActionResult> Settings(
@@ -36,31 +39,56 @@ namespace PluginBuilder.Controllers
         {
             await using var conn = await ConnectionFactory.Open();
             var settings = await conn.GetSettings(pluginSlug);
-            
-            
             if (settings is null)
                 return NotFound();
-            return View(settings);
+
+            var viewModel = settings.ToPluginSettingViewModel();
+            return View(viewModel);
         }
         
         [HttpPost("settings")]
         public async Task<IActionResult> Settings(
-          [ModelBinder(typeof(PluginSlugModelBinder))]
-            PluginSlug pluginSlug,
-            PluginSettings settings)
+          [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+            PluginSettingViewModel settingViewModel, [FromForm] bool RemoveLogoFile = false)
         {
-            if (settings is null)
+            if (settingViewModel is null)
                 return NotFound();
-            if (!string.IsNullOrEmpty(settings.Documentation) && !Uri.TryCreate(settings.Documentation, UriKind.Absolute, out _))
+            string? url = settingViewModel.LogoUrl;
+            if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
             {
-                ModelState.AddModelError(nameof(settings.Documentation), "Documentation should be an absolute URL");
+                ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
+                return View(settingViewModel);
             }
-            if (!string.IsNullOrEmpty(settings.GitRepository) && !Uri.TryCreate(settings.GitRepository, UriKind.Absolute, out _))
+            if (!string.IsNullOrEmpty(settingViewModel.GitRepository) && !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
             {
-                ModelState.AddModelError(nameof(settings.GitRepository), "Git repository should be an absolute URL");
+                ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository should be an absolute URL");
+                return View(settingViewModel);
             }
-            if (!ModelState.IsValid)
-                return View(settings);
+            if (settingViewModel.Logo != null)
+            {
+                string errorMessage;
+                if (!settingViewModel.Logo.ValidateUploadedImage(out errorMessage))
+                {
+                    ModelState.AddModelError(nameof(settingViewModel.Logo), $"Image upload validation failed: {errorMessage}");
+                    return View(settingViewModel);
+                }
+                try
+                {
+                    url = await AzureStorageClient.UploadFileAsync(settingViewModel.Logo, $"{settingViewModel.Logo.FileName}");
+                    settingViewModel.LogoUrl = url;
+                }
+                catch (Exception)
+                {
+                    ModelState.AddModelError(nameof(settingViewModel.LogoUrl), "Could not complete settings upload. An error occurred while uploading logo");
+                    return View(settingViewModel);
+                }
+            }
+            else if (RemoveLogoFile)
+            {
+                settingViewModel.Logo = null;
+                settingViewModel.LogoUrl = null;
+            }
+            var settings = settingViewModel.ToPluginSettings();
             await using var conn = await ConnectionFactory.Open();
             await conn.SetPluginSettings(pluginSlug, settings);
             TempData[TempDataConstant.SuccessMessage] = "Settings updated";

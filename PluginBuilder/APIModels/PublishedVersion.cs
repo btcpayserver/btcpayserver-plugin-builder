@@ -10,6 +10,8 @@ namespace PluginBuilder.APIModels
         public long BuildId { get; set; }
         public JObject BuildInfo { get; set; }
         public JObject ManifestInfo { get; set; }
+        public JObject PublisherAccountDetails { get; set; }
+        public string PluginLogo { get; set; }
         public string Documentation { get; set; }
     }
 }
