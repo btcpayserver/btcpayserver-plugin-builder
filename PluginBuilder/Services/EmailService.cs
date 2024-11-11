@@ -24,16 +24,21 @@ public class EmailService
         return SendEmail(toList, subject, messageText);
     }
     
-    private async Task SendEmail(IEnumerable<InternetAddress> to, string subject, string messageText)    
+    private async Task SendEmail(IEnumerable<InternetAddress> toList, string subject, string messageText)    
     {
         var emailSettings = await GetEmailSettingsFromDb();
         var smtpClient = await CreateSmtpClient(emailSettings);
         var message = new MimeMessage();
         message.From.Add(MailboxAddress.Parse(emailSettings.From));
-        message.To.AddRange(to);
         message.Subject = subject;
         message.Body = new TextPart("plain") { Text = messageText };
-        await smtpClient.SendAsync(message);
+        foreach (var email in toList)
+        {
+            message.To.Clear();
+            message.To.Add(email);
+            await smtpClient.SendAsync(message);
+        }
+
         await smtpClient.DisconnectAsync(true);
     }
     
