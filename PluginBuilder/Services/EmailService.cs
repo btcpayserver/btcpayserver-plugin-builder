@@ -16,16 +16,21 @@ public class EmailService
         _connectionFactory = connectionFactory;
     }
 
-    public async Task SendEmail(string to, string subject, string messageText)
+    public Task SendEmail(string toCsvList, string subject, string messageText)
+    {
+        var toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
+            .Select(InternetAddress.Parse)
+            .ToList();
+        return SendEmail(toList, subject, messageText);
+    }
+    
+    private async Task SendEmail(IEnumerable<InternetAddress> to, string subject, string messageText)    
     {
         var emailSettings = await GetEmailSettingsFromDb();
         var smtpClient = await CreateSmtpClient(emailSettings);
         var message = new MimeMessage();
         message.From.Add(MailboxAddress.Parse(emailSettings.From));
-        foreach (var address in to.Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries))
-        {
-            message.To.Add(MailboxAddress.Parse(address.Trim()));
-        }
+        message.To.AddRange(to);
         message.Subject = subject;
         message.Body = new TextPart("plain") { Text = messageText };
         await smtpClient.SendAsync(message);
