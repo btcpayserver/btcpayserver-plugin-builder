@@ -1,10 +1,10 @@
-@model PluginBuilder.ViewModels.Admin.EmailTestViewModel
+@model PluginBuilder.ViewModels.Admin.EmailSenderViewModel
 @{
 Layout = "_Layout";
 ViewData.SetActivePage(AdminNavPages.EmailSettings, "Email Test");
 }
 
-<form asp-action="EmailTest">
+<form asp-action="EmailSender">
     <div class="form-group">
     <label asp-for="From" class="form-label"></label>
     <input asp-for="From" class="form-control" readonly/>
@@ -26,6 +26,6 @@ ViewData.SetActivePage(AdminNavPages.EmailSettings, "Email Test");
         <span asp-validation-for="Message" class="text-danger"></span>
     </div>
     <div class="form-group">
-        <input type="submit" class="btn btn-primary" value="Send Test Email"/>
+        <input type="submit" class="btn btn-primary" value="Send Email"/>
     </div>
 </form>

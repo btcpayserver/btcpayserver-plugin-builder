@@ -314,8 +314,8 @@ public class AdminController(
     }
     //
 
-    [HttpGet("emailtest")]
-    public async Task<IActionResult> EmailTest()
+    [HttpGet("emailsender")]
+    public async Task<IActionResult> EmailSender(string to, string subject, string message)
     {
         EmailSettingsViewModel? emailSettings = await emailService.GetEmailSettingsFromDb();
         if (emailSettings == null)
@@ -324,17 +324,18 @@ public class AdminController(
             return RedirectToAction(nameof(EmailSettings));
         }
 
-        var model = new EmailTestViewModel
+        var model = new EmailSenderViewModel
         {
             From = emailSettings.From,
-            Subject = "Test email from BTCPay Plugin Builder",
-            Message = "This is a test email from BTCPay Plugin Builder"
+            To = to,
+            Subject = subject,
+            Message = message
         };
         return View(model);
     }
 
-    [HttpPost("emailtest")]
-    public async Task<IActionResult> EmailTest(EmailTestViewModel model)
+    [HttpPost("emailsender")]
+    public async Task<IActionResult> EmailSender(EmailSenderViewModel model)
     {
         if (!ModelState.IsValid)
         {

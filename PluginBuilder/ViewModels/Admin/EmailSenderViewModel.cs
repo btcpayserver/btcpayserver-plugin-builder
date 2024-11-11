@@ -3,7 +3,7 @@ namespace PluginBuilder.ViewModels.Admin;
 
 using System.ComponentModel.DataAnnotations;
 
-public class EmailTestViewModel
+public class EmailSenderViewModel
 {
     [Required]
     [EmailAddress]
