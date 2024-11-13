@@ -4,28 +4,35 @@ Layout = "_Layout";
 ViewData.SetActivePage(AdminNavPages.EmailSettings, "Email Test");
 }
 
-<form asp-action="EmailSender">
-    <div class="form-group">
-    <label asp-for="From" class="form-label"></label>
-    <input asp-for="From" class="form-control" readonly/>
-    <span asp-validation-for="From" class="text-danger"></span>
+<div class="row">
+    <div class="col-xl-8 col-xxl-constrain">
+        <form asp-action="EmailSender">
+            <div class="form-group">
+                <label asp-for="From" class="form-label"></label>
+                <input asp-for="From" class="form-control" readonly />
+                <span asp-validation-for="From" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="To" class="form-label"></label>
+                <textarea asp-for="To" class="form-control" id="TextSeperator" rows="5" placeholder="Enter valid recipient email address(es)'"></textarea>
+                <span asp-validation-for="To" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Subject" class="form-label"></label>
+                <input asp-for="Subject" class="form-control" />
+                <span asp-validation-for="Subject" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Message" class="form-label"></label>
+                <textarea asp-for="Message" class="form-control" rows="8"></textarea>
+                <span asp-validation-for="Message" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <input type="submit" class="btn btn-primary" value="Send Email" />
+            </div>
+        </form>
+    </div>
 </div>
-    <div class="form-group">
-        <label asp-for="To" class="form-label"></label>
-        <textarea asp-for="To" class="form-control" rows="2"></textarea>
-        <span asp-validation-for="To" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <label asp-for="Subject" class="form-label"></label>
-        <input asp-for="Subject" class="form-control"/>
-        <span asp-validation-for="Subject" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <label asp-for="Message" class="form-label"></label>
-        <textarea asp-for="Message" class="form-control" rows="8"></textarea>
-        <span asp-validation-for="Message" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <input type="submit" class="btn btn-primary" value="Send Email"/>
-    </div>
-</form>
+<link href="~/vendor/tom-select/tom-select.bootstrap5.min.css" asp-append-version="true" rel="stylesheet">
+<script src="~/vendor/tom-select/tom-select.complete.min.js" asp-append-version="true"></script>
+<script src="~/scripts/template-editor.js" asp-append-version="true"></script>

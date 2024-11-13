@@ -6,7 +6,6 @@ using System.ComponentModel.DataAnnotations;
 public class EmailSenderViewModel
 {
     [Required]
-    [EmailAddress]
     [Display(Name = "Recipient Email")]
     public string To { get; set; }
 
