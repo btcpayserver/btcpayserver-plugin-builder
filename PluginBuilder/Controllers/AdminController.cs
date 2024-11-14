@@ -1,15 +1,9 @@
-using System.Net;
 using System.Security.Claims;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using MimeKit;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Npgsql;
-using PluginBuilder.APIModels;
-using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;

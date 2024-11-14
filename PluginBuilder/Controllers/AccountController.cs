@@ -2,9 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PluginBuilder.DataModels;
-using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
-using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Account;
 
 namespace PluginBuilder.Controllers
