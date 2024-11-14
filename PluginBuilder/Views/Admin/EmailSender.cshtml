@@ -6,7 +6,7 @@ ViewData.SetActivePage(AdminNavPages.EmailSettings, "Email Test");
 
 <div class="row">
     <div class="col-xl-8 col-xxl-constrain">
-        <form asp-action="EmailSender">
+        <form asp-action="EmailSender" id="emailForm">
             <div class="form-group">
                 <label asp-for="From" class="form-label"></label>
                 <input asp-for="From" class="form-control" readonly />
@@ -15,7 +15,7 @@ ViewData.SetActivePage(AdminNavPages.EmailSettings, "Email Test");
             <div class="form-group">
                 <label asp-for="To" class="form-label"></label>
                 <textarea asp-for="To" class="form-control" id="TextSeperator" rows="5" placeholder="Enter valid recipient email address(es)'"></textarea>
-                <span asp-validation-for="To" class="text-danger"></span>
+                <span asp-validation-for="To" class="text-danger" id="emailError"></span>
             </div>
             <div class="form-group">
                 <label asp-for="Subject" class="form-label"></label>

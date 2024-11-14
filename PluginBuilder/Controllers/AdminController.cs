@@ -319,8 +319,8 @@ public class AdminController(
     {
         if (!string.IsNullOrEmpty(to) && !IsValidEmailList(to))
         {
-            TempData[TempDataConstant.WarningMessage] = "Invalid email format in the 'To' field. Please ensure all emails are valid";
-            return RedirectToAction("Plugins");
+            ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
+            return View(new EmailSenderViewModel());
         }
         EmailSettingsViewModel? emailSettings = await emailService.GetEmailSettingsFromDb();
         if (emailSettings == null)
@@ -347,24 +347,23 @@ public class AdminController(
         }
         if (!IsValidEmailList(model.To))
         {
-            TempData[TempDataConstant.WarningMessage] = "Invalid email format in the 'To' field. Please ensure all emails are valid";
-            return RedirectToAction("Plugins");
+            ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
+            return View(model);
         }
         EmailSettingsViewModel? emailSettings = await emailService.GetEmailSettingsFromDb();
         if (emailSettings == null)
         {
-            ModelState.AddModelError(string.Empty, "Email settings not found.");
+            TempData[TempDataConstant.WarningMessage] = "Email settings not found";
             return View(model);
         }
-        
         try
         {
             var emailsSent = await emailService.SendEmail(model.To, model.Subject, model.Message);
             TempData[TempDataConstant.SuccessMessage] = $"Emails sent successfully to {emailsSent.Count} recipient(s).";
         }
         catch (Exception ex)
-        { 
-            ModelState.AddModelError(string.Empty, $"Failed to send test email: {ex.Message}");
+        {
+            TempData[TempDataConstant.WarningMessage] = $"Failed to send test email: {ex.Message}";
             return View(model);
         }
 
