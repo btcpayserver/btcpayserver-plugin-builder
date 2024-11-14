@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -306,18 +307,21 @@ public class AdminController(
         var emailSettingsJson = JsonConvert.SerializeObject(model);
         await conn.SettingsSetAsync("EmailSettings", emailSettingsJson);
     }
-    //
 
     [HttpGet("emailsender")]
     public async Task<IActionResult> EmailSender(string to, string subject, string message)
     {
+        if (!string.IsNullOrEmpty(to) && !IsValidEmailList(to))
+        {
+            ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
+            return View(new EmailSenderViewModel());
+        }
         EmailSettingsViewModel? emailSettings = await emailService.GetEmailSettingsFromDb();
         if (emailSettings == null)
         {
             TempData[TempDataConstant.WarningMessage] = $"Email testing can't be done before SMTP is set";
             return RedirectToAction(nameof(EmailSettings));
         }
-
         var model = new EmailSenderViewModel
         {
             From = emailSettings.From,
@@ -335,28 +339,38 @@ public class AdminController(
         {
             return View(model);
         }
-
+        if (!IsValidEmailList(model.To))
+        {
+            ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
+            return View(model);
+        }
         EmailSettingsViewModel? emailSettings = await emailService.GetEmailSettingsFromDb();
         if (emailSettings == null)
         {
-            ModelState.AddModelError(string.Empty, "Email settings not found.");
+            TempData[TempDataConstant.WarningMessage] = "Email settings not found";
             return View(model);
         }
-        
         try
         {
-            await emailService.SendEmail(model.To, model.Subject, model.Message);
-            TempData[TempDataConstant.SuccessMessage] = $"Test email sent successfully to {model.To}.";
+            var emailsSent = await emailService.SendEmail(model.To, model.Subject, model.Message);
+            TempData[TempDataConstant.SuccessMessage] = $"Emails sent successfully to {emailsSent.Count} recipient(s).";
         }
         catch (Exception ex)
         {
-            ModelState.AddModelError(string.Empty, $"Failed to send test email: {ex.Message}");
+            TempData[TempDataConstant.WarningMessage] = $"Failed to send test email: {ex.Message}";
             return View(model);
         }
 
         return View(model);
     }
-    
+
+    private bool IsValidEmailList(string to)
+    {
+        return to.Split(',')
+              .Select(email => email.Trim())
+              .All(email => !string.IsNullOrWhiteSpace(email) && Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
+    }
+
     // settings editor
     private const string ProtectedKeys = "EmailSettings";
     

@@ -16,7 +16,7 @@ public class EmailService
         _connectionFactory = connectionFactory;
     }
 
-    public Task SendEmail(string toCsvList, string subject, string messageText)
+    public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText)
     {
         var toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
             .Select(InternetAddress.Parse)
@@ -24,8 +24,9 @@ public class EmailService
         return SendEmail(toList, subject, messageText);
     }
     
-    private async Task SendEmail(IEnumerable<InternetAddress> toList, string subject, string messageText)    
+    private async Task<List<string>> SendEmail(IEnumerable<InternetAddress> toList, string subject, string messageText)    
     {
+        List<string> recipients = new List<string>();
         var emailSettings = await GetEmailSettingsFromDb();
         var smtpClient = await CreateSmtpClient(emailSettings);
         var message = new MimeMessage();
@@ -37,9 +38,10 @@ public class EmailService
             message.To.Clear();
             message.To.Add(email);
             await smtpClient.SendAsync(message);
+            recipients.Add(email.ToString());
         }
-
         await smtpClient.DisconnectAsync(true);
+        return recipients;
     }
     
     public Task SendVerifyEmail(string toEmail, string verifyUrl)
