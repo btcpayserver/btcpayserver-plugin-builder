@@ -25,11 +25,13 @@
                     }
                 </div>
             </div>
-            <div class="form-group">
-                <label asp-for="Settings.Github" class="form-label" data-required></label>
-                <input asp-for="Settings.Github" class="form-control" placeholder="https://github.com/Kukks" required/>
-                <span asp-validation-for="Settings.Github" class="text-danger"></span>
-            </div>
+            @if (Model.Settings?.Github != null)
+            {
+                <div class="form-group">
+                    <label asp-for="Settings.Github" class="form-label" data-required></label>
+                    <input asp-for="Settings.Github" class="form-control" placeholder="" readonly="readonly" />
+                </div>
+            }
             <div class="form-group">
                 <label asp-for="Settings.Twitter" class="form-label"></label>
                 <input asp-for="Settings.Twitter" class="form-control" placeholder="https://twitter.com/r0ckstardev"/>

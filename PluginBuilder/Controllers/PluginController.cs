@@ -7,6 +7,7 @@ using PluginBuilder.ViewModels;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using PluginBuilder.Components.PluginVersion;
+using Microsoft.AspNetCore.Identity;
 
 namespace PluginBuilder.Controllers
 {
@@ -14,13 +15,16 @@ namespace PluginBuilder.Controllers
     [Route("/plugins/{pluginSlug}")]
     public class PluginController(
         DBConnectionFactory connectionFactory,
+        UserManager<IdentityUser> userManager,
         BuildService buildService,
-        EventAggregator eventAggregator)
+        EventAggregator eventAggregator,
+        ExternalAccountVerificationService externalAccountVerificationService)
         : Controller
     {
         private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
         private BuildService BuildService { get; } = buildService;
         private EventAggregator EventAggregator { get; } = eventAggregator;
+        private UserManager<IdentityUser> UserManager { get; } = userManager;
 
         [HttpGet("settings")]
         public async Task<IActionResult> Settings(
@@ -66,6 +70,14 @@ namespace PluginBuilder.Controllers
             PluginSlug pluginSlug, long? copyBuild = null)
         {
             await using var conn = await ConnectionFactory.Open();
+            var user = await UserManager.GetUserAsync(User);
+            var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
+            if (!isGithubVerified)
+            {
+                ViewData["GitHubVerificationMessage"] = "Your GitHub account is not verified. Please verify your GitHub account first.";
+                return View(new CreateBuildViewModel());
+            }
+
             var settings = await conn.GetSettings(pluginSlug);
             var model = new CreateBuildViewModel
             {
@@ -103,7 +115,25 @@ namespace PluginBuilder.Controllers
         {
             if (!ModelState.IsValid)
                 return View(model);
+
             await using var conn = await ConnectionFactory.Open();
+            var user = await UserManager.GetUserAsync(User);
+            var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
+            var repositoryOwnerUsername = externalAccountVerificationService.ExtractGitHubUsername(model.GitRepository);
+            if (!isGithubVerified)
+            {
+                TempData[TempDataConstant.WarningMessage] = "Your GitHub account is not verified. Please verify your GitHub account first.";
+                return View(model);
+            }
+            var accountSettings = await conn.GetAccountDetailSettings(user.Id);
+
+            var userGithubAccount = externalAccountVerificationService.ExtractGitHubUsername(accountSettings.Github);
+            if (!string.Equals(repositoryOwnerUsername, userGithubAccount, StringComparison.OrdinalIgnoreCase))
+            {
+                TempData[TempDataConstant.WarningMessage] = "You do not own this GitHub repository. Ensure that your plugin repository is created under your approved GitHub account.";
+                return View(model);
+            }
+
             var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
             _ = BuildService.Build(new FullBuildId(pluginSlug, buildId));
             return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
