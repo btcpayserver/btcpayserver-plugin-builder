@@ -12,7 +12,7 @@
     {
         <div id="StoreSelectorDropdown" class="dropdown only-for-js">
             <button id="StoreSelectorToggle" class="btn btn-secondary dropdown-toggle rounded-pill px-3 @(Model.PluginSlug == null ? "text-secondary" : "")" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <vc:icon symbol="store"/>
+                <vc:icon symbol="block" />
                 <span>@(Model.PluginSlug == null ? "Select Plugin" : Model.PluginSlug.ToString())</span>
                 <vc:icon symbol="caret-down"/>
             </button>
