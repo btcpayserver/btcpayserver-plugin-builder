@@ -25,7 +25,7 @@ namespace PluginBuilder.Controllers
             var user = await UserManager.GetUserAsync(User);
             
             var emailSettings = await emailService.GetEmailSettingsFromDb();
-            var needToVerifyEmail = emailSettings.PasswordSet && !await UserManager.IsEmailConfirmedAsync(user!);
+            var needToVerifyEmail = emailSettings?.PasswordSet == true && !await UserManager.IsEmailConfirmedAsync(user!);
             
             var settings = await conn.GetAccountDetailSettings(user!.Id);
             var model = new AccountDetailsViewModel
@@ -44,7 +44,8 @@ namespace PluginBuilder.Controllers
             var user = await UserManager.GetUserAsync(User);
 
             var emailSettings = await emailService.GetEmailSettingsFromDb();
-            var needToVerifyEmail = emailSettings.PasswordSet && !await UserManager.IsEmailConfirmedAsync(user!);
+            // TODO: Resolve the nullable issue
+            var needToVerifyEmail = emailSettings?.PasswordSet == true && !await UserManager.IsEmailConfirmedAsync(user!);
             
             if (needToVerifyEmail)
             {
