@@ -7,7 +7,6 @@ using PluginBuilder.ViewModels;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using PluginBuilder.Components.PluginVersion;
-using Microsoft.AspNetCore.Identity;
 
 namespace PluginBuilder.Controllers
 {
@@ -15,16 +14,13 @@ namespace PluginBuilder.Controllers
     [Route("/plugins/{pluginSlug}")]
     public class PluginController(
         DBConnectionFactory connectionFactory,
-        UserManager<IdentityUser> userManager,
         BuildService buildService,
-        EventAggregator eventAggregator,
-        ExternalAccountVerificationService externalAccountVerificationService)
+        EventAggregator eventAggregator)
         : Controller
     {
         private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
         private BuildService BuildService { get; } = buildService;
         private EventAggregator EventAggregator { get; } = eventAggregator;
-        private UserManager<IdentityUser> UserManager { get; } = userManager;
 
         [HttpGet("settings")]
         public async Task<IActionResult> Settings(
@@ -107,7 +103,6 @@ namespace PluginBuilder.Controllers
         {
             if (!ModelState.IsValid)
                 return View(model);
-
             await using var conn = await ConnectionFactory.Open();
             var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
             _ = BuildService.Build(new FullBuildId(pluginSlug, buildId));
