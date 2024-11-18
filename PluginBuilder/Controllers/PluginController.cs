@@ -70,14 +70,6 @@ namespace PluginBuilder.Controllers
             PluginSlug pluginSlug, long? copyBuild = null)
         {
             await using var conn = await ConnectionFactory.Open();
-            var user = await UserManager.GetUserAsync(User);
-            var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
-            if (!isGithubVerified)
-            {
-                ViewData["GitHubVerificationMessage"] = "Your GitHub account is not verified. Please verify your GitHub account first.";
-                return View(new CreateBuildViewModel());
-            }
-
             var settings = await conn.GetSettings(pluginSlug);
             var model = new CreateBuildViewModel
             {
@@ -117,23 +109,6 @@ namespace PluginBuilder.Controllers
                 return View(model);
 
             await using var conn = await ConnectionFactory.Open();
-            var user = await UserManager.GetUserAsync(User);
-            var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
-            var repositoryOwnerUsername = externalAccountVerificationService.ExtractGitHubUsername(model.GitRepository);
-            if (!isGithubVerified)
-            {
-                TempData[TempDataConstant.WarningMessage] = "Your GitHub account is not verified. Please verify your GitHub account first.";
-                return View(model);
-            }
-            var accountSettings = await conn.GetAccountDetailSettings(user.Id);
-
-            var userGithubAccount = externalAccountVerificationService.ExtractGitHubUsername(accountSettings.Github);
-            if (!string.Equals(repositoryOwnerUsername, userGithubAccount, StringComparison.OrdinalIgnoreCase))
-            {
-                TempData[TempDataConstant.WarningMessage] = "You do not own this GitHub repository. Ensure that your plugin repository is created under your approved GitHub account.";
-                return View(model);
-            }
-
             var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
             _ = BuildService.Build(new FullBuildId(pluginSlug, buildId));
             return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });

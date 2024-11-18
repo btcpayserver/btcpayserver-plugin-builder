@@ -54,19 +54,21 @@ namespace PluginBuilder
             return JsonConvert.DeserializeObject<AccountSettings>(accountDetail, CamelCaseSerializerSettings.Instance);
         }
 
-        public static async Task VerifyGithubAccount(this NpgsqlConnection connection, string userId)
+        public static async Task VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl)
         {
             await connection.ExecuteAsync(
-                "UPDATE \"AspNetUsers\" SET \"GithubVerified\" = true WHERE \"Id\" = @userId",
-                new { userId }
+                "UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = @gistUrl WHERE \"Id\" = @userId",
+                new { userId, gistUrl }
             );
         }
+
         public static async Task<bool> IsGithubAccountVerified(this NpgsqlConnection connection, string userId)
         {
-            return await connection.QuerySingleOrDefaultAsync<bool>(
-                "SELECT \"GithubVerified\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId",
+            var githubGistUrl = await connection.QuerySingleOrDefaultAsync<string>(
+                "SELECT \"GithubGistUrl\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId",
                 new { userId }
             );
+            return !string.IsNullOrEmpty(githubGistUrl);
         }
 
         public static async Task<bool> UserOwnsPlugin(this NpgsqlConnection connection, string userId, PluginSlug pluginSlug)

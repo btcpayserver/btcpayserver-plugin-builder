@@ -5,6 +5,7 @@ namespace PluginBuilder.DataModels;
 public class AccountSettings
 {
     [Display(Name = "Github username")]
+    [Required(ErrorMessage = "GitHub profile URL is required.")]
     public string Github { get; set; }
 
     [Display(Name = "Nostr Npub key")]

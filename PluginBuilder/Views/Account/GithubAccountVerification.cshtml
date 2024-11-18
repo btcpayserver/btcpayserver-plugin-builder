@@ -6,50 +6,44 @@
 
 <h2>GitHub Verification</h2>
 
-<div class="container mt-4">
-    @if (!Model.IsVerified)
-    {
-        <div class="alert alert-info">
-            <p>
-                To verify your GitHub account, please create a public
-                <a href="https://gist.github.com/" target="_blank" style="color: inherit; text-decoration: underline;">gist</a>
-                with the following token:
+@if (!Model.IsVerified)
+{
+    <div class="alert alert-info">
+        To verify your GitHub account, <a href="https://gist.github.com/" target="_blank" style="color: inherit; text-decoration: underline;">create a public gist</a> with the following content:<br>
+        <span id="token" class="fs-3">@Model.Token</span><br><br>
+        The gist description and filename do not matter, just ensure the provided token is entered as the content.<br>
+        Once the public gist is created, copy its full URL and click the "Verify" button to complete verification.
+    </div>
+    <div class="row">
+        <div class="col-xl-8 col-xxl-constrain">
+            <form asp-action="GithubAccountVerification" method="post">
+                <div class="form-group">
+                    <label asp-for="GistUrl" class="form-label"></label>
+                    <input asp-for="GistUrl" class="form-control" required />
+                </div>
+                <input type="hidden" asp-for="Token" value="@Model.Token" />
+                <div class="form-group">
+                    <input type="submit" class="btn btn-primary" value="Verify" />
+                </div>
+            </form>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card text-center shadow-sm mt-5">
+        <div class="card-body">
+            <h5 class="card-title">Your GitHub account has been verified.</h5>
+            <p class="card-text">
+                Thank you for verifying your account. You can now proceed to enjoy all the features of the plugin builder.
             </p>
-            <h5><span id="token">@Model.Token</span></h5>
-            <p>Copy the token above and create a new public gist on your GitHub account with this token as the content.</p>
-            <p>Once done, submit the Gist ID for validation.</p>
+            <p>
+                <strong>GitHub Profile:</strong>
+                <a href="@Model.GithubProfileUrl" target="_blank" class="text-decoration-underline">
+                    @Model.GithubProfileUrl
+                </a>
+            </p>
         </div>
-        <form asp-action="GithubAccountVerification" method="post">
-            <div class="form-group">
-                <label asp-for="GithubProfileUrl" class="form-label"></label>
-                <input asp-for="GithubProfileUrl" class="form-control" required />
-            </div>
-            <div class="form-group">
-                <label asp-for="GistId" class="form-label"></label>
-                <input asp-for="GistId" class="form-control" required />
-            </div>
-            <input type="hidden" asp-for="Token" value="@Model.Token" />
-            <div class="form-group">
-                <input type="submit" class="btn btn-primary" value="Verify" />
-            </div>
-        </form>
-    }
-    else
-    {
-        <div class="card text-center shadow-sm mt-5">
-            <div class="card-body">
-                <h5 class="card-title">Your GitHub account has been verified.</h5>
-                <p class="card-text">
-                    Thank you for verifying your account. You can now proceed to enjoy all the features of the plugin builder.
-                </p>
-                <p>
-                    <strong>GitHub Profile:</strong>
-                    <a href="@Model.GithubProfileUrl" target="_blank" class="text-decoration-underline">
-                        @Model.GithubProfileUrl
-                    </a>
-                </p>
-            </div>
-        </div>
-    }
+    </div>
+}
     
-</div>

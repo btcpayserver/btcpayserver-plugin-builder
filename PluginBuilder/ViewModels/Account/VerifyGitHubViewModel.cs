@@ -9,8 +9,8 @@ public class VerifyGitHubViewModel
     public string GithubProfileUrl { get; set; }
 
     [Required]
-    [Display(Name = "Public Gist Id")]
-    public string GistId { get; set; }
+    [Display(Name = "Public Gist Url")]
+    public string GistUrl { get; set; }
 
     public string Token { get; set; }
     public bool IsVerified { get; set; }
