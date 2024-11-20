@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.FeatureManagement;
 using Npgsql;
 using PluginBuilder.Authentication;
 using PluginBuilder.DataModels;
@@ -39,6 +40,7 @@ public class Program
     {
         var builder = WebApplication.CreateBuilder(args ?? Array.Empty<string>());
         builder.Configuration.AddEnvironmentVariables("PB_");
+        builder.Configuration.AddEnvironmentVariables("FeatureManagement__");
 #if DEBUG
         builder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
 #endif
@@ -101,6 +103,7 @@ public class Program
         services.AddHttpClient();
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
+        services.AddFeatureManagement();
 
         services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
         {
