@@ -16,7 +16,7 @@
     </div>
     <div class="row">
         <div class="col-xl-8 col-xxl-constrain">
-            <form asp-action="GithubAccountVerification" method="post">
+            <form asp-action="VerifyGithubAccount" method="post">
                 <div class="form-group">
                     <label asp-for="GistUrl" class="form-label"></label>
                     <input asp-for="GistUrl" class="form-control" required />
@@ -31,15 +31,12 @@
 }
 else
 {
-    <div class="card text-center shadow-sm mt-5">
-        <div class="card-body">
-            <h5 class="card-title">Your GitHub account has been verified.</h5>
-            <p class="card-text">
-                Thank you for verifying your account. You can now proceed to enjoy all the features of the plugin builder.
-            </p>
+    <div class="row">
+        <div class="col-xl-8 col-xxl-constrain">
+            <p>Your GitHub account has been verified.</p>
             <p>
                 <strong>GitHub Profile:</strong>
-                <a href="@Model.GithubProfileUrl" target="_blank" class="text-decoration-underline">
+                <a href="https://github.com/@Model.GithubProfileUrl" target="_blank" class="text-decoration-underline">
                     @Model.GithubProfileUrl
                 </a>
             </p>

@@ -10,42 +10,38 @@ public class ExternalAccountVerificationService
     {
         _httpClientFactory = httpClientFactory;
     }
-    public async Task<bool> VerifyGistToken(string profileUrl, string gistUrl, string token)
+    public async Task<string> VerifyGistToken(string gistUrl, string token)
     {
         var regex = new Regex(@"https://gist\.github\.com/([^/]+)/([^/]+)", RegexOptions.IgnoreCase);
         var match = regex.Match(gistUrl);
         if (!match.Success)
-            return false;
+            return null;
 
         var gistUsername = match.Groups[1].Value;
         var gistId = match.Groups[2].Value;
-
-        string username = ExtractGitHubUsername(profileUrl);
-        if (!string.Equals(gistUsername, username, StringComparison.OrdinalIgnoreCase))
-            return false;
 
         var client = _httpClientFactory.CreateClient();
         var url = $"https://api.github.com/gists/{gistId}";
         client.DefaultRequestHeaders.UserAgent.ParseAdd("GitHubVerificationApp");
         var response = await client.GetAsync(url);
         if (!response.IsSuccessStatusCode)
-            return false;
+            return null;
 
         var content = await response.Content.ReadAsStringAsync();
         var gistData = JObject.Parse(content);
 
         var owner = gistData["owner"]?["login"]?.ToString();
-        if (owner == null || !owner.Equals(username, StringComparison.OrdinalIgnoreCase))
-            return false;
+        if (owner == null || !owner.Equals(gistUsername, StringComparison.OrdinalIgnoreCase))
+            return null;
 
         var files = gistData["files"];
         foreach (var file in files)
         {
             var fileContent = file.First["content"]?.ToString();
             if (fileContent != null && fileContent.Contains(token))
-                return true;
+                return gistUsername;
         }
-        return false;
+        return null;
     }
 
     public string ExtractGitHubUsername(string githubUrl)

@@ -1,1 +1,1 @@
-ALTER TABLE "AspNetUsers" ADD COLUMN "GithubGistUrl" text;
+ALTER TABLE "AspNetUsers" ADD COLUMN "GithubGistUrl" varchar(100);

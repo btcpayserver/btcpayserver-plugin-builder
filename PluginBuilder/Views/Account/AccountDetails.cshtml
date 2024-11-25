@@ -26,22 +26,17 @@
                 </div>
             </div>
             <div class="form-group">
-                <label asp-for="Settings.Github" class="form-label" data-required></label>
+                <label asp-for="Settings.Github" class="form-label"></label>
+                @if (Model.GithubAccountVerified)
+                {
+                    <span class="badge bg-success ml-2">Confirmed</span>
+                }
                 <div class="input-group">
-                    @if (Model.GithubAccountVerified)
+                    <input asp-for="Settings.Github" class="form-control" placeholder="https://github.com/satoshi" readonly="readonly" />
+                    @if (!Model.GithubAccountVerified)
                     {
-                        <input asp-for="Settings.Github" class="form-control" placeholder="" readonly="readonly" />
-                        <span class="badge bg-success ml-2 d-flex justify-content-center align-items-center icon-container">
-                            <vc:icon symbol="checkmark" />
-                        </span>
-                    }
-                    else
-                    {
-                        <input asp-for="Settings.Github" class="form-control" placeholder="https://github.com/satoshi" required />
                         <div class="input-group-append">
-                            <button name="command" type="submit" class="btn btn-secondary" value="VerifyGithub">
-                                Verify GitHub
-                            </button>
+                            <a asp-controller="Account" asp-action="verifygithubaccount" class="btn btn-secondary">Verify GitHub</a>
                         </div>
                     }
                 </div>

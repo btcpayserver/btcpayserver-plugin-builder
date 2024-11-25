@@ -67,29 +67,18 @@ namespace PluginBuilder.Controllers
         }
 
         [HttpPost("details")]
-        public async Task<IActionResult> AccountDetails(AccountDetailsViewModel model, string? command)
+        public async Task<IActionResult> AccountDetails(AccountDetailsViewModel model)
         {
-            await using var conn = await ConnectionFactory.Open();
-            var user = await UserManager.GetUserAsync(User)!;
-            var accountSettings = await conn.GetAccountDetailSettings(user!.Id);
-            if (command == "VerifyGithub")
-            {
-                accountSettings.Github = model.Settings.Github;
-                await conn.SetAccountDetailSettings(accountSettings, user!.Id);
-                return RedirectToAction(nameof(GithubAccountVerification));
-            }
-            if (model.NeedToVerifyEmail || !model.GithubAccountVerified)
-            {
-                TempData[TempDataConstant.WarningMessage] = "You need to verify your Email and Github profile to update your account details";
-                return View(model);
-            }
-
             if (!ModelState.IsValid)
             {
                 return View(model);
             }
 
-            var settings = model.Settings;
+            var user = await UserManager.GetUserAsync(User)!;
+            
+            await using var conn = await ConnectionFactory.Open();
+            var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
+
             accountSettings.Nostr = model.Settings.Nostr;
             accountSettings.Twitter = model.Settings.Twitter;
             accountSettings.Email = model.Settings.Email;
@@ -100,7 +89,7 @@ namespace PluginBuilder.Controllers
         }
 
         [HttpGet("verifygithubaccount")]
-        public async Task<IActionResult> GithubAccountVerification()
+        public async Task<IActionResult> VerifyGithubAccount()
         {
             await using var conn = await ConnectionFactory.Open();
             var user = await UserManager.GetUserAsync(User);
@@ -118,15 +107,20 @@ namespace PluginBuilder.Controllers
         {
             try
             {
-                await using var conn = await ConnectionFactory.Open();
                 var user = await UserManager.GetUserAsync(User);
-                var accountSettings = await conn.GetAccountDetailSettings(user!.Id);
-                var githubAccountVerification = await externalAccountVerificationService.VerifyGistToken(accountSettings.Github, model.GistUrl, user!.Id);
-                if (!githubAccountVerification)
+                var githubGistAccount = await externalAccountVerificationService.VerifyGistToken(
+                    model.GistUrl, user!.Id);
+                if (string.IsNullOrEmpty(githubGistAccount))
                 {
                     TempData[TempDataConstant.WarningMessage] = $"Unable to verify Github profile. Kindly ensure all data is correct and try again";
                     return View(model);
                 }
+                
+                await using var conn = await ConnectionFactory.Open();
+                var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
+                accountSettings.Github = githubGistAccount;
+                await conn.SetAccountDetailSettings(accountSettings, user!.Id);
+                
                 await conn.VerifyGithubAccount(user!.Id, model.GistUrl);
                 TempData[TempDataConstant.SuccessMessage] = $"Github account verified successfully";
                 return RedirectToAction(nameof(AccountDetails));
