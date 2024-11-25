@@ -1,0 +1,46 @@
+@model VerifyGitHubViewModel
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage("Github Account Verification");
+}
+
+<h2>GitHub Verification</h2>
+
+@if (!Model.IsVerified)
+{
+    <div class="alert alert-info">
+        To verify your GitHub account, <a href="https://gist.github.com/" target="_blank" style="color: inherit; text-decoration: underline;">create a public gist</a> with the following content:<br>
+        <span id="token" class="fs-3">@Model.Token</span><br><br>
+        The gist description and filename do not matter, just ensure the provided token is entered as the content.<br>
+        Once the public gist is created, copy its full URL and click the "Verify" button to complete verification.
+    </div>
+    <div class="row">
+        <div class="col-xl-8 col-xxl-constrain">
+            <form asp-action="VerifyGithubAccount" method="post">
+                <div class="form-group">
+                    <label asp-for="GistUrl" class="form-label"></label>
+                    <input asp-for="GistUrl" class="form-control" required />
+                </div>
+                <input type="hidden" asp-for="Token" value="@Model.Token" />
+                <div class="form-group">
+                    <input type="submit" class="btn btn-primary" value="Verify" />
+                </div>
+            </form>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row">
+        <div class="col-xl-8 col-xxl-constrain">
+            <p>Your GitHub account has been verified.</p>
+            <p>
+                <strong>GitHub Profile:</strong>
+                <a href="https://github.com/@Model.GithubProfileUrl" target="_blank" class="text-decoration-underline">
+                    @Model.GithubProfileUrl
+                </a>
+            </p>
+        </div>
+    </div>
+}
+    

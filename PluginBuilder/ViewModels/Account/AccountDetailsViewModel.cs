@@ -10,4 +10,5 @@ public class AccountDetailsViewModel
     public bool AccountEmailConfirmed { get; set; }
     public bool NeedToVerifyEmail { get; set; }
     public AccountSettings Settings { get; set; }
+    public bool GithubAccountVerified { get; set; }
 }
