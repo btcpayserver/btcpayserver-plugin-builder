@@ -1,54 +1,68 @@
-@model IEnumerable<AdminPluginViewModel>
+@model AdminPluginSettingViewModel
 @{
 Layout = "_Layout";
 ViewData.SetActivePage(AdminNavPages.Plugins, "Plugins");
 }
 
-<div class="d-sm-flex align-items-center justify-content-between">
-    <h2 class="mb-4">@ViewData["Title"]</h2>
-    @{
-        var nonPreReleasePublishers = Model.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Select(m => m.PublisherEmail).ToList();
-    }
-    @if (nonPreReleasePublishers.Any())
-    {
-        <a asp-controller="Admin" asp-action="EmailSender" asp-route-to="@string.Join(",", nonPreReleasePublishers)" class="btn btn-primary">
-            Email all Publishers
-        </a>
-    }
+<div class="d-flex flex-column flex-md-row align-items-center justify-content-between gap-3 my-4">
+    <h2 class="mb-3 mb-md-0">@ViewData["Title"]</h2>
+
+    <div class="d-flex flex-column flex-sm-row align-items-center gap-3">
+        <div class="d-flex align-items-center">
+            <form asp-controller="Admin" asp-action="UpdateVerifiedEmailRequirement" method="post" class="d-flex align-items-center">
+                <input type="checkbox" class="btcpay-toggle me-2" id="featureToggle" asp-for="@Model.VerifiedEmailForPluginPublish"
+                       onchange="this.form.submit()" />
+                <label class="form-check-label text-wrap" for="featureToggle">
+                    Require Verified Email for publishing
+                </label>
+            </form>
+        </div>
+
+        @if (Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Any())
+        {
+            <a asp-controller="Admin" asp-action="EmailSender"
+               asp-route-to="@string.Join(",", Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Select(m => m.PublisherEmail))"
+               class="btn btn-primary">
+                Email Publishers
+            </a>
+        }
+    </div>
 </div>
 
 
-<table class="table">
-    <thead>
-        <tr>
-            <th>Project Slug</th>
-            <th>Version</th>
-            <th>Build ID</th>
-            <th>BTCPay Min Version</th>
-            <th>Pre-Release</th>
-            <th>Updated At</th>
-            <th>Publisher Email</th>
-            <th>Visibility</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var plugin in Model)
-        {
+<div class="table-responsive">
+    <table class="table">
+        <thead>
             <tr>
-                <td>@plugin.ProjectSlug</td>
-                <td>@plugin.Version</td>
-                <td>@plugin.BuildId</td>
-                <td>@plugin.BtcPayMinVer</td>
-                <td>@plugin.PreRelease</td>
-                <td>@plugin.UpdatedAt</td>
-                <td>@plugin.PublisherEmail</td>
-                <td>@plugin.Visibility</td>
-                <td>
-                    <a asp-controller="Admin" asp-action="PluginEdit" asp-route-slug="@plugin.ProjectSlug">Edit</a> |
-                    <a asp-controller="Admin" asp-action="PluginDelete" asp-route-slug="@plugin.ProjectSlug">Delete</a>
-                </td>
+                <th>Project Slug</th>
+                <th>Version</th>
+                <th>Build ID</th>
+                <th>BTCPay Min Version</th>
+                <th>Pre-Release</th>
+                <th>Updated At</th>
+                <th>Publisher Email</th>
+                <th>Visibility</th>
+                <th></th>
             </tr>
-        }
-    </tbody>
-</table>
+        </thead>
+        <tbody>
+            @foreach (var plugin in Model.Plugins)
+            {
+                <tr>
+                    <td>@plugin.ProjectSlug</td>
+                    <td>@plugin.Version</td>
+                    <td>@plugin.BuildId</td>
+                    <td>@plugin.BtcPayMinVer</td>
+                    <td>@plugin.PreRelease</td>
+                    <td>@plugin.UpdatedAt</td>
+                    <td>@plugin.PublisherEmail</td>
+                    <td>@plugin.Visibility</td>
+                    <td>
+                        <a asp-controller="Admin" asp-action="PluginEdit" asp-route-slug="@plugin.ProjectSlug">Edit</a> |
+                        <a asp-controller="Admin" asp-action="PluginDelete" asp-route-slug="@plugin.ProjectSlug">Delete</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

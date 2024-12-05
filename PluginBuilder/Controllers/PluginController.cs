@@ -2,7 +2,6 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.FeatureManagement;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Components.PluginVersion;
@@ -17,7 +16,6 @@ namespace PluginBuilder.Controllers
     public class PluginController(
         DBConnectionFactory connectionFactory,
         UserManager<IdentityUser> userManager,
-        IFeatureManager featureManager,
         BuildService buildService,
         EmailService emailService,
         EventAggregator eventAggregator)
@@ -109,16 +107,16 @@ namespace PluginBuilder.Controllers
         {
             if (!ModelState.IsValid)
                 return View(model);
+            await using var conn = await connectionFactory.Open();
             var user = await UserManager.GetUserAsync(User);
             var emailSettings = await emailService.GetEmailSettingsFromDb();
             var needToVerifyEmail = emailSettings?.PasswordSet == true && !await UserManager.IsEmailConfirmedAsync(user!);
-            var isEmailVerificationFeatureEnabled = await featureManager.IsEnabledAsync("VerifiedEmailForPluginPublish");
+            var isEmailVerificationFeatureEnabled = await conn.GetVerifiedEmailForPluginPublishSetting();
             if (isEmailVerificationFeatureEnabled && needToVerifyEmail)
             {
                 TempData[TempDataConstant.WarningMessage] = "You need to verify your email address to complete the plugin build process";
                 return RedirectToAction("AccountDetails", "Account");
             }
-            await using var conn = await ConnectionFactory.Open();
             var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
             _ = BuildService.Build(new FullBuildId(pluginSlug, buildId));
             return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
