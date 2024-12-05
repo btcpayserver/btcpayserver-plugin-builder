@@ -247,5 +247,24 @@ namespace PluginBuilder
                          """;
             return connection.ExecuteAsync(query, new { key });
         }
+
+        public static async Task<bool> GetVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection)
+        {
+            var settingValue = await connection.QuerySingleOrDefaultAsync<string>("SELECT value FROM settings WHERE key = 'VerifiedEmailForPluginPublish'");
+            if (settingValue == null)
+            {
+                await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES ('VerifiedEmailForPluginPublish', 'true')");
+                settingValue = "true";
+            }
+            return bool.TryParse(settingValue, out var result) && result;
+        }
+
+        public static async Task UpdateVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection, bool newValue)
+        {
+            var stringValue = newValue.ToString().ToLower();
+            await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = 'VerifiedEmailForPluginPublish'",
+                new { Value = stringValue });
+        }
+
     }
 }
