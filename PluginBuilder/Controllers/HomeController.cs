@@ -4,37 +4,27 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Home;
 
 namespace PluginBuilder.Controllers
 {
     [Authorize]
-    public class HomeController : Controller
+    public class HomeController(
+        DBConnectionFactory connectionFactory,
+        UserManager<IdentityUser> userManager,
+        RoleManager<IdentityRole> roleManager,
+        SignInManager<IdentityUser> signInManager,
+        IAuthorizationService authorizationService,
+        EmailService emailService,
+        ServerEnvironment env)
+        : Controller
     {
-        private readonly EmailService _emailService;
-        private DBConnectionFactory ConnectionFactory { get; }
-        private UserManager<IdentityUser> UserManager { get; }
-        public RoleManager<IdentityRole> RoleManager { get; }
-        private SignInManager<IdentityUser> SignInManager { get; }
-        private IAuthorizationService AuthorizationService { get; }
-        private ServerEnvironment Env { get; }
-
-        public HomeController(
-            DBConnectionFactory connectionFactory,
-            UserManager<IdentityUser> userManager,
-            RoleManager<IdentityRole> roleManager,
-            SignInManager<IdentityUser> signInManager,
-            IAuthorizationService authorizationService,
-            EmailService emailService,
-            ServerEnvironment env)
-        {
-            _emailService = emailService;
-            ConnectionFactory = connectionFactory;
-            UserManager = userManager;
-            RoleManager = roleManager;
-            SignInManager = signInManager;
-            AuthorizationService = authorizationService;
-            Env = env;
-        }
+        private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
+        private UserManager<IdentityUser> UserManager { get; } = userManager;
+        public RoleManager<IdentityRole> RoleManager { get; } = roleManager;
+        private SignInManager<IdentityUser> SignInManager { get; } = signInManager;
+        private IAuthorizationService AuthorizationService { get; } = authorizationService;
+        private ServerEnvironment Env { get; } = env;
 
         [HttpGet("/")]
         
@@ -145,7 +135,6 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             }
             
             await using var conn = await ConnectionFactory.Open();
-            bool verifiedEmailReq = await conn.GetSettingAsync("RequireConfirmedEmail") == "true";
 
             var admins = await UserManager.GetUsersInRoleAsync(Roles.ServerAdmin);
             var isAdminReg = admins.Count == 0 || (model.IsAdmin && Env.CheatMode);
@@ -155,17 +144,16 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             }
 
             // check if it's not admin and we are requiring email verifications
-            var emailSettings = await _emailService.GetEmailSettingsFromDb();
-            if (!isAdminReg && verifiedEmailReq && emailSettings?.PasswordSet == true)
+            var emailSettings = await emailService.GetEmailSettingsFromDb();
+            if (!isAdminReg && emailSettings?.PasswordSet == true)
             {
                 var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
                 var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
                     Request.Scheme, Request.Host.ToString());
-                var body = $"Please verify your account by visiting: {link}";
 
-                await _emailService.SendEmail(model.Email, "Verify your account on BTCPay Server Plugin Builder", body);
-                
-                return RedirectToAction(nameof(VerifyEmailAddress), new { email = user.Email });
+                await emailService.SendVerifyEmail(model.Email, link);
+
+                return RedirectToAction(nameof(VerifyEmail), new { email = user.Email });
             }
             else
             {
@@ -173,11 +161,11 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 return RedirectToLocal(returnUrl);
             }
         }
-        
+
         //
         [AllowAnonymous]
-        [HttpGet("/VerifyEmailAddress")]
-        public IActionResult VerifyEmailAddress(string email)
+        [HttpGet("/VerifyEmail")]
+        public IActionResult VerifyEmail(string email)
         {
             return View(email);
         }
@@ -185,18 +173,17 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
         [HttpGet("/ConfirmEmail")]
         public async Task<IActionResult> ConfirmEmail(string uid, string token)
         {
+            var model = new ConfirmEmailViewModel();
+            
             var user = await UserManager.FindByIdAsync(uid);
-            if (user is null)
+            if (user is not null)
             {
-                return NotFound();
+                var result = await UserManager.ConfirmEmailAsync(user, token);
+                model.Email = user.Email!;
+                model.EmailConfirmed = result.Succeeded;
             }
-            var result = await UserManager.ConfirmEmailAsync(user, token);
-            if (result.Succeeded)
-            {
-                await SignInManager.SignInAsync(user, isPersistent: false);
-                return RedirectToAction(nameof(HomePage));
-            }
-            return BadRequest();
+
+            return View(model);
         }
         
 

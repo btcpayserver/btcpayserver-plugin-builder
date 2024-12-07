@@ -1,8 +1,10 @@
 #nullable enable
 using Dapper;
+using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 
 namespace PluginBuilder
@@ -20,7 +22,7 @@ namespace PluginBuilder
                 return null;
             return JsonConvert.DeserializeObject<PluginSettings>(r, CamelCaseSerializerSettings.Instance);
         }
-        public static async Task<bool> SetSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings pluginSettings)
+        public static async Task<bool> SetPluginSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings pluginSettings)
         {
             var count = await connection.ExecuteAsync("UPDATE plugins SET settings=@settings::JSONB WHERE slug=@pluginSlug",
                 new
@@ -30,6 +32,45 @@ namespace PluginBuilder
                 });
             return count == 1;
         }
+        public static async Task SetAccountDetailSettings(this NpgsqlConnection connection, AccountSettings accountSettings, string userId)
+        {
+            await connection.ExecuteAsync(
+                "UPDATE \"AspNetUsers\" SET \"AccountDetail\" = @settings::JSONB WHERE \"Id\" = @userId",
+                new
+                {
+                    userId,
+                    settings = JsonConvert.SerializeObject(accountSettings, CamelCaseSerializerSettings.Instance)
+                }
+            );
+        }
+        public static async Task<AccountSettings?> GetAccountDetailSettings(this NpgsqlConnection connection, string userId)
+        {
+            var accountDetail = await connection.QueryFirstOrDefaultAsync<string>(
+                "SELECT \"AccountDetail\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId",
+                new { userId }
+            );
+            if (accountDetail is null)
+                return null;
+            return JsonConvert.DeserializeObject<AccountSettings>(accountDetail, CamelCaseSerializerSettings.Instance);
+        }
+
+        public static async Task VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl)
+        {
+            await connection.ExecuteAsync(
+                "UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = @gistUrl WHERE \"Id\" = @userId",
+                new { userId, gistUrl }
+            );
+        }
+
+        public static async Task<bool> IsGithubAccountVerified(this NpgsqlConnection connection, string userId)
+        {
+            var githubGistUrl = await connection.QuerySingleOrDefaultAsync<string>(
+                "SELECT \"GithubGistUrl\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId",
+                new { userId }
+            );
+            return !string.IsNullOrEmpty(githubGistUrl);
+        }
+
         public static async Task<bool> UserOwnsPlugin(this NpgsqlConnection connection, string userId, PluginSlug pluginSlug)
         {
             return await connection.QuerySingleAsync<bool>(
@@ -173,23 +214,21 @@ namespace PluginBuilder
                 });
         }
         
-        // Add the method to get all the settings from database 
-        public static Task<IEnumerable<(string key, string value)>> GetAllSettingsAsync(this NpgsqlConnection connection)
+        // Methods related to getting / setting settings in the DB 
+        public static Task<IEnumerable<(string key, string value)>> SettingsGetAllAsync(this NpgsqlConnection connection)
         {
-            // SQL query to fetch all the settings from settings table
             var query = "SELECT key, value FROM settings";
             return connection.QueryAsync<(string key, string value)>(query);
         }
         
             
-        public static Task<string> GetSettingAsync(this NpgsqlConnection connection, string key)
+        public static Task<string> SettingsGetAsync(this NpgsqlConnection connection, string key)
         {
-            // SQL query to fetch the value from settings table
             var query = "SELECT value FROM settings WHERE key = @key";
             return connection.QuerySingleOrDefaultAsync<string>(query, new { key });
         }
 
-        public static Task<int> SetSettingAsync(this NpgsqlConnection connection, string key, string value)
+        public static Task<int> SettingsSetAsync(this NpgsqlConnection connection, string key, string value)
         {
             var query = $"""
                 INSERT INTO settings(key, value) 
@@ -198,6 +237,15 @@ namespace PluginBuilder
                 SET value = EXCLUDED.value
                 """;
             return connection.ExecuteAsync(query, new { key, value });
+        }
+
+        public static Task<int> SettingsDeleteAsync(this NpgsqlConnection connection, string key)
+        {
+            var query = $"""
+                         DELETE FROM settings
+                         WHERE key = @key
+                         """;
+            return connection.ExecuteAsync(query, new { key });
         }
     }
 }

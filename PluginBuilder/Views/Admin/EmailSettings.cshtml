@@ -51,10 +51,11 @@
     </div>
     <div class="form-group">
         <input type="submit" class="btn btn-primary" id="Save" value="Save"/>
-        @* if the password is not null, credentials have been set up in database *@
-        @if (Model.Password != null)
+        @if (Model.PasswordSet)
         {
-            <a asp-action="EmailTest" class="btn btn-link">Test Email</a>
+            <a asp-action="EmailSender" asp-route-subject="Test email from BTCPay Plugin Builder"
+               asp-route-message="This is a test email from BTCPay Plugin Builder"
+               class="btn btn-link">Test Email Sending</a>
         }
     </div>
 </form>

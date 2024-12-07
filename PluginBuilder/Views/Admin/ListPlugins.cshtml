@@ -5,10 +5,18 @@ ViewData.SetActivePage(AdminNavPages.Plugins, "Plugins");
 }
 
 <div class="d-sm-flex align-items-center justify-content-between">
-    <h2 class="mb-4">
-        @ViewData["Title"]
-    </h2>
+    <h2 class="mb-4">@ViewData["Title"]</h2>
+    @{
+        var nonPreReleasePublishers = Model.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Select(m => m.PublisherEmail).ToList();
+    }
+    @if (nonPreReleasePublishers.Any())
+    {
+        <a asp-controller="Admin" asp-action="EmailSender" asp-route-to="@string.Join(",", nonPreReleasePublishers)" class="btn btn-primary">
+            Email all Publishers
+        </a>
+    }
 </div>
+
 
 <table class="table">
     <thead>

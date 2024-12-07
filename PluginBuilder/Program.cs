@@ -98,6 +98,8 @@ public class Program
         services.AddSingleton<AzureStorageClient>();
         services.AddSingleton<ServerEnvironment>();
         services.AddSingleton<EventAggregator>();
+        services.AddHttpClient();
+        services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
 
         services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
