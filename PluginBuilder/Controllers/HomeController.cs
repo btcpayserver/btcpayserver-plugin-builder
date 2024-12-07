@@ -243,7 +243,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 return View(model);
             }
             await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);
-            await conn.SetSettings(pluginSlug, new PluginSettings { Tags = model.Tags });
+            await conn.SetPluginSettings(pluginSlug, new PluginSettings { Tags = model.Tags });
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 
