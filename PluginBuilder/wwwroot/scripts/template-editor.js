@@ -1,4 +1,13 @@
 document.addEventListener('DOMContentLoaded', function () {
+    new TomSelect('#EmailSeperator', {
+        create: true,
+        delimiter: ',',
+        persist: false,
+        maxItems: null
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
     new TomSelect('#TextSeperator', {
         create: true,
         delimiter: ',',
@@ -7,7 +16,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
-document.getElementById("TextSeperator").addEventListener("change", function () {
+document.getElementById("EmailSeperator").addEventListener("change", function () {
     validateEmails();
 });
 
@@ -18,7 +27,7 @@ document.getElementById("emailForm").addEventListener("submit", function (event)
 });
 
 function validateEmails() {
-    const emailField = document.getElementById("TextSeperator");
+    const emailField = document.getElementById("EmailSeperator");
     const emailError = document.getElementById("emailError");
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     const emails = emailField.value.split(/[,;\s]+/);
