@@ -1,12 +1,13 @@
-using Microsoft.AspNetCore.Authorization;
 using Dapper;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json;
-using PluginBuilder.Components.PluginVersion;
 
 namespace PluginBuilder.Controllers
 {
@@ -14,11 +15,14 @@ namespace PluginBuilder.Controllers
     [Route("/plugins/{pluginSlug}")]
     public class PluginController(
         DBConnectionFactory connectionFactory,
+        UserManager<IdentityUser> userManager,
         BuildService buildService,
+        EmailService emailService,
         EventAggregator eventAggregator)
         : Controller
     {
         private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
+        private UserManager<IdentityUser> UserManager { get; } = userManager;
         private BuildService BuildService { get; } = buildService;
         private EventAggregator EventAggregator { get; } = eventAggregator;
 
@@ -103,7 +107,16 @@ namespace PluginBuilder.Controllers
         {
             if (!ModelState.IsValid)
                 return View(model);
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
+            var user = await UserManager.GetUserAsync(User);
+            var emailSettings = await emailService.GetEmailSettingsFromDb();
+            var needToVerifyEmail = emailSettings?.PasswordSet == true && !await UserManager.IsEmailConfirmedAsync(user!);
+            var isEmailVerificationFeatureEnabled = await conn.GetVerifiedEmailForPluginPublishSetting();
+            if (isEmailVerificationFeatureEnabled && needToVerifyEmail)
+            {
+                TempData[TempDataConstant.WarningMessage] = "You need to verify your email address to complete the plugin build process";
+                return RedirectToAction("AccountDetails", "Account");
+            }
             var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
             _ = BuildService.Build(new FullBuildId(pluginSlug, buildId));
             return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
