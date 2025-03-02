@@ -7,28 +7,28 @@
 
 @functions
 {
-	void ToBadge(string state, string error)
-	{
-		@if (state == "failed")
-		{
-			<span class="badge bg-danger" tooltip="@error">
+    void ToBadge(string state, string error)
+    {
+        @if (state == "failed")
+        {
+            <span class="badge bg-danger" tooltip="@error">
 				@state
-				<small>
+                <small>
 					<a href="#" class="ms-1" target="_blank" rel="noreferrer noopener">
 						<span class="fa fa-question-circle-o" style="color: var(--btcpay-danger-text)" title="@error"></span>
 					</a>
 				</small>
 			</span>
-		}
-		else if (state == "uploaded")
-		{
-			<span class="badge bg-success">@state</span>
-		}
-		else
-		{
-			<span class="badge bg-warning">@state</span>
-		}
-	}
+        }
+        else if (state == "uploaded")
+        {
+            <span class="badge bg-success">@state</span>
+        }
+        else
+        {
+            <span class="badge bg-warning">@state</span>
+        }
+    }
 }
 
 <div class="d-sm-flex align-items-center justify-content-between">
@@ -46,64 +46,66 @@
 
 @if (Model.Builds.Any())
 {
+    // If pluginSlug is null, we are in the global dashboard
     <div class="table-responsive">
-    	<table class="table table-hover">
+        <table class="table table-hover">
             <thead>
             <tr>
                 @if (pluginSlug is null)
                 {
                     <th class="text-nowrap">Plugin</th>
                 }
-                    <th class="w-150px">Date</th>
-    				<th class="text-nowrap">Build Id</th>
-    				<th class="text-nowrap">Version</th>
-    				<th class="text-nowrap">State</th>
-    				<th class="text-nowrap">Repository</th>
-    				<th class="text-nowrap">Git ref</th>
-    				<th>Commit</th>
-    				<th class="text-end">Actions</th>
-    			</tr>
-    		</thead>
-    		<tbody>
-    			@foreach (var item in Model.Builds)
-                {
-                    <tr id="plugin_@item.BuildId" class="invoice-row">
-                        @if (string.IsNullOrEmpty(pluginSlug))
-                        {
-                            <td>
-                                <a asp-action="Dashboard" asp-controller="Plugin" asp-route-pluginSlug="@item.PluginSlug">@item.PluginIdentifier</a>
-                            </td>
-                        }
-                        <td>@item.Date</td>
-                        <td>@item.BuildId</td>
+                <th class="w-150px">Date</th>
+                <th class="text-nowrap">Build Id</th>
+                <th class="text-nowrap">Version</th>
+                <th class="text-nowrap">State</th>
+                <th class="text-nowrap">Repository</th>
+                <th class="text-nowrap">Git ref</th>
+                <th>Commit</th>
+                <th class="text-end">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model.Builds)
+            {
+                <tr id="plugin_@item.BuildId" class="invoice-row">
+                    @if (string.IsNullOrEmpty(pluginSlug))
+                    {
                         <td>
-                            <vc:plugin-version model="@item.Version"></vc:plugin-version>
+                            <a asp-action="Dashboard" asp-controller="Plugin" asp-route-pluginSlug="@item.PluginSlug"
+                               style="word-break: break-all;">@item.PluginIdentifier</a>
                         </td>
-                        <td>@{ ToBadge(item.State, item.Error); }</td>
-                        <td><a href="@item.Repository" target="_blank" rel="noreferrer noopener">@item.Repository</a></td>
-                        <td>@item.GitRef</td>
-                        @if (item.RepositoryLink is null)
+                    }
+                    <td>@item.Date</td>
+                    <td>@item.BuildId</td>
+                    <td>
+                        <vc:plugin-version model="@item.Version"></vc:plugin-version>
+                    </td>
+                    <td>@{ ToBadge(item.State, item.Error); }</td>
+                    <td><a href="@item.Repository" target="_blank" rel="noreferrer noopener" style="word-break: break-all;">@item.Repository</a></td>
+                    <td>@item.GitRef</td>
+                    @if (item.RepositoryLink is null)
+                    {
+                        <td>@item.Commit</td>
+                    }
+                    else
+                    {
+                        <td><a href="@item.RepositoryLink" target="_blank" rel="noreferrer noopener">@item.Commit</a></td>
+                    }
+                    <td class="text-end text-nowrap">
+                        @if (!string.IsNullOrEmpty(item.DownloadLink) && item.State != "removed")
                         {
-                            <td>@item.Commit</td>
+                            <a href="@item.DownloadLink" rel="noreferrer noopener">Download</a>
+                            <span> - </span>
                         }
-                        else
-                        {
-                            <td><a href="@item.RepositoryLink" target="_blank" rel="noreferrer noopener">@item.Commit</a></td>
-                        }
-                        <td class="text-end text-nowrap">
-                            @if (!string.IsNullOrEmpty(item.DownloadLink) && item.State != "removed")
-                            {
-                                <a href="@item.DownloadLink" rel="noreferrer noopener">Download</a>
-                                <span> - </span>
-                            }
-							<a asp-action="CreateBuild" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug?? item.PluginSlug)" asp-route-copyBuild="@item.BuildId">Retry</a>
-							<span> - </span>
-                            <a asp-action="Build" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug?? item.PluginSlug)" asp-route-buildId="@item.BuildId">Details</a>
-                        </td>
-                    </tr>
-    			}
-    		</tbody>
-    	</table>
+                        <a asp-action="CreateBuild" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug?? item.PluginSlug)" asp-route-copyBuild="@item.BuildId">Retry</a>
+                        <span> - </span>
+                        <a asp-action="Build" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug?? item.PluginSlug)" asp-route-buildId="@item.BuildId">Details</a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
     </div>
 }
 else
@@ -114,6 +116,6 @@ else
 }
 
 @section FooterScripts {
-<script src="~/vendor/signalr/signalr.min.js"></script>
-<script src="~/scripts/Dashboard.js"></script>
+    <script src="~/vendor/signalr/signalr.min.js"></script>
+    <script src="~/scripts/Dashboard.js"></script>
 }
