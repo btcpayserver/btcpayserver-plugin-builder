@@ -225,7 +225,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
         [HttpGet("/plugins/create")]
         public IActionResult CreatePlugin()
         {
-            return View();
+            return View(new CreatePluginViewModel());
         }
 
         [HttpPost("/plugins/create")]
@@ -236,7 +236,6 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
                 return View(model);
             }
-
             await using var conn = await ConnectionFactory.Open();
             if (!await conn.NewPlugin(pluginSlug))
             {
@@ -244,6 +243,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 return View(model);
             }
             await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);
+            await conn.SetPluginSettings(pluginSlug, new PluginSettings { Tags = model.Tags });
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 
