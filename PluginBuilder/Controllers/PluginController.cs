@@ -70,6 +70,13 @@ namespace PluginBuilder.Controllers
             PluginSlug pluginSlug, long? copyBuild = null)
         {
             await using var conn = await ConnectionFactory.Open();
+            if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
+            {
+                TempData[TempDataConstant.WarningMessage] =
+                    "You need to verify your email address in order to create and publish plugins";
+                return RedirectToAction("AccountDetails", "Account");
+            }
+            
             var settings = await conn.GetSettings(pluginSlug);
             var model = new CreateBuildViewModel
             {
