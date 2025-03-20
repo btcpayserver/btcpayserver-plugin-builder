@@ -1,12 +1,14 @@
-using Microsoft.AspNetCore.Authorization;
 using Dapper;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using PluginBuilder.Components.PluginVersion;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json;
-using PluginBuilder.Components.PluginVersion;
 
 namespace PluginBuilder.Controllers
 {
@@ -14,11 +16,14 @@ namespace PluginBuilder.Controllers
     [Route("/plugins/{pluginSlug}")]
     public class PluginController(
         DBConnectionFactory connectionFactory,
+        UserManager<IdentityUser> userManager,
         BuildService buildService,
+        EmailVerifiedLogic emailVerifiedLogic,
         EventAggregator eventAggregator)
         : Controller
     {
         private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
+        private UserManager<IdentityUser> UserManager { get; } = userManager;
         private BuildService BuildService { get; } = buildService;
         private EventAggregator EventAggregator { get; } = eventAggregator;
 
@@ -29,7 +34,6 @@ namespace PluginBuilder.Controllers
         {
             await using var conn = await ConnectionFactory.Open();
             var settings = await conn.GetSettings(pluginSlug);
-            
             
             if (settings is null)
                 return NotFound();
@@ -66,6 +70,13 @@ namespace PluginBuilder.Controllers
             PluginSlug pluginSlug, long? copyBuild = null)
         {
             await using var conn = await ConnectionFactory.Open();
+            if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
+            {
+                TempData[TempDataConstant.WarningMessage] =
+                    "You need to verify your email address in order to create and publish plugins";
+                return RedirectToAction("AccountDetails", "Account");
+            }
+            
             var settings = await conn.GetSettings(pluginSlug);
             var model = new CreateBuildViewModel
             {
@@ -103,7 +114,14 @@ namespace PluginBuilder.Controllers
         {
             if (!ModelState.IsValid)
                 return View(model);
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
+            if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
+            {
+                TempData[TempDataConstant.WarningMessage] =
+                    "You need to verify your email address in order to create and publish plugins";
+                return RedirectToAction("AccountDetails", "Account");
+            }
+
             var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
             _ = BuildService.Build(new FullBuildId(pluginSlug, buildId));
             return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });

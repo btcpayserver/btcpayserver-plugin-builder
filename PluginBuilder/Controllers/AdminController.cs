@@ -41,7 +41,9 @@ public class AdminController(
         {
             var plugin = new AdminPluginViewModel
             {
-                ProjectSlug = row.slug, Visibility = row.visibility, PublisherEmail = row.email
+                ProjectSlug = row.slug,
+                Visibility = row.visibility,
+                PublisherEmail = row.email
             };
 
             if (row.ver != null)
@@ -55,9 +57,18 @@ public class AdminController(
 
             plugins.Add(plugin);
         }
-
-        return View(plugins);
+        return View(new AdminPluginSettingViewModel { Plugins = plugins, VerifiedEmailForPluginPublish = await conn.GetVerifiedEmailForPluginPublishSetting() });
     }
+
+    [HttpPost]
+    public async Task<IActionResult> UpdateVerifiedEmailRequirement(bool verifiedEmailForPluginPublish)
+    {
+        await using var conn = await connectionFactory.Open();
+        await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
+        TempData[TempDataConstant.SuccessMessage] = $"Email requirement setting for publishing plugin updated successfully";
+        return RedirectToAction("ListPlugins");
+    }
+
 
     // Plugin Edit
     [HttpGet("plugins/edit/{slug}")]

@@ -13,3 +13,9 @@ public class AdminPluginViewModel
     public string PublisherEmail { get; set; }
     public PluginVisibilityEnum Visibility { get; set; }
 }
+
+public class AdminPluginSettingViewModel
+{
+    public IEnumerable<AdminPluginViewModel> Plugins { get; set; }
+    public bool VerifiedEmailForPluginPublish { get; set; }
+}

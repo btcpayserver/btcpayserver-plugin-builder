@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using PluginBuilder.Authentication;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
@@ -101,6 +102,9 @@ public class Program
         services.AddHttpClient();
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
+        
+        // shared controller logic
+        services.AddTransient<EmailVerifiedLogic>();
 
         services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
         {

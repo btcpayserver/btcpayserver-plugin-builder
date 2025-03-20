@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Home;
@@ -16,6 +17,7 @@ namespace PluginBuilder.Controllers
         SignInManager<IdentityUser> signInManager,
         IAuthorizationService authorizationService,
         EmailService emailService,
+        EmailVerifiedLogic emailVerifiedLogic,
         ServerEnvironment env)
         : Controller
     {
@@ -223,8 +225,16 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
         // plugin methods
 
         [HttpGet("/plugins/create")]
-        public IActionResult CreatePlugin()
+        public async Task<IActionResult> CreatePlugin()
         {
+            await using var conn = await ConnectionFactory.Open();
+            if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
+            {
+                TempData[TempDataConstant.WarningMessage] =
+                    "You need to verify your email address in order to create and publish plugins";
+                return RedirectToAction("AccountDetails", "Account");
+            }
+            
             return View();
         }
 
@@ -236,8 +246,15 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
                 return View(model);
             }
-
+            
             await using var conn = await ConnectionFactory.Open();
+            if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
+            {
+                TempData[TempDataConstant.WarningMessage] =
+                    "You need to verify your email address in order to create and publish plugins";
+                return RedirectToAction("AccountDetails", "Account");
+            }
+
             if (!await conn.NewPlugin(pluginSlug))
             {
                 ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
