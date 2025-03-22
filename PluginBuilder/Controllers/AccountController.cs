@@ -16,21 +16,19 @@ namespace PluginBuilder.Controllers
         EmailService emailService)
         : Controller
     {
-        private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
-        private UserManager<IdentityUser> UserManager { get; } = userManager;
 
         [HttpGet("verifyemail")]
         public async Task<IActionResult> VerifyEmail()
         {
-            var user = await UserManager.GetUserAsync(User);
+            var user = await userManager.GetUserAsync(User);
 
             var emailSettings = await emailService.GetEmailSettingsFromDb();
             // TODO: Resolve the nullable issue
-            var needToVerifyEmail = emailSettings?.PasswordSet == true && !await UserManager.IsEmailConfirmedAsync(user!);
+            var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user!);
             
             if (needToVerifyEmail)
             {
-                var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+                var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
                 var link = Url.Action("ConfirmEmail", "Home", new { uid = user.Id, token },
                     Request.Scheme, Request.Host.ToString());
 
@@ -47,11 +45,11 @@ namespace PluginBuilder.Controllers
         [HttpGet("details")]
         public async Task<IActionResult> AccountDetails()
         {
-            await using var conn = await ConnectionFactory.Open();
-            var user = await UserManager.GetUserAsync(User);
+            await using var conn = await connectionFactory.Open();
+            var user = await userManager.GetUserAsync(User);
 
             var emailSettings = await emailService.GetEmailSettingsFromDb();
-            var needToVerifyEmail = emailSettings?.PasswordSet == true && !await UserManager.IsEmailConfirmedAsync(user!);
+            var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user!);
 
             var settings = await conn.GetAccountDetailSettings(user!.Id);
             var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
@@ -74,9 +72,9 @@ namespace PluginBuilder.Controllers
                 return View(model);
             }
 
-            var user = await UserManager.GetUserAsync(User)!;
+            var user = await userManager.GetUserAsync(User)!;
             
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
             var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
 
             accountSettings.Nostr = model.Settings.Nostr;
@@ -91,8 +89,8 @@ namespace PluginBuilder.Controllers
         [HttpGet("verifygithubaccount")]
         public async Task<IActionResult> VerifyGithubAccount()
         {
-            await using var conn = await ConnectionFactory.Open();
-            var user = await UserManager.GetUserAsync(User);
+            await using var conn = await connectionFactory.Open();
+            var user = await userManager.GetUserAsync(User);
             var accountSettings = await conn.GetAccountDetailSettings(user!.Id);
             if (accountSettings == null || string.IsNullOrEmpty(accountSettings.Github))
             {
@@ -107,7 +105,7 @@ namespace PluginBuilder.Controllers
         {
             try
             {
-                var user = await UserManager.GetUserAsync(User);
+                var user = await userManager.GetUserAsync(User);
                 var githubGistAccount = await externalAccountVerificationService.VerifyGistToken(
                     model.GistUrl, user!.Id);
                 if (string.IsNullOrEmpty(githubGistAccount))
@@ -116,7 +114,7 @@ namespace PluginBuilder.Controllers
                     return View(model);
                 }
                 
-                await using var conn = await ConnectionFactory.Open();
+                await using var conn = await connectionFactory.Open();
                 var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
                 accountSettings.Github = githubGistAccount;
                 await conn.SetAccountDetailSettings(accountSettings, user!.Id);

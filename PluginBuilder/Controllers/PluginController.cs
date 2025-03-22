@@ -16,23 +16,16 @@ namespace PluginBuilder.Controllers
     [Route("/plugins/{pluginSlug}")]
     public class PluginController(
         DBConnectionFactory connectionFactory,
-        UserManager<IdentityUser> userManager,
         BuildService buildService,
-        EmailVerifiedLogic emailVerifiedLogic,
-        EventAggregator eventAggregator)
+        EmailVerifiedLogic emailVerifiedLogic)
         : Controller
     {
-        private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
-        private UserManager<IdentityUser> UserManager { get; } = userManager;
-        private BuildService BuildService { get; } = buildService;
-        private EventAggregator EventAggregator { get; } = eventAggregator;
-
         [HttpGet("settings")]
         public async Task<IActionResult> Settings(
             [ModelBinder(typeof(PluginSlugModelBinder))]
             PluginSlug pluginSlug)
         {
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
             var settings = await conn.GetSettings(pluginSlug);
             
             if (settings is null)
@@ -58,7 +51,7 @@ namespace PluginBuilder.Controllers
             }
             if (!ModelState.IsValid)
                 return View(settings);
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
             await conn.SetPluginSettings(pluginSlug, settings);
             TempData[TempDataConstant.SuccessMessage] = "Settings updated";
             return RedirectToAction(nameof(Settings),new { pluginSlug });
@@ -69,7 +62,7 @@ namespace PluginBuilder.Controllers
             [ModelBinder(typeof(PluginSlugModelBinder))]
             PluginSlug pluginSlug, long? copyBuild = null)
         {
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
             if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
             {
                 TempData[TempDataConstant.WarningMessage] =
@@ -123,7 +116,7 @@ namespace PluginBuilder.Controllers
             }
 
             var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
-            _ = BuildService.Build(new FullBuildId(pluginSlug, buildId));
+            _ = buildService.Build(new FullBuildId(pluginSlug, buildId));
             return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
         }
 
@@ -134,7 +127,7 @@ namespace PluginBuilder.Controllers
             [ModelBinder(typeof(PluginVersionModelBinder))]
             PluginVersion version, string command )
         {
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
 
             if (command == "remove")
             {
@@ -147,7 +140,7 @@ namespace PluginBuilder.Controllers
                 var fullBuildId = new FullBuildId(pluginSlug, pluginBuild.buildId);
                 await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
                     new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-                await BuildService.UpdateBuild(fullBuildId, BuildStates.Removed, null, null);
+                await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null, null);
                 return RedirectToAction(nameof(Build), new
                 {
                     pluginSlug = pluginSlug.ToString(),
@@ -180,7 +173,7 @@ namespace PluginBuilder.Controllers
             [ModelBinder(typeof(PluginVersionModelBinder))]
             PluginVersion version)
         {
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
             var buildId = conn.ExecuteScalar<long>("SELECT build_id FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
             new
             {
@@ -200,7 +193,7 @@ namespace PluginBuilder.Controllers
             PluginSlug pluginSlug,
            long buildId)
         {
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
             var row = await conn.QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release)>(
                 "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
                 "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
@@ -239,7 +232,7 @@ namespace PluginBuilder.Controllers
             //vm.Error = buildInfo?.Error;
             vm.Published = row.published;
             //var buildId = await conn.NewBuild(pluginSlug);
-            //_ = BuildService.Build(new FullBuildId(pluginSlug, buildId), model.ToBuildParameter());
+            //_ = buildService.Build(new FullBuildId(pluginSlug, buildId), model.ToBuildParameter());
             if (logs != "")
                 vm.Logs = logs;
             return View(vm);
@@ -259,7 +252,7 @@ namespace PluginBuilder.Controllers
             [ModelBinder(typeof(PluginSlugModelBinder))]
             PluginSlug pluginSlug)
         {
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
             var rows = await conn.QueryAsync<(long id, string state, string? manifest_info, string? build_info, DateTimeOffset created_at, bool published, bool pre_release)>
                 ("SELECT id, state, manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release " +
                 "FROM builds b " +

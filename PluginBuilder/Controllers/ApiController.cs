@@ -18,22 +18,9 @@ namespace PluginBuilder.Controllers;
 [Authorize(Policy = Policies.OwnPlugin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.BasicAuth)]
 public class ApiController(
     DBConnectionFactory connectionFactory,
-    UserManager<IdentityUser> userManager,
-    RoleManager<IdentityRole> roleManager,
-    SignInManager<IdentityUser> signInManager,
-    IAuthorizationService authorizationService,
-    BuildService buildService,
-    ServerEnvironment env)
+    BuildService buildService)
     : ControllerBase
 {
-    private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
-    public UserManager<IdentityUser> UserManager { get; } = userManager;
-    public RoleManager<IdentityRole> RoleManager { get; } = roleManager;
-    public SignInManager<IdentityUser> SignInManager { get; } = signInManager;
-    public IAuthorizationService AuthorizationService { get; } = authorizationService;
-    public BuildService BuildService { get; } = buildService;
-    public ServerEnvironment Env { get; } = env;
-
     [AllowAnonymous]
     [HttpGet("version")]
     public IActionResult GetVersion()
@@ -58,7 +45,7 @@ public class ApiController(
             true => "get_all_versions",
             false => "get_latest_versions"
         };
-        await using var conn = await ConnectionFactory.Open();
+        await using var conn = await connectionFactory.Open();
         
         // This query definitely doesn't have right indexes
         var query = $"""
@@ -104,7 +91,7 @@ public class ApiController(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
         [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion version)
     {
-        await using var conn = await ConnectionFactory.Open();
+        await using var conn = await connectionFactory.Open();
         var query = $"""
                      SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info
                      FROM versions v
@@ -140,7 +127,7 @@ public class ApiController(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
         [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion version)
     {
-        await using var conn = await ConnectionFactory.Open();
+        await using var conn = await connectionFactory.Open();
         var url = await conn.ExecuteScalarAsync<string?>(
             "SELECT b.build_info->>'url' FROM versions v " +
             "JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id " +
@@ -166,7 +153,7 @@ public class ApiController(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
         CreateBuildRequest model)
     {
-        await using var conn = await ConnectionFactory.Open();
+        await using var conn = await connectionFactory.Open();
         var settings = await conn.GetSettings(pluginSlug);
 
         // apply defaults from settings
@@ -188,7 +175,7 @@ public class ApiController(
         var buildUrl = Url.ActionLink(nameof(PluginController.Build), "Plugin",
             new { pluginSlug = pluginSlug.ToString(), buildId });
         
-        _ = BuildService.Build(new FullBuildId(pluginSlug, buildId));
+        _ = buildService.Build(new FullBuildId(pluginSlug, buildId));
         
         return Ok(new JObject 
         {
@@ -203,7 +190,7 @@ public class ApiController(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
         long buildId)
     {
-        await using var conn = await ConnectionFactory.Open();
+        await using var conn = await connectionFactory.Open();
         var row = await conn.QueryFirstOrDefaultAsync<(string manifest_info, string build_info, DateTimeOffset created_at, bool published, bool pre_release)>(
             "SELECT manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
             "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +

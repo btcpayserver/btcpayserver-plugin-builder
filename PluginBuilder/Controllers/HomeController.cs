@@ -13,26 +13,18 @@ namespace PluginBuilder.Controllers
     public class HomeController(
         DBConnectionFactory connectionFactory,
         UserManager<IdentityUser> userManager,
-        RoleManager<IdentityRole> roleManager,
         SignInManager<IdentityUser> signInManager,
-        IAuthorizationService authorizationService,
         EmailService emailService,
         EmailVerifiedLogic emailVerifiedLogic,
         ServerEnvironment env)
         : Controller
     {
-        private DBConnectionFactory ConnectionFactory { get; } = connectionFactory;
-        private UserManager<IdentityUser> UserManager { get; } = userManager;
-        public RoleManager<IdentityRole> RoleManager { get; } = roleManager;
-        private SignInManager<IdentityUser> SignInManager { get; } = signInManager;
-        private IAuthorizationService AuthorizationService { get; } = authorizationService;
-        private ServerEnvironment Env { get; } = env;
 
         [HttpGet("/")]
         
         public async Task<IActionResult> HomePage()
         {
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
             var rows = await conn.QueryAsync<(long id, string state, string? manifest_info, string? build_info, DateTimeOffset created_at, bool published, bool pre_release, string slug, string? identifier)>
             (@"SELECT id, state, manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release, p.slug, p.identifier
 FROM builds b 
@@ -41,7 +33,7 @@ FROM builds b
     JOIN users_plugins up ON up.plugin_slug = b.plugin_slug 
 WHERE up.user_id = @userId
 ORDER BY created_at DESC
-LIMIT 50", new { userId = UserManager.GetUserId(User) });
+LIMIT 50", new { userId = userManager.GetUserId(User) });
             var vm = new BuildListViewModel();
             foreach (var row in rows)
             {
@@ -70,7 +62,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
         [HttpGet("/logout")]
         public async Task<IActionResult> Logout()
         {
-            await SignInManager.SignOutAsync();
+            await signInManager.SignOutAsync();
             return RedirectToAction(nameof(Login));
         }
 
@@ -89,14 +81,14 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             if (!ModelState.IsValid)
                 return View(model);
             // Require the user to have a confirmed email before they can log on.
-            var user = await UserManager.FindByEmailAsync(model.Email);
+            var user = await userManager.FindByEmailAsync(model.Email);
             if (user is null)
             {
                 ModelState.AddModelError(string.Empty, "Invalid login attempt.");
                 return View(model);
             }
 
-            var result = await SignInManager.PasswordSignInAsync(model.Email, model.Password, model.RememberMe, lockoutOnFailure: false);
+            var result = await signInManager.PasswordSignInAsync(model.Email, model.Password, model.RememberMe, lockoutOnFailure: false);
             if (!result.Succeeded)
             {
                 ModelState.AddModelError(string.Empty, "Invalid login attempt.");
@@ -126,7 +118,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 UserName = model.Email,
                 Email = model.Email,
             };
-            var result = await UserManager.CreateAsync(user, model.Password);
+            var result = await userManager.CreateAsync(user, model.Password);
             if (!result.Succeeded)
             {
                 foreach (var error in result.Errors)
@@ -136,20 +128,20 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 return View(model);
             }
             
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
 
-            var admins = await UserManager.GetUsersInRoleAsync(Roles.ServerAdmin);
-            var isAdminReg = admins.Count == 0 || (model.IsAdmin && Env.CheatMode);
+            var admins = await userManager.GetUsersInRoleAsync(Roles.ServerAdmin);
+            var isAdminReg = admins.Count == 0 || (model.IsAdmin && env.CheatMode);
             if (isAdminReg)
             {
-                await UserManager.AddToRoleAsync(user, Roles.ServerAdmin);
+                await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
             }
 
             // check if it's not admin and we are requiring email verifications
             var emailSettings = await emailService.GetEmailSettingsFromDb();
             if (!isAdminReg && emailSettings?.PasswordSet == true)
             {
-                var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+                var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
                 var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
                     Request.Scheme, Request.Host.ToString());
 
@@ -159,7 +151,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
             }
             else
             {
-                await SignInManager.SignInAsync(user, isPersistent: false);
+                await signInManager.SignInAsync(user, isPersistent: false);
                 return RedirectToLocal(returnUrl);
             }
         }
@@ -177,10 +169,10 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
         {
             var model = new ConfirmEmailViewModel();
             
-            var user = await UserManager.FindByIdAsync(uid);
+            var user = await userManager.FindByIdAsync(uid);
             if (user is not null)
             {
-                var result = await UserManager.ConfirmEmailAsync(user, token);
+                var result = await userManager.ConfirmEmailAsync(user, token);
                 model.Email = user.Email!;
                 model.EmailConfirmed = result.Succeeded;
             }
@@ -206,14 +198,14 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 return View(model);
 
             // TODO: Require the user to have a confirmed email before they can log on.
-            var user = await UserManager.FindByEmailAsync(model.Email);
+            var user = await userManager.FindByEmailAsync(model.Email);
             if (user is null)
             {
                 ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
                 return View(model);
             }
 
-            var result = await UserManager.ResetPasswordAsync(user, model.PasswordResetToken, model.Password);
+            var result = await userManager.ResetPasswordAsync(user, model.PasswordResetToken, model.Password);
             model.PasswordSuccessfulyReset = result.Succeeded;
 
             foreach (var err in result.Errors)
@@ -227,7 +219,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
         [HttpGet("/plugins/create")]
         public async Task<IActionResult> CreatePlugin()
         {
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
             if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
             {
                 TempData[TempDataConstant.WarningMessage] =
@@ -247,7 +239,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 return View(model);
             }
             
-            await using var conn = await ConnectionFactory.Open();
+            await using var conn = await connectionFactory.Open();
             if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
             {
                 TempData[TempDataConstant.WarningMessage] =
@@ -260,7 +252,7 @@ LIMIT 50", new { userId = UserManager.GetUserId(User) });
                 ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
                 return View(model);
             }
-            await conn.AddUserPlugin(pluginSlug, UserManager.GetUserId(User)!);
+            await conn.AddUserPlugin(pluginSlug, userManager.GetUserId(User)!);
             return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
         }
 
