@@ -7,26 +7,26 @@ using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Home;
 
-namespace PluginBuilder.Controllers
-{
-    [Authorize]
-    public class HomeController(
-        DBConnectionFactory connectionFactory,
-        UserManager<IdentityUser> userManager,
-        SignInManager<IdentityUser> signInManager,
-        EmailService emailService,
-        EmailVerifiedLogic emailVerifiedLogic,
-        ServerEnvironment env)
-        : Controller
-    {
+namespace PluginBuilder.Controllers;
 
-        [HttpGet("/")]
+[Authorize]
+public class HomeController(
+    DBConnectionFactory connectionFactory,
+    UserManager<IdentityUser> userManager,
+    SignInManager<IdentityUser> signInManager,
+    EmailService emailService,
+    EmailVerifiedLogic emailVerifiedLogic,
+    ServerEnvironment env)
+    : Controller
+{
+
+    [HttpGet("/")]
         
-        public async Task<IActionResult> HomePage()
-        {
-            await using var conn = await connectionFactory.Open();
-            var rows = await conn.QueryAsync<(long id, string state, string? manifest_info, string? build_info, DateTimeOffset created_at, bool published, bool pre_release, string slug, string? identifier)>
-            (@"SELECT id, state, manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release, p.slug, p.identifier
+    public async Task<IActionResult> HomePage()
+    {
+        await using var conn = await connectionFactory.Open();
+        var rows = await conn.QueryAsync<(long id, string state, string? manifest_info, string? build_info, DateTimeOffset created_at, bool published, bool pre_release, string slug, string? identifier)>
+        (@"SELECT id, state, manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release, p.slug, p.identifier
 FROM builds b 
     LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id
     JOIN plugins p ON p.slug = b.plugin_slug
@@ -34,238 +34,237 @@ FROM builds b
 WHERE up.user_id = @userId
 ORDER BY created_at DESC
 LIMIT 50", new { userId = userManager.GetUserId(User) });
-            var vm = new BuildListViewModel();
-            foreach (var row in rows)
-            {
-                var b = new BuildListViewModel.BuildViewModel();
-                var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
-                var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
-                vm.Builds.Add(b);
-                b.BuildId = row.id;
-                b.State = row.state;
-                b.Commit = buildInfo?.GitCommit?.Substring(0, 8);
-                b.Repository = buildInfo?.GitRepository;
-                b.GitRef = buildInfo?.GitRef;
-                b.Version = Components.PluginVersion.PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, row.slug);
-                b.Date = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
-                b.RepositoryLink = PluginController.GetUrl(buildInfo);
-                b.DownloadLink = buildInfo?.Url;
-                b.Error = buildInfo?.Error;
-                b.PluginSlug = row.slug;
-                b.PluginIdentifier = row.identifier ?? row.slug;
-            }
-            return View("Views/Plugin/Dashboard",vm);
+        var vm = new BuildListViewModel();
+        foreach (var row in rows)
+        {
+            var b = new BuildListViewModel.BuildViewModel();
+            var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
+            var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
+            vm.Builds.Add(b);
+            b.BuildId = row.id;
+            b.State = row.state;
+            b.Commit = buildInfo?.GitCommit?.Substring(0, 8);
+            b.Repository = buildInfo?.GitRepository;
+            b.GitRef = buildInfo?.GitRef;
+            b.Version = Components.PluginVersion.PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, row.slug);
+            b.Date = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
+            b.RepositoryLink = PluginController.GetUrl(buildInfo);
+            b.DownloadLink = buildInfo?.Url;
+            b.Error = buildInfo?.Error;
+            b.PluginSlug = row.slug;
+            b.PluginIdentifier = row.identifier ?? row.slug;
+        }
+        return View("Views/Plugin/Dashboard",vm);
+    }
+
+    // auth methods
+
+    [HttpGet("/logout")]
+    public async Task<IActionResult> Logout()
+    {
+        await signInManager.SignOutAsync();
+        return RedirectToAction(nameof(Login));
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/login")]
+    public IActionResult Login()
+    {
+        return View(new LoginViewModel());
+    }
+
+    [AllowAnonymous]
+    [HttpPost("/login")]
+    public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
+    {
+        ViewData["ReturnUrl"] = returnUrl;
+        if (!ModelState.IsValid)
+            return View(model);
+        // Require the user to have a confirmed email before they can log on.
+        var user = await userManager.FindByEmailAsync(model.Email);
+        if (user is null)
+        {
+            ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+            return View(model);
         }
 
-        // auth methods
-
-        [HttpGet("/logout")]
-        public async Task<IActionResult> Logout()
+        var result = await signInManager.PasswordSignInAsync(model.Email, model.Password, model.RememberMe, lockoutOnFailure: false);
+        if (!result.Succeeded)
         {
-            await signInManager.SignOutAsync();
-            return RedirectToAction(nameof(Login));
+            ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+            return View(model);
+        }
+        return RedirectToLocal(returnUrl);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/register")]
+    public IActionResult Register(string? returnUrl = null)
+    {
+        ViewData["ReturnUrl"] = returnUrl;
+        return View(new RegisterViewModel());
+    }
+
+    [AllowAnonymous]
+    [HttpPost("/register")]
+    public async Task<IActionResult> Register(RegisterViewModel model, string? returnUrl = null)
+    {
+        ViewData["ReturnUrl"] = returnUrl;
+        if (!ModelState.IsValid)
+            return View(model);
+
+        var user = new IdentityUser
+        {
+            UserName = model.Email,
+            Email = model.Email,
+        };
+        var result = await userManager.CreateAsync(user, model.Password);
+        if (!result.Succeeded)
+        {
+            foreach (var error in result.Errors)
+            {
+                ModelState.AddModelError("", error.Description);
+            }
+            return View(model);
+        }
+            
+        await using var conn = await connectionFactory.Open();
+
+        var admins = await userManager.GetUsersInRoleAsync(Roles.ServerAdmin);
+        var isAdminReg = admins.Count == 0 || (model.IsAdmin && env.CheatMode);
+        if (isAdminReg)
+        {
+            await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
         }
 
-        [AllowAnonymous]
-        [HttpGet("/login")]
-        public IActionResult Login()
+        // check if it's not admin and we are requiring email verifications
+        var emailSettings = await emailService.GetEmailSettingsFromDb();
+        if (!isAdminReg && emailSettings?.PasswordSet == true)
         {
-            return View(new LoginViewModel());
+            var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+            var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
+                Request.Scheme, Request.Host.ToString());
+
+            await emailService.SendVerifyEmail(model.Email, link);
+
+            return RedirectToAction(nameof(VerifyEmail), new { email = user.Email });
         }
-
-        [AllowAnonymous]
-        [HttpPost("/login")]
-        public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
+        else
         {
-            ViewData["ReturnUrl"] = returnUrl;
-            if (!ModelState.IsValid)
-                return View(model);
-            // Require the user to have a confirmed email before they can log on.
-            var user = await userManager.FindByEmailAsync(model.Email);
-            if (user is null)
-            {
-                ModelState.AddModelError(string.Empty, "Invalid login attempt.");
-                return View(model);
-            }
-
-            var result = await signInManager.PasswordSignInAsync(model.Email, model.Password, model.RememberMe, lockoutOnFailure: false);
-            if (!result.Succeeded)
-            {
-                ModelState.AddModelError(string.Empty, "Invalid login attempt.");
-                return View(model);
-            }
+            await signInManager.SignInAsync(user, isPersistent: false);
             return RedirectToLocal(returnUrl);
         }
+    }
 
-        [AllowAnonymous]
-        [HttpGet("/register")]
-        public IActionResult Register(string? returnUrl = null)
-        {
-            ViewData["ReturnUrl"] = returnUrl;
-            return View(new RegisterViewModel());
-        }
-
-        [AllowAnonymous]
-        [HttpPost("/register")]
-        public async Task<IActionResult> Register(RegisterViewModel model, string? returnUrl = null)
-        {
-            ViewData["ReturnUrl"] = returnUrl;
-            if (!ModelState.IsValid)
-                return View(model);
-
-            var user = new IdentityUser
-            {
-                UserName = model.Email,
-                Email = model.Email,
-            };
-            var result = await userManager.CreateAsync(user, model.Password);
-            if (!result.Succeeded)
-            {
-                foreach (var error in result.Errors)
-                {
-                    ModelState.AddModelError("", error.Description);
-                }
-                return View(model);
-            }
+    //
+    [AllowAnonymous]
+    [HttpGet("/VerifyEmail")]
+    public IActionResult VerifyEmail(string email)
+    {
+        return View(email);
+    }
+    [AllowAnonymous]
+    [HttpGet("/ConfirmEmail")]
+    public async Task<IActionResult> ConfirmEmail(string uid, string token)
+    {
+        var model = new ConfirmEmailViewModel();
             
-            await using var conn = await connectionFactory.Open();
-
-            var admins = await userManager.GetUsersInRoleAsync(Roles.ServerAdmin);
-            var isAdminReg = admins.Count == 0 || (model.IsAdmin && env.CheatMode);
-            if (isAdminReg)
-            {
-                await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
-            }
-
-            // check if it's not admin and we are requiring email verifications
-            var emailSettings = await emailService.GetEmailSettingsFromDb();
-            if (!isAdminReg && emailSettings?.PasswordSet == true)
-            {
-                var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
-                var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
-                    Request.Scheme, Request.Host.ToString());
-
-                await emailService.SendVerifyEmail(model.Email, link);
-
-                return RedirectToAction(nameof(VerifyEmail), new { email = user.Email });
-            }
-            else
-            {
-                await signInManager.SignInAsync(user, isPersistent: false);
-                return RedirectToLocal(returnUrl);
-            }
-        }
-
-        //
-        [AllowAnonymous]
-        [HttpGet("/VerifyEmail")]
-        public IActionResult VerifyEmail(string email)
+        var user = await userManager.FindByIdAsync(uid);
+        if (user is not null)
         {
-            return View(email);
+            var result = await userManager.ConfirmEmailAsync(user, token);
+            model.Email = user.Email!;
+            model.EmailConfirmed = result.Succeeded;
         }
-        [AllowAnonymous]
-        [HttpGet("/ConfirmEmail")]
-        public async Task<IActionResult> ConfirmEmail(string uid, string token)
-        {
-            var model = new ConfirmEmailViewModel();
-            
-            var user = await userManager.FindByIdAsync(uid);
-            if (user is not null)
-            {
-                var result = await userManager.ConfirmEmailAsync(user, token);
-                model.Email = user.Email!;
-                model.EmailConfirmed = result.Succeeded;
-            }
 
-            return View(model);
-        }
+        return View(model);
+    }
         
 
-        // password reset flow
+    // password reset flow
 
-        [AllowAnonymous]
-        [HttpGet("/passwordreset")]
-        public IActionResult PasswordReset()
+    [AllowAnonymous]
+    [HttpGet("/passwordreset")]
+    public IActionResult PasswordReset()
+    {
+        return View(new PasswordResetViewModel());
+    }
+
+    [AllowAnonymous]
+    [HttpPost("/passwordreset")]
+    public async Task<IActionResult> PasswordReset(PasswordResetViewModel model)
+    {
+        if (!ModelState.IsValid)
+            return View(model);
+
+        // TODO: Require the user to have a confirmed email before they can log on.
+        var user = await userManager.FindByEmailAsync(model.Email);
+        if (user is null)
         {
-            return View(new PasswordResetViewModel());
-        }
-
-        [AllowAnonymous]
-        [HttpPost("/passwordreset")]
-        public async Task<IActionResult> PasswordReset(PasswordResetViewModel model)
-        {
-            if (!ModelState.IsValid)
-                return View(model);
-
-            // TODO: Require the user to have a confirmed email before they can log on.
-            var user = await userManager.FindByEmailAsync(model.Email);
-            if (user is null)
-            {
-                ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
-                return View(model);
-            }
-
-            var result = await userManager.ResetPasswordAsync(user, model.PasswordResetToken, model.Password);
-            model.PasswordSuccessfulyReset = result.Succeeded;
-
-            foreach (var err in result.Errors)
-                ModelState.AddModelError("PasswordResetToken", $"{err.Description}");
-            
+            ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
             return View(model);
         }
 
-        // plugin methods
+        var result = await userManager.ResetPasswordAsync(user, model.PasswordResetToken, model.Password);
+        model.PasswordSuccessfulyReset = result.Succeeded;
 
-        [HttpGet("/plugins/create")]
-        public async Task<IActionResult> CreatePlugin()
-        {
-            await using var conn = await connectionFactory.Open();
-            if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
-            {
-                TempData[TempDataConstant.WarningMessage] =
-                    "You need to verify your email address in order to create and publish plugins";
-                return RedirectToAction("AccountDetails", "Account");
-            }
+        foreach (var err in result.Errors)
+            ModelState.AddModelError("PasswordResetToken", $"{err.Description}");
             
-            return View();
+        return View(model);
+    }
+
+    // plugin methods
+
+    [HttpGet("/plugins/create")]
+    public async Task<IActionResult> CreatePlugin()
+    {
+        await using var conn = await connectionFactory.Open();
+        if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
+        {
+            TempData[TempDataConstant.WarningMessage] =
+                "You need to verify your email address in order to create and publish plugins";
+            return RedirectToAction("AccountDetails", "Account");
+        }
+            
+        return View();
+    }
+
+    [HttpPost("/plugins/create")]
+    public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
+    {
+        if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
+        {
+            ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
+            return View(model);
+        }
+            
+        await using var conn = await connectionFactory.Open();
+        if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
+        {
+            TempData[TempDataConstant.WarningMessage] =
+                "You need to verify your email address in order to create and publish plugins";
+            return RedirectToAction("AccountDetails", "Account");
         }
 
-        [HttpPost("/plugins/create")]
-        public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
+        if (!await conn.NewPlugin(pluginSlug))
         {
-            if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
-            {
-                ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
-                return View(model);
-            }
-            
-            await using var conn = await connectionFactory.Open();
-            if (!await emailVerifiedLogic.IsEmailVerified(conn, User))
-            {
-                TempData[TempDataConstant.WarningMessage] =
-                    "You need to verify your email address in order to create and publish plugins";
-                return RedirectToAction("AccountDetails", "Account");
-            }
-
-            if (!await conn.NewPlugin(pluginSlug))
-            {
-                ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
-                return View(model);
-            }
-            await conn.AddUserPlugin(pluginSlug, userManager.GetUserId(User)!);
-            return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
+            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+            return View(model);
         }
+        await conn.AddUserPlugin(pluginSlug, userManager.GetUserId(User)!);
+        return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
+    }
 
-        private IActionResult RedirectToLocal(string? returnUrl = null)
+    private IActionResult RedirectToLocal(string? returnUrl = null)
+    {
+        if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
         {
-            if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
-            {
-                return Redirect(returnUrl);
-            }
-            else
-            {
-                return RedirectToAction(nameof(HomePage), "Home");
-            }
+            return Redirect(returnUrl);
+        }
+        else
+        {
+            return RedirectToAction(nameof(HomePage), "Home");
         }
     }
 }
