@@ -1,5 +1,12 @@
 namespace PluginBuilder.ViewModels.Admin;
 
+public class AdminUsersListViewModel : BasePagingViewModel
+{
+    public List<AdminUsersViewModel> Users { get; set; } = new();
+    public string SearchText { get; set; }
+    public override int CurrentPageCount => Users.Count;
+}
+
 public class AdminUsersViewModel
 {
     public string Id { get; set; }

@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Controllers.Logic;
+using PluginBuilder.Extensions;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
