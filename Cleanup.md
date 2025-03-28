@@ -1,1 +1,1 @@
-[ ] Moving PluginNavPages to Component, closer to usage
+[ ] create editorconfig file on project
