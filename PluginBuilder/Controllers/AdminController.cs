@@ -43,7 +43,7 @@ public class AdminController(
         {
             rows = rows.Where(o => (o.slug != null && o.slug.Contains(model.SearchText)) || (o.email != null && o.email.Contains(model.SearchText)));
         }
-        var pluginData = rows.Take(model.Count).Skip(model.Skip);
+        var pluginData = rows.Skip(model.Skip).Take(model.Count);
         foreach (var row in pluginData)
         {
             var plugin = new AdminPluginViewModel
@@ -158,13 +158,13 @@ public class AdminController(
     public async Task<IActionResult> Users(AdminUsersListViewModel? model = null)
     {
         model ??= new AdminUsersListViewModel();
-        var usersQuery = userManager.Users;
+        var usersQuery = userManager.Users.OrderBy(a=>a.Email).AsQueryable();
 
         if (!string.IsNullOrEmpty(model.SearchText))
         {
             usersQuery = usersQuery.Where(o => (o.UserName != null && o.UserName.Contains(model.SearchText)) || (o.Email != null && o.Email.Contains(model.SearchText)));
         }
-        var users = usersQuery.Take(model.Count).Skip(model.Skip).ToList();
+        var users = usersQuery.Skip(model.Skip).Take(model.Count).ToList();
         var usersList = new List<AdminUsersViewModel>();
         foreach (var user in users)
         {
