@@ -4,7 +4,7 @@ Layout = "_Layout";
 ViewData.SetActivePage(AdminNavPages.Plugins, "Plugins");
 }
 
-<div class="d-flex flex-column flex-md-row align-items-center justify-content-between gap-3 my-4">
+<div class="d-flex flex-column flex-md-row align-items-center justify-content-between gap-3 my-4 mb-4">
     <h2 class="mb-3 mb-md-0">@ViewData["Title"]</h2>
 
     <div class="d-flex flex-column flex-sm-row align-items-center gap-3">
@@ -30,39 +30,55 @@ ViewData.SetActivePage(AdminNavPages.Plugins, "Plugins");
 </div>
 
 
-<div class="table-responsive">
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Project Slug</th>
-                <th>Version</th>
-                <th>Build ID</th>
-                <th>BTCPay Min Version</th>
-                <th>Pre-Release</th>
-                <th>Updated At</th>
-                <th>Publisher Email</th>
-                <th>Visibility</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var plugin in Model.Plugins)
-            {
-                <tr>
-                    <td>@plugin.ProjectSlug</td>
-                    <td>@plugin.Version</td>
-                    <td>@plugin.BuildId</td>
-                    <td>@plugin.BtcPayMinVer</td>
-                    <td>@plugin.PreRelease</td>
-                    <td>@plugin.UpdatedAt</td>
-                    <td>@plugin.PublisherEmail</td>
-                    <td>@plugin.Visibility</td>
-                    <td>
-                        <a asp-controller="Admin" asp-action="PluginEdit" asp-route-slug="@plugin.ProjectSlug">Edit</a> |
-                        <a asp-controller="Admin" asp-action="PluginDelete" asp-route-slug="@plugin.ProjectSlug">Delete</a>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
+<form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="ListPlugins" method="get">
+	<input asp-for="Count" type="hidden" />
+	<input asp-for="SearchText" class="form-control" placeholder="Search…" />
+</form>
+
+
+@if (Model.Plugins.Any())
+{
+	<div class="table-responsive">
+		<table class="table">
+			<thead>
+				<tr>
+					<th>Project Slug</th>
+					<th>Version</th>
+					<th>Build ID</th>
+					<th>BTCPay Min Version</th>
+					<th>Pre-Release</th>
+					<th>Updated At</th>
+					<th>Publisher Email</th>
+					<th>Visibility</th>
+					<th></th>
+				</tr>
+			</thead>
+			<tbody>
+				@foreach (var plugin in Model.Plugins)
+				{
+					<tr>
+						<td>@plugin.ProjectSlug</td>
+						<td>@plugin.Version</td>
+						<td>@plugin.BuildId</td>
+						<td>@plugin.BtcPayMinVer</td>
+						<td>@plugin.PreRelease</td>
+						<td>@plugin.UpdatedAt</td>
+						<td>@plugin.PublisherEmail</td>
+						<td>@plugin.Visibility</td>
+						<td>
+							<a asp-controller="Admin" asp-action="PluginEdit" asp-route-slug="@plugin.ProjectSlug">Edit</a> |
+							<a asp-controller="Admin" asp-action="PluginDelete" asp-route-slug="@plugin.ProjectSlug">Delete</a>
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+		<vc:pager view-model="Model" />
+	</div>
+}
+else
+{
+	<p class="text-secondary mt-3">There are no plugins matching your criteria.</p>
+}
+
+<script src="~/scripts/searchtext.js" asp-append-version="true"></script>

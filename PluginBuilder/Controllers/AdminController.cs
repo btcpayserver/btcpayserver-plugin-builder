@@ -21,8 +21,9 @@ public class AdminController(
     : Controller
 {
     [HttpGet("plugins")]
-    public async Task<IActionResult> ListPlugins()
+    public async Task<IActionResult> ListPlugins(AdminPluginSettingViewModel? model = null)
     {
+        model ??= new AdminPluginSettingViewModel();
         await using var conn = await connectionFactory.Open();
         var rows = await conn.QueryAsync($"""
                                           SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email 
@@ -37,7 +38,13 @@ public class AdminController(
                                           ORDER BY p.slug;
                                           """);
         var plugins = new List<AdminPluginViewModel>();
-        foreach (var row in rows)
+
+        if (!string.IsNullOrEmpty(model.SearchText))
+        {
+            rows = rows.Where(o => (o.slug != null && o.slug.Contains(model.SearchText)) || (o.email != null && o.email.Contains(model.SearchText)));
+        }
+        var pluginData = rows.Take(model.Count).Skip(model.Skip);
+        foreach (var row in pluginData)
         {
             var plugin = new AdminPluginViewModel
             {
@@ -57,7 +64,9 @@ public class AdminController(
 
             plugins.Add(plugin);
         }
-        return View(new AdminPluginSettingViewModel { Plugins = plugins, VerifiedEmailForPluginPublish = await conn.GetVerifiedEmailForPluginPublishSetting() });
+        model.Plugins = plugins;
+        model.VerifiedEmailForPluginPublish = await conn.GetVerifiedEmailForPluginPublishSetting();
+        return View(model);
     }
 
     [HttpPost]
@@ -146,14 +155,21 @@ public class AdminController(
 
     // list users
     [HttpGet("users")]
-    public async Task<IActionResult> Users()
+    public async Task<IActionResult> Users(AdminUsersListViewModel? model = null)
     {
-        var users = userManager.Users.ToList();
-        var model = new List<AdminUsersViewModel>();
+        model ??= new AdminUsersListViewModel();
+        var usersQuery = userManager.Users;
+
+        if (!string.IsNullOrEmpty(model.SearchText))
+        {
+            usersQuery = usersQuery.Where(o => (o.UserName != null && o.UserName.Contains(model.SearchText)) || (o.Email != null && o.Email.Contains(model.SearchText)));
+        }
+        var users = usersQuery.Take(model.Count).Skip(model.Skip).ToList();
+        var usersList = new List<AdminUsersViewModel>();
         foreach (var user in users)
         {
             var userRoles = await userManager.GetRolesAsync(user);
-            model.Add(new AdminUsersViewModel
+            usersList.Add(new AdminUsersViewModel
             {
                 Id = user.Id,
                 Email = user.Email!,
@@ -162,7 +178,7 @@ public class AdminController(
                 Roles = userRoles
             });
         }
-
+        model.Users = usersList;
         return View(model);
     }
 
