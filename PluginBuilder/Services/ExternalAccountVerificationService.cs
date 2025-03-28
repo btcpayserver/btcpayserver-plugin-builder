@@ -10,7 +10,7 @@ public class ExternalAccountVerificationService
     {
         _httpClientFactory = httpClientFactory;
     }
-    public async Task<string> VerifyGistToken(string gistUrl, string token)
+    public async Task<string?> VerifyGistToken(string gistUrl, string token)
     {
         var regex = new Regex(@"https://gist\.github\.com/([^/]+)/([^/]+)", RegexOptions.IgnoreCase);
         var match = regex.Match(gistUrl);

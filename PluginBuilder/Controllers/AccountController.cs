@@ -21,18 +21,19 @@ public class AccountController(
     public async Task<IActionResult> VerifyEmail()
     {
         var user = await userManager.GetUserAsync(User);
+        if (user == null) throw new Exception("User not found");
 
         var emailSettings = await emailService.GetEmailSettingsFromDb();
         // TODO: Resolve the nullable issue
-        var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user!);
+        var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user);
             
         if (needToVerifyEmail)
         {
             var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
             var link = Url.Action("ConfirmEmail", "Home", new { uid = user.Id, token },
-                Request.Scheme, Request.Host.ToString());
+                Request.Scheme, Request.Host.ToString())!;
 
-            await emailService.SendVerifyEmail(user.Email, link);
+            await emailService.SendVerifyEmail(user.Email!, link);
 
             var action = nameof(HomeController.VerifyEmail);
             var ctrl = nameof(HomeController).Replace("Controller", "");
