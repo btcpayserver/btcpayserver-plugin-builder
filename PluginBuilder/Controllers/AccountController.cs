@@ -87,7 +87,7 @@ public class AccountController(
         return RedirectToAction(nameof(AccountDetails));
     }
 
-    [HttpGet("verifygithubaccount")]
+    [HttpGet("VerifyGithubAccount")]
     public async Task<IActionResult> VerifyGithubAccount()
     {
         await using var conn = await connectionFactory.Open();
@@ -101,7 +101,7 @@ public class AccountController(
         return View(new VerifyGitHubViewModel { Token = user!.Id, IsVerified = isGithubVerified, GithubProfileUrl = accountSettings!.Github });
     }
 
-    [HttpPost("verifygithubaccount")]
+    [HttpPost("VerifyGithubAccount")]
     public async Task<IActionResult> VerifyGithubAccount(VerifyGitHubViewModel model)
     {
         try
