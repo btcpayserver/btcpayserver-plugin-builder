@@ -92,13 +92,18 @@ public class AccountController(
     {
         await using var conn = await connectionFactory.Open();
         var user = await userManager.GetUserAsync(User);
-        var accountSettings = await conn.GetAccountDetailSettings(user!.Id);
-        if (accountSettings == null || string.IsNullOrEmpty(accountSettings.Github))
-        {
-            return NotFound();
-        }
         var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
-        return View(new VerifyGitHubViewModel { Token = user!.Id, IsVerified = isGithubVerified, GithubProfileUrl = accountSettings!.Github });
+        if (isGithubVerified)
+        {
+            TempData[TempDataConstant.SuccessMessage] = "GitHub account already verified";
+            return RedirectToAction(nameof(AccountDetails));
+        }
+        
+        var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
+        accountSettings.Github = null;
+        await conn.SetAccountDetailSettings(accountSettings, user!.Id);
+        
+        return View(new VerifyGitHubViewModel { Token = user!.Id });
     }
 
     [HttpPost("VerifyGithubAccount")]
