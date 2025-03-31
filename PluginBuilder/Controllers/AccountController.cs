@@ -25,7 +25,6 @@ public class AccountController(
         if (user == null) throw new Exception("User not found");
 
         var emailSettings = await emailService.GetEmailSettingsFromDb();
-        // TODO: Resolve the nullable issue
         var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user);
             
         if (needToVerifyEmail)
