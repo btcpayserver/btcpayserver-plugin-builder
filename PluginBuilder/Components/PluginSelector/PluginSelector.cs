@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using PluginBuilder.Extensions;
 using PluginBuilder.Services;
 
 namespace PluginBuilder.Components.PluginSelector

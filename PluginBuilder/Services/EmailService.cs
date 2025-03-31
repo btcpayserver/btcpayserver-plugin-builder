@@ -3,6 +3,7 @@ using MailKit.Net.Smtp;
 using MimeKit;
 using Newtonsoft.Json;
 using Npgsql;
+using PluginBuilder.Extensions;
 using PluginBuilder.ViewModels.Admin;
 
 namespace PluginBuilder.Services;

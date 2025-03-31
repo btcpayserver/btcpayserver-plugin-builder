@@ -1,4 +1,4 @@
-namespace PluginBuilder
+namespace PluginBuilder.Extensions
 {
     public static class HttpContextExtensions
     {

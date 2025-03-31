@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PluginBuilder.DataModels;
+using PluginBuilder.Extensions;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels.Account;
 

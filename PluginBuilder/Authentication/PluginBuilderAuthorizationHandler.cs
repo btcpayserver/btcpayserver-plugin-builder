@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using PluginBuilder.Extensions;
 using PluginBuilder.Services;
 
 namespace PluginBuilder

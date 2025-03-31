@@ -1,13 +1,12 @@
 #nullable enable
 using Dapper;
-using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 
-namespace PluginBuilder
+namespace PluginBuilder.Extensions
 {
     public static class NpgsqlConnectionExtensions
     {

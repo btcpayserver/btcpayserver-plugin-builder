@@ -1,4 +1,5 @@
 using Npgsql;
+using PluginBuilder.Extensions;
 
 namespace PluginBuilder.Services
 {

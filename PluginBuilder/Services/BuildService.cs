@@ -1,6 +1,7 @@
 using Dapper;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Events;
+using PluginBuilder.Extensions;
 
 namespace PluginBuilder.Services
 {

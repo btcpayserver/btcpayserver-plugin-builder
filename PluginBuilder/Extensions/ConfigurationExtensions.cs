@@ -1,4 +1,4 @@
-namespace PluginBuilder
+namespace PluginBuilder.Extensions
 {
     public class ConfigurationRequiredException : ConfigurationException
     {

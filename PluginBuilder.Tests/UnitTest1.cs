@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Dapper;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using PluginBuilder.Extensions;
 using PluginBuilder.Services;
 using Xunit;
 using Xunit.Abstractions;
