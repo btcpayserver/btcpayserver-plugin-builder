@@ -13,7 +13,7 @@ document.getElementById("TextSeperator").addEventListener("change", function () 
 
 document.getElementById("emailForm").addEventListener("submit", function (event) {
     if (!validateEmails()) {
-        event.preventDefault(); 
+        event.preventDefault();
     }
 });
 

@@ -9,4 +9,3 @@ public class EditUserRolesViewModel
     public IList<string> UserRoles { get; set; }
     public List<IdentityRole> AvailableRoles { get; set; }
 }
-

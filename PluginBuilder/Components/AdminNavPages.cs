@@ -1,10 +1,9 @@
-namespace PluginBuilder
+namespace PluginBuilder;
+
+public enum AdminNavPages
 {
-    public enum AdminNavPages
-    {
-        Users,
-        Plugins,
-        EmailSettings,
-        Settings
-    }
+    Users,
+    Plugins,
+    EmailSettings,
+    Settings
 }

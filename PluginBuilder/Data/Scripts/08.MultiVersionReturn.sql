@@ -1,4 +1,5 @@
-CREATE OR REPLACE FUNCTION get_all_versions (btcpayVersion INT[], includePreRelease BOOLEAN)
+CREATE
+OR REPLACE FUNCTION get_all_versions (btcpayVersion INT[], includePreRelease BOOLEAN)
 RETURNS TABLE(plugin_slug TEXT, ver INT[], build_id BIGINT)
 AS $$
 WITH latest_versions AS

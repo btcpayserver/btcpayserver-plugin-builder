@@ -1,8 +1,7 @@
 #nullable disable
-namespace PluginBuilder.Components.Icon
+namespace PluginBuilder.Components.Icon;
+
+public class IconViewModel
 {
-    public class IconViewModel
-    {
-        public string Symbol { get; set; }
-    }
+    public string Symbol { get; set; }
 }

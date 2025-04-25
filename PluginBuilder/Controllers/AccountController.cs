@@ -17,7 +17,6 @@ public class AccountController(
     EmailService emailService)
     : Controller
 {
-
     [HttpGet("verifyemail")]
     public async Task<IActionResult> VerifyEmail()
     {
@@ -26,7 +25,7 @@ public class AccountController(
 
         var emailSettings = await emailService.GetEmailSettingsFromDb();
         var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user);
-            
+
         if (needToVerifyEmail)
         {
             var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
@@ -39,7 +38,7 @@ public class AccountController(
             var ctrl = nameof(HomeController).Replace("Controller", "");
             return RedirectToAction(action, ctrl);
         }
-            
+
         return RedirectToAction(nameof(AccountDetails));
     }
 
@@ -54,12 +53,12 @@ public class AccountController(
 
         var settings = await conn.GetAccountDetailSettings(user!.Id);
         var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
-        var model = new AccountDetailsViewModel
+        AccountDetailsViewModel model = new()
         {
             AccountEmail = user.Email!,
             AccountEmailConfirmed = user.EmailConfirmed,
             NeedToVerifyEmail = needToVerifyEmail,
-            GithubAccountVerified = isGithubVerified, 
+            GithubAccountVerified = isGithubVerified,
             Settings = settings!
         };
         return View(model);
@@ -68,13 +67,10 @@ public class AccountController(
     [HttpPost("details")]
     public async Task<IActionResult> AccountDetails(AccountDetailsViewModel model)
     {
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
+        if (!ModelState.IsValid) return View(model);
 
         var user = await userManager.GetUserAsync(User)!;
-            
+
         await using var conn = await connectionFactory.Open();
         var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
 
@@ -98,11 +94,11 @@ public class AccountController(
             TempData[TempDataConstant.SuccessMessage] = "GitHub account already verified";
             return RedirectToAction(nameof(AccountDetails));
         }
-        
+
         var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
         accountSettings.Github = null;
         await conn.SetAccountDetailSettings(accountSettings, user!.Id);
-        
+
         return View(new VerifyGitHubViewModel { Token = user!.Id });
     }
 
@@ -116,17 +112,17 @@ public class AccountController(
                 model.GistUrl, user!.Id);
             if (string.IsNullOrEmpty(githubGistAccount))
             {
-                TempData[TempDataConstant.WarningMessage] = $"Unable to verify Github profile. Kindly ensure all data is correct and try again";
+                TempData[TempDataConstant.WarningMessage] = "Unable to verify Github profile. Kindly ensure all data is correct and try again";
                 return View(model);
             }
-                
+
             await using var conn = await connectionFactory.Open();
             var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
             accountSettings.Github = githubGistAccount;
             await conn.SetAccountDetailSettings(accountSettings, user!.Id);
-                
+
             await conn.VerifyGithubAccount(user!.Id, model.GistUrl);
-            TempData[TempDataConstant.SuccessMessage] = $"Github account verified successfully";
+            TempData[TempDataConstant.SuccessMessage] = "Github account verified successfully";
             return RedirectToAction(nameof(AccountDetails));
         }
         catch (Exception ex)
@@ -135,5 +131,4 @@ public class AccountController(
             return View(model);
         }
     }
-
 }

@@ -2,13 +2,12 @@
 
 using Microsoft.AspNetCore.Mvc;
 
-namespace PluginBuilder.Components.StatusMessage
+namespace PluginBuilder.Components.StatusMessage;
+
+public class StatusMessage : ViewComponent
 {
-    public class StatusMessage : ViewComponent
+    public Task<IViewComponentResult> InvokeAsync()
     {
-        public Task<IViewComponentResult> InvokeAsync()
-        {
-            return Task.FromResult<IViewComponentResult>(View());
-        }
+        return Task.FromResult<IViewComponentResult>(View());
     }
 }

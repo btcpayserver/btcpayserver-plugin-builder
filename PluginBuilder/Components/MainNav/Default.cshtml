@@ -1,4 +1,5 @@
-@inject Microsoft.AspNetCore.Identity.SignInManager<Microsoft.AspNetCore.Identity.IdentityUser> SignInManager
+@inject SignInManager<IdentityUser> SignInManager
+@using Microsoft.AspNetCore.Identity
 @using PluginBuilder.Components
 @model PluginBuilder.Components.MainNav.MainNavViewModel
 
@@ -14,14 +15,14 @@
                             <li class="nav-item">
                                 <a asp-area="" asp-controller="Plugin" asp-action="Dashboard" asp-route-pluginSlug="@Model.PluginSlug"
                                    class="nav-link js-scroll-trigger @ViewData.IsActivePage(PluginNavPages.Dashboard)" id="StoreNav-Dashboard">
-                                    <vc:icon symbol="home"/>
+                                    <vc:icon symbol="home" />
                                     <span>Builds</span>
                                 </a>
                             </li>
                             <li class="nav-item">
                                 <a asp-area="" asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug"
                                    class="nav-link js-scroll-trigger @ViewData.IsActivePage(PluginNavPages.Settings)" id="StoreNav-Settings">
-                                    <vc:icon symbol="settings"/>
+                                    <vc:icon symbol="settings" />
                                     <span>Settings</span>
                                 </a>
                             </li>
@@ -60,9 +61,10 @@
             {
                 <div class="accordion-item">
                     <header class="accordion-header" id="Nav-Server-Admin-Header">
-                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#Nav-Server-Admin" aria-expanded="true" aria-controls="Nav-Server-Admin">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#Nav-Server-Admin" aria-expanded="true"
+                                aria-controls="Nav-Server-Admin">
                             <span text-translate="true">Server Administration</span>
-                            <vc:icon symbol="caret-down"/>
+                            <vc:icon symbol="caret-down" />
                         </button>
                     </header>
                     <div id="Nav-Server-Admin" class="accordion-collapse collapse show" aria-labelledby="Nav-Server-Admin-Header">
@@ -71,28 +73,28 @@
                                 <li class="nav-item">
                                     <a asp-area="" asp-controller="Admin" asp-action="Users"
                                        class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.Users)" id="AdminNav-Users">
-                                        <vc:icon symbol="users"/>
+                                        <vc:icon symbol="users" />
                                         <span text-translate="true">Users</span>
                                     </a>
                                 </li>
                                 <li class="nav-item">
                                     <a asp-area="" asp-controller="Admin" asp-action="ListPlugins"
                                        class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.Plugins)" id="AdminNav-Plugins">
-                                        <vc:icon symbol="plugins"/>
+                                        <vc:icon symbol="plugins" />
                                         <span text-translate="true">Plugins</span>
                                     </a>
                                 </li>
                                 <li class="nav-item">
                                     <a asp-area="" asp-controller="Admin" asp-action="EmailSettings"
                                        class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.EmailSettings)" id="AdminNav-EmailSettings">
-                                        <vc:icon symbol="email-settings"/>
+                                        <vc:icon symbol="email-settings" />
                                         <span text-translate="true">Email Settings</span>
                                     </a>
                                 </li>
                                 <li class="nav-item">
                                     <a asp-area="" asp-controller="Admin" asp-action="SettingsEditor"
                                        class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.Settings)" id="AdminNav-Settings">
-                                        <vc:icon symbol="settings"/>
+                                        <vc:icon symbol="settings" />
                                         <span text-translate="true">Settings</span>
                                     </a>
                                 </li>
@@ -107,8 +109,9 @@
     {
         <ul id="mainNavSettings" class="navbar-nav border-top p-3 px-lg-4">
             <li class="nav-item dropup">
-                <a class="nav-link js-scroll-trigger" role="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" id="Nav-Account">
-                    <vc:icon symbol="account"/>
+                <a class="nav-link js-scroll-trigger" role="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                   id="Nav-Account">
+                    <vc:icon symbol="account" />
                     <span>Account</span>
                 </a>
                 <ul class="dropdown-menu py-0 w-100" aria-labelledby="Nav-Account">

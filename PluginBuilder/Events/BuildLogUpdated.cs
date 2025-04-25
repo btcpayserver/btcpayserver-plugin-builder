@@ -7,7 +7,7 @@ public class BuildLogUpdated
         FullBuildId = fullBuildId;
         Log = log;
     }
-        
+
     public FullBuildId FullBuildId { get; }
     public string Log { get; set; }
 }

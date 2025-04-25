@@ -11,51 +11,51 @@
 </div>
 
 <form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Users" method="get">
-	<input asp-for="Count" type="hidden" />
-	<input asp-for="SearchText" class="form-control" placeholder="Search…" />
+    <input asp-for="Count" type="hidden" />
+    <input asp-for="SearchText" class="form-control" placeholder="Search…" />
 </form>
 
 @if (Model.Users.Any())
 {
-	<div class="table-responsive">
-		<table class="table table-hover">
-			<thead>
-				<tr>
-					<th>Email</th>
-					<th>Username</th>
-					<th>Email Confirmed</th>
-					<th>Roles</th>
-					<th></th>
-				</tr>
-			</thead>
-			<tbody>
-				@foreach (var user in Model.Users)
-				{
-					<tr>
-						<td>@user.Email</td>
-						<td>@user.UserName</td>
-						<td>@user.EmailConfirmed</td>
-						<td>
-							<a asp-action="EditRoles" asp-route-userId="@user.Id">
-								@(user.Roles.Any() ? string.Join(", ", user.Roles) : "No Roles")
-							</a>
-						</td>
-						<td>
-							<a asp-action="InitPasswordReset" asp-route-userId="@user.Id">
-								Reset Password
-							</a>
-						</td>
-					</tr>
-				}
-			</tbody>
-		</table>
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+            <tr>
+                <th>Email</th>
+                <th>Username</th>
+                <th>Email Confirmed</th>
+                <th>Roles</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var user in Model.Users)
+            {
+                <tr>
+                    <td>@user.Email</td>
+                    <td>@user.UserName</td>
+                    <td>@user.EmailConfirmed</td>
+                    <td>
+                        <a asp-action="EditRoles" asp-route-userId="@user.Id">
+                            @(user.Roles.Any() ? string.Join(", ", user.Roles) : "No Roles")
+                        </a>
+                    </td>
+                    <td>
+                        <a asp-action="InitPasswordReset" asp-route-userId="@user.Id">
+                            Reset Password
+                        </a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
 
-		<vc:pager view-model="Model" />
-	</div>
+        <vc:pager view-model="Model" />
+    </div>
 }
 else
 {
-	<p class="text-secondary mt-3">There are no users matching your criteria.</p>
+    <p class="text-secondary mt-3">There are no users matching your criteria.</p>
 }
 
 <script src="~/scripts/searchtext.js" asp-append-version="true"></script>

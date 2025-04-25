@@ -1,48 +1,48 @@
 @model string
 @{
-	ViewData["Title"] = "Verify Email Address";
-	Layout = null;
+    ViewData["Title"] = "Verify Email Address";
+    Layout = null;
 }
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<title>@ViewData["Title"]</title>
-	<partial name="_CommonHead"></partial>
-	<style>
-		.account-form {
-			max-width: 35em;
-			margin: 0 auto var(--btcpay-space-xl);
-			padding: 2rem;
-			background: var(--btcpay-bg-tile);
-			border-radius: var(--btcpay-border-radius);
-		}
+    <title>@ViewData["Title"]</title>
+    <partial name="_CommonHead"></partial>
+    <style>
+        .account-form {
+            max-width: 35em;
+            margin: 0 auto var(--btcpay-space-xl);
+            padding: 2rem;
+            background: var(--btcpay-bg-tile);
+            border-radius: var(--btcpay-border-radius);
+        }
 
-			.account-form h4 {
-				margin-bottom: 1.5rem;
-			}
-	</style>
+        .account-form h4 {
+            margin-bottom: 1.5rem;
+        }
+    </style>
 </head>
 <body class="d-flex flex-column min-vh-100">
-	<section class="content-wrapper flex-grow-1">
-		<div class="navbar-brand d-none"></div>
-		<div class="container">
-			<div class="row justify-content-center mb-2">
-				<div class="col text-center">
-					<a tabindex="-1" href="/">
-						<img src="~/img/btcpay-logo.svg" alt="BTCPay Server" class="mb-4" height="70" />
-					</a>
-					<h1 class="h2 mb-3">@ViewData["Title"]</h1>
-				</div>
+<section class="content-wrapper flex-grow-1">
+    <div class="navbar-brand d-none"></div>
+    <div class="container">
+        <div class="row justify-content-center mb-2">
+            <div class="col text-center">
+                <a tabindex="-1" href="/">
+                    <img src="~/img/btcpay-logo.svg" alt="BTCPay Server" class="mb-4" height="70" />
+                </a>
+                <h1 class="h2 mb-3">@ViewData["Title"]</h1>
             </div>
-            <div class="account-form">
+        </div>
+        <div class="account-form">
 
-                <p class="text-center mt-2 mb-0">
-                    Please check <b>@Model</b> email address for verification email from us!<br />
-                    If you find it in spam, please mark it as not spam to receive future emails from us.
-                </p>
+            <p class="text-center mt-2 mb-0">
+                Please check <b>@Model</b> email address for verification email from us!<br />
+                If you find it in spam, please mark it as not spam to receive future emails from us.
+            </p>
 
-            </div>
-		</div>
-	</section>
+        </div>
+    </div>
+</section>
 </body>
 </html>

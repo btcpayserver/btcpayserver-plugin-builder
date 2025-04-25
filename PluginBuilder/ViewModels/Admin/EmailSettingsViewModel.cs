@@ -24,7 +24,7 @@ public class EmailSettingsViewModel
     public string Password { get; set; }
 
     [JsonIgnore]
-    public bool PasswordSet { get { return !string.IsNullOrEmpty(Password); } }
+    public bool PasswordSet => !string.IsNullOrEmpty(Password);
 
     [Required]
     [Display(Prompt = "Provide from email in format: Full Name <email@server.com>")]

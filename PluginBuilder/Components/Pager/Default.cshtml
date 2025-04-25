@@ -1,9 +1,8 @@
 @using System.Web
-@using PluginBuilder.Extensions
 @model BasePagingViewModel
 
 @{
-	var pageSizeOptions = new[] { 50, 100, 250, 500 };
+    var pageSizeOptions = new[] { 50, 100, 250, 500 };
 }
 
 @if (Model.Total is null || Model.Total.Value > pageSizeOptions.Min())
@@ -19,19 +18,19 @@
                     </li>
                 }
                 <li class="page-item disabled">
-					<span class="border-0 bg-transparent page-link @(Model.Total is null ? "px-0" : (Model.Skip == 0 ? "ps-0" : null))">
+					<span class="border-0 bg-transparent page-link @(Model.Total is null ? "px-0" : Model.Skip == 0 ? "ps-0" : null)">
                     @if (Model.Total is null)
-                    {
-                        @($"{Model.Skip + 1} – {Model.Skip + Model.Count}")
-                    }
-                    else if (Model.Total.Value <= Model.Count)
-                    {
-                        @($"1 – {Model.Total.Value}")
-                    }
-                    else
-                    {
-                        @($"{Model.Skip + 1} – {Model.Skip + Model.Count}, Total: {Model.Total.Value}")
-                    }
+                        {
+                            @($"{Model.Skip + 1} – {Model.Skip + Model.Count}")
+                        }
+                        else if (Model.Total.Value <= Model.Count)
+                        {
+                            @($"1 – {Model.Total.Value}")
+                        }
+                        else
+                        {
+                            @($"{Model.Skip + 1} – {Model.Skip + Model.Count}, Total: {Model.Total.Value}")
+                        }
                     </span>
                 </li>
                 @if ((Model.Total is null && Model.CurrentPageCount >= Model.Count) || (Model.Total is not null && Model.Total.Value > Model.Skip + Model.Count))
@@ -47,16 +46,16 @@
         {
             <ul class="pagination ms-auto">
                 <li class="page-item disabled">
-					<span class="border-0 bg-transparent page-link" text-translate="true">Page Size</span>
+                    <span class="border-0 bg-transparent page-link" text-translate="true">Page Size</span>
                 </li>
                 @foreach (var pageSize in pageSizeOptions)
                 {
                     if (Model.Total is null || Model.Total.Value >= pageSize)
                     {
-						<li class="page-item @(Model.Count == pageSize ? "active border-0" : "")">
-							<a class="page-link border-0 shadow-none text-success fw-bold @(Model.Count == pageSize ? "bg-success text-white rounded" : "bg-transparent")"
-							   style="padding: 8px 16px;" href="@NavigatePages(0, pageSize)">@pageSize</a>
-						</li>
+                        <li class="page-item @(Model.Count == pageSize ? "active border-0" : "")">
+                            <a class="page-link border-0 shadow-none text-success fw-bold @(Model.Count == pageSize ? "bg-success text-white rounded" : "bg-transparent")"
+                               style="padding: 8px 16px;" href="@NavigatePages(0, pageSize)">@pageSize</a>
+                        </li>
                     }
                 }
             </ul>
@@ -95,7 +94,7 @@
 
         return ReplaceQueryParameters(query);
     }
-    
+
     string ReplaceQueryParameters(Dictionary<string, object> query)
     {
         var uri = new Uri(ViewContext.HttpContext.Request.GetCurrentUrlWithQueryString());
@@ -104,6 +103,7 @@
         {
             if (value != null) queryParams[key] = value?.ToString();
         }
+
         var uriBuilder = new UriBuilder(uri)
         {
             Query = queryParams.ToString()!

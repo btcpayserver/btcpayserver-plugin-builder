@@ -1,16 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace PluginBuilder.Components.Icon
+namespace PluginBuilder.Components.Icon;
+
+public class Icon : ViewComponent
 {
-    public class Icon : ViewComponent
+    public IViewComponentResult Invoke(string symbol)
     {
-        public IViewComponentResult Invoke(string symbol)
-        {
-            var vm = new IconViewModel
-            {
-                Symbol = symbol
-            };
-            return View(vm);
-        }
+        IconViewModel vm = new() { Symbol = symbol };
+        return View(vm);
     }
 }

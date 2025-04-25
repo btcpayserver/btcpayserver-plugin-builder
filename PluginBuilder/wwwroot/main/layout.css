@@ -22,7 +22,7 @@
     z-index: 1031; /* needs a value between fixed and the offcanvas backdrop, see https://getbootstrap.com/docs/5.1/layout/z-index/ */
 }
 
-#mainMenuHead  {
+#mainMenuHead {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -403,7 +403,7 @@
         /* Prevent anchors from disappearing underneath the fixed header */
         scroll-padding: var(--content-padding-top);
     }
-    
+
     #mainMenu {
         position: fixed;
         top: 0;
@@ -412,7 +412,7 @@
         border-bottom: var(--menu-border);
     }
 
-    #mainMenuHead  {
+    #mainMenuHead {
         padding: var(--btcpay-space-s) var(--btcpay-space-m);
     }
 
@@ -458,7 +458,7 @@
         margin: 0 auto;
         max-width: 60vw;
     }
-    
+
     #Notifications {
         margin-left: var(--btcpay-space-s);
     }
@@ -569,7 +569,7 @@
         --content-padding-bottom: 5rem;
         --content-padding-horizontal: 5rem;
     }
-    
+
     #mainMenu {
         position: fixed;
         top: 0;
@@ -600,7 +600,7 @@
         /* Make sure we are actually taking up all of the space or else you end up with this: https://github.com/btcpayserver/btcpayserver/issues/3972 */
         min-width: 100%;
     }
-    
+
     #mainMenuToggle,
     .offcanvas-backdrop {
         display: none !important;

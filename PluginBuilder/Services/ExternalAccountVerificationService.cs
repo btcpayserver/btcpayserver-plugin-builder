@@ -1,18 +1,20 @@
-using Newtonsoft.Json.Linq;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 
 namespace PluginBuilder.Services;
 
 public class ExternalAccountVerificationService
 {
     private readonly IHttpClientFactory _httpClientFactory;
+
     public ExternalAccountVerificationService(IHttpClientFactory httpClientFactory)
     {
         _httpClientFactory = httpClientFactory;
     }
+
     public async Task<string?> VerifyGistToken(string gistUrl, string token)
     {
-        var regex = new Regex(@"https://gist\.github\.com/([^/]+)/([^/]+)", RegexOptions.IgnoreCase);
+        Regex regex = new(@"https://gist\.github\.com/([^/]+)/([^/]+)", RegexOptions.IgnoreCase);
         var match = regex.Match(gistUrl);
         if (!match.Success)
             return null;
@@ -41,6 +43,7 @@ public class ExternalAccountVerificationService
             if (fileContent != null && fileContent.Contains(token))
                 return gistUsername;
         }
+
         return null;
     }
 
@@ -51,6 +54,7 @@ public class ExternalAccountVerificationService
             var segments = uri.AbsolutePath.Trim('/').Split('/');
             return segments.Length > 0 ? segments[0] : null;
         }
+
         throw new ArgumentException("Invalid GitHub profile URL");
     }
 }

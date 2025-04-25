@@ -11,6 +11,7 @@ public abstract class BasePagingViewModel
 
     [DisplayFormat(ConvertEmptyStringToNull = false)]
     public string SearchTerm { get; set; }
+
     public int? TimezoneOffset { get; set; }
     public Dictionary<string, object> PaginationQuery { get; set; }
     public abstract int CurrentPageCount { get; }

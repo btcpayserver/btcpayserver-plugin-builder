@@ -1,18 +1,18 @@
 version: "3"
 services:
-  postgres:
-    image:  postgres:15.0
-    environment:
-        POSTGRES_HOST_AUTH_METHOD: trust
-    ports:
-      - "61932:5432"
-    expose:
-      - "5432"
-
-  azureblob:
-    image: mcr.microsoft.com/azure-blob-storage
-    environment:
-        LOCAL_STORAGE_ACCOUNT_NAME: satoshi
-        LOCAL_STORAGE_ACCOUNT_KEY: Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==
-    ports:
-      - "32827:11002"
+    postgres:
+        image: postgres:15.0
+        environment:
+            POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+            - "61932:5432"
+        expose:
+            - "5432"
+    
+    azureblob:
+        image: mcr.microsoft.com/azure-blob-storage
+        environment:
+            LOCAL_STORAGE_ACCOUNT_NAME: satoshi
+            LOCAL_STORAGE_ACCOUNT_KEY: Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==
+        ports:
+            - "32827:11002"

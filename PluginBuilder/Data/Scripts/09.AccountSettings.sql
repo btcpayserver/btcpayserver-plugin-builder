@@ -1,1 +1,2 @@
-ALTER TABLE "AspNetUsers" ADD COLUMN "AccountDetail" JSONB NOT NULL DEFAULT '{}'::JSONB;
+ALTER TABLE "AspNetUsers"
+    ADD COLUMN "AccountDetail" JSONB NOT NULL DEFAULT '{}'::JSONB;

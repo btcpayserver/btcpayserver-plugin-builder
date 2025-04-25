@@ -1,14 +1,12 @@
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
-namespace PluginBuilder
+namespace PluginBuilder;
+
+public class CamelCaseSerializerSettings
 {
-    public class CamelCaseSerializerSettings
+    public static readonly JsonSerializerSettings Instance = new()
     {
-        public static readonly JsonSerializerSettings Instance = new JsonSerializerSettings()
-        {
-            ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver(),
-            DefaultValueHandling = DefaultValueHandling.Ignore
-        };
-
-    }
+        ContractResolver = new CamelCasePropertyNamesContractResolver(), DefaultValueHandling = DefaultValueHandling.Ignore
+    };
 }

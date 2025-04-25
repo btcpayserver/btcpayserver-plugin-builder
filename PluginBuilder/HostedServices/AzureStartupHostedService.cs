@@ -1,24 +1,23 @@
 using PluginBuilder.Services;
 
-namespace PluginBuilder.HostedServices
+namespace PluginBuilder.HostedServices;
+
+public class AzureStartupHostedService : IHostedService
 {
-    public class AzureStartupHostedService : IHostedService
+    public AzureStartupHostedService(AzureStorageClient azureStorageClient)
     {
-        public AzureStartupHostedService(AzureStorageClient azureStorageClient)
-        {
-            AzureStorageClient = azureStorageClient;
-        }
+        AzureStorageClient = azureStorageClient;
+    }
 
-        public AzureStorageClient AzureStorageClient { get; }
+    public AzureStorageClient AzureStorageClient { get; }
 
-        public async Task StartAsync(CancellationToken cancellationToken)
-        {
-            await AzureStorageClient.EnsureDefaultContainerExists(cancellationToken);
-        }
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await AzureStorageClient.EnsureDefaultContainerExists(cancellationToken);
+    }
 
-        public Task StopAsync(CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
     }
 }

@@ -5,12 +5,14 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 using Npgsql;
 using PluginBuilder.Authentication;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Extensions;
 using PluginBuilder.HostedServices;
+using PluginBuilder.Hubs;
 using PluginBuilder.Services;
 
 namespace PluginBuilder;
@@ -19,19 +21,19 @@ public class Program
 {
     public static Task Main(string[] args)
     {
-        var host = new Program();
+        Program host = new();
         return new Program().Start(args);
     }
 
     public Task Start(string[]? args = null)
     {
-        WebApplication app = CreateWebApplication(args);
+        var app = CreateWebApplication(args);
         return app.RunAsync();
     }
 
     public WebApplication CreateWebApplication(string[]? args = null)
     {
-        WebApplicationBuilder builder = CreateWebApplicationBuilder(args);
+        var builder = CreateWebApplicationBuilder(args);
         var app = builder.Build();
         Configure(app);
         return app;
@@ -54,10 +56,7 @@ public class Program
 
     public void Configure(WebApplication app)
     {
-        var forwardingOptions = new ForwardedHeadersOptions()
-        {
-            ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-        };
+        ForwardedHeadersOptions forwardingOptions = new() { ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto };
         forwardingOptions.KnownNetworks.Clear();
         forwardingOptions.KnownProxies.Clear();
         forwardingOptions.ForwardedHeaders = ForwardedHeaders.All;
@@ -66,9 +65,9 @@ public class Program
         app.UseRouting();
         app.UseAuthentication();
         app.UseAuthorization();
-        app.MapHub<Hubs.PluginHub>("hub");
-        app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/hub");
-        app.MapHub<Hubs.PluginHub>("/plugins/{pluginSlug}/builds/{buildId}/hub");
+        app.MapHub<PluginHub>("hub");
+        app.MapHub<PluginHub>("/plugins/{pluginSlug}/hub");
+        app.MapHub<PluginHub>("/plugins/{pluginSlug}/builds/{buildId}/hub");
         // no default routes
         app.MapControllers();
     }
@@ -76,19 +75,17 @@ public class Program
     public void AddServices(IConfiguration configuration, IServiceCollection services)
     {
         services.AddControllersWithViews()
-                .AddRazorRuntimeCompilation()
-                .AddRazorOptions(options =>
-                {
-                    options.ViewLocationFormats.Add("/{0}.cshtml");
-                })
-               .AddNewtonsoftJson(o => o.SerializerSettings.Formatting = Newtonsoft.Json.Formatting.Indented)
-               .AddApplicationPart(typeof(Program).Assembly);
+            .AddRazorRuntimeCompilation()
+            .AddRazorOptions(options =>
+            {
+                options.ViewLocationFormats.Add("/{0}.cshtml");
+            })
+            .AddNewtonsoftJson(o => o.SerializerSettings.Formatting = Formatting.Indented)
+            .AddApplicationPart(typeof(Program).Assembly);
         if (configuration["DATADIR"] is string datadir)
-        {
             services.AddDataProtection()
-                     .SetApplicationName("Plugin Builder")
-                    .PersistKeysToFileSystem(new DirectoryInfo(datadir));
-        }
+                .SetApplicationName("Plugin Builder")
+                .PersistKeysToFileSystem(new DirectoryInfo(datadir));
         services.AddHostedService<DatabaseStartupHostedService>();
         services.AddHostedService<DockerStartupHostedService>();
         services.AddHostedService<AzureStartupHostedService>();
@@ -103,7 +100,7 @@ public class Program
         services.AddHttpClient();
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
-        
+
         // shared controller logic
         services.AddTransient<EmailVerifiedLogic>();
 
@@ -114,19 +111,19 @@ public class Program
         NpgsqlConnection.GlobalTypeMapper.MapEnum<PluginVisibilityEnum>("plugin_visibility_enum");
 
         services.AddIdentity<IdentityUser, IdentityRole>(options =>
-        {
-            options.Password.RequireDigit = false;
-            options.Password.RequiredLength = 6;
-            options.Password.RequireLowercase = false;
-            options.Password.RequireNonAlphanumeric = false;
-            options.Password.RequireUppercase = false;
-            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
-            options.Lockout.MaxFailedAccessAttempts = 5;
-            options.Lockout.AllowedForNewUsers = true;
-            options.Password.RequireUppercase = false;
-        })
-        .AddDefaultTokenProviders()
-        .AddEntityFrameworkStores<IdentityDbContext<IdentityUser>>();
+            {
+                options.Password.RequireDigit = false;
+                options.Password.RequiredLength = 6;
+                options.Password.RequireLowercase = false;
+                options.Password.RequireNonAlphanumeric = false;
+                options.Password.RequireUppercase = false;
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+                options.Lockout.MaxFailedAccessAttempts = 5;
+                options.Lockout.AllowedForNewUsers = true;
+                options.Password.RequireUppercase = false;
+            })
+            .AddDefaultTokenProviders()
+            .AddEntityFrameworkStores<IdentityDbContext<IdentityUser>>();
 
         services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, opt =>
         {
@@ -135,7 +132,7 @@ public class Program
             opt.LogoutPath = "/logout";
         });
         services.AddAuthentication()
-            .AddScheme<PluginBuilderAuthenticationOptions, BasicAuthenticationHandler>(PluginBuilderAuthenticationSchemes.BasicAuth, o => {});
+            .AddScheme<PluginBuilderAuthenticationOptions, BasicAuthenticationHandler>(PluginBuilderAuthenticationSchemes.BasicAuth, o => { });
         services.AddAuthorization(o =>
         {
             o.AddPolicy(Policies.OwnPlugin, o => o.AddRequirements(new OwnPluginRequirement()));

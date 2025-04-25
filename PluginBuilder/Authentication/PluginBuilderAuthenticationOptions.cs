@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 
-namespace PluginBuilder.Authentication
+namespace PluginBuilder.Authentication;
+
+public class PluginBuilderAuthenticationOptions : AuthenticationSchemeOptions
 {
-    public class PluginBuilderAuthenticationOptions : AuthenticationSchemeOptions
-    {
-    }
 }

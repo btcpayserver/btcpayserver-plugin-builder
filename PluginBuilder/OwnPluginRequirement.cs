@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 
-namespace PluginBuilder
+namespace PluginBuilder;
+
+public class OwnPluginRequirement : IAuthorizationRequirement
 {
-    public class OwnPluginRequirement : IAuthorizationRequirement
-    {
-    }
 }

@@ -16,7 +16,7 @@ public class EmailVerifiedLogic(
         var emailSettings = await emailService.GetEmailSettingsFromDb();
         if (!emailVerificationRequired || emailSettings?.PasswordSet != true)
             return true; // for now always return true in these cases if we don't have a verified email
-        
+
         var user = await userManager.GetUserAsync(claimsPrincipal);
         return await userManager.IsEmailConfirmedAsync(user!);
     }

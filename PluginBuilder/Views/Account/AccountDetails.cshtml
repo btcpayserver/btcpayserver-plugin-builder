@@ -16,7 +16,7 @@
                     <span class="badge bg-success ml-2">Confirmed</span>
                 }
                 <div class="input-group">
-                    <input asp-for="AccountEmail" class="form-control" placeholder="" readonly="readonly"/>
+                    <input asp-for="AccountEmail" class="form-control" placeholder="" readonly="readonly" />
                     @if (Model.NeedToVerifyEmail)
                     {
                         <div class="input-group-append">
@@ -43,21 +43,21 @@
             </div>
             <div class="form-group">
                 <label asp-for="Settings.Twitter" class="form-label"></label>
-                <input asp-for="Settings.Twitter" class="form-control" placeholder="https://twitter.com/satoshi"/>
+                <input asp-for="Settings.Twitter" class="form-control" placeholder="https://twitter.com/satoshi" />
                 <span asp-validation-for="Settings.Twitter" class="text-danger"></span>
             </div>
             <div class="form-group">
                 <label asp-for="Settings.Nostr" class="form-label"></label>
-                <input asp-for="Settings.Nostr" class="form-control" placeholder="npub1h0dl0dkjp884wz3*********hlvp68v0lfngnscdjsuy8yqm"/>
+                <input asp-for="Settings.Nostr" class="form-control" placeholder="npub1h0dl0dkjp884wz3*********hlvp68v0lfngnscdjsuy8yqm" />
                 <span asp-validation-for="Settings.Nostr" class="text-danger"></span>
             </div>
             <div class="form-group">
                 <label asp-for="Settings.Email" class="form-label"></label>
-                <input asp-for="Settings.Email" class="form-control" type="email" placeholder="plugins@satoshi.com"/>
+                <input asp-for="Settings.Email" class="form-control" type="email" placeholder="plugins@satoshi.com" />
                 <span asp-validation-for="Settings.Email" class="text-danger"></span>
             </div>
             <div class="form-group mt-4">
-                <input type="submit" class="btn btn-primary" id="Save" value="Save"/>
+                <input type="submit" class="btn btn-primary" id="Save" value="Save" />
             </div>
         </form>
     </div>

@@ -1,2 +1,3 @@
-ALTER TABLE plugins ADD COLUMN identifier TEXT UNIQUE;
+ALTER TABLE plugins
+    ADD COLUMN identifier TEXT UNIQUE;
 

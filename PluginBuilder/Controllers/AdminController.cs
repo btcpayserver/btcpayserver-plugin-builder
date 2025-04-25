@@ -21,33 +21,34 @@ public class AdminController(
     EmailService emailService)
     : Controller
 {
+    // settings editor
+    private const string ProtectedKeys = "EmailSettings";
+
     [HttpGet("plugins")]
     public async Task<IActionResult> ListPlugins(AdminPluginSettingViewModel? model = null)
     {
         model ??= new AdminPluginSettingViewModel();
         await using var conn = await connectionFactory.Open();
-        var rows = await conn.QueryAsync($"""
-                                          SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email 
-                                          FROM plugins p
-                                          LEFT JOIN users_plugins up ON p.slug = up.plugin_slug 
-                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
-                                          LEFT JOIN (
-                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
-                                              FROM versions
-                                              ORDER BY plugin_slug, build_id DESC
-                                          ) v ON p.slug = v.plugin_slug
-                                          ORDER BY p.slug;
-                                          """);
-        var plugins = new List<AdminPluginViewModel>();
+        var rows = await conn.QueryAsync("""
+                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email 
+                                         FROM plugins p
+                                         LEFT JOIN users_plugins up ON p.slug = up.plugin_slug 
+                                         LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
+                                         LEFT JOIN (
+                                             SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
+                                             FROM versions
+                                             ORDER BY plugin_slug, build_id DESC
+                                         ) v ON p.slug = v.plugin_slug
+                                         ORDER BY p.slug;
+                                         """);
+        List<AdminPluginViewModel> plugins = new();
 
         if (!string.IsNullOrEmpty(model.SearchText))
-        {
             rows = rows.Where(o => (o.slug != null && o.slug.Contains(model.SearchText)) || (o.email != null && o.email.Contains(model.SearchText)));
-        }
         var pluginData = rows.Skip(model.Skip).Take(model.Count);
         foreach (var row in pluginData)
         {
-            var plugin = new AdminPluginViewModel
+            AdminPluginViewModel plugin = new()
             {
                 ProjectSlug = row.slug,
                 Visibility = row.visibility,
@@ -65,6 +66,7 @@ public class AdminController(
 
             plugins.Add(plugin);
         }
+
         model.Plugins = plugins;
         model.VerifiedEmailForPluginPublish = await conn.GetVerifiedEmailForPluginPublishSetting();
         return View(model);
@@ -75,7 +77,7 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
-        TempData[TempDataConstant.SuccessMessage] = $"Email requirement setting for publishing plugin updated successfully";
+        TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
         return RedirectToAction("ListPlugins");
     }
 
@@ -87,10 +89,7 @@ public class AdminController(
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
             "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
-        if (plugin == null)
-        {
-            return NotFound();
-        }
+        if (plugin == null) return NotFound();
 
         return View(plugin);
     }
@@ -99,22 +98,21 @@ public class AdminController(
     [HttpPost("plugins/edit/{slug}")]
     public async Task<IActionResult> PluginEdit(string slug, PluginViewModel model)
     {
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
+        if (!ModelState.IsValid) return View(model);
 
         await using var conn = await connectionFactory.Open();
-        var affectedRows = await conn.ExecuteAsync($"""
-                                                     UPDATE plugins 
-                                                     SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum
-                                                     WHERE slug = @slug
-                                                    """,
-            new { settings = model.Settings, visibility = model.Visibility.ToString().ToLowerInvariant(), slug });
-        if (affectedRows == 0)
-        {
-            return NotFound();
-        }
+        var affectedRows = await conn.ExecuteAsync("""
+                                                    UPDATE plugins 
+                                                    SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum
+                                                    WHERE slug = @slug
+                                                   """,
+            new
+            {
+                settings = model.Settings,
+                visibility = model.Visibility.ToString().ToLowerInvariant(),
+                slug
+            });
+        if (affectedRows == 0) return NotFound();
 
         return RedirectToAction("ListPlugins");
     }
@@ -126,10 +124,7 @@ public class AdminController(
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
             "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
-        if (plugin == null)
-        {
-            return NotFound();
-        }
+        if (plugin == null) return NotFound();
 
         return View(plugin);
     }
@@ -138,18 +133,15 @@ public class AdminController(
     public async Task<IActionResult> PluginDeleteConfirmed(string slug)
     {
         await using var conn = await connectionFactory.Open();
-        var affectedRows = await conn.ExecuteAsync($"""
-                                                    DELETE FROM builds WHERE plugin_slug = @Slug;
-                                                    DELETE FROM builds_ids WHERE plugin_slug = @Slug;
-                                                    DELETE FROM builds_logs WHERE plugin_slug = @Slug;
-                                                    DELETE FROM users_plugins WHERE plugin_slug = @Slug;
-                                                    DELETE FROM versions WHERE plugin_slug = @Slug;
-                                                    DELETE FROM plugins WHERE slug = @Slug;
-                                                    """, new { Slug = slug });
-        if (affectedRows == 0)
-        {
-            return NotFound();
-        }
+        var affectedRows = await conn.ExecuteAsync("""
+                                                   DELETE FROM builds WHERE plugin_slug = @Slug;
+                                                   DELETE FROM builds_ids WHERE plugin_slug = @Slug;
+                                                   DELETE FROM builds_logs WHERE plugin_slug = @Slug;
+                                                   DELETE FROM users_plugins WHERE plugin_slug = @Slug;
+                                                   DELETE FROM versions WHERE plugin_slug = @Slug;
+                                                   DELETE FROM plugins WHERE slug = @Slug;
+                                                   """, new { Slug = slug });
+        if (affectedRows == 0) return NotFound();
 
         return RedirectToAction("ListPlugins");
     }
@@ -159,14 +151,13 @@ public class AdminController(
     public async Task<IActionResult> Users(AdminUsersListViewModel? model = null)
     {
         model ??= new AdminUsersListViewModel();
-        var usersQuery = userManager.Users.OrderBy(a=>a.Email).AsQueryable();
+        var usersQuery = userManager.Users.OrderBy(a => a.Email).AsQueryable();
 
         if (!string.IsNullOrEmpty(model.SearchText))
-        {
-            usersQuery = usersQuery.Where(o => (o.UserName != null && o.UserName.Contains(model.SearchText)) || (o.Email != null && o.Email.Contains(model.SearchText)));
-        }
+            usersQuery = usersQuery.Where(o =>
+                (o.UserName != null && o.UserName.Contains(model.SearchText)) || (o.Email != null && o.Email.Contains(model.SearchText)));
         var users = usersQuery.Skip(model.Skip).Take(model.Count).ToList();
-        var usersList = new List<AdminUsersViewModel>();
+        List<AdminUsersViewModel> usersList = new();
         foreach (var user in users)
         {
             var userRoles = await userManager.GetRolesAsync(user);
@@ -179,6 +170,7 @@ public class AdminController(
                 Roles = userRoles
             });
         }
+
         model.Users = usersList;
         return View(model);
     }
@@ -188,16 +180,16 @@ public class AdminController(
     public async Task<IActionResult> EditRoles(string userId)
     {
         var user = await userManager.FindByIdAsync(userId);
-        if (user == null)
-        {
-            return NotFound();
-        }
+        if (user == null) return NotFound();
 
         var userRoles = await userManager.GetRolesAsync(user);
         var allRoles = roleManager.Roles.ToList();
-        var model = new EditUserRolesViewModel
+        EditUserRolesViewModel model = new()
         {
-            UserId = user.Id, UserName = user.UserName, UserRoles = userRoles, AvailableRoles = allRoles
+            UserId = user.Id,
+            UserName = user.UserName,
+            UserRoles = userRoles,
+            AvailableRoles = allRoles
         };
         return View(model);
     }
@@ -206,10 +198,7 @@ public class AdminController(
     public async Task<IActionResult> EditRoles(string userId, List<string> userRoles)
     {
         var user = await userManager.FindByIdAsync(userId);
-        if (user == null)
-        {
-            return NotFound();
-        }
+        if (user == null) return NotFound();
 
         var currentRoles = await userManager.GetRolesAsync(user);
         var rolesToAdd = userRoles.Except(currentRoles).ToList();
@@ -225,9 +214,11 @@ public class AdminController(
                 ModelState.AddModelError("", "You cannot remove yourself as the last ServerAdmin.");
 
                 // Rebuild the view model to pass it back to the view
-                var model = new EditUserRolesViewModel
+                EditUserRolesViewModel model = new()
                 {
-                    UserId = userId, UserRoles = currentRoles.ToList(), AvailableRoles = roleManager.Roles.ToList()
+                    UserId = userId,
+                    UserRoles = currentRoles.ToList(),
+                    AvailableRoles = roleManager.Roles.ToList()
                 };
                 return View(model);
             }
@@ -242,12 +233,9 @@ public class AdminController(
     [HttpGet("/admin/initpasswordreset")]
     public async Task<IActionResult> InitPasswordReset(string userId)
     {
-        var model = new InitPasswordResetViewModel();
+        InitPasswordResetViewModel model = new();
         var user = await userManager.FindByIdAsync(userId);
-        if (user != null)
-        {
-            model.Email = user.Email;
-        }
+        if (user != null) model.Email = user.Email;
 
         return View(model);
     }
@@ -283,10 +271,7 @@ public class AdminController(
         if (passwordSet)
         {
             var dbModel = await emailService.GetEmailSettingsFromDb();
-            if (dbModel != null)
-            {
-                model.Password = dbModel.Password;
-            }
+            if (dbModel != null) model.Password = dbModel.Password;
             ModelState.Remove("Password");
 
             if (command?.Equals("resetpassword", StringComparison.OrdinalIgnoreCase) == true)
@@ -298,15 +283,9 @@ public class AdminController(
             }
         }
 
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
+        if (!ModelState.IsValid) return View(model);
 
-        if (!await ValidateSmtpConnection(model))
-        {
-            return View(model);
-        }
+        if (!await ValidateSmtpConnection(model)) return View(model);
 
         await SaveEmailSettingsToDatabase(model);
         TempData[TempDataConstant.SuccessMessage] = $"SMTP settings updated. Emails will be sent from {model.From}.";
@@ -344,13 +323,15 @@ public class AdminController(
             ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
             return View(new EmailSenderViewModel());
         }
-        EmailSettingsViewModel? emailSettings = await emailService.GetEmailSettingsFromDb();
+
+        var emailSettings = await emailService.GetEmailSettingsFromDb();
         if (emailSettings == null)
         {
-            TempData[TempDataConstant.WarningMessage] = $"Email testing can't be done before SMTP is set";
+            TempData[TempDataConstant.WarningMessage] = "Email testing can't be done before SMTP is set";
             return RedirectToAction(nameof(EmailSettings));
         }
-        var model = new EmailSenderViewModel
+
+        EmailSenderViewModel model = new()
         {
             From = emailSettings.From,
             To = to,
@@ -363,21 +344,20 @@ public class AdminController(
     [HttpPost("emailsender")]
     public async Task<IActionResult> EmailSender(EmailSenderViewModel model)
     {
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
+        if (!ModelState.IsValid) return View(model);
         if (!IsValidEmailList(model.To))
         {
             ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
             return View(model);
         }
-        EmailSettingsViewModel? emailSettings = await emailService.GetEmailSettingsFromDb();
+
+        var emailSettings = await emailService.GetEmailSettingsFromDb();
         if (emailSettings == null)
         {
             TempData[TempDataConstant.WarningMessage] = "Email settings not found";
             return View(model);
         }
+
         try
         {
             var emailsSent = await emailService.SendEmail(model.To, model.Subject, model.Message);
@@ -395,13 +375,10 @@ public class AdminController(
     private bool IsValidEmailList(string to)
     {
         return to.Split(',')
-              .Select(email => email.Trim())
-              .All(email => !string.IsNullOrWhiteSpace(email) && Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
+            .Select(email => email.Trim())
+            .All(email => !string.IsNullOrWhiteSpace(email) && Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
     }
 
-    // settings editor
-    private const string ProtectedKeys = "EmailSettings";
-    
     [HttpGet("SettingsEditor")]
     public async Task<IActionResult> SettingsEditor()
     {
@@ -409,27 +386,27 @@ public class AdminController(
         var result = await conn.SettingsGetAllAsync();
         var list = result.ToList();
         list.RemoveAll(setting => setting.key == ProtectedKeys);
-        
+
         return View(list);
     }
-    
+
     [HttpPost("SettingsEditor")]
     public async Task<IActionResult> SettingsEditor(string key, string value)
     {
         if (key == ProtectedKeys)
             return BadRequest();
-        
+
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsSetAsync(key, value);
         return RedirectToAction(nameof(SettingsEditor));
     }
-    
+
     [HttpDelete("SettingsEditor")]
     public async Task<IActionResult> SettingsEditorDelete(string key)
     {
         if (key == ProtectedKeys)
             return BadRequest();
-        
+
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsDeleteAsync(key);
         return Ok();

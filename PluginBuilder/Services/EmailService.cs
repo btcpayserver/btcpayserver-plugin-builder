@@ -1,8 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using MailKit.Net.Smtp;
+using MailKit.Security;
 using MimeKit;
 using Newtonsoft.Json;
-using Npgsql;
 using PluginBuilder.Extensions;
 using PluginBuilder.ViewModels.Admin;
 
@@ -19,18 +19,18 @@ public class EmailService
 
     public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText)
     {
-        var toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
+        List<InternetAddress> toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
             .Select(InternetAddress.Parse)
             .ToList();
         return SendEmail(toList, subject, messageText);
     }
-    
-    private async Task<List<string>> SendEmail(IEnumerable<InternetAddress> toList, string subject, string messageText)    
+
+    private async Task<List<string>> SendEmail(IEnumerable<InternetAddress> toList, string subject, string messageText)
     {
-        List<string> recipients = new List<string>();
+        List<string> recipients = new();
         var emailSettings = await GetEmailSettingsFromDb();
         var smtpClient = await CreateSmtpClient(emailSettings);
-        var message = new MimeMessage();
+        MimeMessage message = new();
         message.From.Add(MailboxAddress.Parse(emailSettings.From));
         message.Subject = subject;
         message.Body = new TextPart("plain") { Text = messageText };
@@ -41,10 +41,11 @@ public class EmailService
             await smtpClient.SendAsync(message);
             recipients.Add(email.ToString());
         }
+
         await smtpClient.DisconnectAsync(true);
         return recipients;
     }
-    
+
     public Task SendVerifyEmail(string toEmail, string verifyUrl)
     {
         var body = $"Please verify your account by visiting: {verifyUrl}";
@@ -65,7 +66,7 @@ public class EmailService
     public async Task<SmtpClient> CreateSmtpClient(EmailSettingsViewModel settings)
     {
         SmtpClient client = new();
-        using var connectCancel = new CancellationTokenSource(10000);
+        using CancellationTokenSource connectCancel = new(10000);
         try
         {
             if (settings.DisableCertificateCheck)
@@ -76,7 +77,7 @@ public class EmailService
 #pragma warning restore CA5359 // Do Not Disable Certificate Validation
             }
 
-            await client.ConnectAsync(settings.Server, settings.Port, MailKit.Security.SecureSocketOptions.Auto,
+            await client.ConnectAsync(settings.Server, settings.Port, SecureSocketOptions.Auto,
                 connectCancel.Token);
             if ((client.Capabilities & SmtpCapabilities.Authentication) != 0)
                 await client.AuthenticateAsync(settings.Username ?? string.Empty, settings.Password ?? string.Empty,
@@ -91,7 +92,6 @@ public class EmailService
         return client;
     }
 }
-
 
 // public MimeMessage CreateMailMessage(MailboxAddress to, string subject, string message, bool isHtml) =>
 //     CreateMailMessage(new[] { to }, null, null, subject, message, isHtml);
@@ -119,7 +119,7 @@ public class EmailService
 
 public static class MailboxAddressValidator
 {
-    static ParserOptions _options;
+    private static readonly ParserOptions _options;
 
     static MailboxAddressValidator()
     {
@@ -141,7 +141,7 @@ public static class MailboxAddressValidator
     public static bool TryParse(string? str, [MaybeNullWhen(false)] out MailboxAddress mailboxAddress)
     {
         mailboxAddress = null;
-        if (String.IsNullOrWhiteSpace(str)) return false;
+        if (string.IsNullOrWhiteSpace(str)) return false;
         return MailboxAddress.TryParse(_options, str, out mailboxAddress) && mailboxAddress is not null;
     }
 }

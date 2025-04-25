@@ -1,16 +1,15 @@
-namespace PluginBuilder
-{
-    [AttributeUsage(AttributeTargets.Assembly, Inherited = false)]
-    public sealed class GitCommitAttribute : Attribute
-    {
-        public string SHA
-        {
-            get;
-        }
+namespace PluginBuilder;
 
-        public GitCommitAttribute(string sha)
-        {
-            SHA = sha;
-        }
+[AttributeUsage(AttributeTargets.Assembly)]
+public sealed class GitCommitAttribute : Attribute
+{
+    public GitCommitAttribute(string sha)
+    {
+        SHA = sha;
+    }
+
+    public string SHA
+    {
+        get;
     }
 }

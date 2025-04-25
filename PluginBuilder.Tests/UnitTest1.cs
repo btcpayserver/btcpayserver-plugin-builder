@@ -1,8 +1,6 @@
-using System.Security;
 using System.Threading.Tasks;
 using Dapper;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using PluginBuilder.Extensions;
 using PluginBuilder.Services;
 using Xunit;
@@ -14,13 +12,12 @@ public class UnitTest1 : UnitTestBase
 {
     public UnitTest1(ITestOutputHelper logs) : base(logs)
     {
-
     }
+
     [Fact]
     public async Task Test1()
     {
         await using var tester = await Start();
-
     }
 
     [Theory]
@@ -46,13 +43,13 @@ public class UnitTest1 : UnitTestBase
         var buildService = tester.GetService<BuildService>();
         using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin("rockstar-stylist");
-        var build = await conn.NewBuild("rockstar-stylist", new PluginBuildParameters("https://github.com/NicolasDorier/btcpayserver")
-        {
-            PluginDirectory = "Plugins/BTCPayServer.Plugins.RockstarStylist",
-            GitRef = "plugins/collection2"
-        });
+        var build = await conn.NewBuild("rockstar-stylist",
+            new PluginBuildParameters("https://github.com/NicolasDorier/btcpayserver")
+            {
+                PluginDirectory = "Plugins/BTCPayServer.Plugins.RockstarStylist", GitRef = "plugins/collection2"
+            });
         //https://github.com/NicolasDorier/btcpayserver/tree/plugins/collection2/Plugins/BTCPayServer.Plugins.RockstarStylist
-        var fullBuildId = new FullBuildId("rockstar-stylist", build);
+        FullBuildId fullBuildId = new("rockstar-stylist", build);
         await buildService.Build(fullBuildId);
 
         var client = tester.CreateHttpClient();
@@ -96,15 +93,16 @@ public class UnitTest1 : UnitTestBase
 
         // Another plugin slug try to hijack the package
         await conn.NewPlugin("rockstar-stylist-fake");
-        build = await conn.NewBuild("rockstar-stylist-fake", new PluginBuildParameters("https://github.com/NicolasDorier/btcpayserver")
-        {
-            PluginDirectory = "Plugins/BTCPayServer.Plugins.RockstarStylist",
-            GitRef = "plugins/collection2"
-        });
+        build = await conn.NewBuild("rockstar-stylist-fake",
+            new PluginBuildParameters("https://github.com/NicolasDorier/btcpayserver")
+            {
+                PluginDirectory = "Plugins/BTCPayServer.Plugins.RockstarStylist", GitRef = "plugins/collection2"
+            });
         fullBuildId = new FullBuildId("rockstar-stylist-fake", build);
         await buildService.Build(fullBuildId);
 
-        var rockstarPlugins = await conn.QueryAsync<string?>("SELECT slug FROM plugins WHERE identifier='BTCPayServer.Plugins.RockstarStylist'");
+        var rockstarPlugins =
+            await conn.QueryAsync<string?>("SELECT slug FROM plugins WHERE identifier='BTCPayServer.Plugins.RockstarStylist'");
         var p = Assert.Single(rockstarPlugins);
         Assert.Equal("rockstar-stylist", p);
         versions = await client.GetPublishedVersions("1.4.6.0", true);
@@ -116,7 +114,7 @@ public class UnitTest1 : UnitTestBase
         versions = await client.GetPublishedVersions("1.4.6.0", true);
         version = Assert.Single(versions);
         Assert.Equal("1.0.2.1", version.Version);
-        versions = await client.GetPublishedVersions("1.4.6.0", true, includeAllVersions: true);
+        versions = await client.GetPublishedVersions("1.4.6.0", true, true);
         Assert.Equal("1.0.2.1", versions[0].Version);
         Assert.Equal("1.0.2.0", versions[1].Version);
     }

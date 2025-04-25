@@ -133,15 +133,18 @@ h2 small .fa-question-circle-o {
 .invoice-details-row {
     background: var(--btcpay-bg-tile);
 }
+
 .badge .dropdown-toggle {
     cursor: pointer;
     padding: 0;
 }
+
 @media (min-width: 1200px) {
     #MassAction {
         margin-top: -4rem;
     }
 }
+
 /* Prevent layout from breaking on hyperlinks with very long URLs as the visible text */
 .invoice-details a {
     word-break: break-word;
@@ -156,9 +159,11 @@ h2 small .fa-question-circle-o {
 .feedback-icon-loading {
     color: orange;
 }
+
 .feedback-icon-success {
     color: green;
 }
+
 .feedback-icon-failed {
     color: red;
 }
@@ -175,12 +180,20 @@ h2 small .fa-question-circle-o {
     background-color: lightgray;
 }
 
-[v-cloak] { display:none }
-[v-cloak-loading] > * { display:none }
-[v-cloak-loading]::before { content: "loading…" }
+[v-cloak] {
+    display: none
+}
+
+[v-cloak-loading] > * {
+    display: none
+}
+
+[v-cloak-loading]::before {
+    content: "loading…"
+}
 
 .list-group-item a:not(.btn) {
-  color: inherit;
+    color: inherit;
 }
 
 .list-group-item .icon-caret-right {
@@ -210,26 +223,32 @@ h2 small .fa-question-circle-o {
     .table th {
         background: transparent;
     }
+
     .bg-tile.h-100.p-3 {
         padding: 1rem 0 !important;
     }
+
     .text-print-default {
         color: inherit !important;
     }
+
     a {
         text-decoration: none !important;
     }
+
     .toasted-container {
         display: none !important;
     }
+
     #markStatusDropdownMenuButton {
         border: 0;
         background: transparent;
         padding: 0 !important;
         color: inherit;
-        font-weight:  var(--btcpay-font-weight-normal);
+        font-weight: var(--btcpay-font-weight-normal);
         font-size: var(--btcpay-body-font-size);
     }
+
     #markStatusDropdownMenuButton::after {
         content: none;
     }
@@ -254,7 +273,7 @@ svg.icon {
 }
 
 svg.icon-note {
-  color: var(--btcpay-neutral-500);
+    color: var(--btcpay-neutral-500);
 }
 
 /* Services */
@@ -305,7 +324,7 @@ svg.icon-note {
 .widget {
     --widget-padding: var(--btcpay-space-m);
     --widget-chart-width: 100vw;
-    
+
     border: 1px solid var(--btcpay-body-border-light);
     border-radius: var(--btcpay-border-radius-l);
     padding: var(--widget-padding);
@@ -473,7 +492,7 @@ svg.icon-note {
     .widget.store-lightning-services .services-list .service {
         --service-width: 3rem;
     }
-    
+
     .widget .store-number {
         flex: 0 1 100%;
     }
@@ -489,6 +508,7 @@ svg.icon-note {
     .widget.store-lightning-services .services-list {
         gap: 1.5rem;
     }
+
     .widget.store-lightning-services .services-list .service {
         --service-width: 4rem;
     }
@@ -525,7 +545,7 @@ svg.icon-note {
         grid-column-start: 9;
         grid-column-end: 13;
     }
-    
+
     .widget.store-numbers {
         flex-direction: column;
         justify-content: start;
@@ -545,8 +565,15 @@ svg.icon-note {
     }
 }
 
-#tradeModal .qty{ width: 41%; }
-#tradeModal .btn-square{ padding: 0; width: 2.5rem; height: 2.5rem; }
+#tradeModal .qty {
+    width: 41%;
+}
+
+#tradeModal .btn-square {
+    padding: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+}
 
 #tradeModal .trade-qty {
     display: flex;
@@ -563,4 +590,6 @@ svg.icon-note {
     flex: 1;
 }
 
-.modal-footer .modal-footer-left{ margin-right: auto; }
+.modal-footer .modal-footer-left {
+    margin-right: auto;
+}

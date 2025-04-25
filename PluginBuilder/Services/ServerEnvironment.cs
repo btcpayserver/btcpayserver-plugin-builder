@@ -1,11 +1,11 @@
-namespace PluginBuilder.Services
+namespace PluginBuilder.Services;
+
+public class ServerEnvironment
 {
-    public class ServerEnvironment
+    public ServerEnvironment(IConfiguration configuration)
     {
-        public ServerEnvironment(IConfiguration configuration)
-        {
-            CheatMode = configuration.GetValue<bool?>("CHEAT_MODE") ?? false;
-        }
-        public bool CheatMode { get; set; }
+        CheatMode = configuration.GetValue<bool?>("CHEAT_MODE") ?? false;
     }
+
+    public bool CheatMode { get; set; }
 }

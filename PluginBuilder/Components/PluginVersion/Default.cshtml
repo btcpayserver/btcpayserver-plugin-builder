@@ -1,22 +1,23 @@
 @model PluginBuilder.Components.PluginVersion.PluginVersionViewModel
 @if (Model != null)
 {
-	<div class="d-flex align-items-center gap-1">
-		@if (Model.Published)
-		{
-			<div><a asp-action="Version" asp-controller="Plugin" asp-route-pluginSlug="@Model.PluginSlug" asp-route-version="@Model.Version">@Model.Version</a></div>
-		}
-		else
-		{
-			<div>@Model.Version</div>
-		}
-		@if (Model.PreRelease)
-		{
-			<span class="badge bg-secondary text-muted">pre-release</span>
-		}
-		@if (Model is { Published: true, HidePublishBadge: false })
-		{
-		    <span class="badge bg-info">published</span>
-		}
-	</div>
+    <div class="d-flex align-items-center gap-1">
+        @if (Model.Published)
+        {
+            <div><a asp-action="Version" asp-controller="Plugin" asp-route-pluginSlug="@Model.PluginSlug" asp-route-version="@Model.Version">@Model.Version</a>
+            </div>
+        }
+        else
+        {
+            <div>@Model.Version</div>
+        }
+        @if (Model.PreRelease)
+        {
+            <span class="badge bg-secondary text-muted">pre-release</span>
+        }
+        @if (Model is { Published: true, HidePublishBadge: false })
+        {
+            <span class="badge bg-info">published</span>
+        }
+    </div>
 }

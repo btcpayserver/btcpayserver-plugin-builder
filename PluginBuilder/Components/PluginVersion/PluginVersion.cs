@@ -2,13 +2,12 @@
 
 using Microsoft.AspNetCore.Mvc;
 
-namespace PluginBuilder.Components.PluginVersion
+namespace PluginBuilder.Components.PluginVersion;
+
+public class PluginVersion : ViewComponent
 {
-    public class PluginVersion : ViewComponent
+    public Task<IViewComponentResult> InvokeAsync(PluginVersionViewModel model)
     {
-        public Task<IViewComponentResult> InvokeAsync(PluginVersionViewModel model)
-        {
-            return Task.FromResult<IViewComponentResult>(View(model));
-        }
+        return Task.FromResult<IViewComponentResult>(View(model));
     }
 }
