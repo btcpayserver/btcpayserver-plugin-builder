@@ -18,6 +18,7 @@ public class AdminPluginSettingViewModel : BasePagingViewModel
 {
     public IEnumerable<AdminPluginViewModel> Plugins { get; set; } = new List<AdminPluginViewModel>();
     public bool VerifiedEmailForPluginPublish { get; set; }
+    public bool VerifiedPgpSignatureForPluginRelease { get; set; }
     public string SearchText { get; set; }
 
     public override int CurrentPageCount => Plugins.Count();

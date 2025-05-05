@@ -1,0 +1,133 @@
+@model SignVersionBuildViewModel
+@{
+	Layout = "_Layout";
+	ViewData.SetActivePage(PluginNavPages.Dashboard, $"Sign Build {Model.FullBuildId.BuildId}", Model.FullBuildId.ToString());
+}
+
+<div class="d-sm-flex align-items-center justify-content-between">
+    <div class="d-sm-flex align-items-center">
+        <h2 class="mb-0">
+            @ViewData["Title"]
+        </h2>
+	</div>
+	<div class="d-flex gap-3 mt-3 mt-sm-0">
+		<span class="badge bg-warning">Unsigned</span>
+	</div>
+</div>
+
+<table class="table">
+	<tr>
+		<th class="fw-semibold w-200px">Plugin Slug</th>
+		<td>@Model.PluginSlug</td>
+	</tr>
+	<tr>
+		<th class="fw-semibold w-100px">Version</th>
+		<td>
+			<vc:plugin-version model="@Model.Version"></vc:plugin-version>
+		</td>
+	</tr>
+	<tr>
+		<th class="fw-semibold">Git version</th>
+		<td>
+			@Model.GitRef
+			@if (Model.RepositoryLink is null)
+			{
+				@("@")<span>@Model.Commit</span>
+			}
+			else
+			{
+				@("@")<a href="@Model.RepositoryLink" target="_blank" rel="noreferrer noopener">@Model.Commit</a>
+			}
+		</td>
+	</tr>
+	<tr>
+		<th class="fw-semibold">Created at</th>
+		<td>@Model.CreatedDate</td>
+	</tr>
+</table>
+
+
+<div class="my-4">
+	<div class="card mb-4">
+		<div class="card-body">
+			<p class="mb-3">Sign the manifest below with your PGP key to verify your identity before release.</p>
+			<div class="mb-3">
+				<div class="bg-light p-3 rounded overflow-auto" style="max-width: 100%;">
+					<pre class="mb-0" id="shasum-manifest" style="white-space: pre-wrap;">@Model.ShasumManifest</pre>
+				</div>
+				<div class="d-flex justify-content-end">
+					<button class="btn btn-sm btn-secondary copy-button" data-clipboard-target="#shasum-manifest">
+						<i class="fa fa-copy"></i> Copy
+					</button>
+				</div>
+			</div>
+			<div class="alert alert-secondary">
+				<strong>How to sign:</strong><br>
+				<ol class="mb-0">
+					<li>Save the manifest JSON data to a file (e.g. <code>plugin.json</code>)</li>
+					<li>
+						Sign it with PGP (detached, ASCII-armored):<br>
+						<code>gpg --armor --output plugin.sig --detach-sign plugin.json</code>
+					</li>
+					<li>This will create the signature file <code>plugin.sig</code></li>
+					<li>Paste the content of the signature file below</li>
+				</ol>
+			</div>
+		</div>
+	</div>
+
+	<form asp-action="SignVersionBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-buildId="@Model.FullBuildId.BuildId" method="post">
+		<input type="hidden" asp-for="FullBuildId.BuildId" />
+		<input type="hidden" asp-for="FullBuildId.PluginSlug" />
+
+		<div class="card mb-4">
+			<div class="card-header">
+				<h3 class="card-title h5 mb-0">PGP Signature</h3>
+			</div>
+			<div class="card-body">
+				<div class="mb-3">
+					<textarea asp-for="Signature" class="form-control" rows="10" required
+							  placeholder="Paste your detached PGP signature here (begins with -----BEGIN PGP SIGNATURE-----)">
+				</textarea>
+					<span asp-validation-for="Signature" class="text-danger"></span>
+				</div>
+			</div>
+		</div>
+
+		<div class="form-group mb-4 d-flex justify-content-between">
+			<a asp-action="Build" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-buildId="@Model.FullBuildId.BuildId"
+			   class="btn btn-secondary">
+				<i class="fa fa-arrow-left"></i> Back to Build
+			</a>
+			<button type="submit" class="btn btn-primary">
+				<i class="fa fa-signature"></i> Sign and Verify
+			</button>
+		</div>
+	</form>
+</div>
+
+
+@section FooterScripts {
+	<script>
+		document.addEventListener('DOMContentLoaded', function () {
+			const copyButtons = document.querySelectorAll('.copy-button');
+			copyButtons.forEach(button => {
+				button.addEventListener('click', function () {
+					const targetId = this.getAttribute('data-clipboard-target');
+					const targetElement = document.querySelector(targetId);
+					navigator.clipboard.writeText(targetElement.textContent)
+						.then(() => {
+							const originalText = this.innerHTML;
+							this.innerHTML = '<i class="fa fa-check"></i> Copied!';
+							setTimeout(() => {
+								this.innerHTML = originalText;
+							}, 2000);
+						})
+						.catch(err => {
+							console.error('Could not copy text: ', err);
+						});
+				});
+			});
+		});
+	</script>
+}

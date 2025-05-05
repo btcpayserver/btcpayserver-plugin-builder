@@ -1,3 +1,6 @@
+using System;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -5,18 +8,22 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Controllers.Logic;
+using PluginBuilder.Data.Enums;
 using PluginBuilder.Extensions;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Account;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace PluginBuilder.Controllers;
 
 [Authorize(Policy = Policies.OwnPlugin)]
 [Route("/plugins/{pluginSlug}")]
 public class PluginController(
-    DBConnectionFactory connectionFactory,
     BuildService buildService,
+    PgpKeyService pgpKeyService,
+    DBConnectionFactory connectionFactory,
     EmailVerifiedLogic emailVerifiedLogic)
     : Controller
 {
@@ -201,7 +208,118 @@ public class PluginController(
         //_ = buildService.Build(new FullBuildId(pluginSlug, buildId), model.ToBuildParameter());
         if (logs != "")
             vm.Logs = logs;
+
+        var versionSigningState = await conn.QueryFirstOrDefaultAsync<string>("SELECT ver_signing_state FROM versions WHERE plugin_slug=@pluginSlug AND ver = @version;", 
+            new 
+            {
+                pluginSlug = pluginSlug.ToString(),
+                version = manifest?.Version?.VersionParts
+            });
+        vm.IsBuildVersionSigned = versionSigningState != null && versionSigningState.Equals(PluginVersionSigningState.signed.ToString(), StringComparison.OrdinalIgnoreCase);
+        var pluginOwnerUserId = await conn.QueryFirstAsync<string>("SELECT user_id FROM users_plugins WHERE plugin_slug=@pluginSlug;", new { pluginSlug = pluginSlug.ToString() });
+        var requirePgp = await conn.GetRequirePgpSignatureForReleaseSetting();
+        if (requirePgp)
+        {
+            var accountSettings = await conn.GetAccountDetailSettings(pluginOwnerUserId);
+            var hasValidKey = accountSettings?.PgpKey?.Any(key => 
+                (key.ValidDays <= 0 || key.CreatedDate.AddSeconds(key.ValidDays) > DateTime.UtcNow.Date.AddDays(1).AddTicks(-1))) ?? false;
+
+            vm.RequirePublisherPgpSetup = !hasValidKey;
+            if (!hasValidKey)
+            {
+                TempData[TempDataConstant.WarningMessage] = "You need to configure PGP keys in order to release this plugin";
+            }
+        }
         return View(vm);
+    }
+
+
+    [HttpGet("builds/{buildId}/sign")]
+    public async Task<IActionResult> SignBuildVersion(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
+        long buildId)
+    {
+        await using var conn = await connectionFactory.Open();
+        var row =
+            await conn
+                .QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release)>(
+                    "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
+                    "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
+                    "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
+                    "LIMIT 1",
+                    new { pluginSlug = pluginSlug.ToString(), buildId });
+        var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
+        var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
+
+        var versionSigningState = await conn.QueryFirstAsync<string>("SELECT ver_signing_state FROM versions WHERE plugin_slug=@pluginSlug AND ver = @version;",
+            new
+            {
+                pluginSlug = pluginSlug.ToString(),
+                version = manifest?.Version?.VersionParts
+            });
+        if (versionSigningState == PluginVersionSigningState.signed.ToString())
+        {
+            return RedirectToAction(nameof(Build), new { pluginSlug, buildId });
+        }
+
+        SignVersionBuildViewModel model = new();
+        model.FullBuildId = new FullBuildId(pluginSlug, buildId);
+        model.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, pluginSlug.ToString());
+        model.Commit = buildInfo?.GitCommit?.Substring(0, 8);
+        model.RepositoryLink = buildInfo?.GitRepository;
+        model.GitRef = buildInfo?.GitRef;
+        model.PluginSlug = pluginSlug.ToString();
+        model.ShasumManifest = manifest.ToString();
+        model.CreatedDate = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
+        return View(model);
+    }
+
+
+    [HttpPost("builds/{buildId}/sign")]
+    public async Task<IActionResult> SignBuildVersion(
+       [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug, long buildId, SignVersionBuildViewModel model)
+    {
+        bool verifiedMessage = false;
+        string error = string.Empty;
+        await using var conn = await connectionFactory.Open();
+        var row =
+            await conn
+                .QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release)>(
+                    "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
+                    "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
+                    "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
+                    "LIMIT 1",
+                    new { pluginSlug = pluginSlug.ToString(), buildId });
+        var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
+        var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
+
+        var pluginOwnerUserId = await conn.QueryFirstAsync<string>("SELECT user_id FROM users_plugins WHERE plugin_slug=@pluginSlug;", new { pluginSlug = pluginSlug.ToString() });
+        var accountSettings = await conn.GetAccountDetailSettings(pluginOwnerUserId);
+        var validPublicKeys = accountSettings.PgpKey?.Where(key =>
+            (key.ValidDays <= 0 || key.CreatedDate.AddSeconds(key.ValidDays) > DateTime.UtcNow.Date.AddDays(1).AddTicks(-1))).Select(c => c.PublicKey).ToList();
+        var messageContent = manifest.ToString().TrimEnd() + "\n";
+        foreach (var publicKey in validPublicKeys)
+        {
+            verifiedMessage = pgpKeyService.VerifyDetachedSignature(messageContent, model.Signature.TrimEnd(), publicKey, out error);
+        }
+        if (verifiedMessage)
+        {
+            await conn.ExecuteAsync("UPDATE versions SET ver_signing_state=@versionState WHERE plugin_slug=@pluginSlug AND ver=@version",
+                new
+                {
+                    versionState = PluginVersionSigningState.signed.ToString(),
+                    pluginSlug = pluginSlug.ToString(),
+                    version = manifest?.Version?.VersionParts
+                });
+            TempData[TempDataConstant.SuccessMessage] = "Version build signature verified successfully";
+        }
+        else
+        {
+            TempData[TempDataConstant.WarningMessage] = $"Build signature verification failed. {error}";
+        }
+        return RedirectToAction(nameof(Build), new { pluginSlug, buildId });
     }
 
     private string? NiceJson(string? json)

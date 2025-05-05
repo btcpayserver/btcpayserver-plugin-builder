@@ -1,0 +1,55 @@
+@model AccountDetailsViewModel
+@{
+	Layout = "_Layout";
+	ViewData.SetActivePage("Account PGP Keys");
+}
+
+
+<div class="d-flex flex-column flex-md-row align-items-center justify-content-between gap-3 my-4 mb-4">
+	<h2 class="mb-3 mb-md-0">@ViewData["Title"]</h2>
+	<div class="d-flex flex-column flex-sm-row align-items-center gap-3">
+		<a asp-controller="Account" asp-action="AddPGPKeys" class="btn btn-success">New PGP key</a>
+	</div>
+</div>
+
+<div class="row">
+	<p class="text-muted mb-4">This is a list of PGP keys associated with your account. Remove any keys that you do not recognize.</p>
+	@if (Model.Settings == null || Model.Settings.PgpKey == null || !Model.Settings.PgpKey.Any())
+	{
+		<div class="alert alert-info">You don't have any PGP keys associated with your account yet.</div>
+	}
+	else
+	{
+		<div class="list-group">
+			@foreach (var key in Model.Settings.PgpKey)
+			{
+				DateTime? expires = key.ValidDays > 0 ? key.CreatedDate.AddSeconds(key.ValidDays) : null;
+				<div class="list-group-item border rounded mb-3 p-4">
+					<div class="d-flex align-items-center">
+						<div class="key-icon me-3">
+							<i class="bi bi-key-fill fs-1"></i>
+						</div>
+						<div class="flex-grow-1">
+							<h5>@key.Title</h5>
+							<div class="mb-1">Key ID: <span class="font-monospace">@key.KeyId</span></div>
+							<div class="mb-1">Subkeys: <span class="font-monospace">@key.Fingerprint.Substring(key.Fingerprint.Length - 8)</span></div>
+							<div class="mb-1">Created: <span class="font-monospace">@key.CreatedDate.ToString("MMMM dd, yyyy")</span></div>
+							<div class="mb-1">
+								Expires:
+								<span class="font-monospace">
+									@(expires.HasValue ? expires.Value.ToString("MMMM dd, yyyy") : "Never")
+								</span>
+							</div>
+							<div class="text-muted small">Added on @string.Format("{0:MMMM dd, yyyy}", key.AddedDate)</div>
+						</div>
+						<div>
+							<form asp-action="DeletePGPKey" asp-route-keybatchId="@key.KeyBatchId" method="post">
+								<button type="submit" class="btn btn-danger">Delete</button>
+							</form>
+						</div>
+					</div>
+				</div>
+			}
+		</div>
+	}
+</div>

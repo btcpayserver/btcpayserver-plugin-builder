@@ -2,6 +2,7 @@ using Dapper;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using PluginBuilder.Data.Enums;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 
@@ -157,23 +158,26 @@ public static class NpgsqlConnectionExtensions
     }
 
     public static async Task<bool> SetVersionBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, PluginVersion version,
-        PluginVersion? minBTCPayVersion, bool preRelease)
+    PluginVersion? minBTCPayVersion, bool preRelease)
     {
         minBTCPayVersion ??= PluginVersion.Zero;
 
         return await connection.ExecuteAsync(
-            "INSERT INTO versions AS v VALUES (@plugin_slug, @ver, @build_id, @btcpay_min_ver, @pre_release) " +
-            "ON CONFLICT (plugin_slug, ver) DO UPDATE SET build_id = @build_id, btcpay_min_ver = @btcpay_min_ver, pre_release=@pre_release " +
-            "WHERE v.pre_release IS TRUE AND (v.build_id != @build_id OR v.btcpay_min_ver != @btcpay_min_ver OR @pre_release IS FALSE);",
+            @"INSERT INTO versions AS v (plugin_slug, ver, build_id, btcpay_min_ver, pre_release, ver_signing_state)
+          VALUES (@plugin_slug, @ver, @build_id, @btcpay_min_ver, @pre_release, @ver_signing_state)
+          ON CONFLICT (plugin_slug, ver) DO UPDATE SET build_id = @build_id, btcpay_min_ver = @btcpay_min_ver, pre_release = @pre_release, ver_signing_state = @ver_signing_state
+          WHERE v.pre_release IS TRUE AND (v.build_id != @build_id OR v.btcpay_min_ver != @btcpay_min_ver OR @pre_release IS FALSE);",
             new
             {
                 plugin_slug = fullBuildId.PluginSlug.ToString(),
                 ver = version.VersionParts,
                 build_id = fullBuildId.BuildId,
                 btcpay_min_ver = minBTCPayVersion.VersionParts,
-                pre_release = preRelease
+                pre_release = preRelease,
+                ver_signing_state = PluginVersionSigningState.unsigned.ToString(),
             }) == 1;
     }
+
 
     public static Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
     {
@@ -242,7 +246,6 @@ public static class NpgsqlConnectionExtensions
             await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES ('VerifiedEmailForPluginPublish', 'true')");
             settingValue = "true";
         }
-
         return bool.TryParse(settingValue, out var result) && result;
     }
 
@@ -252,4 +255,23 @@ public static class NpgsqlConnectionExtensions
         await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = 'VerifiedEmailForPluginPublish'",
             new { Value = stringValue });
     }
+
+    public static async Task<bool> GetRequirePgpSignatureForReleaseSetting(this NpgsqlConnection connection)
+    {
+        var settingValue = await connection.QuerySingleOrDefaultAsync<string>("SELECT value FROM settings WHERE key = 'RequirePgpSignatureForRelease'");
+        if (settingValue == null)
+        {
+            await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES ('RequirePgpSignatureForRelease', 'false')");
+            settingValue = "false";
+        }
+        return bool.TryParse(settingValue, out var result) && result;
+    }
+
+    public static async Task UpdateRequiredPgpSignatureForReleaseSetting(this NpgsqlConnection connection, bool newValue)
+    {
+        var stringValue = newValue.ToString().ToLower();
+        await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = 'RequirePgpSignatureForRelease'",
+            new { Value = stringValue });
+    }
+
 }
