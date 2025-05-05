@@ -18,4 +18,6 @@ public class BuildViewModel
     public string GitRef { get; internal set; }
     public string RepositoryLink { get; internal set; }
     public string Logs { get; set; }
+    public bool RequirePublisherPgpSetup { get; set; }
+    public bool IsBuildVersionSigned { get; set; }
 }

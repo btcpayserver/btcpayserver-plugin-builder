@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using PluginBuilder.ViewModels.Account;
 
 namespace PluginBuilder.DataModels;
 
@@ -15,4 +16,5 @@ public class AccountSettings
 
     [Display(Name = "Public Email address")]
     public string? Email { get; set; }
+    public List<PgpKey>? PgpKey { get; set; }
 }

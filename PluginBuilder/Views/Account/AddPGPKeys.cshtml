@@ -1,0 +1,33 @@
+@model AddPgpKeyViewModel
+@{
+    Layout = "_Layout";
+	ViewData.SetActivePage("Add PGP Keys");
+}
+
+<h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+<div class="container-fluid mt-4">
+
+	<form asp-action="Add" method="post">
+		@Html.AntiForgeryToken()
+
+		<div class="mb-3">
+			<label asp-for="Title" class="form-label">Title</label>
+			<input asp-for="Title" class="form-control" placeholder="Name this key" />
+			<span asp-validation-for="Title" class="text-danger"></span>
+		</div>
+		<div class="mb-3">
+			<label asp-for="PublicKey" class="form-label">Key</label>
+			<textarea asp-for="PublicKey" class="form-control font-monospace" rows="15"
+					  placeholder="Begins with '-----BEGIN PGP PUBLIC KEY BLOCK-----'"></textarea>
+			<span asp-validation-for="PublicKey" class="text-danger"></span>
+			<div class="form-text">
+				Paste your PGP public key block, which should begin with <code>-----BEGIN PGP PUBLIC KEY BLOCK-----</code>
+				and end with <code>-----END PGP PUBLIC KEY BLOCK-----</code>
+			</div>
+		</div>
+		<div class="d-flex justify-content-end">
+			<a asp-controller="Account" asp-action="ManagePGPKeys" class="btn btn-secondary me-2">Back</a>
+			<button type="submit" class="btn btn-success">Add PGP key</button>
+		</div>
+	</form>
+</div>

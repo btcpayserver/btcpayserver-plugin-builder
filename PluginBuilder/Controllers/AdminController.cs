@@ -69,16 +69,26 @@ public class AdminController(
 
         model.Plugins = plugins;
         model.VerifiedEmailForPluginPublish = await conn.GetVerifiedEmailForPluginPublishSetting();
+        model.VerifiedPgpSignatureForPluginRelease = await conn.GetRequirePgpSignatureForReleaseSetting();
         return View(model);
     }
 
-    [HttpPost]
+    [HttpPost("admin/update-email-requirement")]
     public async Task<IActionResult> UpdateVerifiedEmailRequirement(bool verifiedEmailForPluginPublish)
     {
         await using var conn = await connectionFactory.Open();
         await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
         TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
-        return RedirectToAction("ListPlugins");
+        return RedirectToAction(nameof(ListPlugins));
+    }
+
+    [HttpPost("admin/update-pgp-requirement")]
+    public async Task<IActionResult> UpdatePgpSignatureRequirement(bool VerifiedPgpSignatureForPluginRelease)
+    {
+        await using var conn = await connectionFactory.Open();
+        await conn.UpdateRequiredPgpSignatureForReleaseSetting(VerifiedPgpSignatureForPluginRelease);
+        TempData[TempDataConstant.SuccessMessage] = "PGP signature requirement setting for releasing plugin updated successfully";
+        return RedirectToAction(nameof(ListPlugins));
     }
 
 

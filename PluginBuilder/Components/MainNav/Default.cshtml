@@ -121,9 +121,14 @@
                         {
                             <div class="text-secondary">Administrator</div>
                         }
-                    </li>
+					</li>
+					<li class="border-top py-1 px-3">
+						<a asp-area="" asp-controller="Account" asp-action="ManagePGPKeys" class="nav-link" id="Nav-ManageAccount">
+							<span>Manage PGP Keys</span>
+						</a>
+					</li>
                     <li class="border-top py-1 px-3">
-                        <a asp-area="" asp-controller="Account" asp-action="AccountDetails" class="nav-link" id="Nav-ManageAccount">
+						<a asp-area="" asp-controller="Account" asp-action="AccountDetails" class="nav-link" id="Nav-ManagePGPKeys">
                             <span>Manage Account</span>
                         </a>
                     </li>
