@@ -15,4 +15,5 @@ public class AccountSettings
 
     [Display(Name = "Public Email address")]
     public string? Email { get; set; }
+    public string? PendingNewEmail { get; set; }
 }

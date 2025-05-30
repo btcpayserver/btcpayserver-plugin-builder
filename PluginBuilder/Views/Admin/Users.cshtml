@@ -44,6 +44,10 @@
                         <a asp-action="InitPasswordReset" asp-route-userId="@user.Id">
                             Reset Password
                         </a>
+						<span class="mx-2">|</span>
+						<a asp-action="ChangeUserEmail" asp-route-userId="@user.Id">
+							Change Email
+						</a>
                     </td>
                 </tr>
             }
