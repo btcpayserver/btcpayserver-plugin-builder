@@ -289,7 +289,7 @@ public class AdminController(
         await conn.SetAccountDetailSettings(accountSettings, user.Id);
         var token = await userManager.GenerateChangeEmailTokenAsync(user, model.NewEmail);
         var link = Url.Action("VerifyEmailUpdate", "Home", new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
-        await emailService.SendVerifyEmail(user.Email!, link);
+        await emailService.SendVerifyEmail(model.NewEmail, link);
         TempData[TempDataConstant.SuccessMessage] = "A verification email has been sent to user's new email address";
         return RedirectToAction(nameof(Users));
     }
