@@ -11,12 +11,12 @@
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
             <div class="form-group">
                 <label asp-for="OldEmail" class="form-label"></label>
-                <input asp-for="OldEmail" class="form-control" placeholder="Email of User to Reset" readonly />
+                <input asp-for="OldEmail" class="form-control" placeholder="Email of User to update" readonly />
                 <span asp-validation-for="OldEmail" class="text-danger"></span>
             </div>
 			<div class="form-group">
 				<label asp-for="NewEmail" class="form-label" data-required></label>
-				<input asp-for="NewEmail" class="form-control" placeholder="Email of User to Reset" required />
+				<input asp-for="NewEmail" class="form-control" placeholder="New email address of User" required />
 				<span asp-validation-for="NewEmail" class="text-danger"></span>
 			</div>
             <div class="form-group mt-4">

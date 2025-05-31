@@ -232,8 +232,8 @@ public class AdminController(
     }
 
     // init reset password
-    [HttpGet("/admin/initpasswordreset")]
-    public async Task<IActionResult> InitPasswordReset(string userId)
+    [HttpGet("/admin/userpasswordreset")]
+    public async Task<IActionResult> UserPasswordReset(string userId)
     {
         InitPasswordResetViewModel model = new();
         var user = await userManager.FindByIdAsync(userId);
@@ -242,8 +242,8 @@ public class AdminController(
         return View(model);
     }
 
-    [HttpPost("/admin/initpasswordreset")]
-    public async Task<IActionResult> InitPasswordReset(InitPasswordResetViewModel model)
+    [HttpPost("/admin/userpasswordreset")]
+    public async Task<IActionResult> UserPasswordReset(InitPasswordResetViewModel model)
     {
         if (!ModelState.IsValid) return View(model);
 
@@ -260,8 +260,8 @@ public class AdminController(
         return View(model);
     }
 
-    [HttpGet("/admin/changeemailaddress")]
-    public async Task<IActionResult> ChangeUserEmail(string userId)
+    [HttpGet("/admin/userchangeemail")]
+    public async Task<IActionResult> UserChangeEmail(string userId)
     {
         ChangeEmailAddressViewModel model = new();
         var user = await userManager.FindByIdAsync(userId);
@@ -271,8 +271,8 @@ public class AdminController(
         return View(model);
     }
 
-    [HttpPost("/admin/changeemailaddress")]
-    public async Task<IActionResult> ChangeUserEmail(ChangeEmailAddressViewModel model)
+    [HttpPost("/admin/userchangeemail")]
+    public async Task<IActionResult> UserChangeEmail(ChangeEmailAddressViewModel model)
     {
         if (!ModelState.IsValid)
             return View(model);
