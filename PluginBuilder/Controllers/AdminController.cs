@@ -5,10 +5,12 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using PluginBuilder.DataModels;
 using PluginBuilder.Extensions;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
+using static Dapper.SqlMapper;
 
 namespace PluginBuilder.Controllers;
 
@@ -230,8 +232,8 @@ public class AdminController(
     }
 
     // init reset password
-    [HttpGet("/admin/initpasswordreset")]
-    public async Task<IActionResult> InitPasswordReset(string userId)
+    [HttpGet("/admin/userpasswordreset")]
+    public async Task<IActionResult> UserPasswordReset(string userId)
     {
         InitPasswordResetViewModel model = new();
         var user = await userManager.FindByIdAsync(userId);
@@ -240,8 +242,8 @@ public class AdminController(
         return View(model);
     }
 
-    [HttpPost("/admin/initpasswordreset")]
-    public async Task<IActionResult> InitPasswordReset(InitPasswordResetViewModel model)
+    [HttpPost("/admin/userpasswordreset")]
+    public async Task<IActionResult> UserPasswordReset(InitPasswordResetViewModel model)
     {
         if (!ModelState.IsValid) return View(model);
 
@@ -256,6 +258,40 @@ public class AdminController(
         var result = await userManager.GeneratePasswordResetTokenAsync(user);
         model.PasswordResetToken = result;
         return View(model);
+    }
+
+    [HttpGet("/admin/userchangeemail")]
+    public async Task<IActionResult> UserChangeEmail(string userId)
+    {
+        ChangeEmailAddressViewModel model = new();
+        var user = await userManager.FindByIdAsync(userId);
+        if (user != null)
+            model.OldEmail = user.Email;
+
+        return View(model);
+    }
+
+    [HttpPost("/admin/userchangeemail")]
+    public async Task<IActionResult> UserChangeEmail(ChangeEmailAddressViewModel model)
+    {
+        if (!ModelState.IsValid)
+            return View(model);
+
+        await using var conn = await connectionFactory.Open();
+        var user = await userManager.FindByEmailAsync(model.OldEmail);
+        if (user is null)
+        {
+            ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
+            return View(model);
+        }
+        var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
+        accountSettings.PendingNewEmail = model.NewEmail;
+        await conn.SetAccountDetailSettings(accountSettings, user.Id);
+        var token = await userManager.GenerateChangeEmailTokenAsync(user, model.NewEmail);
+        var link = Url.Action("VerifyEmailUpdate", "Home", new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
+        await emailService.SendVerifyEmail(user.Email!, link);
+        TempData[TempDataConstant.SuccessMessage] = "A verification email has been sent to user's new email address";
+        return RedirectToAction(nameof(Users));
     }
 
     [HttpGet("emailsettings")]

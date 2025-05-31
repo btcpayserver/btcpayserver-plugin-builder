@@ -175,6 +175,32 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
     }
 
 
+    [AllowAnonymous]
+    [HttpGet("/UpdateEmail")]
+    public async Task<IActionResult> VerifyEmailUpdate(string uid, string token)
+    {
+        ConfirmEmailViewModel model = new();
+        await using var conn = await connectionFactory.Open();
+        var user = await userManager.FindByIdAsync(uid);
+        if (user is null)
+            return View("ConfirmEmail", model);
+
+        var settings = await conn.GetAccountDetailSettings(user.Id);
+        if (string.IsNullOrEmpty(settings?.PendingNewEmail))
+            return View("ConfirmEmail", model);
+
+        var result = await userManager.ChangeEmailAsync(user, settings.PendingNewEmail, token);
+        var setUsernameResult = await userManager.SetUserNameAsync(user, settings.PendingNewEmail);
+        model.Email = settings.PendingNewEmail;
+        model.EmailConfirmed = result.Succeeded && setUsernameResult.Succeeded;
+        if (model.EmailConfirmed)
+        {
+            settings.PendingNewEmail = string.Empty;
+            await conn.SetAccountDetailSettings(settings, user.Id);
+        }
+        return View("ConfirmEmail", model);
+    }
+
     // password reset flow
 
     [AllowAnonymous]

@@ -12,3 +12,17 @@ public class InitPasswordResetViewModel
 
     public string PasswordResetToken { get; set; }
 }
+
+
+public class ChangeEmailAddressViewModel
+{
+    [Required]
+    [EmailAddress]
+    [Display(Name = "Old Email")]
+    public string OldEmail { get; set; }
+
+    [Required]
+    [EmailAddress]
+    [Display(Name = "New Email")]
+    public string NewEmail { get; set; }
+}
