@@ -48,6 +48,12 @@
 						<a asp-action="UserChangeEmail" asp-route-userId="@user.Id">
 							Change Email
 						</a>
+						@if (!string.IsNullOrEmpty(user.PendingNewEmail))
+                        {
+                            <span class="cursor-pointer" title="@user.PendingNewEmail">
+                                <span class="ms-2 me-2 btcpay-status btcpay-status--enabled"></span>
+                            </span>
+                        }
                     </td>
                 </tr>
             }

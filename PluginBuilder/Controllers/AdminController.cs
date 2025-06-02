@@ -153,6 +153,7 @@ public class AdminController(
     public async Task<IActionResult> Users(AdminUsersListViewModel? model = null)
     {
         model ??= new AdminUsersListViewModel();
+        await using var conn = await connectionFactory.Open();
         var usersQuery = userManager.Users.OrderBy(a => a.Email).AsQueryable();
 
         if (!string.IsNullOrEmpty(model.SearchText))
@@ -163,13 +164,15 @@ public class AdminController(
         foreach (var user in users)
         {
             var userRoles = await userManager.GetRolesAsync(user);
+            var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
             usersList.Add(new AdminUsersViewModel
             {
                 Id = user.Id,
                 Email = user.Email!,
                 UserName = user.UserName!,
                 EmailConfirmed = user.EmailConfirmed,
-                Roles = userRoles
+                Roles = userRoles,
+                PendingNewEmail = accountSettings?.PendingNewEmail
             });
         }
 
@@ -263,16 +266,20 @@ public class AdminController(
     [HttpGet("/admin/userchangeemail")]
     public async Task<IActionResult> UserChangeEmail(string userId)
     {
-        ChangeEmailAddressViewModel model = new();
+        await using var conn = await connectionFactory.Open();
+        UserChangeEmailViewModel model = new();
         var user = await userManager.FindByIdAsync(userId);
         if (user != null)
+        {
+            var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
             model.OldEmail = user.Email;
-
+            model.PendingNewEmail = !string.IsNullOrEmpty(accountSettings?.PendingNewEmail) ? accountSettings.PendingNewEmail : null;
+        }
         return View(model);
     }
 
     [HttpPost("/admin/userchangeemail")]
-    public async Task<IActionResult> UserChangeEmail(ChangeEmailAddressViewModel model)
+    public async Task<IActionResult> UserChangeEmail(UserChangeEmailViewModel model)
     {
         if (!ModelState.IsValid)
             return View(model);
@@ -290,7 +297,7 @@ public class AdminController(
         var token = await userManager.GenerateChangeEmailTokenAsync(user, model.NewEmail);
         var link = Url.Action("VerifyEmailUpdate", "Home", new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
         await emailService.SendVerifyEmail(model.NewEmail, link);
-        TempData[TempDataConstant.SuccessMessage] = "A verification email has been sent to user's new email address";
+        TempData[TempDataConstant.SuccessMessage] = "A verification email has been sent to user's new email address: "+ model.PendingNewEmail;
         return RedirectToAction(nameof(Users));
     }
 

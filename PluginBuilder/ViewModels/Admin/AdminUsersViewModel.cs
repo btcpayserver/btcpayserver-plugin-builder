@@ -17,4 +17,5 @@ public class AdminUsersViewModel
     public bool EmailConfirmed { get; set; }
     public DateTimeOffset? LockoutEnd { get; set; }
     public IList<string> Roles { get; set; } // List of roles
+    public string PendingNewEmail { get; set; }
 }
