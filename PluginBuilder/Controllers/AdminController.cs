@@ -172,7 +172,7 @@ public class AdminController(
                 UserName = user.UserName!,
                 EmailConfirmed = user.EmailConfirmed,
                 Roles = userRoles,
-                IsEmailChangePending = !string.IsNullOrEmpty(accountSettings?.PendingNewEmail)
+                PendingNewEmail = accountSettings?.PendingNewEmail
             });
         }
 
@@ -267,19 +267,19 @@ public class AdminController(
     public async Task<IActionResult> UserChangeEmail(string userId)
     {
         await using var conn = await connectionFactory.Open();
-        ChangeEmailAddressViewModel model = new();
+        UserChangeEmailViewModel model = new();
         var user = await userManager.FindByIdAsync(userId);
         if (user != null)
         {
             var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
             model.OldEmail = user.Email;
-            model.PendingEmail = !string.IsNullOrEmpty(accountSettings?.PendingNewEmail) ? accountSettings.PendingNewEmail : null;
+            model.PendingNewEmail = !string.IsNullOrEmpty(accountSettings?.PendingNewEmail) ? accountSettings.PendingNewEmail : null;
         }
         return View(model);
     }
 
     [HttpPost("/admin/userchangeemail")]
-    public async Task<IActionResult> UserChangeEmail(ChangeEmailAddressViewModel model)
+    public async Task<IActionResult> UserChangeEmail(UserChangeEmailViewModel model)
     {
         if (!ModelState.IsValid)
             return View(model);
@@ -297,7 +297,7 @@ public class AdminController(
         var token = await userManager.GenerateChangeEmailTokenAsync(user, model.NewEmail);
         var link = Url.Action("VerifyEmailUpdate", "Home", new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
         await emailService.SendVerifyEmail(model.NewEmail, link);
-        TempData[TempDataConstant.SuccessMessage] = "A verification email has been sent to user's new email address";
+        TempData[TempDataConstant.SuccessMessage] = "A verification email has been sent to user's new email address: "+ model.PendingNewEmail;
         return RedirectToAction(nameof(Users));
     }
 

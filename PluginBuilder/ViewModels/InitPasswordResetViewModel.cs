@@ -14,7 +14,7 @@ public class InitPasswordResetViewModel
 }
 
 
-public class ChangeEmailAddressViewModel
+public class UserChangeEmailViewModel
 {
     [Required]
     [EmailAddress]
@@ -25,5 +25,5 @@ public class ChangeEmailAddressViewModel
     [EmailAddress]
     [Display(Name = "New Email")]
     public string NewEmail { get; set; }
-    public string PendingEmail { get; set; }
+    public string PendingNewEmail { get; set; }
 }
