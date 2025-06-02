@@ -153,6 +153,7 @@ public class AdminController(
     public async Task<IActionResult> Users(AdminUsersListViewModel? model = null)
     {
         model ??= new AdminUsersListViewModel();
+        await using var conn = await connectionFactory.Open();
         var usersQuery = userManager.Users.OrderBy(a => a.Email).AsQueryable();
 
         if (!string.IsNullOrEmpty(model.SearchText))
@@ -163,13 +164,15 @@ public class AdminController(
         foreach (var user in users)
         {
             var userRoles = await userManager.GetRolesAsync(user);
+            var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
             usersList.Add(new AdminUsersViewModel
             {
                 Id = user.Id,
                 Email = user.Email!,
                 UserName = user.UserName!,
                 EmailConfirmed = user.EmailConfirmed,
-                Roles = userRoles
+                Roles = userRoles,
+                IsEmailChangePending = !string.IsNullOrEmpty(accountSettings?.PendingNewEmail)
             });
         }
 
@@ -263,11 +266,15 @@ public class AdminController(
     [HttpGet("/admin/userchangeemail")]
     public async Task<IActionResult> UserChangeEmail(string userId)
     {
+        await using var conn = await connectionFactory.Open();
         ChangeEmailAddressViewModel model = new();
         var user = await userManager.FindByIdAsync(userId);
         if (user != null)
+        {
+            var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
             model.OldEmail = user.Email;
-
+            model.PendingEmail = !string.IsNullOrEmpty(accountSettings?.PendingNewEmail) ? accountSettings.PendingNewEmail : null;
+        }
         return View(model);
     }
 

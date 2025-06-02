@@ -48,6 +48,10 @@
 						<a asp-action="UserChangeEmail" asp-route-userId="@user.Id">
 							Change Email
 						</a>
+						@if (user.IsEmailChangePending)
+						{
+							<span class="ms-2 me-2 btcpay-status btcpay-status--enabled"></span>
+						}
                     </td>
                 </tr>
             }

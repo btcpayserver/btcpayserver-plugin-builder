@@ -25,4 +25,5 @@ public class ChangeEmailAddressViewModel
     [EmailAddress]
     [Display(Name = "New Email")]
     public string NewEmail { get; set; }
+    public string PendingEmail { get; set; }
 }
