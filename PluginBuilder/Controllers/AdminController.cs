@@ -22,7 +22,7 @@ public class AdminController(
     RoleManager<IdentityRole> roleManager,
     DBConnectionFactory connectionFactory,
     EmailService emailService,
-    EmailVerifiedLogic emailVerifiedLogic)
+    EmailVerifiedCache emailVerifiedCache)
     : Controller
 {
     // settings editor
@@ -81,6 +81,7 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
+        await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
         TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
         return RedirectToAction("ListPlugins");
     }
@@ -443,7 +444,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsSetAsync(key, value);
-        await emailVerifiedLogic.RefreshIsVerifiedEmailRequired(conn);
+        await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
         return RedirectToAction(nameof(SettingsEditor));
     }
 
@@ -455,7 +456,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsDeleteAsync(key);
-        await emailVerifiedLogic.RefreshIsVerifiedEmailRequired(conn);
+        await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
         return Ok();
     }
 }

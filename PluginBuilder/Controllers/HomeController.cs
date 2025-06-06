@@ -74,7 +74,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
     [HttpGet("/login")]
     public IActionResult Login()
     {
-        return View(new LoginViewModel());
+        return View(new LoginViewModel { IsVerifiedEmailRequired = emailVerifiedLogic.IsEmailVerificationRequired });
     }
 
     [AllowAnonymous]
@@ -82,6 +82,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
     public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
     {
         ViewData["ReturnUrl"] = returnUrl;
+        model.IsVerifiedEmailRequired = emailVerifiedLogic.IsEmailVerificationRequired;
         if (!ModelState.IsValid)
             return View(model);
         // Require the user to have a confirmed email before they can log on.

@@ -102,7 +102,8 @@ public class Program
         services.AddSingleton<EmailService>();
 
         // shared controller logic
-        services.AddSingleton<EmailVerifiedLogic>();
+        services.AddSingleton<EmailVerifiedCache>();
+        services.AddTransient<EmailVerifiedLogic>();
 
         services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
         {

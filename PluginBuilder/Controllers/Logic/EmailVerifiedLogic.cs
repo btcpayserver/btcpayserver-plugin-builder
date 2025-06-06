@@ -8,19 +8,25 @@ namespace PluginBuilder.Controllers.Logic;
 
 public class EmailVerifiedLogic(
     UserManager<IdentityUser> userManager,
-    EmailService emailService)
+    EmailService emailService,
+    EmailVerifiedCache emailVerifiedCache)
 {
-    public bool IsEmailVerificationRequired { get; private set; }
+    public bool IsEmailVerificationRequired => emailVerifiedCache.IsEmailVerificationRequired;
     
     public async Task<bool> IsUserEmailVerified(ClaimsPrincipal claimsPrincipal)
     {
         var emailSettings = await emailService.GetEmailSettingsFromDb();
-        if (!IsEmailVerificationRequired || emailSettings?.PasswordSet != true)
+        if (!emailVerifiedCache.IsEmailVerificationRequired || emailSettings?.PasswordSet != true)
             return true; // for now always return true in these cases if we don't have a verified email
 
         var user = await userManager.GetUserAsync(claimsPrincipal);
         return await userManager.IsEmailConfirmedAsync(user!);
     }
+}
+
+public class EmailVerifiedCache
+{
+    public bool IsEmailVerificationRequired { get; private set; }
     
     public async Task<bool> RefreshIsVerifiedEmailRequired(NpgsqlConnection conn)
     {

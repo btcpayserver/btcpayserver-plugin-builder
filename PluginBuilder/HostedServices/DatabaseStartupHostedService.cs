@@ -10,14 +10,14 @@ namespace PluginBuilder.HostedServices;
 
 public class DatabaseStartupHostedService : IHostedService
 {
-    private readonly EmailVerifiedLogic _emailVerifiedLogic;
+    private readonly EmailVerifiedCache emailVerifiedCache;
 
     public DatabaseStartupHostedService(ILogger<DatabaseStartupHostedService> logger, DBConnectionFactory connectionFactory,
-        EmailVerifiedLogic emailVerifiedLogic)
+        EmailVerifiedCache emailVerifiedCache)
     {
         ConnectionFactory = connectionFactory;
         Logger = logger;
-        _emailVerifiedLogic = emailVerifiedLogic;
+        this.emailVerifiedCache = emailVerifiedCache;
     }
 
     private ILogger Logger { get; }
@@ -33,7 +33,7 @@ public class DatabaseStartupHostedService : IHostedService
             await RunScripts(conn);
             await CleanupScript(conn);
 
-            await _emailVerifiedLogic.RefreshIsVerifiedEmailRequired(conn);
+            await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
         }
         catch (NpgsqlException pgex) when (pgex.SqlState == "3D000")
         {
