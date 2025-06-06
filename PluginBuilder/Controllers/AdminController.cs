@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Extensions;
 using PluginBuilder.Services;
@@ -20,7 +21,8 @@ public class AdminController(
     UserManager<IdentityUser> userManager,
     RoleManager<IdentityRole> roleManager,
     DBConnectionFactory connectionFactory,
-    EmailService emailService)
+    EmailService emailService,
+    EmailVerifiedLogic emailVerifiedLogic)
     : Controller
 {
     // settings editor
@@ -441,6 +443,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsSetAsync(key, value);
+        await emailVerifiedLogic.RefreshIsVerifiedEmailRequired(conn);
         return RedirectToAction(nameof(SettingsEditor));
     }
 
@@ -452,6 +455,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsDeleteAsync(key);
+        await emailVerifiedLogic.RefreshIsVerifiedEmailRequired(conn);
         return Ok();
     }
 }

@@ -240,7 +240,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
     public async Task<IActionResult> CreatePlugin()
     {
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerified(conn, User))
+        if (!await emailVerifiedLogic.IsUserEmailVerified(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";
@@ -261,7 +261,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
         }
 
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerified(conn, User))
+        if (!await emailVerifiedLogic.IsUserEmailVerified(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";

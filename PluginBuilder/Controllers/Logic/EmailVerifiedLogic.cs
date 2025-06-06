@@ -10,19 +10,21 @@ public class EmailVerifiedLogic(
     UserManager<IdentityUser> userManager,
     EmailService emailService)
 {
-    public async Task<bool> IsUserEmailVerified(NpgsqlConnection conn, ClaimsPrincipal claimsPrincipal)
+    public bool IsEmailVerificationRequired { get; private set; }
+    
+    public async Task<bool> IsUserEmailVerified(ClaimsPrincipal claimsPrincipal)
     {
         var emailSettings = await emailService.GetEmailSettingsFromDb();
-        if (!await IsVerifiedEmailRequired(conn) || emailSettings?.PasswordSet != true)
+        if (!IsEmailVerificationRequired || emailSettings?.PasswordSet != true)
             return true; // for now always return true in these cases if we don't have a verified email
 
         var user = await userManager.GetUserAsync(claimsPrincipal);
         return await userManager.IsEmailConfirmedAsync(user!);
     }
     
-    public async Task<bool> IsVerifiedEmailRequired(NpgsqlConnection conn)
+    public async Task<bool> RefreshIsVerifiedEmailRequired(NpgsqlConnection conn)
     {
-        var emailVerificationRequired = await conn.GetVerifiedEmailForPluginPublishSetting();
-        return emailVerificationRequired;
+        IsEmailVerificationRequired = await conn.GetVerifiedEmailForPluginPublishSetting();
+        return IsEmailVerificationRequired;
     }
 }

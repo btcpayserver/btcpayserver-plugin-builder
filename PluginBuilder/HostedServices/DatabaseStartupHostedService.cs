@@ -3,16 +3,21 @@ using System.Reflection;
 using System.Text;
 using Dapper;
 using Npgsql;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Services;
 
 namespace PluginBuilder.HostedServices;
 
 public class DatabaseStartupHostedService : IHostedService
 {
-    public DatabaseStartupHostedService(ILogger<DatabaseStartupHostedService> logger, DBConnectionFactory connectionFactory)
+    private readonly EmailVerifiedLogic _emailVerifiedLogic;
+
+    public DatabaseStartupHostedService(ILogger<DatabaseStartupHostedService> logger, DBConnectionFactory connectionFactory,
+        EmailVerifiedLogic emailVerifiedLogic)
     {
         ConnectionFactory = connectionFactory;
         Logger = logger;
+        _emailVerifiedLogic = emailVerifiedLogic;
     }
 
     private ILogger Logger { get; }
@@ -27,6 +32,8 @@ public class DatabaseStartupHostedService : IHostedService
             await using var conn = await ConnectionFactory.Open(cancellationToken);
             await RunScripts(conn);
             await CleanupScript(conn);
+
+            await _emailVerifiedLogic.RefreshIsVerifiedEmailRequired(conn);
         }
         catch (NpgsqlException pgex) when (pgex.SqlState == "3D000")
         {
