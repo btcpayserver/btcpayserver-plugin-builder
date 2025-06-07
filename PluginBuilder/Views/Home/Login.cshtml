@@ -58,6 +58,12 @@
                             <button type="submit" class="btn btn-primary btn-lg w-100" id="LoginButton" tabindex="3"><span class="ps-3">Sign in</span></button>
                         </div>
                     </div>
+                    @if (Model.IsVerifiedEmailRequired)
+                    {
+                        <div class="form-group mt-2 text-center">
+                            <a asp-action="ForgotPassword" asp-controller="Home">Forgot your password?</a>
+                        </div>
+                    }
                 </fieldset>
             </form>
             <p class="text-center mt-2 mb-0">

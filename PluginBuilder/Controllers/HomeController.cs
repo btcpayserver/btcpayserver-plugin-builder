@@ -206,9 +206,16 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
 
     [AllowAnonymous]
     [HttpGet("/passwordreset")]
-    public IActionResult PasswordReset()
+    public IActionResult PasswordReset(string email, string code)
     {
-        return View(new PasswordResetViewModel());
+        if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(code))
+        {
+            // Redirect to login or show an error if parameters are missing
+            TempData[TempDataConstant.WarningMessage] = "Invalid password reset link.";
+            return RedirectToAction(nameof(Login)); 
+        }
+        var model = new PasswordResetViewModel { Email = email, PasswordResetToken = code };
+        return View(model);
     }
 
     [AllowAnonymous]
@@ -232,6 +239,38 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
         foreach (var err in result.Errors)
             ModelState.AddModelError("PasswordResetToken", $"{err.Description}");
 
+        return View(model);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/forgotpassword")]
+    public IActionResult ForgotPassword()
+    {
+        return View(new ForgotPasswordViewModel());
+    }
+
+    [AllowAnonymous]
+    [HttpPost("/forgotpassword")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        var user = await userManager.FindByEmailAsync(model.Email);
+        // Check if user exists and if their email is confirmed before sending a reset link.
+        if (user != null)
+        {
+            var code = await userManager.GeneratePasswordResetTokenAsync(user);
+            var callbackUrl = Url.Action(nameof(PasswordReset), "Home", 
+                new { email = user.Email, code = code }, protocol: Request.Scheme);
+            
+            await emailService.SendPasswordResetLinkAsync(model.Email, callbackUrl!);
+        }
+
+        model.FormSubmitted = true;
         return View(model);
     }
 

@@ -91,6 +91,13 @@ public class EmailService
 
         return client;
     }
+
+    public Task SendPasswordResetLinkAsync(string toEmail, string passwordResetUrl)
+    {
+        var body = $"Please reset your password by visiting following link: {passwordResetUrl}";
+
+        return SendEmail(toEmail, "Reset your password on BTCPay Server Plugin Builder", body);
+    }
 }
 
 // public MimeMessage CreateMailMessage(MailboxAddress to, string subject, string message, bool isHtml) =>

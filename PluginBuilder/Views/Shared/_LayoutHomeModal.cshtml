@@ -1,0 +1,31 @@
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>@ViewData["Title"]</title>
+    <partial name="_CommonHead"></partial>
+    <style>
+        .account-form {
+            max-width: 35em;
+            margin: 0 auto var(--btcpay-space-xl);
+            padding: 2rem;
+            background: var(--btcpay-bg-tile);
+            border-radius: var(--btcpay-border-radius);
+        }
+
+        .account-form h4 {
+            margin-bottom: 1.5rem;
+        }
+    </style>
+</head>
+<body class="d-flex flex-column min-vh-100">
+<section class="content-wrapper flex-grow-1">
+    <div class="navbar-brand d-none"></div>
+    <div class="container">
+        @RenderBody()
+    </div>
+</section>
+</body>
+</html>
