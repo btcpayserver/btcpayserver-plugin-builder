@@ -1,77 +1,51 @@
 @model LoginViewModel
 @{
     ViewData["Title"] = "Sign in";
-    Layout = null;
+    Layout = "_LayoutHomeModal";
 }
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>@ViewData["Title"]</title>
-    <partial name="_CommonHead"></partial>
-    <style>
-        .account-form {
-            max-width: 35em;
-            margin: 0 auto var(--btcpay-space-xl);
-            padding: 2rem;
-            background: var(--btcpay-bg-tile);
-            border-radius: var(--btcpay-border-radius);
-        }
 
-        .account-form h4 {
-            margin-bottom: 1.5rem;
-        }
-    </style>
-</head>
-<body class="d-flex flex-column min-vh-100">
-<section class="content-wrapper flex-grow-1">
-    <div class="navbar-brand d-none"></div>
-    <div class="container">
-        <div class="row justify-content-center mb-2">
-            <div class="col text-center">
-                <a tabindex="-1" href="/">
-                    <img src="~/img/btcpay-logo.svg" alt="BTCPay Server" class="mb-4" height="70" />
-                </a>
-                <h1 class="h2 mb-3">Welcome to BTCPay&nbsp;Server Plugin Builder</h1>
-            </div>
-        </div>
-        <div class="account-form">
-            <h4>@ViewData["Title"]</h4>
-            <form asp-route-returnurl="@ViewData["ReturnUrl"]" method="post" id="login-form" asp-action="Login">
-                <fieldset>
-                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
-                    <div class="form-group">
-                        <label asp-for="Email" class="form-label"></label>
-                        <input asp-for="Email" class="form-control" required tabindex="1" autofocus />
-                        <span asp-validation-for="Email" class="text-danger"></span>
-                    </div>
-                    <div class="form-group">
-                        <div class="d-flex justify-content-between">
-                            <label asp-for="Password" class="form-label"></label>
-                        </div>
-                        <div class="input-group d-flex">
-                            <input asp-for="Password" class="form-control" required tabindex="2" />
-                        </div>
-                        <span asp-validation-for="Password" class="text-danger"></span>
-                        @if (Model.IsVerifiedEmailRequired)
-                        {
-                            <div class="form-group mt-1">
-                                <a asp-action="ForgotPassword" asp-controller="Home">Forgot your password?</a>
-                            </div>
-                        }
-                    </div>
-                    <div class="form-group mt-4">
-                        <div class="btn-group w-100">
-                            <button type="submit" class="btn btn-primary btn-lg w-100" id="LoginButton" tabindex="3"><span class="ps-3">Sign in</span></button>
-                        </div>
-                    </div>
-                </fieldset>
-            </form>
-            <p class="text-center mt-2 mb-0">
-                <a id="Register" style="font-size:1.15rem" asp-action="Register" asp-route-returnurl="@ViewData["ReturnUrl"]" tabindex="4">Create your
-                    account</a>
-            </p>
-        </div>
+<div class="row justify-content-center mb-2">
+    <div class="col text-center">
+        <a tabindex="-1" href="/">
+            <img src="~/img/btcpay-logo.svg" alt="BTCPay Server" class="mb-4" height="70" />
+        </a>
+        <h1 class="h2 mb-3">Welcome to BTCPay&nbsp;Server Plugin Builder</h1>
     </div>
-</section>
-</body>
-</html>
+</div>
+<div class="account-form">
+    <h4>@ViewData["Title"]</h4>
+    <form asp-route-returnurl="@ViewData["ReturnUrl"]" method="post" id="login-form" asp-action="Login">
+        <fieldset>
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div class="form-group">
+                <label asp-for="Email" class="form-label"></label>
+                <input asp-for="Email" class="form-control" required tabindex="1" autofocus />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <div class="d-flex justify-content-between">
+                    <label asp-for="Password" class="form-label"></label>
+                </div>
+                <div class="input-group d-flex">
+                    <input asp-for="Password" class="form-control" required tabindex="2" />
+                </div>
+                <span asp-validation-for="Password" class="text-danger"></span>
+                @if (Model.IsVerifiedEmailRequired)
+                {
+                    <div class="form-group mt-1">
+                        <a asp-action="ForgotPassword" asp-controller="Home">Forgot your password?</a>
+                    </div>
+                }
+            </div>
+            <div class="form-group mt-4">
+                <div class="btn-group w-100">
+                    <button type="submit" class="btn btn-primary btn-lg w-100" id="LoginButton" tabindex="3"><span class="ps-3">Sign in</span></button>
+                </div>
+            </div>
+        </fieldset>
+    </form>
+    <p class="text-center mt-2 mb-0">
+        <a id="Register" style="font-size:1.15rem" asp-action="Register" asp-route-returnurl="@ViewData["ReturnUrl"]" tabindex="4">Create your
+            account</a>
+    </p>
+</div>
