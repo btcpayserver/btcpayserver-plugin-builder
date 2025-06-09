@@ -3,15 +3,8 @@ using Newtonsoft.Json.Linq;
 
 namespace PluginBuilder.Services;
 
-public class ExternalAccountVerificationService
+public class ExternalAccountVerificationService(IHttpClientFactory httpClientFactory)
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-
-    public ExternalAccountVerificationService(IHttpClientFactory httpClientFactory)
-    {
-        _httpClientFactory = httpClientFactory;
-    }
-
     public async Task<string?> VerifyGistToken(string gistUrl, string token)
     {
         Regex regex = new(@"https://gist\.github\.com/([^/]+)/([^/]+)", RegexOptions.IgnoreCase);
@@ -22,7 +15,7 @@ public class ExternalAccountVerificationService
         var gistUsername = match.Groups[1].Value;
         var gistId = match.Groups[2].Value;
 
-        var client = _httpClientFactory.CreateClient();
+        var client = httpClientFactory.CreateClient();
         var url = $"https://api.github.com/gists/{gistId}";
         client.DefaultRequestHeaders.UserAgent.ParseAdd("GitHubVerificationApp");
         var response = await client.GetAsync(url);
@@ -45,16 +38,5 @@ public class ExternalAccountVerificationService
         }
 
         return null;
-    }
-
-    public string ExtractGitHubUsername(string githubUrl)
-    {
-        if (Uri.TryCreate(githubUrl, UriKind.Absolute, out var uri) && uri.Host == "github.com")
-        {
-            var segments = uri.AbsolutePath.Trim('/').Split('/');
-            return segments.Length > 0 ? segments[0] : null;
-        }
-
-        throw new ArgumentException("Invalid GitHub profile URL");
     }
 }

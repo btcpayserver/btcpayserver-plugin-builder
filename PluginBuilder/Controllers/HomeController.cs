@@ -142,7 +142,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
             var link = Url.Action(nameof(ConfirmEmail), "Home", new { uid = user.Id, token },
                 Request.Scheme, Request.Host.ToString());
 
-            await emailService.SendVerifyEmail(model.Email, link);
+            await emailService.SendVerifyEmail(model.Email, link!);
 
             return RedirectToAction(nameof(VerifyEmail), new { email = user.Email });
         }

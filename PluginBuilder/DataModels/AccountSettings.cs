@@ -5,7 +5,7 @@ namespace PluginBuilder.DataModels;
 public class AccountSettings
 {
     [Display(Name = "Github username")]
-    public string Github { get; set; }
+    public string? Github { get; set; }
 
     [Display(Name = "Nostr Npub key")]
     public string? Nostr { get; set; }
