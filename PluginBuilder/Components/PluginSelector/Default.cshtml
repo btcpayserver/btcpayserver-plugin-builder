@@ -2,7 +2,6 @@
 @using Microsoft.AspNetCore.Identity
 @model PluginBuilder.Components.PluginSelector.PluginSelectorViewModel
 
-
 <a asp-controller="Home" asp-action="HomePage" class="navbar-brand py-2 js-scroll-trigger">
     <svg xmlns="http://www.w3.org/2000/svg" role="img" alt="BTCPay Server" class="logo">
         <use href="/img/logo.svg#small" class="logo-small" />
@@ -30,12 +29,12 @@
                 <li>
                     <hr class="dropdown-divider">
                 </li>
-                <li><a asp-controller="Home" asp-action="CreatePlugin" class="dropdown-item" id="StoreSelectorCreate">Create Plugin</a></li>
+                <li><a asp-controller="Dashboard" asp-action="CreatePlugin" class="dropdown-item" id="StoreSelectorCreate">Create Plugin</a></li>
             </ul>
         </div>
     }
     else if (SignInManager.IsSignedIn(User))
     {
-        <a asp-controller="Home" asp-action="CreatePlugin" class="btn btn-primary w-100 rounded-pill" id="StoreSelectorCreate">Create Plugin</a>
+        <a asp-controller="Dashboard" asp-action="CreatePlugin" class="btn btn-primary w-100 rounded-pill" id="StoreSelectorCreate">Create Plugin</a>
     }
 </div>

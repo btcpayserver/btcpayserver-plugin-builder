@@ -1,7 +1,7 @@
 #nullable disable
 using System.ComponentModel.DataAnnotations;
 
-namespace PluginBuilder.ViewModels;
+namespace PluginBuilder.ViewModels.Plugin;
 
 public class CreatePluginViewModel
 {
