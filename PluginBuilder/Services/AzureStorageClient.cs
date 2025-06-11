@@ -1,6 +1,6 @@
 using Microsoft.WindowsAzure.Storage;
 using Newtonsoft.Json.Linq;
-using PluginBuilder.Extensions;
+using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Services;
 

@@ -2,7 +2,7 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace PluginBuilder;
+namespace PluginBuilder.Util;
 
 public class BuildInfo
 {

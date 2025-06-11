@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
-using PluginBuilder.Extensions;
 using PluginBuilder.Services;
+using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Hubs;
 

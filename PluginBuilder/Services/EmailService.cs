@@ -3,7 +3,7 @@ using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
 using Newtonsoft.Json;
-using PluginBuilder.Extensions;
+using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels.Admin;
 
 namespace PluginBuilder.Services;

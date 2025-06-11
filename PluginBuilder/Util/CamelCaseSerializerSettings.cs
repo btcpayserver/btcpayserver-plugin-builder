@@ -1,7 +1,7 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
-namespace PluginBuilder;
+namespace PluginBuilder.Util;
 
 public class CamelCaseSerializerSettings
 {

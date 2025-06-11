@@ -1,4 +1,4 @@
-namespace PluginBuilder.Extensions;
+namespace PluginBuilder.Util.Extensions;
 
 public static class HttpRequestExtensions
 {

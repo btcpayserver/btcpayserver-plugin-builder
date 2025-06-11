@@ -1,4 +1,6 @@
 #nullable disable
+using PluginBuilder.Util;
+
 namespace PluginBuilder.APIModels;
 
 public class BuildData

@@ -1,7 +1,7 @@
 #nullable disable
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
-namespace PluginBuilder.Extensions;
+namespace PluginBuilder.Util.Extensions;
 
 public static class ViewDataExtensions
 {

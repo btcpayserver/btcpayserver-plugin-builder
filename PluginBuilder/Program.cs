@@ -10,10 +10,10 @@ using Npgsql;
 using PluginBuilder.Authentication;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
-using PluginBuilder.Extensions;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Hubs;
 using PluginBuilder.Services;
+using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder;
 

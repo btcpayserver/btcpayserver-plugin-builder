@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc.ModelBinding;
-using PluginBuilder.Extensions;
 using PluginBuilder.Services;
+using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.ModelBinders;
 

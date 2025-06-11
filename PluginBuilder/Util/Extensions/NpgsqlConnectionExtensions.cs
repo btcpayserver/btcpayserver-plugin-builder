@@ -5,7 +5,7 @@ using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 
-namespace PluginBuilder.Extensions;
+namespace PluginBuilder.Util.Extensions;
 
 public static class NpgsqlConnectionExtensions
 {

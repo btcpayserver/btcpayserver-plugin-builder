@@ -1,8 +1,8 @@
 using System.Threading.Tasks;
 using Dapper;
 using Newtonsoft.Json;
-using PluginBuilder.Extensions;
 using PluginBuilder.Services;
+using PluginBuilder.Util.Extensions;
 using Xunit;
 using Xunit.Abstractions;
 

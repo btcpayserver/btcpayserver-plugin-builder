@@ -2,7 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PluginBuilder.Components.PluginVersion;
-using PluginBuilder.Extensions;
+using PluginBuilder.Util.Extensions;
 using PluginBuilder.Services;
 
 namespace PluginBuilder.Components.MainNav;

@@ -1,16 +1,12 @@
 using Dapper;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Events;
-using PluginBuilder.Extensions;
+using PluginBuilder.Util;
+using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Services;
 
-public class BuildServiceException : Exception
-{
-    public BuildServiceException(string message) : base(message)
-    {
-    }
-}
+public class BuildServiceException(string message) : Exception(message);
 
 public class BuildService
 {

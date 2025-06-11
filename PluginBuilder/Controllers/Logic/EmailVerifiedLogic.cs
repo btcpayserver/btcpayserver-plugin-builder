@@ -1,8 +1,8 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Npgsql;
-using PluginBuilder.Extensions;
 using PluginBuilder.Services;
+using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Controllers.Logic;
 
