@@ -1,6 +1,6 @@
-namespace PluginBuilder;
+namespace PluginBuilder.Util;
 
-public class Roles
+public static class Roles
 {
     public const string ServerAdmin = "ServerAdmin";
 }

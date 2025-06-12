@@ -1,4 +1,4 @@
-namespace PluginBuilder;
+namespace PluginBuilder.Util;
 
 public static class TempDataConstant
 {
