@@ -29,10 +29,10 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
         if (owner == null || !owner.Equals(gistUsername, StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var files = gistData["files"];
+        var files = gistData["files"]!;
         foreach (var file in files)
         {
-            var fileContent = file.First["content"]?.ToString();
+            var fileContent = file.First!["content"]?.ToString();
             if (fileContent != null && fileContent.Contains(token))
                 return gistUsername;
         }

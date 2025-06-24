@@ -196,7 +196,7 @@ public class AdminController(
         EditUserRolesViewModel model = new()
         {
             UserId = user.Id,
-            UserName = user.UserName,
+            UserName = user.UserName!,
             UserRoles = userRoles,
             AvailableRoles = allRoles
         };

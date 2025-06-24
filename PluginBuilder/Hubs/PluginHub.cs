@@ -29,7 +29,9 @@ public class PluginHub : Hub
 
     public override async Task OnConnectedAsync()
     {
-        var result = await _authorizationService.AuthorizeAsync(Context.User, null, Policies.OwnPlugin);
+        var user = Context.User!;
+        
+        var result = await _authorizationService.AuthorizeAsync(user, null, Policies.OwnPlugin);
         if (result.Succeeded && Context.GetHttpContext()?.GetPluginSlug() is { } slug)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, slug.ToString());
@@ -37,7 +39,7 @@ public class PluginHub : Hub
         else
         {
             await using var connection = await ConnectionFactory.Open();
-            var userId = _userManager.GetUserId(Context.User)!;
+            var userId = _userManager.GetUserId(user)!;
             var plugins = await connection.GetPluginsByUserId(userId);
             foreach (var plugin in plugins) await Groups.AddToGroupAsync(Context.ConnectionId, plugin.ToString());
         }

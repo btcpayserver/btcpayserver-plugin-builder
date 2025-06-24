@@ -29,6 +29,9 @@ public class EmailService
     {
         List<string> recipients = new();
         var emailSettings = await GetEmailSettingsFromDb();
+        if (emailSettings == null)
+            throw new InvalidOperationException("Email settings not configured. Please set up email settings in the admin panel.");
+        
         var smtpClient = await CreateSmtpClient(emailSettings);
         MimeMessage message = new();
         message.From.Add(MailboxAddress.Parse(emailSettings.From));
