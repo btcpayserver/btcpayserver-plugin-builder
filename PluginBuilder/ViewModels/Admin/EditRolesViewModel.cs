@@ -4,8 +4,8 @@ namespace PluginBuilder.ViewModels.Admin;
 
 public class EditUserRolesViewModel
 {
-    public string UserId { get; set; }
-    public string UserName { get; set; }
-    public IList<string> UserRoles { get; set; }
-    public List<IdentityRole> AvailableRoles { get; set; }
+    public string UserId { get; set; } = null!;
+    public string UserName { get; set; } = null!;
+    public IList<string> UserRoles { get; set; } = null!;
+    public List<IdentityRole> AvailableRoles { get; set; } = null!;
 }

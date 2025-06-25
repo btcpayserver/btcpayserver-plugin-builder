@@ -6,7 +6,7 @@ public class VerifyGitHubViewModel
 {
     [Required]
     [Display(Name = "Public Gist Url")]
-    public string GistUrl { get; set; }
+    public string GistUrl { get; set; } = null!;
 
-    public string Token { get; set; }
+    public string Token { get; set; } = null!;
 }
