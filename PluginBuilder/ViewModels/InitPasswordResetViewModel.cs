@@ -13,7 +13,6 @@ public class InitPasswordResetViewModel
     public string PasswordResetToken { get; set; }
 }
 
-
 public class UserChangeEmailViewModel
 {
     [Required]
@@ -25,5 +24,6 @@ public class UserChangeEmailViewModel
     [EmailAddress]
     [Display(Name = "New Email")]
     public string NewEmail { get; set; }
+
     public string PendingNewEmail { get; set; }
 }
