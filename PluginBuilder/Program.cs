@@ -61,6 +61,13 @@ public class Program
         forwardingOptions.KnownProxies.Clear();
         forwardingOptions.ForwardedHeaders = ForwardedHeaders.All;
         app.UseForwardedHeaders(forwardingOptions);
+
+        if (!app.Environment.IsDevelopment())
+        {
+            app.UseExceptionHandler("/Home/Error");
+            app.UseHsts();
+        }
+
         app.UseStaticFiles();
         app.UseRouting();
         app.UseAuthentication();

@@ -10,6 +10,7 @@ using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Home;
 using PluginBuilder.ViewModels.Plugin;
+using System.Diagnostics;
 
 namespace PluginBuilder.Controllers;
 
@@ -281,5 +282,12 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
         if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl)) return Redirect(returnUrl);
 
         return RedirectToAction(nameof(HomePage), "Home");
+    }
+
+    [AllowAnonymous]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public IActionResult Error()
+    {
+        return View("Error", new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
     }
 }
