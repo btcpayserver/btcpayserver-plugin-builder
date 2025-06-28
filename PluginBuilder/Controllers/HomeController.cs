@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -9,8 +10,6 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Home;
-using PluginBuilder.ViewModels.Plugin;
-using System.Diagnostics;
 
 namespace PluginBuilder.Controllers;
 
@@ -202,6 +201,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
             settings.PendingNewEmail = string.Empty;
             await conn.SetAccountDetailSettings(settings, user.Id);
         }
+
         return View("ConfirmEmail", model);
     }
 
@@ -215,8 +215,9 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
         {
             // Redirect to login or show an error if parameters are missing
             TempData[TempDataConstant.WarningMessage] = "Invalid password reset link.";
-            return RedirectToAction(nameof(Login)); 
+            return RedirectToAction(nameof(Login));
         }
+
         var model = new PasswordResetViewModel { Email = email, PasswordResetToken = code };
         return View(model);
     }
@@ -257,19 +258,16 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
     {
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
+        if (!ModelState.IsValid) return View(model);
 
         var user = await userManager.FindByEmailAsync(model.Email);
         // Check if user exists and if their email is confirmed before sending a reset link.
         if (user != null)
         {
             var code = await userManager.GeneratePasswordResetTokenAsync(user);
-            var callbackUrl = Url.Action(nameof(PasswordReset), "Home", 
-                new { email = user.Email, code = code }, protocol: Request.Scheme);
-            
+            var callbackUrl = Url.Action(nameof(PasswordReset), "Home",
+                new { email = user.Email, code }, Request.Scheme);
+
             await emailService.SendPasswordResetLinkAsync(model.Email, callbackUrl!);
         }
 

@@ -225,8 +225,8 @@ public class ApiController(
 
         return UnprocessableEntity(new { errors });
     }
-    
-    
+
+
     [AttributeUsage(AttributeTargets.Assembly)]
     public sealed class GitCommitAttribute : Attribute
     {

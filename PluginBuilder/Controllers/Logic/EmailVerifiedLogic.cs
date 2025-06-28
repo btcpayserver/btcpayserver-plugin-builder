@@ -12,7 +12,7 @@ public class EmailVerifiedLogic(
     EmailVerifiedCache emailVerifiedCache)
 {
     public bool IsEmailVerificationRequired => emailVerifiedCache.IsEmailVerificationRequired;
-    
+
     public async Task<bool> IsUserEmailVerified(ClaimsPrincipal claimsPrincipal)
     {
         var emailSettings = await emailService.GetEmailSettingsFromDb();
@@ -27,7 +27,7 @@ public class EmailVerifiedLogic(
 public class EmailVerifiedCache
 {
     public bool IsEmailVerificationRequired { get; private set; }
-    
+
     public async Task<bool> RefreshIsVerifiedEmailRequired(NpgsqlConnection conn)
     {
         IsEmailVerificationRequired = await conn.GetVerifiedEmailForPluginPublishSetting();

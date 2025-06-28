@@ -12,7 +12,6 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
-using static Dapper.SqlMapper;
 
 namespace PluginBuilder.Controllers;
 
@@ -279,6 +278,7 @@ public class AdminController(
             model.OldEmail = user.Email;
             model.PendingNewEmail = !string.IsNullOrEmpty(accountSettings?.PendingNewEmail) ? accountSettings.PendingNewEmail : null;
         }
+
         return View(model);
     }
 
@@ -295,13 +295,14 @@ public class AdminController(
             ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
             return View(model);
         }
+
         var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
         accountSettings.PendingNewEmail = model.NewEmail;
         await conn.SetAccountDetailSettings(accountSettings, user.Id);
         var token = await userManager.GenerateChangeEmailTokenAsync(user, model.NewEmail);
         var link = Url.Action("VerifyEmailUpdate", "Home", new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
         await emailService.SendVerifyEmail(model.NewEmail, link);
-        TempData[TempDataConstant.SuccessMessage] = "A verification email has been sent to user's new email address: "+ model.PendingNewEmail;
+        TempData[TempDataConstant.SuccessMessage] = "A verification email has been sent to user's new email address: " + model.PendingNewEmail;
         return RedirectToAction(nameof(Users));
     }
 
