@@ -11,12 +11,12 @@ namespace PluginBuilder.Tests;
 public class PlaywrightTester : IAsyncDisposable
 {
     public ServerTester Server { get; set; }
-    public Uri ServerUri;
-    public IBrowser Browser { get; private set; }
-    public IPage Page { get; set; } 
+    public Uri? ServerUri;
+    public IBrowser? Browser { get; private set; }
+    public IPage? Page { get; set; } 
     XUnitLogger Logger { get; }
-    private string CreatedUser;
-    public string Password { get; private set; }
+    private string? CreatedUser;
+    public string? Password { get; private set; }
     public bool IsAdmin { get; private set; }
 
     
@@ -48,8 +48,8 @@ public class PlaywrightTester : IAsyncDisposable
     
     public async ValueTask DisposeAsync()
     {
-        await SafeDispose(async () => await Page?.CloseAsync());
-        await SafeDispose(async () => await Browser?.CloseAsync());
+        await SafeDispose(async () => await Page?.CloseAsync()!);
+        await SafeDispose(async () => await Browser?.CloseAsync()!);
         await Server.DisposeAsync();
     }
 
@@ -61,8 +61,8 @@ public class PlaywrightTester : IAsyncDisposable
     
     public async Task GoToUrl(string uri)
     {
-        var fullUrl = new Uri(ServerUri, uri).ToString();
-        await Page.GotoAsync(fullUrl, new() { WaitUntil = WaitUntilState.Commit });
+        var fullUrl = new Uri(ServerUri ?? throw new InvalidOperationException(), uri).ToString();
+        await Page?.GotoAsync(fullUrl, new PageGotoOptions { WaitUntil = WaitUntilState.Commit })!;
     }
     public async Task GoToLogin()
     {
@@ -70,7 +70,7 @@ public class PlaywrightTester : IAsyncDisposable
     }
     public async Task Logout()
     {
-        await Page.Locator("#Nav-Account").ClickAsync();
+        await Page?.Locator("#Nav-Account").ClickAsync()!;
         await Page.Locator("#Nav-Logout").ClickAsync();
     }
     
@@ -85,7 +85,7 @@ public class PlaywrightTester : IAsyncDisposable
     public async Task<string> RegisterNewUser(bool isAdmin = false)
     {
         var usr = GetRandomUInt256()[(64 - 20)..] + "@a.com";
-        await Page.FillAsync("#Email", usr);
+        await Page?.FillAsync("#Email", usr)!;
         await Page.FillAsync("#Password", "123456");
         await Page.FillAsync("#ConfirmPassword", "123456");
         if (isAdmin)
@@ -100,7 +100,7 @@ public class PlaywrightTester : IAsyncDisposable
     public async Task LogIn(string user, string password = "123456")
     {
         await GoToLogin();
-        await Page.FillAsync("#Email", user);
+        await Page?.FillAsync("#Email", user)!;
         await Page.FillAsync("#Password", password);
         await Page.ClickAsync("#LoginButton");
     }

@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Microsoft.Playwright.Xunit;
 using Xunit;
@@ -18,7 +19,7 @@ public class LoginPageTests(ITestOutputHelper output) : PageTest
         await tester.GoToLogin();
         await tester.LogIn("wrong-credentials@a.com");
 
-        await Expect(tester.Page.Locator("body")).ToContainTextAsync("Invalid login attempt");
+        await Expect(tester.Page?.Locator("body") ?? throw new InvalidOperationException()).ToContainTextAsync("Invalid login attempt");
     }
 
     [Fact]
@@ -30,7 +31,7 @@ public class LoginPageTests(ITestOutputHelper output) : PageTest
         await tester.GoToUrl("/register");
         var email = await tester.RegisterNewUser();
 
-        await Expect(tester.Page.Locator("body")).ToContainTextAsync("Builds");
+        await Expect(tester.Page?.Locator("body") ?? throw new InvalidOperationException()).ToContainTextAsync("Builds");
 
         await tester.Logout();
         await tester.GoToLogin();
