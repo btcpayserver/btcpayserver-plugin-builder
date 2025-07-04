@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -13,6 +14,8 @@ public class ServerTester : IAsyncDisposable
 {
     private readonly List<IAsyncDisposable> disposables = new();
     private WebApplication? _WebApp;
+    public int Port { get; set; } = Utils.FreeTcpPort();
+
 
     public ServerTester(string testFolder, XUnitLogger logs)
     {
@@ -30,6 +33,13 @@ public class ServerTester : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_WebApp != null)
+        {
+            await _WebApp.StopAsync();
+            await _WebApp.DisposeAsync();
+            _WebApp = null;
+        }
+        
         foreach (var d in disposables) await d.DisposeAsync();
     }
 
@@ -48,7 +58,13 @@ public class ServerTester : IAsyncDisposable
         Environment.SetEnvironmentVariable("PB_STORAGE_CONNECTION_STRING",
             "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==");
         Program host = new();
-        var webappBuilder = host.CreateWebApplicationBuilder();
+        var projectDir = FindPluginBuilderDirectory();
+        var webappBuilder = host.CreateWebApplicationBuilder(new WebApplicationOptions
+        {
+            ContentRootPath = projectDir, 
+            WebRootPath = Path.Combine(projectDir, "wwwroot"),
+            Args = [$"--urls=http://127.0.0.1:{Port}"]
+        });
         webappBuilder.Services.AddHttpClient();
 
         webappBuilder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
@@ -65,5 +81,26 @@ public class ServerTester : IAsyncDisposable
         var client = GetService<IHttpClientFactory>().CreateClient();
         client.BaseAddress = new Uri(WebApp.Urls.First(), UriKind.Absolute);
         return client;
+    }
+    
+    private string FindPluginBuilderDirectory()
+    {
+        var solutionDirectory = TryGetSolutionDirectoryInfo();
+        return Path.Combine(solutionDirectory.FullName, "PluginBuilder");
+    }
+
+    private DirectoryInfo TryGetSolutionDirectoryInfo()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory != null && !directory.GetFiles("btcpayserver-plugin-builder.sln").Any())
+        {
+            directory = directory.Parent;
+        }
+
+        if (directory == null)
+            throw new InvalidOperationException("Could not find the solution directory.");
+
+        return directory;
     }
 }
