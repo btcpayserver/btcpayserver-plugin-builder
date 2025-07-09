@@ -172,7 +172,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
                      JOIN plugins p ON b.plugin_slug = p.slug
-                     WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL 
+                     WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL AND p.visibility != 'hidden'
                      AND (p.visibility = 'unlisted' OR p.visibility = 'listed')
                      {(!string.IsNullOrWhiteSpace(searchPluginName) ? "AND (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)" : "")}
                      ORDER BY manifest_info->>'Name'
@@ -213,7 +213,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
                     JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
                     JOIN plugins p ON b.plugin_slug = p.slug
                     WHERE v.plugin_slug = @pluginSlug
-                    AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL 
+                    AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL AND p.visibility != 'hidden'
                     ORDER BY v.ver DESC
                     LIMIT 1
                     """;
