@@ -81,6 +81,7 @@ public class ApiController(
                 BuildId = r.id,
                 BuildInfo = JObject.Parse(r.build_info),
                 ManifestInfo = JObject.Parse(r.manifest_info),
+                PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
                 Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
             };
             versions.Add(v);
@@ -119,6 +120,7 @@ public class ApiController(
             BuildId = (long)r.build_id,
             BuildInfo = JObject.Parse(r.build_info),
             ManifestInfo = JObject.Parse(r.manifest_info),
+            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
             Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
         });
     }

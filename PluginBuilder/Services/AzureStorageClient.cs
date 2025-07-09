@@ -1,4 +1,5 @@
 using Microsoft.WindowsAzure.Storage;
+using Microsoft.WindowsAzure.Storage.Blob;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Util.Extensions;
 
@@ -25,6 +26,7 @@ public class AzureStorageClient
 {
     private readonly bool isLocalhost;
     private readonly string scheme;
+    private readonly CloudBlobClient blobClient;
 
     public AzureStorageClient(ProcessRunner processRunner, IConfiguration configuration)
     {
@@ -35,6 +37,8 @@ public class AzureStorageClient
         scheme = acc.BlobEndpoint.Scheme;
         isLocalhost = acc.BlobEndpoint.Host == "localhost" || acc.BlobEndpoint.Host == "127.0.0.1";
         DefaultContainer = "artifacts";
+        CloudStorageAccount storageAccount = CloudStorageAccount.Parse(StorageConnectionString);
+        blobClient = storageAccount.CreateCloudBlobClient();
     }
 
     public ProcessRunner ProcessRunner { get; }
@@ -56,6 +60,18 @@ public class AzureStorageClient
         if (code != 0)
             throw new AzureStorageClientException($"Impossible to create container ({error})");
         return ToJson(output)["created"]!.Value<bool>();
+    }
+
+    public async Task<string> UploadImageFile(IFormFile file, string blobName)
+    {
+        var container = blobClient.GetContainerReference(DefaultContainer);
+        var blob = container.GetBlockBlobReference(blobName);
+        blob.Properties.ContentType = file.ContentType;
+        using (var stream = file.OpenReadStream())
+        {
+            await blob.UploadFromStreamAsync(stream);
+        }
+        return blob.Uri.ToString();
     }
 
     public async Task<string> Upload(string volume, string fileInVolume, string blobName)

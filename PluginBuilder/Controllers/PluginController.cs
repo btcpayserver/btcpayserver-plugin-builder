@@ -18,6 +18,7 @@ namespace PluginBuilder.Controllers;
 public class PluginController(
     DBConnectionFactory connectionFactory,
     BuildService buildService,
+    AzureStorageClient azureStorageClient,
     EmailVerifiedLogic emailVerifiedLogic)
     : Controller
 {
@@ -31,24 +32,50 @@ public class PluginController(
 
         if (settings is null)
             return NotFound();
-        return View(settings);
+        return View(settings.ToPluginSettingViewModel());
     }
 
     [HttpPost("settings")]
     public async Task<IActionResult> Settings(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        PluginSettings settings)
+        PluginSettingViewModel settingViewModel, [FromForm] bool RemoveLogoFile = false)
     {
-        if (settings is null)
-            return NotFound();
-        if (!string.IsNullOrEmpty(settings.Documentation) && !Uri.TryCreate(settings.Documentation, UriKind.Absolute, out _))
-            ModelState.AddModelError(nameof(settings.Documentation), "Documentation should be an absolute URL");
-        if (!string.IsNullOrEmpty(settings.GitRepository) && !Uri.TryCreate(settings.GitRepository, UriKind.Absolute, out _))
-            ModelState.AddModelError(nameof(settings.GitRepository), "Git repository should be an absolute URL");
-        if (!ModelState.IsValid)
-            return View(settings);
         await using var conn = await connectionFactory.Open();
+        var existingSetting = await conn.GetSettings(pluginSlug);
+        settingViewModel.LogoUrl = existingSetting?.Logo;
+        if (settingViewModel is null)
+            return NotFound();
+        if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
+            ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
+        if (!string.IsNullOrEmpty(settingViewModel.GitRepository) && !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
+            ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository should be an absolute URL");
+        if (!ModelState.IsValid)
+            return View(settingViewModel);
+
+        if (settingViewModel.Logo != null)
+        {
+            if (!settingViewModel.Logo.ValidateUploadedImage(out string errorMessage))
+            {
+                ModelState.AddModelError(nameof(settingViewModel.Logo), $"Image upload validation failed: {errorMessage}");
+                return View(settingViewModel);
+            }
+            try
+            {
+                settingViewModel.LogoUrl = await azureStorageClient.UploadImageFile(settingViewModel.Logo, $"{settingViewModel.Logo.FileName}");
+            }
+            catch (Exception)
+            {
+                ModelState.AddModelError(nameof(settingViewModel.LogoUrl), "Could not complete settings upload. An error occurred while uploading logo");
+                return View(settingViewModel);
+            }
+        }
+        else if (RemoveLogoFile)
+        {
+            settingViewModel.Logo = null;
+            settingViewModel.LogoUrl = null;
+        }
+        var settings = settingViewModel.ToPluginSettings();
         await conn.SetPluginSettings(pluginSlug, settings);
         TempData[TempDataConstant.SuccessMessage] = "Settings updated";
         return RedirectToAction(nameof(Settings), new { pluginSlug });
