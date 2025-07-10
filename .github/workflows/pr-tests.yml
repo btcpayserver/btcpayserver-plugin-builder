@@ -1,0 +1,38 @@
+name: PluginBuilder Tests
+
+on:
+    pull_request:
+        branches: [ "master" ]
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        env:
+            CI: true
+        
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup .NET 8
+              uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: 8.0.x
+
+            - name: Build solution
+              run: dotnet build --configuration Release
+
+            - name: Install Playwright CLI + browsers
+              run: |
+                  dotnet tool install --global Microsoft.Playwright.CLI
+                  playwright install --with-deps
+                  
+            - name: Start Docker containers
+              run: docker compose -f PluginBuilder.Tests/docker-compose.yml up -d --build
+    
+            - name: Run tests
+              run: dotnet test PluginBuilder.Tests --verbosity normal
+    
+            - name: Cleanup Docker
+              if: always()
+              run: docker compose -f PluginBuilder.Tests/docker-compose.yml down --volumes

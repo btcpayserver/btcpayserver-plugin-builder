@@ -42,7 +42,21 @@ public class Program
     public WebApplicationBuilder CreateWebApplicationBuilder(string[]? args = null)
     {
         var builder = WebApplication.CreateBuilder(args ?? Array.Empty<string>());
+        ConfigureBuilder(builder);
+        return builder;
+    }
+
+    public WebApplicationBuilder CreateWebApplicationBuilder(WebApplicationOptions options)
+    {
+        var builder = WebApplication.CreateBuilder(options);
+        ConfigureBuilder(builder);
+        return builder;
+    }
+
+    private void ConfigureBuilder(WebApplicationBuilder builder)
+    {
         builder.Configuration.AddEnvironmentVariables("PB_");
+
 #if DEBUG
         builder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
 #endif
@@ -50,8 +64,8 @@ public class Program
         builder.Logging.AddFilter("Microsoft.Hosting", LogLevel.Information);
         builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Critical);
         builder.Logging.AddFilter("Microsoft.AspNetCore.Antiforgery.Internal", LogLevel.Critical);
+
         AddServices(builder.Configuration, builder.Services);
-        return builder;
     }
 
     public void Configure(WebApplication app)
