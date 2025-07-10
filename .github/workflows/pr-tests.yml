@@ -19,14 +19,8 @@ jobs:
               with:
                   dotnet-version: 8.0.x
 
-            - name: Restore dependencies
-              run: dotnet restore
-              
-            - name: Clean project
-              run: dotnet clean
-
             - name: Build solution
-              run: dotnet build --no-restore --configuration Release
+              run: dotnet build --configuration Release
 
             - name: Install Playwright CLI + browsers
               run: |
@@ -34,8 +28,7 @@ jobs:
                   playwright install --with-deps
                   
             - name: Start Docker containers
-              run: |
-                  docker compose -f PluginBuilder.Tests/docker-compose.yml up -d --build
+              run: docker compose -f PluginBuilder.Tests/docker-compose.yml up -d --build
     
             - name: Run tests
               run: dotnet test PluginBuilder.Tests --verbosity normal
