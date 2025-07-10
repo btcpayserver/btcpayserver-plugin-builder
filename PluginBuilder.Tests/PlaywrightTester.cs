@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
+using Xunit;
 
 namespace PluginBuilder.Tests;
 
@@ -43,7 +44,7 @@ public class PlaywrightTester : IAsyncDisposable
         Logger.LogInformation($"Playwright: Using {Page.GetType()}");
         Logger.LogInformation($"Playwright: Browsing to {ServerUri}");
         await GoToLogin();
-        await Page.AssertNoError();
+        await AssertNoError();
     }
     
     public async ValueTask DisposeAsync()
@@ -57,6 +58,30 @@ public class PlaywrightTester : IAsyncDisposable
     {
         try { if (action != null) await action(); }
         catch { /* ignore */ }
+    }
+    
+    public async Task AssertNoError()
+    {
+        if (Page is null)
+            throw new InvalidOperationException("Page is not initialized");
+
+        var pageSource = await Page.ContentAsync();
+        if (pageSource.Contains("alert-danger"))
+        {
+            var dangerAlerts = Page.Locator(".alert-danger");
+            var count = await dangerAlerts.CountAsync();
+            for (var i = 0; i < count; i++)
+            {
+                var alert = dangerAlerts.Nth(i);
+                if (!await alert.IsVisibleAsync()) continue;
+                var alertText = await alert.InnerTextAsync();
+                Assert.Fail($"No alert should be displayed, but found this on {Page.Url}: {alertText}");
+            }
+        }
+
+        Assert.DoesNotContain("errors", Page.Url);
+        var title = await Page.TitleAsync();
+        Assert.DoesNotContain("Error", title, StringComparison.OrdinalIgnoreCase);
     }
     
     public async Task GoToUrl(string uri)
@@ -73,6 +98,7 @@ public class PlaywrightTester : IAsyncDisposable
         await Page?.Locator("#Nav-Account").ClickAsync()!;
         await Page.Locator("#Nav-Logout").ClickAsync();
     }
+    
     
     public static string GetRandomUInt256()
     {
