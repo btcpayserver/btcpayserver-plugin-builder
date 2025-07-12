@@ -8,11 +8,6 @@
 
 <div class="container">
 	<div class="row mb-4">
-		<div class="col-12">
-			<h2>Plugin Directory</h2>
-		</div>
-	</div>
-	<div class="row mb-4">
 		<form method="get" asp-action="AllPlugins">
 			<div class="input-group">
 				<input type="text" name="searchPluginName" class="form-control" placeholder="Search plugins" value="@Context.Request.Query["searchPluginName"]" />
