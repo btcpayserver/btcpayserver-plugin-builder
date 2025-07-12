@@ -13,6 +13,7 @@ namespace PluginBuilder.Controllers;
 public class DashboardController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
+    AzureStorageClient azureStorageClient,
     EmailVerifiedLogic emailVerifiedLogic) : Controller
 {
     // plugin methods
@@ -55,7 +56,26 @@ public class DashboardController(
             return View(model);
         }
 
+        if (model.Logo != null)
+        {
+            string errorMessage;
+            if (!model.Logo.ValidateUploadedImage(out errorMessage))
+            {
+                ModelState.AddModelError(nameof(model.Logo), $"Image upload validation failed: {errorMessage}");
+                return View(model);
+            }
+            try
+            {
+                model.LogoUrl = await azureStorageClient.UploadImageFile(model.Logo, $"{model.Logo.FileName}");
+            }
+            catch (Exception)
+            {
+                ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. An error occurred while uploading logo image");
+                return View(model);
+            }
+        }
         await conn.AddUserPlugin(pluginSlug, userManager.GetUserId(User)!);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl });
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }
 }

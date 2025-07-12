@@ -1,0 +1,52 @@
+@using PluginBuilder.APIModels
+@model List<PublishedPlugin>
+@{
+	Layout = "_LayoutPublicModal";
+}
+
+<partial name="_PublicHeader" />
+
+<div class="container">
+	<div class="row mb-4">
+		<form method="get" asp-action="AllPlugins">
+			<div class="input-group">
+				<input type="text" name="searchPluginName" class="form-control" placeholder="Search plugins" value="@Context.Request.Query["searchPluginName"]" />
+			</div>
+		</form>
+	</div>
+	<div class="row">
+		@foreach (var plugin in Model)
+		{
+			var owner = @plugin.GetGithubRepository()?.Owner;
+			<div class="col-md-6 mb-4">
+				<div class="card h-100 plugin-card" data-type="community">
+					<div class="card-body">
+						<div class="row">
+							<div style="display: flex; align-items: flex-start; margin-bottom: 20px;">
+								<div style="margin-right: 15px;">
+									<img src="@(!string.IsNullOrEmpty(plugin.PluginLogo) ? plugin.PluginLogo : Url.Content("~/img/icon-512x512.png"))"
+										 alt="@plugin.ManifestInfo["Name"]?.ToString()" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;">
+								</div>
+								<div>
+									<h3 style="margin-top: 0; margin-bottom: 5px;">
+										<a asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.ProjectSlug">@plugin.ManifestInfo["Name"]?.ToString()</a>
+									</h3>
+									<p style="margin-bottom: 5px;">@plugin.ManifestInfo["Description"]?.ToString()</p>
+									<div style="font-size: 0.875em; color: #6c757d;">
+										<div style="margin-bottom: 3px;">
+											<span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
+										</div>
+										<div>
+											Latest Version: @plugin.Version
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		}
+	</div>
+</div>
+

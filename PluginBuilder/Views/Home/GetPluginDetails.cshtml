@@ -1,0 +1,135 @@
+@using Newtonsoft.Json.Linq
+@using PluginBuilder.APIModels
+@model PublishedPlugin
+@{
+	Layout = "_LayoutPublicModal";
+	var owner = Model.GetGithubRepository()?.Owner;
+	var dependencies = Model.ManifestInfo["Dependencies"] as JArray;
+	var sourceUrl = Model.GetGithubRepository()?.GetSourceUrl(
+			Model.BuildInfo?["gitCommit"]?.ToString(),
+			Model.BuildInfo?["pluginDir"]?.ToString()
+		);
+}
+
+<partial name="_PublicHeader" />
+
+<div class="container">
+	<div class="row mb-4">
+		<div class="col-12">
+			<div class="bg-light rounded p-4 position-relative" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+				<div class="d-flex align-items-center">
+					<img src="@(!string.IsNullOrEmpty(Model.PluginLogo) ? Model.PluginLogo : Url.Content("~/img/icon-512x512.png"))"
+						 alt="@Model.ManifestInfo["Name"]?.ToString()"
+						 style="width: 60px; height: 60px;" class="me-3" />
+					<div>
+						<h1 class="display-6 mb-1">@Model.ManifestInfo["Name"]?.ToString()</h1>
+						<span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
+					</div>
+					<a asp-action="Download" asp-controller="Api"
+					   asp-route-pluginSlug="@Model.ProjectSlug"
+					   asp-route-version="@Model.Version"
+					   class="btn btn-primary ms-auto"
+					   target="_blank"
+					   rel="noopener noreferrer">Download</a>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="tab-content" id="pluginTabsContent">
+		<div class="tab-pane fade show active" id="details" role="tabpanel">
+			<div class="row">
+				<div class="col-md-8">
+					<div class="card">
+						<div class="card-body">
+							<h4>Description</h4>
+							<p>@Model.ManifestInfo["Description"]?.ToString()</p>
+						</div>
+					</div>
+					@if (ViewBag.Contributors is List<GitHubContributor> contributors && contributors.Any())
+					{
+						<div class="card mt-4">
+							<div class="card-body">
+								<h4>Contributors & Developers</h4>
+								<div class="row">
+									@foreach (var user in contributors)
+									{
+										<div class="col-md-6 d-flex align-items-center mb-3">
+											<div class="me-3">
+												<img src="@user.AvatarUrl"
+													 class="rounded-circle"
+													 style="width: 48px; height: 48px;"
+													 alt="@user.Login avatar"
+													 loading="lazy" />
+											</div>
+											<div>
+												<a href="@user.HtmlUrl"
+												   class="text-decoration-none"
+												   target="_blank"
+												   rel="noopener noreferrer">@user.Login</a>
+											</div>
+										</div>
+									}
+								</div>
+							</div>
+						</div>
+					}
+				</div>
+				<div class="col-md-4">
+					<div class="card">
+						<div class="card-body">
+							<div class="row mb-3">
+								<div class="col-6">
+									<strong>Version</strong>
+								</div>
+								<div class="col-6 text-end">
+									@Model.Version
+								</div>
+							</div>
+							@if (!string.IsNullOrEmpty(sourceUrl))
+							{
+								<div class="row mb-3">
+									<div class="col-6">
+										<strong>Repository</strong>
+									</div>
+									<div class="col-6 text-end">
+										<a href="@sourceUrl" target="_blank" rel="noopener noreferrer">
+											View Source
+										</a>
+									</div>
+								</div>
+							}
+							@if (!string.IsNullOrEmpty(Model.Documentation))
+							{
+								<div class="row mb-3">
+									<div class="col-6">
+										<strong>Documentation</strong>
+									</div>
+									<div class="col-6 text-end">
+										<a href="@Model.Documentation" target="_blank" rel="noopener noreferrer">
+											View Documentation
+										</a>
+									</div>
+								</div>
+							}
+							@if (dependencies != null && dependencies.Count > 0)
+							{
+								foreach (var dependency in dependencies)
+								{
+									<div class="row mb-2">
+										<div class="col-6">
+											<strong>@dependency["Identifier"]</strong>
+										</div>
+										<div class="col-6 text-end">
+											@dependency["Condition"]
+										</div>
+									</div>
+								}
+							}
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>

@@ -1,9 +1,8 @@
-#nullable disable
 using System.ComponentModel.DataAnnotations;
 
-namespace PluginBuilder;
+namespace PluginBuilder.ViewModels;
 
-public class PluginSettings
+public class PluginSettingViewModel
 {
     [MaxLength(200)]
     [Display(Name = "Documentation link")]
@@ -12,7 +11,6 @@ public class PluginSettings
     [MaxLength(200)]
     [Display(Name = "Git repository")]
     public string GitRepository { get; set; }
-
     [MaxLength(200)]
     [Display(Name = "Git branch or tag")]
     public string GitRef { get; set; }
@@ -25,5 +23,9 @@ public class PluginSettings
     [Display(Name = "Dotnet build configuration ")]
     public string BuildConfig { get; set; }
 
-    public string Logo { get; set; }
+    [Display(Name = "Logo")]
+    public string? LogoUrl { get; set; }
+
+    [Display(Name = "Logo")]
+    public IFormFile? Logo { get; set; }
 }

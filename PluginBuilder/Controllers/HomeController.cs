@@ -3,6 +3,9 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
+using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Services;
@@ -10,6 +13,7 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Home;
+using PluginBuilder.ModelBinders;
 
 namespace PluginBuilder.Controllers;
 
@@ -19,6 +23,7 @@ public class HomeController(
     UserManager<IdentityUser> userManager,
     SignInManager<IdentityUser> signInManager,
     EmailService emailService,
+    HttpClient httpClient,
     EmailVerifiedLogic emailVerifiedLogic,
     ServerEnvironment env)
     : Controller
@@ -152,7 +157,84 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
         return RedirectToLocal(returnUrl);
     }
 
-    //
+
+    [AllowAnonymous]
+    [HttpGet("public/plugins")]
+    public async Task<IActionResult> AllPlugins(
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion? btcpayVersion = null, string? searchPluginName = null)
+    {
+        var getVersions = "get_latest_versions";
+        await using var conn = await connectionFactory.Open();
+
+        var query = $"""
+                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info
+                     FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
+                     JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
+                     JOIN plugins p ON b.plugin_slug = p.slug
+                     WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL AND p.visibility != 'hidden'
+                     AND (p.visibility = 'unlisted' OR p.visibility = 'listed')
+                     {(!string.IsNullOrWhiteSpace(searchPluginName) ? "AND (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)" : "")}
+                     ORDER BY manifest_info->>'Name'
+                     """;
+        var rows =
+            await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(query,
+                new
+                {
+                    btcpayVersion = btcpayVersion?.VersionParts,
+                    includePreRelease = false,
+                    searchPattern = $"%{searchPluginName}%"
+                });
+        rows.TryGetNonEnumeratedCount(out var count);
+        List<PublishedPlugin> versions = new(count);
+        foreach (var r in rows)
+        {
+            PublishedPlugin v = new()
+            {
+                ProjectSlug = r.plugin_slug,
+                Version = string.Join('.', r.ver),
+                BuildInfo = JObject.Parse(r.build_info),
+                ManifestInfo = JObject.Parse(r.manifest_info),
+                PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
+            };
+            versions.Add(v);
+        }
+        return View(versions);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("public/plugins/{pluginSlug}")]
+    public async Task<IActionResult> GetPluginDetails([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug)
+    {
+        await using var conn = await connectionFactory.Open();
+        var query = """
+                    SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info
+                    FROM versions v
+                    JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
+                    JOIN plugins p ON b.plugin_slug = p.slug
+                    WHERE v.plugin_slug = @pluginSlug
+                    AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL AND p.visibility != 'hidden'
+                    ORDER BY v.ver DESC
+                    LIMIT 1
+                    """;
+        var r = await conn.QueryFirstOrDefaultAsync(query, new { pluginSlug = pluginSlug.ToString() });
+        if (r is null)
+            return NotFound();
+
+        var plugin = new PublishedPlugin
+        {
+            ProjectSlug = pluginSlug.ToString(),
+            Version = string.Join('.', r.ver),
+            BuildInfo = JObject.Parse(r.build_info),
+            ManifestInfo = JObject.Parse(r.manifest_info),
+            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
+            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+        };
+        var contributors = await plugin.GetContributorsAsync(httpClient);
+        ViewBag.Contributors = contributors;
+        return View(plugin);
+    }
+
     [AllowAnonymous]
     [HttpGet("/VerifyEmail")]
     public IActionResult VerifyEmail(string email)
