@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Controllers.Logic;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
@@ -172,33 +173,40 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
                      JOIN plugins p ON b.plugin_slug = p.slug
-                     WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL AND p.visibility != 'hidden'
-                     AND (p.visibility = 'unlisted' OR p.visibility = 'listed')
-                     {(!string.IsNullOrWhiteSpace(searchPluginName) ? "AND (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)" : "")}
+                     WHERE b.manifest_info IS NOT NULL
+                     AND b.build_info IS NOT NULL
+                     AND (
+                         p.visibility = 'listed'
+                         OR (p.visibility = 'unlisted' AND @hasSearchTerm = true)
+                     )
+                     AND (
+                         @hasSearchTerm = false
+                         OR (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)
+                     )
                      ORDER BY manifest_info->>'Name'
                      """;
-        var rows =
-            await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(query,
-                new
-                {
-                    btcpayVersion = btcpayVersion?.VersionParts,
-                    includePreRelease = false,
-                    searchPattern = $"%{searchPluginName}%"
-                });
+
+        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(
+            query,
+            new
+            {
+                btcpayVersion = btcpayVersion?.VersionParts,
+                includePreRelease = false,
+                searchPattern = $"%{searchPluginName}%",
+                hasSearchTerm = !string.IsNullOrWhiteSpace(searchPluginName)
+            });
+
         rows.TryGetNonEnumeratedCount(out var count);
         List<PublishedPlugin> versions = new(count);
-        foreach (var r in rows)
+        versions.AddRange(rows.Select(r => new PublishedPlugin
         {
-            PublishedPlugin v = new()
-            {
-                ProjectSlug = r.plugin_slug,
-                Version = string.Join('.', r.ver),
-                BuildInfo = JObject.Parse(r.build_info),
-                ManifestInfo = JObject.Parse(r.manifest_info),
-                PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
-            };
-            versions.Add(v);
-        }
+            ProjectSlug = r.plugin_slug,
+            Version = string.Join('.', r.ver),
+            BuildInfo = JObject.Parse(r.build_info),
+            ManifestInfo = JObject.Parse(r.manifest_info),
+            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
+        }));
+
         return View(versions);
     }
 
@@ -208,18 +216,38 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
     {
         await using var conn = await connectionFactory.Open();
         var query = """
-                    SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info
+                    SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info, p.visibility
                     FROM versions v
                     JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
                     JOIN plugins p ON b.plugin_slug = p.slug
                     WHERE v.plugin_slug = @pluginSlug
-                    AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL AND p.visibility != 'hidden'
+                    AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL
                     ORDER BY v.ver DESC
                     LIMIT 1
                     """;
         var r = await conn.QueryFirstOrDefaultAsync(query, new { pluginSlug = pluginSlug.ToString() });
         if (r is null)
             return NotFound();
+
+        var isAuthor = false;
+
+        if (r.visibility == PluginVisibilityEnum.Hidden)
+        {
+            if (!User.Identity?.IsAuthenticated ?? true)
+                return NotFound();
+
+            var userId = userManager.GetUserId(User);
+            var isAuthorQuery = """
+                                SELECT 1 FROM users_plugins
+                                WHERE plugin_slug = @pluginSlug AND user_id = @userId
+                                LIMIT 1
+                                """;
+            isAuthor = await conn.ExecuteScalarAsync<bool>(isAuthorQuery,
+                new { pluginSlug = pluginSlug.ToString(), userId });
+
+            if (!isAuthor)
+                return NotFound();
+        }
 
         var plugin = new PublishedPlugin
         {
@@ -230,8 +258,10 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
             PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
             Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
         };
-        var contributors = await plugin.GetContributorsAsync(httpClient);
-        ViewBag.Contributors = contributors;
+
+        ViewBag.Contributors = await plugin.GetContributorsAsync(httpClient);
+        ViewBag.ShowHiddenNotice = r.visibility == PluginVisibilityEnum.Hidden && isAuthor;
+
         return View(plugin);
     }
 

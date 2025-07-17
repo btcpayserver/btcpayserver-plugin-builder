@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using Dapper;
 using Newtonsoft.Json;
+using PluginBuilder.APIModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 using Xunit;
@@ -40,17 +41,9 @@ public class UnitTest1 : UnitTestBase
         tester.ReuseDatabase = false;
         await tester.Start();
 
-        var buildService = tester.GetService<BuildService>();
-        using var conn = await tester.GetService<DBConnectionFactory>().Open();
-        await conn.NewPlugin("rockstar-stylist");
-        var build = await conn.NewBuild("rockstar-stylist",
-            new PluginBuildParameters("https://github.com/NicolasDorier/btcpayserver")
-            {
-                PluginDirectory = "Plugins/BTCPayServer.Plugins.RockstarStylist", GitRef = "plugins/collection2"
-            });
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         //https://github.com/NicolasDorier/btcpayserver/tree/plugins/collection2/Plugins/BTCPayServer.Plugins.RockstarStylist
-        FullBuildId fullBuildId = new("rockstar-stylist", build);
-        await buildService.Build(fullBuildId);
+        var fullBuildId = await tester.CreateAndBuildPluginAsync();
 
         var client = tester.CreateHttpClient();
         var versions = await client.GetPublishedVersions("1.4.6.0", true);
@@ -92,14 +85,11 @@ public class UnitTest1 : UnitTestBase
 
 
         // Another plugin slug try to hijack the package
-        await conn.NewPlugin("rockstar-stylist-fake");
-        build = await conn.NewBuild("rockstar-stylist-fake",
-            new PluginBuildParameters("https://github.com/NicolasDorier/btcpayserver")
-            {
-                PluginDirectory = "Plugins/BTCPayServer.Plugins.RockstarStylist", GitRef = "plugins/collection2"
-            });
-        fullBuildId = new FullBuildId("rockstar-stylist-fake", build);
-        await buildService.Build(fullBuildId);
+        await tester.CreateAndBuildPluginAsync(
+            slug: "rockstar-stylist-fake",
+            gitRef: "plugins/collection2",
+            pluginDir: "Plugins/BTCPayServer.Plugins.RockstarStylist"
+        );
 
         var rockstarPlugins =
             await conn.QueryAsync<string?>("SELECT slug FROM plugins WHERE identifier='BTCPayServer.Plugins.RockstarStylist'");
@@ -117,5 +107,30 @@ public class UnitTest1 : UnitTestBase
         versions = await client.GetPublishedVersions("1.4.6.0", true, true);
         Assert.Equal("1.0.2.1", versions[0].Version);
         Assert.Equal("1.0.2.0", versions[1].Version);
+                
+        // listed - always render
+        await conn.ExecuteAsync("UPDATE plugins SET visibility = 'listed' WHERE slug = 'rockstar-stylist'");
+        var res = await client.GetPublishedVersions("2.1.0.0", false);
+        Assert.Contains(res, p => p.ProjectSlug == "rockstar-stylist");
+
+        // unlisted - only render with compatible search term or legacy versions
+        await conn.ExecuteAsync("UPDATE plugins SET visibility = 'unlisted' WHERE slug = 'rockstar-stylist'");
+        res = await client.GetPublishedVersions("2.1.0.0", false);
+        Assert.DoesNotContain(res, p => p.ProjectSlug == "rockstar-stylist");
+
+        res = await client.GetPublishedVersions("2.1.0.0", false, searchPluginName: "rockstar");
+        Assert.Contains(res, p => p.ProjectSlug == "rockstar-stylist");
+    
+        var raw = await client.GetStringAsync("/api/v1/plugins");
+        var legacyRes = JsonConvert.DeserializeObject<PublishedVersion[]>(raw);
+        Assert.Contains(legacyRes, p => p.ProjectSlug == "rockstar-stylist");
+
+        // hidden - never render
+        await conn.ExecuteAsync("UPDATE plugins SET visibility = 'hidden' WHERE slug = 'rockstar-stylist'");
+        res = await client.GetPublishedVersions("2.1.0.0", false);
+        Assert.DoesNotContain(res, p => p.ProjectSlug == "rockstar-stylist");
+
+        res = await client.GetPublishedVersions("2.1.0.0", false, searchPluginName: "rockstar");
+        Assert.DoesNotContain(res, p => p.ProjectSlug == "rockstar-stylist");
     }
 }
