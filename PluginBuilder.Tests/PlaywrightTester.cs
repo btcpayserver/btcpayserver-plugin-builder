@@ -84,11 +84,12 @@ public class PlaywrightTester : IAsyncDisposable
         Assert.DoesNotContain("Error", title, StringComparison.OrdinalIgnoreCase);
     }
     
-    public async Task GoToUrl(string uri)
+    public async Task<IResponse?> GoToUrl(string uri)
     {
         var fullUrl = new Uri(ServerUri ?? throw new InvalidOperationException(), uri).ToString();
-        await Page?.GotoAsync(fullUrl, new PageGotoOptions { WaitUntil = WaitUntilState.Commit })!;
+        return await Page?.GotoAsync(fullUrl, new PageGotoOptions { WaitUntil = WaitUntilState.Commit })!;
     }
+
     public async Task GoToLogin()
     {
         await GoToUrl("/login");
