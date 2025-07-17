@@ -45,4 +45,12 @@ public class PluginVersion
     {
         return Version;
     }
+    
+    public bool IsAtLeast(int major, int minor)
+    {
+        var actualMajor = VersionParts.ElementAtOrDefault(0);
+        var actualMinor = VersionParts.ElementAtOrDefault(1);
+
+        return actualMajor > major || (actualMajor == major && actualMinor >= minor);
+    }
 }
