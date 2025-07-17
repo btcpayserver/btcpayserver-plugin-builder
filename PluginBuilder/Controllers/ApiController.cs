@@ -60,16 +60,50 @@ public class ApiController(
         };
         await using var conn = await connectionFactory.Open();
 
+        var filters = new List<string>
+        {
+            "b.manifest_info IS NOT NULL",
+            "b.build_info IS NOT NULL"
+        };
+
+        var isBtcpayV21OrHigher = btcpayVersion?.IsAtLeast(2, 1) == true;
+        var hasSearchTerm = !string.IsNullOrWhiteSpace(searchPluginName);
+
+        if (isBtcpayV21OrHigher)
+        {
+            if (hasSearchTerm)
+            {
+                filters.Add("(p.visibility = 'listed' OR p.visibility = 'unlisted')");
+                filters.Add("(p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)");
+            }
+            else
+            {
+                filters.Add("p.visibility = 'listed'");
+            }
+        }
+        else
+        {
+            filters.Add("(p.visibility = 'listed' OR p.visibility = 'unlisted')");
+            if (hasSearchTerm)
+            {
+                filters.Add("(p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchPluginIdentifier))
+        {
+            filters.Add("p.identifier = @searchPluginIdentifier");
+        }
+
+        var whereClause = "WHERE " + string.Join(" AND ", filters);
+
         // This query definitely doesn't have right indexes
         var query = $"""
                      SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
                      JOIN plugins p ON b.plugin_slug = p.slug
-                     WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL
-                     AND (p.visibility = 'unlisted' OR p.visibility = 'listed')
-                     {(!string.IsNullOrWhiteSpace(searchPluginName) ? "AND (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)" : "")}
-                     {(!string.IsNullOrWhiteSpace(searchPluginIdentifier) ? "AND p.identifier = @searchPluginIdentifier" : "")}
+                     {whereClause}
                      ORDER BY manifest_info->>'Name'
                      """;
         var rows =
@@ -85,20 +119,16 @@ public class ApiController(
 
         rows.TryGetNonEnumeratedCount(out var count);
         List<PublishedVersion> versions = new(count);
-        foreach (var r in rows)
+        versions.AddRange(rows.Select(r => new PublishedVersion
         {
-            PublishedVersion v = new()
-            {
-                ProjectSlug = r.plugin_slug,
-                Version = string.Join('.', r.ver),
-                BuildId = r.id,
-                BuildInfo = JObject.Parse(r.build_info),
-                ManifestInfo = JObject.Parse(r.manifest_info),
-                PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
-                Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
-            };
-            versions.Add(v);
-        }
+            ProjectSlug = r.plugin_slug,
+            Version = string.Join('.', r.ver),
+            BuildId = r.id,
+            BuildInfo = JObject.Parse(r.build_info),
+            ManifestInfo = JObject.Parse(r.manifest_info),
+            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
+            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+        }));
 
         return Ok(versions);
     }
