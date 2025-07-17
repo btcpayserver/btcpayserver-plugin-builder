@@ -10,10 +10,11 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.PublicTests;
 
+[Collection("Playwright Tests")]
 public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("PublicDirectoryUITests", output);
-    
+
     [Fact]
     public async Task PublicDirectory_RespectsPluginVisibility()
     {
@@ -21,10 +22,10 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await tester.StartAsync();
 
         var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
-        
+
         const string slug = "rockstar-stylist";
         var fullBuildId = await tester.Server.CreateAndBuildPluginAsync();
-        
+
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
             new { PluginSlug = slug, BuildId = fullBuildId.BuildId });
@@ -38,7 +39,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await tester.GoToUrl("/public/plugins");
         await tester.Page!.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']");
         Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
-        
+
         // Plugin public page should be visible
         await tester.GoToUrl($"/public/plugins/{slug}");
         var contentListed = await tester.Page.ContentAsync();
@@ -63,7 +64,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await tester.Page.Keyboard.PressAsync("Enter");
         await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']", new PageWaitForSelectorOptions { State = WaitForSelectorState.Hidden });
         Assert.False(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
-        
+
         // Public page should not be accessible if hidden and owner is not logged in
         var response = await tester.GoToUrl("/public/plugins/rockstar-stylist");
         Assert.Equal(404, response?.Status);
