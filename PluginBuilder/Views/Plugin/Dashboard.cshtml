@@ -35,20 +35,22 @@
 <div class="d-flex flex-column flex-md-row align-items-center justify-content-between mb-4">
     <h2 class="mb-3 mb-md-0">@ViewData["Title"]</h2>
 
-    <div class="d-flex flex-column flex-sm-row align-items-center gap-3">
-        
-        @if (!string.IsNullOrEmpty(pluginSlug))
-        {
-            <a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@pluginSlug" class="btn btn-outline-primary">
-                <span class="fa fa-globe"></span>
-                Public Page
-            </a>
-            <a id="CreateNewBuild" asp-action="CreateBuild" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary">
-                <span class="fa fa-plus"></span>
-                Create a new build
-            </a>
-        }
-    </div>
+	@if (!string.IsNullOrEmpty(pluginSlug))
+	{
+		<div class="d-flex flex-column flex-sm-row align-items-center gap-3">
+			@if (Model.Builds.Any())
+			{
+				<a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@pluginSlug" class="btn btn-outline-primary">
+					<span class="fa fa-globe"></span>
+					Public Page
+				</a>
+			}
+			<a id="CreateNewBuild" asp-action="CreateBuild" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary">
+				<span class="fa fa-plus"></span>
+				Create a new build
+			</a>
+		</div>
+	}
 </div>
 
 @if (Model.Builds.Any())
