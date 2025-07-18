@@ -38,8 +38,19 @@ public class ApiController(
     public async Task<IActionResult> Plugins(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion? btcpayVersion = null,
-        bool? includePreRelease = null, bool? includeAllVersions = null, string? searchPluginName = null)
+        bool? includePreRelease = null,
+        bool? includeAllVersions = null,
+        string? searchPluginName = null,
+        string? searchPluginIdentifier = null)
     {
+        if (searchPluginName is not null &&
+            PluginSelector.TryParse(searchPluginName, out var pluginSelector) &&
+            pluginSelector is PluginSelectorByIdentifier psbi)
+        {
+            searchPluginIdentifier = psbi.Identifier;
+            searchPluginName = null;
+        }
+
         includePreRelease ??= false;
         includeAllVersions ??= false;
         var getVersions = includeAllVersions switch
@@ -55,9 +66,10 @@ public class ApiController(
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
                      JOIN plugins p ON b.plugin_slug = p.slug
-                     WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL 
+                     WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL
                      AND (p.visibility = 'unlisted' OR p.visibility = 'listed')
                      {(!string.IsNullOrWhiteSpace(searchPluginName) ? "AND (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)" : "")}
+                     {(!string.IsNullOrWhiteSpace(searchPluginIdentifier) ? "AND p.identifier = @searchPluginIdentifier" : "")}
                      ORDER BY manifest_info->>'Name'
                      """;
         var rows =
@@ -67,7 +79,8 @@ public class ApiController(
                 {
                     btcpayVersion = btcpayVersion?.VersionParts,
                     includePreRelease = includePreRelease.Value,
-                    searchPattern = $"%{searchPluginName}%"
+                    searchPattern = $"%{searchPluginName}%",
+                    searchPluginIdentifier
                 });
 
         rows.TryGetNonEnumeratedCount(out var count);
@@ -105,7 +118,7 @@ public class ApiController(
                     JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
                     JOIN plugins p ON b.plugin_slug = p.slug
                     WHERE v.plugin_slug = @pluginSlug AND v.ver = @version
-                    AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL 
+                    AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL
                     LIMIT 1
                     """;
         var r = await conn.QueryFirstOrDefaultAsync(

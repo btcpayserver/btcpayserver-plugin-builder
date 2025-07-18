@@ -1,8 +1,8 @@
 # Introduction
 
 This project hosts a server with a front end which can be used to build BTCPay Server plugins and store the binaries on some storage.
-You can find our live server on [https://plugin-builder.btcpayserver.org/](https://plugin-builder.btcpayserver.org/), that is updated through 
-[btcpayserver-infra](https://github.com/btcpayserver/btcpayserver-infra) repository. 
+You can find our live server on [https://plugin-builder.btcpayserver.org/](https://plugin-builder.btcpayserver.org/), that is updated through
+[btcpayserver-infra](https://github.com/btcpayserver/btcpayserver-infra) repository.
 
 ## Prerequisite
 
@@ -29,6 +29,9 @@ All parameters are configured via environment variables.
 List the published versions of the server compatible with `btcpayVersion`. (optionally include `includePreRelease`)
 
 If `includeAllVersions` is set to `true`, all versions will be returned, otherwise only the latest version for each plugin will be returned.
+
+* `searchPluginIdentifier`: Query parameter to search by plugin identifier
+* `searchPluginName`: Query parameter to search by plugin slug or name. If it is formatted as `[abc]`, it will be converted to `searchPluginIdentifier=abc`.
 
 #### Get a version
 
