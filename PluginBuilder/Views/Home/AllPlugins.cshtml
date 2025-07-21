@@ -4,14 +4,7 @@
 	Layout = "_LayoutPublicModal";
 }
 
-@functions {
-	public string GetInitials(string name)
-	{
-		if (string.IsNullOrWhiteSpace(name)) return "";
-		var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0].ToString().ToUpper());
-		return string.Concat(parts.Take(4));
-	}
-}
+
 
 <partial name="_PublicHeader" />
 
@@ -33,19 +26,7 @@
 						<div class="row">
 							<div style="display: flex; align-items: flex-start; margin-bottom: 20px;">
 								<div style="margin-right: 15px;">
-									@if (!string.IsNullOrEmpty(plugin.PluginLogo))
-									{
-										<img src="@plugin.PluginLogo"
-											 alt="@plugin.ManifestInfo["Name"]?.ToString()"
-											 style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" />
-									}
-									else
-									{
-										<div class="d-flex justify-content-center align-items-center bg-dark text-white fw-bold text-center"
-											 style="width: 60px; height: 60px; border-radius: 4px; font-size: 24px;">
-											@GetInitials(plugin.ManifestInfo["Name"]?.ToString())
-										</div>
-									}
+											<partial name="_PluginLogo" model="plugin" />
 								</div>
 								<div>
 									<h3 style="margin-top: 0; margin-bottom: 5px;">

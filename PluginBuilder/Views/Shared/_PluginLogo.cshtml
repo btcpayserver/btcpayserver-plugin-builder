@@ -1,0 +1,24 @@
+@model PluginBuilder.APIModels.PublishedVersion
+
+@functions {
+    private string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0].ToString().ToUpper());
+        return string.Concat(parts.Take(4));
+    }
+}
+
+@if (!string.IsNullOrEmpty(Model.PluginLogo))
+{
+    <img src="@Model.PluginLogo"
+         alt="@Model.ManifestInfo["Name"]?.ToString()"
+         style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" />
+}
+else
+{
+    <div class="d-flex justify-content-center align-items-center bg-dark text-white fw-bold text-center"
+         style="width: 60px; height: 60px; border-radius: 4px; font-size: 24px;">
+        @GetInitials(Model.ManifestInfo["Name"]?.ToString())
+    </div>
+}

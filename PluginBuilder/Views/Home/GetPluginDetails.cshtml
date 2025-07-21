@@ -11,16 +11,6 @@
 		);
 }
 
-
-@functions {
-	public string GetInitials(string name)
-	{
-		if (string.IsNullOrWhiteSpace(name)) return "";
-		var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0].ToString().ToUpper());
-		return string.Concat(parts.Take(4));
-	}
-}
-
 <partial name="_PublicHeader" />
 
 <div class="container">
@@ -28,20 +18,9 @@
 		<div class="col-12">
 			<div class="bg-light rounded p-4 position-relative" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
 				<div class="d-flex align-items-center">
-					@if (!string.IsNullOrEmpty(Model.PluginLogo))
-					{
-						<img src="@Model.PluginLogo"
-							 alt="@Model.ManifestInfo["Name"]?.ToString()"
-							 class="me-2"
-							 style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" />
-					}
-					else
-					{
-						<div class="d-flex justify-content-center align-items-center bg-dark text-white fw-bold text-center me-2"
-							 style="width: 60px; height: 60px; border-radius: 4px; font-size: 24px;">
-							@GetInitials(Model.ManifestInfo["Name"]?.ToString())
-						</div>
-					}
+					<div class="me-2">
+						<partial name="_PluginLogo" model="Model" />
+					</div>
 					<div>
 						<h1 class="display-6 mb-1">@Model.ManifestInfo["Name"]?.ToString()</h1>
 						<span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
