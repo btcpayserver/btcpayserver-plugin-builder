@@ -4,6 +4,8 @@
 	Layout = "_LayoutPublicModal";
 }
 
+
+
 <partial name="_PublicHeader" />
 
 <div class="container">
@@ -24,8 +26,7 @@
 						<div class="row">
 							<div style="display: flex; align-items: flex-start; margin-bottom: 20px;">
 								<div style="margin-right: 15px;">
-									<img src="@(!string.IsNullOrEmpty(plugin.PluginLogo) ? plugin.PluginLogo : Url.Content("~/img/icon-512x512.png"))"
-										 alt="@plugin.ManifestInfo["Name"]?.ToString()" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;">
+											<partial name="_PluginLogo" model="plugin" />
 								</div>
 								<div>
 									<h3 style="margin-top: 0; margin-bottom: 5px;">

@@ -18,9 +18,9 @@
 		<div class="col-12">
 			<div class="bg-light rounded p-4 position-relative" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
 				<div class="d-flex align-items-center">
-					<img src="@(!string.IsNullOrEmpty(Model.PluginLogo) ? Model.PluginLogo : Url.Content("~/img/icon-512x512.png"))"
-						 alt="@Model.ManifestInfo["Name"]?.ToString()"
-						 style="width: 60px; height: 60px;" class="me-3" />
+					<div class="me-2">
+						<partial name="_PluginLogo" model="Model" />
+					</div>
 					<div>
 						<h1 class="display-6 mb-1">@Model.ManifestInfo["Name"]?.ToString()</h1>
 						<span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
