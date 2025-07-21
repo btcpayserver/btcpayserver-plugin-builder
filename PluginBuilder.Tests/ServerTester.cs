@@ -76,6 +76,9 @@ public class ServerTester : IAsyncDisposable
         disposables.Add(webapp);
         await webapp.StartAsync();
         _WebApp = webapp;
+
+        await using var conn = await GetService<DBConnectionFactory>().Open();
+        await conn.ReloadTypesAsync();
     }
 
     public HttpClient CreateHttpClient()
