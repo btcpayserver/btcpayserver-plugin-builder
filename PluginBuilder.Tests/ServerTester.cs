@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PluginBuilder.Services;
+using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Tests;
 
@@ -74,6 +76,9 @@ public class ServerTester : IAsyncDisposable
         disposables.Add(webapp);
         await webapp.StartAsync();
         _WebApp = webapp;
+
+        await using var conn = await GetService<DBConnectionFactory>().Open();
+        await conn.ReloadTypesAsync();
     }
 
     public HttpClient CreateHttpClient()
@@ -103,4 +108,25 @@ public class ServerTester : IAsyncDisposable
 
         return directory;
     }
+    
+    public async Task<FullBuildId> CreateAndBuildPluginAsync(
+        string slug = "rockstar-stylist",
+        string gitRef = "plugins/collection2",
+        string pluginDir = "Plugins/BTCPayServer.Plugins.RockstarStylist")
+    {
+        var conn = await GetService<DBConnectionFactory>().Open();
+        var buildService = GetService<BuildService>();
+
+        await conn.NewPlugin(slug);
+        var buildId = await conn.NewBuild(slug, new PluginBuildParameters("https://github.com/NicolasDorier/btcpayserver")
+        {
+            GitRef = gitRef,
+            PluginDirectory = pluginDir
+        });
+
+        var fullBuildId = new FullBuildId(slug, buildId);
+        await buildService.Build(fullBuildId);
+        return fullBuildId;
+    }
+
 }

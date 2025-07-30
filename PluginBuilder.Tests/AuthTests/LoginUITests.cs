@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.AuthTests;
 
+[Collection("Playwright Tests")]
 public class LoginPageTests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("LoginUITest", output);

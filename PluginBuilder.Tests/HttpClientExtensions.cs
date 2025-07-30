@@ -12,11 +12,18 @@ public static class HttpClientExtensions
 {
     private static readonly JsonSerializerSettings serializerSettings = new() { ContractResolver = new CamelCasePropertyNamesContractResolver() };
 
-    public static async Task<PublishedVersion[]> GetPublishedVersions(this HttpClient httpClient, string btcpayVersion, bool includePreRelease,
-        bool includeAllVersions = false)
+    public static async Task<PublishedVersion[]> GetPublishedVersions(this HttpClient httpClient,
+        string btcpayVersion,
+        bool includePreRelease,
+        bool? includeAllVersions = false,
+        string? searchPluginName = null
+    )
     {
-        var result = await httpClient.GetStringAsync(
-            $"api/v1/plugins?btcpayVersion={btcpayVersion}&includePreRelease={includePreRelease}&includeAllVersions={includeAllVersions}");
+        var url = $"api/v1/plugins?btcpayVersion={btcpayVersion}&includePreRelease={includePreRelease}&includeAllVersions={includeAllVersions}";
+        if (!string.IsNullOrEmpty(searchPluginName))
+            url += $"&searchPluginName={Uri.EscapeDataString(searchPluginName)}";
+
+        var result = await httpClient.GetStringAsync(url);
         return JsonConvert.DeserializeObject<PublishedVersion[]>(result, serializerSettings) ?? throw new InvalidOperationException();
     }
 

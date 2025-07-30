@@ -40,17 +40,8 @@ public class ApiController(
         PluginVersion? btcpayVersion = null,
         bool? includePreRelease = null,
         bool? includeAllVersions = null,
-        string? searchPluginName = null,
-        string? searchPluginIdentifier = null)
+        string? searchPluginName = null)
     {
-        if (searchPluginName is not null &&
-            PluginSelector.TryParse(searchPluginName, out var pluginSelector) &&
-            pluginSelector is PluginSelectorByIdentifier psbi)
-        {
-            searchPluginIdentifier = psbi.Identifier;
-            searchPluginName = null;
-        }
-
         includePreRelease ??= false;
         includeAllVersions ??= false;
         var getVersions = includeAllVersions switch
@@ -60,16 +51,45 @@ public class ApiController(
         };
         await using var conn = await connectionFactory.Open();
 
+        var filters = new List<string>
+        {
+            "b.manifest_info IS NOT NULL",
+            "b.build_info IS NOT NULL"
+        };
+
+        var isBtcpayV21OrHigher = btcpayVersion?.IsAtLeast(2, 1) == true;
+        var hasPluginName = !string.IsNullOrWhiteSpace(searchPluginName);
+
+        if (isBtcpayV21OrHigher)
+        {
+            if (hasPluginName)
+            {
+                filters.Add("(p.visibility = 'listed' OR p.visibility = 'unlisted')");
+                filters.Add("(p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)");
+            }
+            else
+            {
+                filters.Add("p.visibility = 'listed'");
+            }
+        }
+        else
+        {
+            filters.Add("(p.visibility = 'listed' OR p.visibility = 'unlisted')");
+            if (hasPluginName)
+            {
+                filters.Add("(p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)");
+            }
+        }
+
+        var whereClause = "WHERE " + string.Join(" AND ", filters);
+
         // This query definitely doesn't have right indexes
         var query = $"""
                      SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
                      JOIN plugins p ON b.plugin_slug = p.slug
-                     WHERE b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL
-                     AND (p.visibility = 'unlisted' OR p.visibility = 'listed')
-                     {(!string.IsNullOrWhiteSpace(searchPluginName) ? "AND (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)" : "")}
-                     {(!string.IsNullOrWhiteSpace(searchPluginIdentifier) ? "AND p.identifier = @searchPluginIdentifier" : "")}
+                     {whereClause}
                      ORDER BY manifest_info->>'Name'
                      """;
         var rows =
@@ -79,26 +99,76 @@ public class ApiController(
                 {
                     btcpayVersion = btcpayVersion?.VersionParts,
                     includePreRelease = includePreRelease.Value,
-                    searchPattern = $"%{searchPluginName}%",
-                    searchPluginIdentifier
+                    searchPattern = $"%{searchPluginName}%"
                 });
 
         rows.TryGetNonEnumeratedCount(out var count);
         List<PublishedVersion> versions = new(count);
-        foreach (var r in rows)
+        versions.AddRange(rows.Select(r => new PublishedVersion
         {
-            PublishedVersion v = new()
-            {
-                ProjectSlug = r.plugin_slug,
-                Version = string.Join('.', r.ver),
-                BuildId = r.id,
-                BuildInfo = JObject.Parse(r.build_info),
-                ManifestInfo = JObject.Parse(r.manifest_info),
-                PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
-                Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
-            };
-            versions.Add(v);
-        }
+            ProjectSlug = r.plugin_slug,
+            Version = string.Join('.', r.ver),
+            BuildId = r.id,
+            BuildInfo = JObject.Parse(r.build_info),
+            ManifestInfo = JObject.Parse(r.manifest_info),
+            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
+            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+        }));
+
+        return Ok(versions);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("plugins/{identifier}")]
+    public async Task<IActionResult> GetPluginVersionsForDownload(
+        string identifier,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion? btcpayVersion = null,
+        bool? includePreRelease = null,
+        bool? includeAllVersions = null)
+    {
+        includePreRelease ??= false;
+        includeAllVersions ??= false;
+        var getVersions = includeAllVersions switch
+        {
+            true => "get_all_versions",
+            false => "get_latest_versions"
+        };
+        await using var conn = await connectionFactory.Open();
+
+        var query = $"""
+                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info
+                     FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
+                     JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
+                     JOIN plugins p ON b.plugin_slug = p.slug
+                     WHERE p.identifier = @identifier
+                       AND b.build_info IS NOT NULL
+                       AND b.manifest_info IS NOT NULL
+                     ORDER BY lv.ver DESC
+                     """;
+
+        var rows =
+            await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(
+                query,
+                new
+                {
+                    btcpayVersion = btcpayVersion?.VersionParts,
+                    includePreRelease = includePreRelease.Value,
+                    identifier
+                });
+
+        rows.TryGetNonEnumeratedCount(out var count);
+        List<PublishedVersion> versions = new(count);
+        versions.AddRange(rows.Select(r => new PublishedVersion
+        {
+            ProjectSlug = r.plugin_slug,
+            Version = string.Join('.', r.ver),
+            BuildId = r.id,
+            BuildInfo = JObject.Parse(r.build_info),
+            ManifestInfo = JObject.Parse(r.manifest_info),
+            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
+            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+        }));
 
         return Ok(versions);
     }
