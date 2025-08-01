@@ -225,7 +225,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
                     ORDER BY v.ver DESC
                     LIMIT 1
                     """;
-        var r = await conn.QueryFirstOrDefaultAsync(query, new { pluginSlug = pluginSlug.ToString() });
+        var r = await conn.QueryFirstOrDefaultAsync<dynamic>(query, new { pluginSlug = pluginSlug.ToString() });
         if (r is null)
             return NotFound();
 
@@ -259,7 +259,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
             Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
         };
 
-        ViewBag.Contributors = await plugin.GetContributorsAsync(httpClient);
+        ViewBag.Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir);
         ViewBag.ShowHiddenNotice = r.visibility == PluginVisibilityEnum.Hidden && isAuthor;
 
         return View(plugin);
