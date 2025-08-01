@@ -3,7 +3,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Npgsql;
@@ -125,6 +128,13 @@ public class Program
         // shared controller logic
         services.AddSingleton<EmailVerifiedCache>();
         services.AddTransient<EmailVerifiedLogic>();
+        services.AddScoped<ReferrerNavigationService>();
+        services.AddHttpContextAccessor();
+        services.AddSingleton<IActionContextAccessor, ActionContextAccessor>();
+        services.AddScoped<IUrlHelper>(sp => {
+            var actionContext = sp.GetRequiredService<IActionContextAccessor>().ActionContext;
+            return new UrlHelper(actionContext);
+        });
 
         services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
         {

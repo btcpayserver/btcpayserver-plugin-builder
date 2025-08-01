@@ -18,12 +18,12 @@ namespace PluginBuilder.Controllers;
 [Authorize(Roles = "ServerAdmin")]
 [Route("/admin/")]
 public class AdminController(
-
     UserManager<IdentityUser> userManager,
     RoleManager<IdentityRole> roleManager,
     DBConnectionFactory connectionFactory,
     EmailService emailService,
-    EmailVerifiedCache emailVerifiedCache)
+    EmailVerifiedCache emailVerifiedCache,
+    ReferrerNavigationService referrerNavigation)
     : Controller
 {
     // settings editor
@@ -35,9 +35,9 @@ public class AdminController(
         model ??= new AdminPluginSettingViewModel();
         await using var conn = await connectionFactory.Open();
         var rows = await conn.QueryAsync("""
-                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email 
+                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
                                          FROM plugins p
-                                         LEFT JOIN users_plugins up ON p.slug = up.plugin_slug 
+                                         LEFT JOIN users_plugins up ON p.slug = up.plugin_slug
                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
                                          LEFT JOIN (
                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
@@ -92,7 +92,7 @@ public class AdminController(
     [HttpGet("plugins/edit/{slug}")]
     public async Task<IActionResult> PluginEdit(string slug)
     {
-        StoreReferrerInCookie();
+        referrerNavigation.StoreReferrer();
 
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
@@ -102,18 +102,18 @@ public class AdminController(
         return View(plugin);
     }
 
-    // 
+    //
     [HttpPost("plugins/edit/{slug}")]
     public async Task<IActionResult> PluginEdit(string slug, PluginViewModel model)
     {
-        if (!ModelState.IsValid) 
+        if (!ModelState.IsValid)
         {
             return View(model);
         }
 
         await using var conn = await connectionFactory.Open();
         var affectedRows = await conn.ExecuteAsync("""
-                                                    UPDATE plugins 
+                                                    UPDATE plugins
                                                     SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum
                                                     WHERE slug = @slug
                                                    """,
@@ -125,15 +125,15 @@ public class AdminController(
             });
         if (affectedRows == 0) return NotFound();
 
-        return RedirectToReferrerOrAction("ListPlugins");
+        return referrerNavigation.RedirectToReferrerOr(this, "ListPlugins");
     }
 
     // Plugin Delete
     [HttpGet("plugins/delete/{slug}")]
     public async Task<IActionResult> PluginDelete(string slug)
     {
-        StoreReferrerInCookie();
-        
+        referrerNavigation.StoreReferrer();
+
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
             "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
@@ -156,7 +156,7 @@ public class AdminController(
                                                    """, new { Slug = slug });
         if (affectedRows == 0) return NotFound();
 
-        return RedirectToReferrerOrAction("ListPlugins");
+        return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
     }
 
     // list users
@@ -370,66 +370,6 @@ public class AdminController(
         var emailSettingsJson = JsonConvert.SerializeObject(model);
         await conn.SettingsSetAsync("EmailSettings", emailSettingsJson);
     }
-
-    #region Referrer Cookie Helpers
-
-    private const string ReferrerCookieName = "AdminReferrerUrl";
-
-    /// <summary>
-    /// Stores the current request's referer URL in a cookie
-    /// </summary>
-    private void StoreReferrerInCookie()
-    {
-        var referer = Request.Headers["Referer"].ToString();
-        if (!string.IsNullOrEmpty(referer))
-        {
-            Response.Cookies.Append(ReferrerCookieName, referer, new CookieOptions
-            {
-                Expires = DateTime.Now.AddHours(1),
-                HttpOnly = true,
-                IsEssential = true
-            });
-        }
-    }
-
-    /// <summary>
-    /// Retrieves and clears the stored referer URL from cookie
-    /// </summary>
-    /// <returns>The stored referer URL or null if not found</returns>
-    private string? GetAndClearReferrerFromCookie()
-    {
-        if (Request.Cookies.TryGetValue(ReferrerCookieName, out string? referrerUrl) && 
-            !string.IsNullOrEmpty(referrerUrl))
-        {
-            // Clear the cookie after use
-            Response.Cookies.Delete(ReferrerCookieName);
-            return referrerUrl;
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Returns a redirect result to the stored referrer URL, or falls back to a default action
-    /// </summary>
-    /// <param name="defaultAction">Default action name to redirect to if no referrer is found</param>
-    /// <param name="defaultController">Default controller name (optional)</param>
-    /// <returns>IActionResult for redirection</returns>
-    private IActionResult RedirectToReferrerOrAction(string defaultAction, string? defaultController = null)
-    {
-        string? referrerUrl = GetAndClearReferrerFromCookie();
-        
-        if (!string.IsNullOrEmpty(referrerUrl))
-        {
-            return Redirect(referrerUrl);
-        }
-
-        return defaultController != null ? 
-            RedirectToAction(defaultAction, defaultController) : 
-            RedirectToAction(defaultAction);
-    }
-
-    #endregion
 
     [HttpGet("emailsender")]
     public async Task<IActionResult> EmailSender(string to, string subject, string message)
