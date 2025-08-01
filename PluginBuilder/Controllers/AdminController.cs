@@ -18,6 +18,7 @@ namespace PluginBuilder.Controllers;
 [Authorize(Roles = "ServerAdmin")]
 [Route("/admin/")]
 public class AdminController(
+
     UserManager<IdentityUser> userManager,
     RoleManager<IdentityRole> roleManager,
     DBConnectionFactory connectionFactory,
@@ -91,6 +92,8 @@ public class AdminController(
     [HttpGet("plugins/edit/{slug}")]
     public async Task<IActionResult> PluginEdit(string slug)
     {
+        StoreReferrerInCookie();
+
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
             "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
@@ -103,7 +106,10 @@ public class AdminController(
     [HttpPost("plugins/edit/{slug}")]
     public async Task<IActionResult> PluginEdit(string slug, PluginViewModel model)
     {
-        if (!ModelState.IsValid) return View(model);
+        if (!ModelState.IsValid) 
+        {
+            return View(model);
+        }
 
         await using var conn = await connectionFactory.Open();
         var affectedRows = await conn.ExecuteAsync("""
@@ -119,13 +125,15 @@ public class AdminController(
             });
         if (affectedRows == 0) return NotFound();
 
-        return RedirectToAction("ListPlugins");
+        return RedirectToReferrerOrAction("ListPlugins");
     }
 
     // Plugin Delete
     [HttpGet("plugins/delete/{slug}")]
     public async Task<IActionResult> PluginDelete(string slug)
     {
+        StoreReferrerInCookie();
+        
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
             "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
@@ -148,7 +156,7 @@ public class AdminController(
                                                    """, new { Slug = slug });
         if (affectedRows == 0) return NotFound();
 
-        return RedirectToAction("ListPlugins");
+        return RedirectToReferrerOrAction("ListPlugins");
     }
 
     // list users
@@ -362,6 +370,66 @@ public class AdminController(
         var emailSettingsJson = JsonConvert.SerializeObject(model);
         await conn.SettingsSetAsync("EmailSettings", emailSettingsJson);
     }
+
+    #region Referrer Cookie Helpers
+
+    private const string ReferrerCookieName = "AdminReferrerUrl";
+
+    /// <summary>
+    /// Stores the current request's referer URL in a cookie
+    /// </summary>
+    private void StoreReferrerInCookie()
+    {
+        var referer = Request.Headers["Referer"].ToString();
+        if (!string.IsNullOrEmpty(referer))
+        {
+            Response.Cookies.Append(ReferrerCookieName, referer, new CookieOptions
+            {
+                Expires = DateTime.Now.AddHours(1),
+                HttpOnly = true,
+                IsEssential = true
+            });
+        }
+    }
+
+    /// <summary>
+    /// Retrieves and clears the stored referer URL from cookie
+    /// </summary>
+    /// <returns>The stored referer URL or null if not found</returns>
+    private string? GetAndClearReferrerFromCookie()
+    {
+        if (Request.Cookies.TryGetValue(ReferrerCookieName, out string? referrerUrl) && 
+            !string.IsNullOrEmpty(referrerUrl))
+        {
+            // Clear the cookie after use
+            Response.Cookies.Delete(ReferrerCookieName);
+            return referrerUrl;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns a redirect result to the stored referrer URL, or falls back to a default action
+    /// </summary>
+    /// <param name="defaultAction">Default action name to redirect to if no referrer is found</param>
+    /// <param name="defaultController">Default controller name (optional)</param>
+    /// <returns>IActionResult for redirection</returns>
+    private IActionResult RedirectToReferrerOrAction(string defaultAction, string? defaultController = null)
+    {
+        string? referrerUrl = GetAndClearReferrerFromCookie();
+        
+        if (!string.IsNullOrEmpty(referrerUrl))
+        {
+            return Redirect(referrerUrl);
+        }
+
+        return defaultController != null ? 
+            RedirectToAction(defaultAction, defaultController) : 
+            RedirectToAction(defaultAction);
+    }
+
+    #endregion
 
     [HttpGet("emailsender")]
     public async Task<IActionResult> EmailSender(string to, string subject, string message)
