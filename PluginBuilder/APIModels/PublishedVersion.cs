@@ -19,8 +19,8 @@ public class PublishedVersion
 public class PublishedPlugin : PublishedVersion
 {
     static Regex GithubRepositoryRegex = new Regex("^https://(www\\.)?github\\.com/([^/]+)/([^/]+)/?");
-    public string? gitRepository => BuildInfo?["gitRepository"]?.ToString();
-    public string? pluginDir => BuildInfo?["pluginDir"]?.ToString();
+    public string gitRepository => BuildInfo?["gitRepository"]?.ToString();
+    public string pluginDir => BuildInfo?["pluginDir"]?.ToString();
     public record GithubRepository(string Owner, string RepositoryName)
     {
         public string? GetSourceUrl(string commit, string pluginDir)
