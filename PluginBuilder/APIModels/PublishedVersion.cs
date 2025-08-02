@@ -23,14 +23,14 @@ public class PublishedPlugin : PublishedVersion
     public string pluginDir => BuildInfo?["pluginDir"]?.ToString();
     public record GithubRepository(string Owner, string RepositoryName)
     {
-        public string? GetSourceUrl(string commit, string pluginDir)
+        public string GetSourceUrl(string commit, string pluginDir)
         {
             if (commit is null)
                 return null;
             return $"https://github.com/{Owner}/{RepositoryName}/tree/{commit}/{pluginDir}";
         }
     }
-    public GithubRepository? GetGithubRepository()
+    public GithubRepository GetGithubRepository()
     {
         if (gitRepository is null)
             return null;
