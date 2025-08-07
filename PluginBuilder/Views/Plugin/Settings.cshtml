@@ -4,7 +4,13 @@
     ViewData.SetActivePage(PluginNavPages.Settings, "Plugin settings");
 }
 
-<h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+<h2 class="mt-1 mb-4">
+	@ViewData["Title"]
+	@if (Model.IsPluginOwner)
+	{
+		<span class="badge bg-success fs-6 px-2 py-1 align-middle" style="font-size: 0.75rem;">Owner</span>
+	}
+</h2>
 <div class="row">
     <div class="col-xl-8 col-xxl-constrain">
 		<form asp-action="Settings" enctype="multipart/form-data">

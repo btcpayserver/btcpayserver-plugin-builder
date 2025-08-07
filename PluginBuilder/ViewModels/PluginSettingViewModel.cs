@@ -28,4 +28,5 @@ public class PluginSettingViewModel
 
     [Display(Name = "Logo")]
     public IFormFile? Logo { get; set; }
+    public bool IsPluginOwner { get; set; }
 }
