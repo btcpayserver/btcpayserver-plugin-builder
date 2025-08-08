@@ -14,7 +14,6 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace PluginBuilder.Controllers;
 

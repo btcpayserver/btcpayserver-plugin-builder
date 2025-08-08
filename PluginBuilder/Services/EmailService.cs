@@ -3,6 +3,7 @@ using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
 using Newtonsoft.Json;
+using Npgsql;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels.Admin;
 
@@ -54,6 +55,31 @@ public class EmailService
         var body = $"Please verify your account by visiting: {verifyUrl}";
 
         return SendEmail(toEmail, "Verify your account on BTCPay Server Plugin Builder", body);
+    }
+
+    public async Task NotifyAdminOnNewPluginBuild(NpgsqlConnection conn, PluginSlug pluginSlug, string pluginPluginUrl)
+    {
+        var notificationSettingEmails = await conn.GetFirstPluginBuildReviewersSetting();
+        var currId = await conn.GetLatestPluginBuildNumber(pluginSlug);
+        if (string.IsNullOrEmpty(notificationSettingEmails) || currId != 0) return;
+
+        var toList = notificationSettingEmails.Split(",", StringSplitOptions.RemoveEmptyEntries).Select(MailboxAddressValidator.Parse);
+        var body = $@"
+Hello Admin,
+
+A new plugin has just been published on the BTCPay Server Plugin Builder.
+
+Plugin URL: {pluginPluginUrl}
+
+Please review and verify the plugin details as soon as possible.
+
+Thank you,
+BTCPay Server Plugin Builder";
+        try
+        {
+            await SendEmail(toList, "New Plugin Published on BTCPay Server Plugin Builder", body);
+        }
+        catch (Exception) {}
     }
 
     public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb()

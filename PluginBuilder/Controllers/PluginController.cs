@@ -19,6 +19,7 @@ namespace PluginBuilder.Controllers;
 public class PluginController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
+    EmailService emailService,
     BuildService buildService,
     AzureStorageClient azureStorageClient,
     EmailVerifiedLogic emailVerifiedLogic)
@@ -171,6 +172,11 @@ public class PluginController(
                 new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
             await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
             return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
+        }
+        if (command == "release")
+        {
+            var pluginUrl = Url.Action(action: "GetPluginDetails", controller: "Home", values: new { pluginSlug = pluginSlug.ToString() }, protocol: Request.Scheme);
+            await emailService.NotifyAdminOnNewPluginBuild(conn, pluginSlug, pluginUrl);
         }
 
         await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease WHERE plugin_slug=@pluginSlug AND ver=@version",

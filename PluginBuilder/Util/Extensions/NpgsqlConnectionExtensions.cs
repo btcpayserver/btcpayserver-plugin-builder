@@ -232,9 +232,7 @@ public static class NpgsqlConnectionExtensions
                 buildInfo = bi.ToString()
             });
 
-        var currId = await connection.ExecuteScalarAsync<long>("SELECT curr_id FROM builds_ids WHERE plugin_slug = @plugin_slug",
-            new { plugin_slug = pluginSlug.ToString() });
-
+        var currId = await connection.GetLatestPluginBuildNumber(pluginSlug);
         if (currId == 0)
         {
             const string assignOwnerSql = """
@@ -250,11 +248,22 @@ public static class NpgsqlConnectionExtensions
         return buildId;
     }
 
+    public static async Task<long> GetLatestPluginBuildNumber(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        return await connection.ExecuteScalarAsync<long>("SELECT curr_id FROM builds_ids WHERE plugin_slug = @plugin_slug", new { plugin_slug = pluginSlug.ToString() });
+    }
+
     // Methods related to getting / setting settings in the DB 
-    public static Task<IEnumerable<(string key, string value)>> SettingsGetAllAsync(this NpgsqlConnection connection)
+    public static async Task<IEnumerable<(string key, string value)>> SettingsGetAllAsync(this NpgsqlConnection connection)
     {
         var query = "SELECT key, value FROM settings";
-        return connection.QueryAsync<(string key, string value)>(query);
+        var result = (await connection.QueryAsync<(string key, string value)>(query)).ToList();
+        if (!result.Any(r => r.key == "FirstPluginBuildReviewers"))
+        {
+            await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES ('FirstPluginBuildReviewers', '')");
+            result.Add(("FirstPluginBuildReviewers", ""));
+        }
+        return result;
     }
 
 
@@ -294,6 +303,11 @@ public static class NpgsqlConnectionExtensions
         }
 
         return bool.TryParse(settingValue, out var result) && result;
+    }
+
+    public static async Task<string?> GetFirstPluginBuildReviewersSetting(this NpgsqlConnection connection)
+    {
+        return await connection.QuerySingleOrDefaultAsync<string>("SELECT value FROM settings WHERE key = 'FirstPluginBuildReviewers'");
     }
 
     public static async Task UpdateVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection, bool newValue)
