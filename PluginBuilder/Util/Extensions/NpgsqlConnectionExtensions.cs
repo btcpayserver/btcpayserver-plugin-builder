@@ -67,6 +67,39 @@ public static class NpgsqlConnectionExtensions
             "SELECT EXISTS (SELECT * FROM users_plugins WHERE user_id=@userId AND plugin_slug=@pluginSlug);",
             new { pluginSlug = pluginSlug.ToString(), userId });
     }
+    public static async Task<IEnumerable<string>> RetrievePluginUserIds(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        return await connection.QueryAsync<string>(
+            "SELECT user_id FROM users_plugins WHERE plugin_slug=@pluginSlug;",
+            new { pluginSlug = pluginSlug.ToString() });
+    }
+
+    public static async Task<string?> RetrievePluginOwner(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        return await connection.QueryFirstOrDefaultAsync<string>(
+            "SELECT user_id FROM users_plugins WHERE plugin_slug=@pluginSlug AND is_primary_owner IS TRUE;",
+            new { pluginSlug = pluginSlug.ToString() });
+    }
+
+    public static async Task AssignPluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    {
+        using var tx = connection.BeginTransaction();
+        await connection.ExecuteAsync(
+            "UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND is_primary_owner IS TRUE;",
+            new { pluginSlug = pluginSlug.ToString() }, tx);
+
+        await connection.ExecuteAsync(
+            @"UPDATE users_plugins SET is_primary_owner = TRUE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
+            new { pluginSlug = pluginSlug.ToString(), userId }, tx);
+        await tx.CommitAsync();
+    }
+
+    public static async Task RevokePluginOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    {
+        await connection.ExecuteAsync(
+            @"UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
+            new { pluginSlug = pluginSlug.ToString(), userId });
+    }
 
     public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
@@ -175,7 +208,7 @@ public static class NpgsqlConnectionExtensions
             }) == 1;
     }
 
-    public static Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
+    public static async Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
     {
         BuildInfo bi = new()
         {
@@ -184,7 +217,7 @@ public static class NpgsqlConnectionExtensions
             GitRef = buildParameters.GitRef,
             PluginDir = buildParameters.PluginDirectory
         };
-        return connection.ExecuteScalarAsync<long>("" +
+        var buildId = await connection.ExecuteScalarAsync<long>("" +
                                                    "WITH cte AS " +
                                                    "( " +
                                                    " INSERT INTO builds_ids AS bi VALUES (@plugin_slug, 0)" +
@@ -198,6 +231,23 @@ public static class NpgsqlConnectionExtensions
                 state = BuildStates.Queued.ToEventName(),
                 buildInfo = bi.ToString()
             });
+
+        var currId = await connection.ExecuteScalarAsync<long>("SELECT curr_id FROM builds_ids WHERE plugin_slug = @plugin_slug",
+            new { plugin_slug = pluginSlug.ToString() });
+
+        if (currId == 0)
+        {
+            const string assignOwnerSql = """
+                UPDATE users_plugins
+                SET is_primary_owner = TRUE
+                WHERE plugin_slug = @plugin_slug
+                AND NOT EXISTS (
+                    SELECT 1 FROM users_plugins WHERE plugin_slug = @plugin_slug AND is_primary_owner IS TRUE
+                );
+                """;
+            await connection.ExecuteAsync(assignOwnerSql, new { plugin_slug = pluginSlug.ToString() });
+        }
+        return buildId;
     }
 
     // Methods related to getting / setting settings in the DB 

@@ -4,7 +4,9 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
+using Npgsql;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
@@ -12,6 +14,7 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace PluginBuilder.Controllers;
 
@@ -88,30 +91,39 @@ public class AdminController(
     }
 
 
-    // Plugin Edit
     [HttpGet("plugins/edit/{slug}")]
     public async Task<IActionResult> PluginEdit(string slug)
     {
         referrerNavigation.StoreReferrer();
-
         await using var conn = await connectionFactory.Open();
+        var pluginUsers = await GetPluginUsers(conn, slug);
+
         var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
             "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
-        if (plugin == null) return NotFound();
+        if (plugin == null)
+            return NotFound();
 
-        return View(plugin);
+        return View(new PluginEditViewModel
+        {
+            Slug = plugin.Slug,
+            Identifier = plugin.Identifier,
+            Settings = plugin.Settings,
+            Visibility = plugin.Visibility,
+            PluginUsers = pluginUsers
+        });
     }
 
     //
     [HttpPost("plugins/edit/{slug}")]
-    public async Task<IActionResult> PluginEdit(string slug, PluginViewModel model)
+    public async Task<IActionResult> PluginEdit(string slug, PluginEditViewModel model)
     {
+        await using var conn = await connectionFactory.Open();
         if (!ModelState.IsValid)
         {
+            model.PluginUsers = await GetPluginUsers(conn, slug);
             return View(model);
         }
 
-        await using var conn = await connectionFactory.Open();
         var affectedRows = await conn.ExecuteAsync("""
                                                     UPDATE plugins
                                                     SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum
@@ -158,6 +170,37 @@ public class AdminController(
 
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
     }
+
+    [HttpGet]
+    public async Task<IActionResult> ManagePluginOwnership(string pluginSlug, string userId, string command = "")
+    {
+        await using var conn = await connectionFactory.Open();
+        var userIds = await conn.RetrievePluginUserIds(pluginSlug);
+        if (!userIds.Contains(userId))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Invalid plugin user";
+            return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+        }
+        switch (command)
+        {
+            case "RevokeOwnership":
+                {
+                    await conn.RevokePluginOwnership(pluginSlug, userId);
+                    TempData[TempDataConstant.SuccessMessage] = "Plugin ownership has been revoked";
+                    break;
+                }
+            case "AssignOwnership":
+                {
+                    await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
+                    TempData[TempDataConstant.SuccessMessage] = "Plugin owener assignment was successful";
+                    break;
+                }
+            default:
+                break;
+        }
+        return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+    }
+
 
     // list users
     [HttpGet("users")]
@@ -468,5 +511,20 @@ public class AdminController(
         var result = await conn.SettingsDeleteAsync(key);
         await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
         return Ok();
+    }
+
+    private async Task<List<PluginUsersViewModel>> GetPluginUsers(NpgsqlConnection conn, string slug)
+    {
+        var pluginOwner = await conn.RetrievePluginOwner(slug);
+        var userIds = await conn.RetrievePluginUserIds(slug);
+        var users = await userManager.FindUsersByIdsAsync(userIds);
+        return userIds.Any()
+            ? (await userManager.FindUsersByIdsAsync(userIds)).Select(u => new PluginUsersViewModel
+            {
+                Email = u.Email,
+                UserId = u.Id,
+                IsPluginOwner = u.Id == pluginOwner
+            }).ToList()
+            : new List<PluginUsersViewModel>();
     }
 }

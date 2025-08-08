@@ -9,3 +9,15 @@ public class PluginViewModel
     public string Settings { get; set; } = null!;
     public PluginVisibilityEnum Visibility { get; set; }
 }
+
+public class PluginEditViewModel : PluginViewModel
+{
+    public List<PluginUsersViewModel> PluginUsers { get; set; }
+}
+
+public class PluginUsersViewModel
+{
+    public string UserId { get; set; } = null!;
+    public string Email { get; set; } = null!;
+    public bool IsPluginOwner { get; set; }
+}

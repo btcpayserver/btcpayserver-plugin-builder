@@ -1,5 +1,5 @@
 @using PluginBuilder.DataModels
-@model PluginViewModel
+@model PluginEditViewModel
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(AdminNavPages.Plugins, "Edit Plugin");
@@ -7,33 +7,68 @@
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h2 class="mb-0">
-        @ViewData["Title"]
+        @ViewData["Title"] - @Model.Slug
     </h2>
 </div>
 
-<form asp-action="Edit">
-    <div class="form-group">
-        <label asp-for="Slug" class="control-label"></label>
-        <input asp-for="Slug" class="form-control" readonly="readonly" />
-        <span asp-validation-for="Slug" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <label asp-for="Identifier" class="control-label"></label>
-        <input asp-for="Identifier" class="form-control" readonly="readonly" />
-        <span asp-validation-for="Identifier" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <label asp-for="Settings" class="control-label"></label>
-        <textarea asp-for="Settings" class="form-control" rows="5"></textarea>
-        <span asp-validation-for="Settings" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <label asp-for="Visibility" class="control-label"></label>
-        <select asp-for="Visibility" class="form-control" asp-items="Html.GetEnumSelectList<PluginVisibilityEnum>()"></select>
-        <span asp-validation-for="Visibility" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <input type="submit" class="btn btn-primary" id="Save" value="Save" />
-        <a href="javascript:history.back()" class="btn btn-link">Cancel</a>
-    </div>
-</form>
+
+<div class="row">
+	@if (!String.IsNullOrEmpty(@Model.Identifier))
+	{
+		<div class="mb-4">
+			<span class="fw-semibold fs-5">Identifier:</span> <span>@Model.Identifier</span>
+		</div>
+	}
+	@if (Model.PluginUsers?.Any() == true)
+	{
+		<div class="container my-4">
+			<h6>Plugin Users</h6>
+			<div class="col-md-8 col-lg-6">
+				@foreach (var user in Model.PluginUsers)
+				{
+					<div class="d-flex justify-content-between align-items-center">
+						<div>
+							<strong>Email:</strong> @user.Email
+							@if (user.IsPluginOwner)
+							{
+								<span class="badge bg-success me-2">Owner</span>
+							}
+						</div>
+						<div class="text-end">
+							<a asp-controller="Admin"
+							   asp-action="ManagePluginOwnership"
+							   asp-route-userId="@user.UserId"
+							   asp-route-pluginSlug="@Model.Slug"
+							   asp-route-command="@(user.IsPluginOwner ? "RevokeOwnership" : "AssignOwnership")"
+							   class="btn btn-sm me-2 @(user.IsPluginOwner ? "btn-outline-danger" : "btn-outline-primary")">
+								@(user.IsPluginOwner ? "Revoke Ownership" : "Set as Owner")
+							</a>
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+	}
+
+	<div class="col-md-8 col-lg-6">
+		<form asp-action="Edit">
+			<div class="mb-3">
+				<label asp-for="Settings" class="form-label"></label>
+				<textarea asp-for="Settings" class="form-control" rows="5"></textarea>
+				<span asp-validation-for="Settings" class="text-danger"></span>
+			</div>
+
+			<div class="mb-3">
+				<label asp-for="Visibility" class="form-label"></label>
+				<select asp-for="Visibility" class="form-select" asp-items="Html.GetEnumSelectList<PluginVisibilityEnum>()"></select>
+				<span asp-validation-for="Visibility" class="text-danger"></span>
+			</div>
+
+			<div class="form-group">
+				<input type="submit" class="btn btn-primary" id="Save" value="Save" />
+				<a href="javascript:history.back()" class="btn btn-outline-secondary">Cancel</a>
+			</div>
+		</form>
+	</div>
+
+</div>

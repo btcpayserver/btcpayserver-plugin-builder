@@ -1,5 +1,6 @@
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -17,6 +18,7 @@ namespace PluginBuilder.Controllers;
 [Route("/plugins/{pluginSlug}")]
 public class PluginController(
     DBConnectionFactory connectionFactory,
+    UserManager<IdentityUser> userManager,
     BuildService buildService,
     AzureStorageClient azureStorageClient,
     EmailVerifiedLogic emailVerifiedLogic)
@@ -27,12 +29,17 @@ public class PluginController(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug)
     {
+        var userId = userManager.GetUserId(User);
         await using var conn = await connectionFactory.Open();
         var settings = await conn.GetSettings(pluginSlug);
 
         if (settings is null)
             return NotFound();
-        return View(settings.ToPluginSettingViewModel());
+
+        var pluginOwner = await conn.RetrievePluginOwner(pluginSlug);
+        var vm = settings.ToPluginSettingViewModel();
+        vm.IsPluginOwner = pluginOwner == userId;
+        return View(vm);
     }
 
     [HttpPost("settings")]
@@ -41,9 +48,13 @@ public class PluginController(
         PluginSlug pluginSlug,
         PluginSettingViewModel settingViewModel, [FromForm] bool RemoveLogoFile = false)
     {
+        var userId = userManager.GetUserId(User);
         await using var conn = await connectionFactory.Open();
         var existingSetting = await conn.GetSettings(pluginSlug);
         settingViewModel.LogoUrl = existingSetting?.Logo;
+        var pluginOwner = await conn.RetrievePluginOwner(pluginSlug);
+        settingViewModel.IsPluginOwner = pluginOwner == userId;
+
         if (settingViewModel is null)
             return NotFound();
         if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
