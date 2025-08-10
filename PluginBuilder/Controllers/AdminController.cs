@@ -29,7 +29,7 @@ public class AdminController(
     : Controller
 {
     // settings editor
-    private const string ProtectedKeys = "EmailSettings";
+    private const string ProtectedKeys = SettingsKeys.EmailSettings;
 
     [HttpGet("plugins")]
     public async Task<IActionResult> ListPlugins(AdminPluginSettingViewModel? model = null)

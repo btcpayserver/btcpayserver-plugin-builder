@@ -253,21 +253,14 @@ public static class NpgsqlConnectionExtensions
         return await connection.ExecuteScalarAsync<long>("SELECT curr_id FROM builds_ids WHERE plugin_slug = @plugin_slug", new { plugin_slug = pluginSlug.ToString() });
     }
 
-    // Methods related to getting / setting settings in the DB 
-    public static async Task<IEnumerable<(string key, string value)>> SettingsGetAllAsync(this NpgsqlConnection connection)
+    // Methods related to getting / setting settings in the DB
+    public static Task<IEnumerable<(string key, string value)>> SettingsGetAllAsync(this NpgsqlConnection connection)
     {
         var query = "SELECT key, value FROM settings";
-        var result = (await connection.QueryAsync<(string key, string value)>(query)).ToList();
-        if (!result.Any(r => r.key == "FirstPluginBuildReviewers"))
-        {
-            await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES ('FirstPluginBuildReviewers', '')");
-            result.Add(("FirstPluginBuildReviewers", ""));
-        }
-        return result;
+        return connection.QueryAsync<(string key, string value)>(query);
     }
 
-
-    public static Task<string> SettingsGetAsync(this NpgsqlConnection connection, string key)
+    public static Task<string?> SettingsGetAsync(this NpgsqlConnection connection, string key)
     {
         var query = "SELECT value FROM settings WHERE key = @key";
         return connection.QuerySingleOrDefaultAsync<string>(query, new { key });
@@ -276,9 +269,9 @@ public static class NpgsqlConnectionExtensions
     public static Task<int> SettingsSetAsync(this NpgsqlConnection connection, string key, string value)
     {
         var query = """
-                    INSERT INTO settings(key, value) 
+                    INSERT INTO settings(key, value)
                     VALUES(@key, @value)
-                    ON CONFLICT (key) DO UPDATE 
+                    ON CONFLICT (key) DO UPDATE
                     SET value = EXCLUDED.value
                     """;
         return connection.ExecuteAsync(query, new { key, value });
@@ -293,21 +286,29 @@ public static class NpgsqlConnectionExtensions
         return connection.ExecuteAsync(query, new { key });
     }
 
-    public static async Task<bool> GetVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection)
+    public static async Task SettingsInitialize(this NpgsqlConnection connection)
     {
-        var settingValue = await connection.QuerySingleOrDefaultAsync<string>("SELECT value FROM settings WHERE key = 'VerifiedEmailForPluginPublish'");
-        if (settingValue == null)
+        var query = "SELECT key, value FROM settings";
+        var result = (await connection.QueryAsync<(string key, string value)>(query)).ToList();
+        if (result.All(r => r.key != "FirstPluginBuildReviewers"))
+        {
+            await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES ('FirstPluginBuildReviewers', '')");
+        }
+        if (result.All(r => r.key != "VerifiedEmailForPluginPublish"))
         {
             await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES ('VerifiedEmailForPluginPublish', 'true')");
-            settingValue = "true";
         }
+    }
 
+    public static async Task<bool> GetVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection)
+    {
+        var settingValue = await SettingsGetAsync(connection, "VerifiedEmailForPluginPublish");
         return bool.TryParse(settingValue, out var result) && result;
     }
 
-    public static async Task<string?> GetFirstPluginBuildReviewersSetting(this NpgsqlConnection connection)
+    public static Task<string?> GetFirstPluginBuildReviewersSetting(this NpgsqlConnection connection)
     {
-        return await connection.QuerySingleOrDefaultAsync<string>("SELECT value FROM settings WHERE key = 'FirstPluginBuildReviewers'");
+        return SettingsGetAsync(connection, "FirstPluginBuildReviewers");
     }
 
     public static async Task UpdateVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection, bool newValue)

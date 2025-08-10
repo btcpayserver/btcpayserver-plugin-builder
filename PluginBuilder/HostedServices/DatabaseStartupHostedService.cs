@@ -5,6 +5,7 @@ using Dapper;
 using Npgsql;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Services;
+using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.HostedServices;
 
@@ -46,6 +47,7 @@ public class DatabaseStartupHostedService : IHostedService
             {
                 await conn2.OpenAsync(cancellationToken);
                 await conn2.ExecuteAsync($"CREATE DATABASE {dbname} TEMPLATE 'template0' LC_CTYPE 'C' LC_COLLATE 'C' ENCODING 'UTF8'");
+                await conn2.SettingsInitialize();
             }
 
             goto retry;
