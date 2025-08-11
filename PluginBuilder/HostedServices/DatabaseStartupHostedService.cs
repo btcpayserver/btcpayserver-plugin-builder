@@ -35,6 +35,7 @@ public class DatabaseStartupHostedService : IHostedService
             await CleanupScript(conn);
 
             await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
+            await conn.SettingsInitialize();
         }
         catch (NpgsqlException pgex) when (pgex.SqlState == "3D000")
         {
@@ -47,7 +48,6 @@ public class DatabaseStartupHostedService : IHostedService
             {
                 await conn2.OpenAsync(cancellationToken);
                 await conn2.ExecuteAsync($"CREATE DATABASE {dbname} TEMPLATE 'template0' LC_CTYPE 'C' LC_COLLATE 'C' ENCODING 'UTF8'");
-                await conn2.SettingsInitialize();
             }
 
             goto retry;
