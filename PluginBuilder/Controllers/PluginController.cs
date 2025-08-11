@@ -19,10 +19,10 @@ namespace PluginBuilder.Controllers;
 public class PluginController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
-    EmailService emailService,
     BuildService buildService,
     AzureStorageClient azureStorageClient,
-    EmailVerifiedLogic emailVerifiedLogic)
+    EmailVerifiedLogic emailVerifiedLogic,
+    FirstBuildEvent firstBuildEvent)
     : Controller
 {
     [HttpGet("settings")]
@@ -148,7 +148,7 @@ public class PluginController(
             return RedirectToAction("AccountDetails", "Account");
         }
 
-        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
+        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter(), firstBuildEvent);
         _ = buildService.Build(new FullBuildId(pluginSlug, buildId));
         return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
     }
@@ -173,11 +173,7 @@ public class PluginController(
             await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
             return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
         }
-        if (command == "release")
-        {
-            var pluginUrl = Url.Action(action: "GetPluginDetails", controller: "Home", values: new { pluginSlug = pluginSlug.ToString() }, protocol: Request.Scheme);
-            await emailService.NotifyAdminOnNewPluginBuild(conn, pluginSlug, pluginUrl);
-        }
+        // Email notifications are now handled on first build creation, not on release.
 
         await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease WHERE plugin_slug=@pluginSlug AND ver=@version",
             new

@@ -208,7 +208,8 @@ public static class NpgsqlConnectionExtensions
             }) == 1;
     }
 
-    public static async Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
+    public static async Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters,
+        FirstBuildEvent? firstBuildEvent = null)
     {
         BuildInfo bi = new()
         {
@@ -244,6 +245,10 @@ public static class NpgsqlConnectionExtensions
                 );
                 """;
             await connection.ExecuteAsync(assignOwnerSql, new { plugin_slug = pluginSlug.ToString() });
+            if (firstBuildEvent is not null)
+            {
+                await firstBuildEvent.OnFirstBuildCreated(connection, pluginSlug);
+            }
         }
         return buildId;
     }
