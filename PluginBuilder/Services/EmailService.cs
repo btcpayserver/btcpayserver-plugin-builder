@@ -23,10 +23,10 @@ public class EmailService
         List<InternetAddress> toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
             .Select(InternetAddress.Parse)
             .ToList();
-        return SendEmail(toList, subject, messageText);
+        return DeliverEmail(toList, subject, messageText);
     }
 
-    private async Task<List<string>> SendEmail(IEnumerable<InternetAddress> toList, string subject, string messageText)
+    protected virtual async Task<List<string>> DeliverEmail(IEnumerable<InternetAddress> toList, string subject, string messageText)
     {
         List<string> recipients = new();
         var emailSettings = await GetEmailSettingsFromDb();
@@ -77,7 +77,7 @@ Thank you,
 BTCPay Server Plugin Builder";
         try
         {
-            await SendEmail(toList, "New Plugin Published on BTCPay Server Plugin Builder", body);
+            await DeliverEmail(toList, "New Plugin Published on BTCPay Server Plugin Builder", body);
         }
         catch (Exception) {}
     }
