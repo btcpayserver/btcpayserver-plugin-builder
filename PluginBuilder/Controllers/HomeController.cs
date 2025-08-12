@@ -269,7 +269,7 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
     [HttpGet("/VerifyEmail")]
     public IActionResult VerifyEmail(string email)
     {
-        return View(email);
+        return View(model: email);
     }
 
     [AllowAnonymous]
