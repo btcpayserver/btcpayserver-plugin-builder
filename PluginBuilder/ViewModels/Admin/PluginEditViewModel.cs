@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using PluginBuilder.DataModels;
 
 namespace PluginBuilder.ViewModels.Admin;
@@ -5,6 +6,7 @@ namespace PluginBuilder.ViewModels.Admin;
 public class PluginViewModel
 {
     public string Slug { get; set; } = null!;
+    [ValidateNever]
     public string Identifier { get; set; } = null!;
     public string Settings { get; set; } = null!;
     public PluginVisibilityEnum Visibility { get; set; }
@@ -12,6 +14,7 @@ public class PluginViewModel
 
 public class PluginEditViewModel : PluginViewModel
 {
+    [ValidateNever]
     public List<PluginUsersViewModel> PluginUsers { get; set; }
 }
 

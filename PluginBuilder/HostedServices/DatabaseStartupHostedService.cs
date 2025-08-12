@@ -5,6 +5,7 @@ using Dapper;
 using Npgsql;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Services;
+using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.HostedServices;
 
@@ -34,6 +35,7 @@ public class DatabaseStartupHostedService : IHostedService
             await CleanupScript(conn);
 
             await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
+            await conn.SettingsInitialize();
         }
         catch (NpgsqlException pgex) when (pgex.SqlState == "3D000")
         {

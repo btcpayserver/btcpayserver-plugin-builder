@@ -29,6 +29,8 @@ public class ServerTester : IAsyncDisposable
 
     public XUnitLogger Logs { get; }
 
+    public Action<IServiceCollection>? ConfigureServices { get; set; }
+
     public WebApplication WebApp => _WebApp ?? throw new InvalidOperationException("Webapp not initialized");
 
     public bool ReuseDatabase { get; set; } = true;
@@ -71,6 +73,7 @@ public class ServerTester : IAsyncDisposable
 
         webappBuilder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
         webappBuilder.Logging.AddProvider(Logs);
+        ConfigureServices?.Invoke(webappBuilder.Services);
         var webapp = webappBuilder.Build();
         host.Configure(webapp);
         disposables.Add(webapp);

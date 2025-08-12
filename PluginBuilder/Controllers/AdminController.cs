@@ -14,7 +14,6 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace PluginBuilder.Controllers;
 
@@ -30,7 +29,7 @@ public class AdminController(
     : Controller
 {
     // settings editor
-    private const string ProtectedKeys = "EmailSettings";
+    private const string ProtectedKeys = SettingsKeys.EmailSettings;
 
     [HttpGet("plugins")]
     public async Task<IActionResult> ListPlugins(AdminPluginSettingViewModel? model = null)

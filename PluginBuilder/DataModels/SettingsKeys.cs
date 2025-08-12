@@ -1,7 +1,9 @@
 namespace PluginBuilder.DataModels;
 
-public enum SettingsKeys
+// TODO: Store all references to settings keys in single place
+public static class SettingsKeys
 {
-    Empty = 0,
-    VerifiedEmailForPluginPublish = 1
+    public const string EmailSettings = nameof(EmailSettings);
+    public const string VerifiedEmailForPluginPublish = nameof(VerifiedEmailForPluginPublish);
+    public const string FirstPluginBuildReviewers = nameof(FirstPluginBuildReviewers);
 }

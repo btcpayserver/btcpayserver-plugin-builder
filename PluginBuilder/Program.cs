@@ -85,6 +85,18 @@ public class Program
             app.UseHsts();
         }
 
+        // Capture base URL once on first request for FirstBuildEvents
+        app.Use(async (ctx, next) =>
+        {
+            var fbe = ctx.RequestServices.GetRequiredService<FirstBuildEvent>();
+            if (ctx.Request.Host.HasValue)
+            {
+                var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+                fbe.InitBaseUrl(baseUrl);
+            }
+            await next();
+        });
+
         app.UseStaticFiles();
         app.UseRouting();
         app.UseAuthentication();
@@ -124,6 +136,7 @@ public class Program
         services.AddHttpClient();
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
+        services.AddSingleton<FirstBuildEvent>();
 
         // shared controller logic
         services.AddSingleton<EmailVerifiedCache>();
