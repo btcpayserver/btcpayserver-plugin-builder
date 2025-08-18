@@ -215,60 +215,61 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
     public async Task<IActionResult> GetPluginDetails([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug)
     {
         await using var conn = await connectionFactory.Open();
-        var query = """
-                    SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info, p.visibility
-                    FROM versions v
-                    JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
-                    JOIN plugins p ON b.plugin_slug = p.slug
-                    WHERE v.plugin_slug = @pluginSlug
-                    AND b.manifest_info IS NOT NULL AND b.build_info IS NOT NULL
-                    ORDER BY v.ver DESC
-                    LIMIT 1
-                    """;
-        var r = await conn.QueryFirstOrDefaultAsync<dynamic>(query, new { pluginSlug = pluginSlug.ToString() });
-        if (r is null)
+
+        var userId = User.Identity?.IsAuthenticated == true ? userManager.GetUserId(User) : null;
+        var isAdmin = User.Identity?.IsAuthenticated == true && User.IsInRole(Roles.ServerAdmin);
+
+        var row = await conn.QueryFirstOrDefaultAsync<dynamic>(
+            """
+            SELECT v.plugin_slug,
+                   v.ver,
+                   p.settings,
+                   b.manifest_info,
+                   b.build_info,
+                   p.visibility
+            FROM versions v
+            JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
+            JOIN plugins p ON b.plugin_slug = p.slug
+            WHERE v.plugin_slug = @pluginSlug
+              AND b.manifest_info IS NOT NULL
+              AND b.build_info IS NOT NULL
+              AND (
+                    p.visibility <> 'hidden'
+                    OR @isAdmin
+                    OR (
+                        @userId IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM users_plugins up
+                            WHERE up.plugin_slug = v.plugin_slug AND up.user_id = @userId
+                        )
+                      )
+                  )
+            ORDER BY v.ver DESC
+            LIMIT 1
+            """,
+            new
+            {
+                pluginSlug = pluginSlug.ToString(),
+                userId,
+                isAdmin
+            });
+
+        if (row is null)
             return NotFound();
 
-        var isAuthor = false;
-
-        if (r.visibility == PluginVisibilityEnum.Hidden)
-        {
-            if (!User.Identity?.IsAuthenticated ?? true)
-                return NotFound();
-
-            if (User.IsInRole(Roles.ServerAdmin))
-            {
-                isAuthor = true;
-            }
-            else
-            {
-                var userId = userManager.GetUserId(User);
-                var isAuthorQuery = """
-                                    SELECT 1 FROM users_plugins
-                                    WHERE plugin_slug = @pluginSlug AND user_id = @userId
-                                    LIMIT 1
-                                    """;
-
-                isAuthor = await conn.ExecuteScalarAsync<bool>(isAuthorQuery,
-                    new { pluginSlug = pluginSlug.ToString(), userId });
-            }
-
-            if (!isAuthor)
-                return NotFound();
-        }
+        var settings = JsonConvert.DeserializeObject<PluginSettings>((string)row.settings)!;
 
         var plugin = new PublishedPlugin
         {
             ProjectSlug = pluginSlug.ToString(),
-            Version = string.Join('.', r.ver),
-            BuildInfo = JObject.Parse(r.build_info),
-            ManifestInfo = JObject.Parse(r.manifest_info),
-            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
-            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+            Version = string.Join('.', row.ver),
+            BuildInfo = JObject.Parse((string)row.build_info),
+            ManifestInfo = JObject.Parse((string)row.manifest_info),
+            PluginLogo = settings.Logo,
+            Documentation = settings.Documentation
         };
 
         ViewBag.Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir);
-        ViewBag.ShowHiddenNotice = r.visibility == PluginVisibilityEnum.Hidden && isAuthor;
+        ViewBag.ShowHiddenNotice = (int)row.visibility == (int)PluginVisibilityEnum.Hidden;
 
         return View(plugin);
     }
