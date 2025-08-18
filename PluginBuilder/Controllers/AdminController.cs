@@ -17,7 +17,7 @@ using PluginBuilder.ViewModels.Admin;
 
 namespace PluginBuilder.Controllers;
 
-[Authorize(Roles = "ServerAdmin")]
+[Authorize(Roles = Roles.ServerAdmin)]
 [Route("/admin/")]
 public class AdminController(
     UserManager<IdentityUser> userManager,
@@ -264,9 +264,9 @@ public class AdminController(
 
         // Validate if this is the last admin user and prevent it from being removed from the ServerAdmin role
         var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (currentUserId == userId && rolesToRemove.Contains("ServerAdmin"))
+        if (currentUserId == userId && rolesToRemove.Contains(Roles.ServerAdmin))
         {
-            var admins = await userManager.GetUsersInRoleAsync("ServerAdmin");
+            var admins = await userManager.GetUsersInRoleAsync(Roles.ServerAdmin);
             if (admins.Count == 1)
             {
                 ModelState.AddModelError("", "You cannot remove yourself as the last ServerAdmin.");
