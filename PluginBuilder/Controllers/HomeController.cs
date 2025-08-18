@@ -236,14 +236,22 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
             if (!User.Identity?.IsAuthenticated ?? true)
                 return NotFound();
 
-            var userId = userManager.GetUserId(User);
-            var isAuthorQuery = """
-                                SELECT 1 FROM users_plugins
-                                WHERE plugin_slug = @pluginSlug AND user_id = @userId
-                                LIMIT 1
-                                """;
-            isAuthor = await conn.ExecuteScalarAsync<bool>(isAuthorQuery,
-                new { pluginSlug = pluginSlug.ToString(), userId });
+            if (User.IsInRole(Roles.ServerAdmin))
+            {
+                isAuthor = true;
+            }
+            else
+            {
+                var userId = userManager.GetUserId(User);
+                var isAuthorQuery = """
+                                    SELECT 1 FROM users_plugins
+                                    WHERE plugin_slug = @pluginSlug AND user_id = @userId
+                                    LIMIT 1
+                                    """;
+
+                isAuthor = await conn.ExecuteScalarAsync<bool>(isAuthorQuery,
+                    new { pluginSlug = pluginSlug.ToString(), userId });
+            }
 
             if (!isAuthor)
                 return NotFound();

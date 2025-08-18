@@ -57,7 +57,12 @@
             @foreach (var plugin in Model.Plugins)
             {
                 <tr>
-                    <td>@plugin.ProjectSlug</td>
+                    <td>@plugin.ProjectSlug
+                        <a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.ProjectSlug"
+                           class="btn btn-outline-primary">
+                            <span class="fa fa-globe"></span>
+                        </a>
+                    </td>
                     <td>@plugin.Version</td>
                     <td>@plugin.BuildId</td>
                     <td>@plugin.BtcPayMinVer</td>
