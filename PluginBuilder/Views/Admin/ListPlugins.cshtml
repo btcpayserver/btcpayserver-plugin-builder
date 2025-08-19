@@ -8,6 +8,7 @@
     <h2 class="mb-3 mb-md-0">@ViewData["Title"]</h2>
 
     <div class="d-flex flex-column flex-sm-row align-items-center gap-3">
+
         <div class="d-flex align-items-center">
             <form asp-controller="Admin" asp-action="UpdateVerifiedEmailRequirement" method="post" class="d-flex align-items-center">
                 <input type="checkbox" class="btcpay-toggle me-2" id="featureToggle" asp-for="@Model.VerifiedEmailForPluginPublish"
@@ -33,6 +34,18 @@
 <form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="ListPlugins" method="get">
     <input asp-for="Count" type="hidden" />
     <input asp-for="SearchText" class="form-control" placeholder="Search…" />
+
+	<div class="dropdown">
+		<button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+			@(Model.Status ?? "All Status")
+		</button>
+		<div class="dropdown-menu" aria-labelledby="StatusOptionsToggle">
+			<a class="dropdown-item" asp-action="ListPlugins" asp-route-status="">All Status</a>
+			<a class="dropdown-item" asp-action="ListPlugins" asp-route-status="Unlisted">Unlisted</a>
+			<a class="dropdown-item" asp-action="ListPlugins" asp-route-status="Listed">Listed</a>
+			<a class="dropdown-item" asp-action="ListPlugins" asp-route-status="Hidden">Hidden</a>
+		</div>
+	</div>
 </form>
 
 
@@ -58,9 +71,12 @@
             {
                 <tr>
                     <td>@plugin.ProjectSlug
-                        <a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.ProjectSlug">
-                            <span class="fa fa-globe"></span>
-                        </a>
+						@if (!string.IsNullOrEmpty(@plugin.Version) && plugin.BuildId.HasValue)
+						{
+							<a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.ProjectSlug">
+								<span class="fa fa-globe"></span>
+							</a>
+						}
                     </td>
                     <td>@plugin.Version</td>
                     <td>@plugin.BuildId</td>

@@ -44,7 +44,7 @@ public class AdminController(
                                          LEFT JOIN (
                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
                                              FROM versions
-                                             ORDER BY plugin_slug, build_id DESC
+                                             ORDER BY plugin_slug, updated_at DESC
                                          ) v ON p.slug = v.plugin_slug
                                          ORDER BY p.slug;
                                          """);
@@ -52,6 +52,10 @@ public class AdminController(
 
         if (!string.IsNullOrEmpty(model.SearchText))
             rows = rows.Where(o => (o.slug != null && o.slug.Contains(model.SearchText)) || (o.email != null && o.email.Contains(model.SearchText)));
+
+        if (!string.IsNullOrEmpty(model.Status) && Enum.TryParse<PluginVisibilityEnum>(model.Status, true, out var statusEnum))
+            rows = rows.Where(o => o.visibility == statusEnum);
+
         var pluginData = rows.Skip(model.Skip).Take(model.Count);
         foreach (var row in pluginData)
         {
