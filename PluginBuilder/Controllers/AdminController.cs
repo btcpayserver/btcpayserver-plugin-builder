@@ -35,8 +35,24 @@ public class AdminController(
     public async Task<IActionResult> ListPlugins(AdminPluginSettingViewModel? model = null)
     {
         model ??= new AdminPluginSettingViewModel();
+        var whereConditions = new List<string>();
+        var parameters = new DynamicParameters();
+        if (!string.IsNullOrEmpty(model.SearchText))
+        {
+            whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText)");
+            parameters.Add("searchText", $"%{model.SearchText}%");
+        }
+        if (!string.IsNullOrEmpty(model.Status) && Enum.TryParse<PluginVisibilityEnum>(model.Status, true, out var statusEnum))
+        {
+            whereConditions.Add("p.visibility = CAST(@status AS plugin_visibility_enum)");
+            parameters.Add("status", statusEnum.ToString().ToLower());
+        }
+        var whereClause = whereConditions.Count > 0 ? "WHERE " + string.Join(" AND ", whereConditions) : "";
+        parameters.Add("skip", model.Skip);
+        parameters.Add("take", model.Count);
+
         await using var conn = await connectionFactory.Open();
-        var rows = await conn.QueryAsync("""
+        var rows = await conn.QueryAsync($"""
                                          SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
                                          FROM plugins p
                                          LEFT JOIN users_plugins up ON p.slug = up.plugin_slug
@@ -44,16 +60,15 @@ public class AdminController(
                                          LEFT JOIN (
                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
                                              FROM versions
-                                             ORDER BY plugin_slug, build_id DESC
+                                             ORDER BY plugin_slug, updated_at DESC
                                          ) v ON p.slug = v.plugin_slug
-                                         ORDER BY p.slug;
-                                         """);
+                                         {whereClause}
+                                         ORDER BY p.slug
+                                         OFFSET @skip LIMIT @take;
+                                         """, parameters);
         List<AdminPluginViewModel> plugins = new();
 
-        if (!string.IsNullOrEmpty(model.SearchText))
-            rows = rows.Where(o => (o.slug != null && o.slug.Contains(model.SearchText)) || (o.email != null && o.email.Contains(model.SearchText)));
-        var pluginData = rows.Skip(model.Skip).Take(model.Count);
-        foreach (var row in pluginData)
+        foreach (var row in rows)
         {
             AdminPluginViewModel plugin = new()
             {
@@ -61,7 +76,6 @@ public class AdminController(
                 Visibility = row.visibility,
                 PublisherEmail = row.email
             };
-
             if (row.ver != null)
             {
                 plugin.Version = string.Join('.', row.ver);
@@ -70,7 +84,6 @@ public class AdminController(
                 plugin.PreRelease = row.pre_release;
                 plugin.UpdatedAt = row.updated_at;
             }
-
             plugins.Add(plugin);
         }
 
