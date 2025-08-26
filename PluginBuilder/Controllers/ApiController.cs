@@ -303,6 +303,80 @@ public class ApiController(
         return Ok(vm);
     }
 
+    [AllowAnonymous]
+    [HttpPost("plugins/updates")]
+    public async Task<IActionResult> GetInstalledPluginsUpdates(
+        [FromBody] InstalledPluginRequest[] plugins,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion? btcpayVersion = null,
+        bool? includePreRelease = null)
+    {
+        includePreRelease ??= false;
+
+        if (plugins.Length == 0)
+            return BadRequest(new { errors = new[] { new ValidationError(nameof(plugins), "At least one plugin must be provided.") } });
+
+        var currentByIdentifier = new Dictionary<string, Version>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in plugins)
+        {
+            if (Version.TryParse(item.Version, out var ver))
+                currentByIdentifier[item.Identifier] = ver;
+        }
+
+        if (currentByIdentifier.Count == 0)
+            return Ok(Array.Empty<PublishedVersion>());
+
+        var identifiers = currentByIdentifier.Keys.ToArray();
+
+        await using var conn = await connectionFactory.Open();
+
+        var query = """
+                    SELECT lv.plugin_slug, lv.ver, p.identifier, p.settings, b.id, b.manifest_info, b.build_info
+                    FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv
+                    JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
+                    JOIN plugins p ON b.plugin_slug = p.slug
+                    WHERE p.identifier = ANY(@identifiers)
+                      AND b.build_info IS NOT NULL
+                      AND b.manifest_info IS NOT NULL
+                      AND p.visibility <> 'hidden'
+                    """;
+
+        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string identifier, string settings, long id, string manifest_info, string build_info)>(
+            query,
+            new
+            {
+                btcpayVersion = btcpayVersion?.VersionParts,
+                includePreRelease = includePreRelease.Value,
+                identifiers
+            });
+
+        List<PublishedVersion> updates = new();
+        foreach (var row in rows)
+        {
+            if (!currentByIdentifier.TryGetValue(row.identifier, out var currentVer))
+                continue;
+
+            var latestVerString = string.Join('.', row.ver);
+            var latestVer = new Version(latestVerString);
+
+            if (latestVer > currentVer)
+            {
+                updates.Add(new PublishedVersion
+                {
+                    ProjectSlug = row.plugin_slug,
+                    Version = latestVerString,
+                    BuildId = row.id,
+                    BuildInfo = JObject.Parse(row.build_info),
+                    ManifestInfo = JObject.Parse(row.manifest_info),
+                    PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Logo,
+                    Documentation = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Documentation
+                });
+            }
+        }
+
+        return Ok(updates);
+    }
+
     private IActionResult ValidationErrorResult(ModelStateDictionary modelState)
     {
         List<ValidationError> errors = (from error in modelState
