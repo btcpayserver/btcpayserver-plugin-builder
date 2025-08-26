@@ -30,8 +30,7 @@ List the published versions of the server compatible with `btcpayVersion`. (opti
 
 If `includeAllVersions` is set to `true`, all versions will be returned, otherwise only the latest version for each plugin will be returned.
 
-* `searchPluginIdentifier`: Query parameter to search by plugin identifier
-* `searchPluginName`: Query parameter to search by plugin slug or name. If it is formatted as `[abc]`, it will be converted to `searchPluginIdentifier=abc`.
+* `searchPluginName`: Query parameter to search by plugin slug or name.
 
 #### Get a version
 
