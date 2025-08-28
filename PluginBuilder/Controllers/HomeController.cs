@@ -29,8 +29,23 @@ public class HomeController(
     ServerEnvironment env)
     : Controller
 {
+    [AllowAnonymous]
     [HttpGet("/")]
-    public async Task<IActionResult> HomePage()
+    public IActionResult HomePage(
+        [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null,
+        string? searchPluginName = null)
+    {
+        return RedirectToAction(
+            User.Identity?.IsAuthenticated == true
+                ? nameof(Dashboard)
+                : nameof(AllPlugins)
+        );
+    }
+
+    // auth methods
+
+    [HttpGet("/dashboard")]
+    public async Task<IActionResult> Dashboard()
     {
         await using var conn = await connectionFactory.Open();
         var rows =
@@ -38,13 +53,13 @@ public class HomeController(
                 .QueryAsync<(long id, string state, string? manifest_info, string? build_info, DateTimeOffset created_at, bool published, bool pre_release,
                     string slug, string? identifier)>
                 (@"SELECT id, state, manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release, p.slug, p.identifier
-FROM builds b
-    LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id
-    JOIN plugins p ON p.slug = b.plugin_slug
-    JOIN users_plugins up ON up.plugin_slug = b.plugin_slug
-WHERE up.user_id = @userId
-ORDER BY created_at DESC
-LIMIT 50", new { userId = userManager.GetUserId(User) });
+                        FROM builds b
+                            LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id
+                            JOIN plugins p ON p.slug = b.plugin_slug
+                            JOIN users_plugins up ON up.plugin_slug = b.plugin_slug
+                        WHERE up.user_id = @userId
+                        ORDER BY created_at DESC
+                        LIMIT 50", new { userId = userManager.GetUserId(User) });
         BuildListViewModel vm = new();
         foreach (var row in rows)
         {
@@ -68,8 +83,6 @@ LIMIT 50", new { userId = userManager.GetUserId(User) });
 
         return View("Views/Plugin/Dashboard", vm);
     }
-
-    // auth methods
 
     [HttpGet("/logout")]
     public async Task<IActionResult> Logout()
