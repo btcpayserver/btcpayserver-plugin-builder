@@ -148,6 +148,29 @@ public class PluginController(
             return RedirectToAction("AccountDetails", "Account");
         }
 
+        try
+        {
+            var identifier = await buildService.FetchIdentifierFromGithubCsprojAsync(
+                model.GitRepository,
+                model.GitRef,
+                model.PluginDirectory
+            );
+
+            var owns = await conn.EnsureIdentifierOwnership(pluginSlug, identifier);
+            if (!owns)
+            {
+                TempData[TempDataConstant.WarningMessage] =
+                    $"The plugin identifier '{identifier}' does not belong to project slug '{pluginSlug}'.";
+                return View(model);
+            }
+        }
+        catch (BuildServiceException ex)
+        {
+            TempData[TempDataConstant.WarningMessage] =
+                $"Manifest validation failed: {ex.Message}";
+            return View(model);
+        }
+
         var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter(), firstBuildEvent);
         _ = buildService.Build(new FullBuildId(pluginSlug, buildId));
         return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
