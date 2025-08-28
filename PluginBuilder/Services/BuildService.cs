@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using System.Xml.Linq;
 using Dapper;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Events;
@@ -12,19 +13,22 @@ public class BuildServiceException(string message) : Exception(message);
 public class BuildService
 {
     private static readonly SemaphoreSlim _semaphore = new(5);
+    private readonly HttpClient _httpClient;
 
     public BuildService(
         ILogger<BuildService> logger,
         ProcessRunner processRunner,
         DBConnectionFactory connectionFactory,
         EventAggregator eventAggregator,
-        AzureStorageClient azureStorageClient)
+        AzureStorageClient azureStorageClient,
+        HttpClient httpClient)
     {
         Logger = logger;
         ProcessRunner = processRunner;
         ConnectionFactory = connectionFactory;
         EventAggregator = eventAggregator;
         AzureStorageClient = azureStorageClient;
+        _httpClient = httpClient;
     }
 
     public ILogger<BuildService> Logger { get; }
@@ -209,8 +213,8 @@ public class BuildService
         await connection.UpdateBuild(fullBuildId, newState, buildInfo, manifestInfo);
         EventAggregator.Publish(new BuildChanged(fullBuildId, newState) { BuildInfo = buildInfo?.ToString(), ManifestInfo = manifestInfo?.ToString() });
     }
-    
-    
+
+
     public class BuildOutputCapture : IOutputCapture, IDisposable
     {
         private readonly Channel<string> lines = Channel.CreateUnbounded<string>();
@@ -254,4 +258,42 @@ public class BuildService
             }
         }
     }
+
+    public async Task<string> FetchIdentifierFromGithubCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
+    {
+        var (owner, repo) = ExtractOwnerRepo(repoUrl);
+
+        var projectName = pluginDir?.Split('/', StringSplitOptions.RemoveEmptyEntries).Last()
+                          ?? repo;
+
+        var csprojPath = string.IsNullOrEmpty(pluginDir)
+            ? $"{projectName}.csproj"
+            : $"{pluginDir.TrimEnd('/')}/{projectName}.csproj";
+
+        var refName = string.IsNullOrEmpty(gitRef) ? "HEAD" : gitRef;
+        var rawUrl = $"https://raw.githubusercontent.com/{owner}/{repo}/{refName}/{csprojPath}";
+
+        var resp = await _httpClient.GetAsync(rawUrl);
+        if (!resp.IsSuccessStatusCode)
+            throw new BuildServiceException($"Could not fetch csproj from {rawUrl} (HTTP {(int)resp.StatusCode})");
+
+        var xml = await resp.Content.ReadAsStringAsync();
+
+        var doc = XDocument.Parse(xml);
+        var assemblyName = doc.Descendants("AssemblyName").FirstOrDefault()?.Value
+                           ?? Path.GetFileNameWithoutExtension(csprojPath);
+
+        return assemblyName;
+    }
+
+
+
+    private (string owner, string repo) ExtractOwnerRepo(string repoUrl)
+    {
+        var uri = new Uri(repoUrl.Replace(".git", ""));
+        var parts = uri.AbsolutePath.Trim('/').Split('/');
+        if (parts.Length < 2) throw new BuildServiceException("Invalid repository URL");
+        return (parts[0], parts[1]);
+    }
+
 }
