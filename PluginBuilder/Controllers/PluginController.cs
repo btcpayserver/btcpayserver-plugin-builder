@@ -99,7 +99,7 @@ public class PluginController(
         PluginSlug pluginSlug, long? copyBuild = null)
     {
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerified(User))
+        if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";
@@ -141,7 +141,7 @@ public class PluginController(
         if (!ModelState.IsValid)
             return View(model);
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerified(User))
+        if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";

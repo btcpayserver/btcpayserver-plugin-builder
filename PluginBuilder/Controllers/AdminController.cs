@@ -4,7 +4,6 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Npgsql;
 using PluginBuilder.Controllers.Logic;
@@ -93,11 +92,11 @@ public class AdminController(
     }
 
     [HttpPost]
-    public async Task<IActionResult> UpdateVerifiedEmailRequirement(bool verifiedEmailForPluginPublish)
+    public async Task<IActionResult> UpdateVerifiedEmailForPublishRequirement(bool verifiedEmailForPluginPublish)
     {
         await using var conn = await connectionFactory.Open();
         await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
-        await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
+        await emailVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
         TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
         return RedirectToAction("ListPlugins");
     }
@@ -509,7 +508,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsSetAsync(key, value);
-        await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
+        await emailVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
         return RedirectToAction(nameof(SettingsEditor));
     }
 
@@ -521,7 +520,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsDeleteAsync(key);
-        await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
+        await emailVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
         return Ok();
     }
 

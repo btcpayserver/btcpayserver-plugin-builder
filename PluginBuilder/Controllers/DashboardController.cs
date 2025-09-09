@@ -22,7 +22,7 @@ public class DashboardController(
     public async Task<IActionResult> CreatePlugin()
     {
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerified(User))
+        if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";
@@ -43,7 +43,7 @@ public class DashboardController(
         }
 
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerified(User))
+        if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";

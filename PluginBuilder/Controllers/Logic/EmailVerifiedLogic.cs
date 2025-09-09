@@ -11,12 +11,22 @@ public class EmailVerifiedLogic(
     EmailService emailService,
     EmailVerifiedCache emailVerifiedCache)
 {
-    public bool IsEmailVerificationRequired => emailVerifiedCache.IsEmailVerificationRequired;
+    public bool IsEmailVerificationRequiredForLogin => emailVerifiedCache.IsEmailVerificationRequiredForLogin;
 
-    public async Task<bool> IsUserEmailVerified(ClaimsPrincipal claimsPrincipal)
+    public async Task<bool> IsUserEmailVerifiedForPublish(ClaimsPrincipal claimsPrincipal)
     {
         var emailSettings = await emailService.GetEmailSettingsFromDb();
-        if (!emailVerifiedCache.IsEmailVerificationRequired || emailSettings?.PasswordSet != true)
+        if (!emailVerifiedCache.IsEmailVerificationRequiredForPublish || emailSettings?.PasswordSet != true)
+            return true; // for now always return true in these cases if we don't have a verified email
+
+        var user = await userManager.GetUserAsync(claimsPrincipal);
+        return await userManager.IsEmailConfirmedAsync(user!);
+    }
+
+    public async Task<bool> IsUserEmailVerifiedForLogin(ClaimsPrincipal claimsPrincipal)
+    {
+        var emailSettings = await emailService.GetEmailSettingsFromDb();
+        if (!emailVerifiedCache.IsEmailVerificationRequiredForLogin || emailSettings?.PasswordSet != true)
             return true; // for now always return true in these cases if we don't have a verified email
 
         var user = await userManager.GetUserAsync(claimsPrincipal);
@@ -26,11 +36,22 @@ public class EmailVerifiedLogic(
 
 public class EmailVerifiedCache
 {
-    public bool IsEmailVerificationRequired { get; private set; }
+    public bool IsEmailVerificationRequiredForPublish { get; private set; }
+    public bool IsEmailVerificationRequiredForLogin { get; private set; }
 
-    public async Task<bool> RefreshIsVerifiedEmailRequired(NpgsqlConnection conn)
+    public async Task RefreshIsVerifiedEmailRequiredForPublish(NpgsqlConnection conn)
     {
-        IsEmailVerificationRequired = await conn.GetVerifiedEmailForPluginPublishSetting();
-        return IsEmailVerificationRequired;
+        IsEmailVerificationRequiredForPublish = await conn.GetVerifiedEmailForPluginPublishSetting();
+    }
+
+    public async Task RefreshIsVerifiedEmailRequiredForLogin(NpgsqlConnection conn)
+    {
+        IsEmailVerificationRequiredForLogin = await conn.GetVerifiedEmailForLoginSetting();
+    }
+
+    public async Task RefreshAllVerifiedEmailSettings(NpgsqlConnection conn)
+    {
+        await RefreshIsVerifiedEmailRequiredForPublish(conn);
+        await RefreshIsVerifiedEmailRequiredForLogin(conn);
     }
 }
