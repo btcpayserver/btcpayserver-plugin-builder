@@ -15,12 +15,27 @@
 <div class="account-form">
     <h4>@ViewData["Title"]</h4>
     <form asp-route-returnurl="@ViewData["ReturnUrl"]" method="post" id="login-form" asp-action="Login">
+        @Html.AntiForgeryToken()
         <fieldset>
-            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div asp-validation-summary="ModelOnly" class="text-danger">
+
+            </div>
             <div class="form-group">
                 <label asp-for="Email" class="form-label"></label>
                 <input asp-for="Email" class="form-control" required tabindex="1" autofocus />
-                <span asp-validation-for="Email" class="text-danger"></span>
+                <div class="d-flex justify-content-between align-items-center mt-1">
+                    <span asp-validation-for="Email" class="text-danger"></span>
+
+                    @if (Model.IsVerifiedEmailRequired)
+                    {
+                        <button type="submit"
+                                class="btn btn-link p-0"
+                                formaction="@Url.Action("ResendConfirmation", "Home")"
+                                formmethod="post">
+                            Resend confirmation
+                        </button>
+                    }
+                </div>
             </div>
             <div class="form-group">
                 <div class="d-flex justify-content-between">
@@ -30,12 +45,9 @@
                     <input asp-for="Password" class="form-control" required tabindex="2" />
                 </div>
                 <span asp-validation-for="Password" class="text-danger"></span>
-                @if (Model.IsVerifiedEmailRequired)
-                {
-                    <div class="form-group mt-1">
-                        <a asp-action="ForgotPassword" asp-controller="Home">Forgot your password?</a>
-                    </div>
-                }
+                <div class="form-group mt-1">
+                    <a asp-action="ForgotPassword" asp-controller="Home">Forgot your password?</a>
+                </div>
             </div>
             <div class="form-group mt-4">
                 <div class="btn-group w-100">
