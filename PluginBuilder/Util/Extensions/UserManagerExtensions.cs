@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace PluginBuilder.Util.Extensions;
 
@@ -8,10 +9,13 @@ public static class UserManagerExtensions
         this UserManager<TUser> userManager,
         IEnumerable<string> userIds) where TUser : class
     {
-        if (!userIds.Any())
+        var ids = userIds.Distinct().ToArray();
+        if (ids.Length == 0)
             return new List<TUser>();
 
-        var users = await Task.WhenAll(userIds.Select(userManager.FindByIdAsync));
-        return users.Where(u => u != null).ToList();
+        return await userManager.Users
+            .Where(u => ids.Contains(EF.Property<string>(u, "Id")))
+            .AsNoTracking()
+            .ToListAsync();
     }
 }

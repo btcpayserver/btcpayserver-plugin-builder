@@ -527,16 +527,19 @@ public class AdminController(
 
     private async Task<List<PluginUsersViewModel>> GetPluginUsers(NpgsqlConnection conn, string slug)
     {
-        var pluginOwner = await conn.RetrievePluginOwner(slug);
-        var userIds = await conn.RetrievePluginUserIds(slug);
+        var ownerId = await conn.RetrievePluginOwner(slug);
+        var userIds = (await conn.RetrievePluginUserIds(slug)).ToList();
+
+        if (userIds.Count == 0)
+            return new List<PluginUsersViewModel>();
+
         var users = await userManager.FindUsersByIdsAsync(userIds);
-        return userIds.Any()
-            ? (await userManager.FindUsersByIdsAsync(userIds)).Select(u => new PluginUsersViewModel
-            {
-                Email = u.Email,
-                UserId = u.Id,
-                IsPluginOwner = u.Id == pluginOwner
-            }).ToList()
-            : new List<PluginUsersViewModel>();
+
+        return users.Select(u => new PluginUsersViewModel
+        {
+            Email = u.Email ?? string.Empty,
+            UserId = u.Id,
+            IsPluginOwner = u.Id == ownerId
+        }).ToList();
     }
 }
