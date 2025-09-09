@@ -95,7 +95,7 @@ public class HomeController(
     [HttpGet("/login")]
     public IActionResult Login()
     {
-        return View(new LoginViewModel { IsVerifiedEmailRequired = emailVerifiedLogic.IsEmailVerificationRequired });
+        return View(new LoginViewModel());
     }
 
     [AllowAnonymous]
@@ -103,10 +103,8 @@ public class HomeController(
     public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
     {
         ViewData["ReturnUrl"] = returnUrl;
-        model.IsVerifiedEmailRequired = emailVerifiedLogic.IsEmailVerificationRequired;
         if (!ModelState.IsValid)
             return View(model);
-        // Require the user to have a confirmed email before they can log on.
         var user = await userManager.FindByEmailAsync(model.Email);
         if (user is null)
         {
@@ -114,13 +112,31 @@ public class HomeController(
             return View(model);
         }
 
-        var result = await signInManager.PasswordSignInAsync(model.Email, model.Password, model.RememberMe, false);
+        var result = await signInManager.CheckPasswordSignInAsync(user, model.Password, lockoutOnFailure: true);
         if (!result.Succeeded)
         {
             ModelState.AddModelError(string.Empty, "Invalid login attempt.");
             return View(model);
         }
 
+        if (emailVerifiedLogic.IsEmailVerificationRequiredForLogin)
+        {
+            var principal = await signInManager.CreateUserPrincipalAsync(user);
+            var isVerified = await emailVerifiedLogic.IsUserEmailVerifiedForLogin(principal);
+
+            if (isVerified)
+            {
+                await signInManager.SignInAsync(user, isPersistent: model.RememberMe);
+                return RedirectToLocal(returnUrl);
+            }
+
+            model.IsVerifiedEmailRequired = true;
+            ModelState.AddModelError(nameof(LoginViewModel.Email),
+                "You must confirm your email before signing in.");
+            return View(model);
+        }
+
+        await signInManager.SignInAsync(user, isPersistent: model.RememberMe);
         return RedirectToLocal(returnUrl);
     }
 
