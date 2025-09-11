@@ -1,5 +1,7 @@
+@using Microsoft.AspNetCore.Mvc.TagHelpers
 @using Newtonsoft.Json.Linq
 @using PluginBuilder.APIModels
+@using PluginBuilder.Controllers
 @model PublishedPlugin
 @{
 	Layout = "_LayoutPublicModal";
@@ -9,6 +11,40 @@
 			Model.BuildInfo?["gitCommit"]?.ToString(),
 			Model.BuildInfo?["pluginDir"]?.ToString()
 		);
+}
+
+@{
+    var title   = (string?)Model.ManifestInfo?["Name"] ?? Model.ProjectSlug ?? "BTCPay Plugin";
+    var rawDesc = (string?)Model.ManifestInfo?["Description"];
+    var desc    = string.IsNullOrWhiteSpace(rawDesc) ? "Plugin for BTCPay Server" : rawDesc;
+
+    ViewData["Title"] = title;
+
+    var pageUrl = Url.Action(
+        nameof(HomeController.GetPluginDetails), "Home",
+        new { pluginSlug = Model.ProjectSlug },
+        protocol: Context.Request.Scheme,
+        host: Context.Request.Host.ToString()
+    );
+}
+
+@section Meta {
+    <!-- Open Graph -->
+    <meta property="og:type"        content="website" />
+    <meta property="og:title"       content="@title" />
+    <meta property="og:description" content="@desc" />
+    <meta property="og:url"         content="@pageUrl" />
+    <meta property="og:image"       content="@Model.PluginLogo" />
+    <meta property="og:site_name"   content="BTCPay Server Plugin Builder" />
+    <meta property="og:locale" content="en_US">
+
+    <!-- Twitter -->
+    <meta name="twitter:card"        content="summary_large_image" />
+    <meta name="twitter:title"       content="@title" />
+    <meta name="twitter:description" content="@desc" />
+    <meta name="twitter:image"       content="@Model.PluginLogo" />
+
+    <link rel="canonical" href="@pageUrl" />
 }
 
 <partial name="_PublicHeader" />
