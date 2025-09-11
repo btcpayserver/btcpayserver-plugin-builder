@@ -130,10 +130,12 @@ public class HomeController(
                 return RedirectToLocal(returnUrl);
             }
 
-            model.IsVerifiedEmailRequired = true;
-            ModelState.AddModelError(nameof(LoginViewModel.Email),
-                "You must confirm your email before signing in.");
-            return View(model);
+            var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+            var link = Url.Action(nameof(ConfirmEmail), "Home",
+                new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
+            var email = user.Email!;
+            await emailService.SendVerifyEmail(email, link);
+            return RedirectToAction(nameof(VerifyEmail), new { email, sent = true });
         }
 
         await signInManager.SignInAsync(user, isPersistent: model.RememberMe);
@@ -423,32 +425,6 @@ public class HomeController(
 
         model.FormSubmitted = true;
         return View(model);
-    }
-
-    [AllowAnonymous]
-    [HttpPost("/ResendConfirmation")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ResendConfirmation(string email, string? returnUrl = null)
-    {
-        var user = await userManager.FindByEmailAsync(email);
-        if (user != null)
-        {
-            var emailSettings = await emailService.GetEmailSettingsFromDb();
-            var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user);
-
-            if (needToVerifyEmail)
-            {
-                var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
-                var link = Url.Action(nameof(ConfirmEmail), "Home",
-                    new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
-                await emailService.SendVerifyEmail(user.Email!, link);
-                return RedirectToAction(nameof(VerifyEmail), new { email, sent = true });
-            }
-        }
-
-        ModelState.AddModelError(nameof(LoginViewModel.Email),
-            "Resend of email confirmation failed.");
-        return View("Login", new LoginViewModel { Email = email});
     }
 
     private IActionResult RedirectToLocal(string? returnUrl = null)
