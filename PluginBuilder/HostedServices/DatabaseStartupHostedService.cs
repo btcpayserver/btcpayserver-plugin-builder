@@ -34,7 +34,7 @@ public class DatabaseStartupHostedService : IHostedService
             await RunScripts(conn);
             await CleanupScript(conn);
 
-            await emailVerifiedCache.RefreshIsVerifiedEmailRequired(conn);
+            await emailVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
             await conn.SettingsInitialize();
         }
         catch (NpgsqlException pgex) when (pgex.SqlState == "3D000")

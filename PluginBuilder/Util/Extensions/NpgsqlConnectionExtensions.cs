@@ -20,7 +20,7 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task<bool> SetPluginSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings pluginSettings)
     {
-        var count = await connection.ExecuteAsync("UPDATE plugins SET settings=@settings::JSONB WHERE slug=@pluginSlug",
+        var count = await connection.ExecuteAsync("UPDATE plugins SET settings = @settings::JSONB WHERE slug=@pluginSlug",
             new { pluginSlug = pluginSlug.ToString(), settings = JsonConvert.SerializeObject(pluginSettings, CamelCaseSerializerSettings.Instance) });
         return count == 1;
     }
@@ -119,7 +119,7 @@ public static class NpgsqlConnectionExtensions
     {
         await connection.ExecuteAsync(
             "UPDATE builds " +
-            "SET state=@state, " +
+            "SET state = @state, " +
             "build_info=COALESCE(build_info || @build_info::JSONB, @build_info::JSONB, build_info), " +
             "manifest_info=COALESCE(@manifest_info::JSONB, manifest_info) " +
             "WHERE plugin_slug=@plugin_slug AND id=@buildId",
@@ -150,7 +150,7 @@ public static class NpgsqlConnectionExtensions
             return pluginIdentifier == identifier;
         try
         {
-            return await connection.ExecuteAsync("UPDATE plugins SET identifier=@identifier WHERE slug=@pluginSlug AND identifier IS NULL",
+            return await connection.ExecuteAsync("UPDATE plugins SET identifier = @identifier WHERE slug=@pluginSlug AND identifier IS NULL",
                 new { pluginSlug = pluginSlug.ToString(), identifier }) == 1;
         }
         catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
@@ -196,7 +196,7 @@ public static class NpgsqlConnectionExtensions
 
         return await connection.ExecuteAsync(
             "INSERT INTO versions AS v VALUES (@plugin_slug, @ver, @build_id, @btcpay_min_ver, @pre_release) " +
-            "ON CONFLICT (plugin_slug, ver) DO UPDATE SET build_id = @build_id, btcpay_min_ver = @btcpay_min_ver, pre_release=@pre_release " +
+            "ON CONFLICT (plugin_slug, ver) DO UPDATE SET build_id = @build_id, btcpay_min_ver = @btcpay_min_ver, pre_release = @pre_release " +
             "WHERE v.pre_release IS TRUE AND (v.build_id != @build_id OR v.btcpay_min_ver != @btcpay_min_ver OR @pre_release IS FALSE);",
             new
             {
@@ -295,31 +295,48 @@ public static class NpgsqlConnectionExtensions
     {
         var query = "SELECT key, value FROM settings";
         var result = (await connection.QueryAsync<(string key, string value)>(query)).ToList();
-        if (result.All(r => r.key != "FirstPluginBuildReviewers"))
+        if (result.All(r => r.key != SettingsKeys.FirstPluginBuildReviewers))
         {
-            await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES ('FirstPluginBuildReviewers', '')");
+            await connection.ExecuteAsync(
+                "INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.FirstPluginBuildReviewers, value = "" });
         }
-        if (result.All(r => r.key != "VerifiedEmailForPluginPublish"))
+
+        if (result.All(r => r.key != SettingsKeys.VerifiedEmailForPluginPublish))
         {
-            await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES ('VerifiedEmailForPluginPublish', 'true')");
+            await connection.ExecuteAsync(
+                "INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.VerifiedEmailForPluginPublish, value = "true" });
+        }
+        if (result.All(r => r.key != SettingsKeys.VerifiedEmailForLogin))
+        {
+            await connection.ExecuteAsync(
+                "INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.VerifiedEmailForLogin, value = "true" });
         }
     }
 
     public static async Task<bool> GetVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection)
     {
-        var settingValue = await SettingsGetAsync(connection, "VerifiedEmailForPluginPublish");
+        var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedEmailForPluginPublish);
+        return bool.TryParse(settingValue, out var result) && result;
+    }
+
+    public static async Task<bool> GetVerifiedEmailForLoginSetting(this NpgsqlConnection connection)
+    {
+        var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedEmailForLogin);
         return bool.TryParse(settingValue, out var result) && result;
     }
 
     public static Task<string?> GetFirstPluginBuildReviewersSetting(this NpgsqlConnection connection)
     {
-        return SettingsGetAsync(connection, "FirstPluginBuildReviewers");
+        return SettingsGetAsync(connection, SettingsKeys.FirstPluginBuildReviewers);
     }
 
     public static async Task UpdateVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection, bool newValue)
     {
-        var stringValue = newValue.ToString().ToLower();
-        await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = 'VerifiedEmailForPluginPublish'",
-            new { Value = stringValue });
+        var stringValue = newValue.ToString().ToLowerInvariant();
+        await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = @Key",
+            new { Value = stringValue, Key = SettingsKeys.VerifiedEmailForPluginPublish });
     }
 }

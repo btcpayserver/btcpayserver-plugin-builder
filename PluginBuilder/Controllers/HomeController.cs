@@ -95,7 +95,7 @@ public class HomeController(
     [HttpGet("/login")]
     public IActionResult Login()
     {
-        return View(new LoginViewModel { IsVerifiedEmailRequired = emailVerifiedLogic.IsEmailVerificationRequired });
+        return View(new LoginViewModel());
     }
 
     [AllowAnonymous]
@@ -103,10 +103,8 @@ public class HomeController(
     public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
     {
         ViewData["ReturnUrl"] = returnUrl;
-        model.IsVerifiedEmailRequired = emailVerifiedLogic.IsEmailVerificationRequired;
         if (!ModelState.IsValid)
             return View(model);
-        // Require the user to have a confirmed email before they can log on.
         var user = await userManager.FindByEmailAsync(model.Email);
         if (user is null)
         {
@@ -114,13 +112,33 @@ public class HomeController(
             return View(model);
         }
 
-        var result = await signInManager.PasswordSignInAsync(model.Email, model.Password, model.RememberMe, false);
+        var result = await signInManager.CheckPasswordSignInAsync(user, model.Password, lockoutOnFailure: true);
         if (!result.Succeeded)
         {
             ModelState.AddModelError(string.Empty, "Invalid login attempt.");
             return View(model);
         }
 
+        if (emailVerifiedLogic.IsEmailVerificationRequiredForLogin)
+        {
+            var principal = await signInManager.CreateUserPrincipalAsync(user);
+            var isVerified = await emailVerifiedLogic.IsUserEmailVerifiedForLogin(principal);
+
+            if (isVerified)
+            {
+                await signInManager.SignInAsync(user, isPersistent: model.RememberMe);
+                return RedirectToLocal(returnUrl);
+            }
+
+            var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+            var link = Url.Action(nameof(ConfirmEmail), "Home",
+                new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
+            var email = user.Email!;
+            await emailService.SendVerifyEmail(email, link);
+            return RedirectToAction(nameof(VerifyEmail), new { email, sent = true });
+        }
+
+        await signInManager.SignInAsync(user, isPersistent: model.RememberMe);
         return RedirectToLocal(returnUrl);
     }
 
