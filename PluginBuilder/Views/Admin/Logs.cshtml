@@ -1,0 +1,64 @@
+@model LogsViewModel
+@{
+    ViewData.SetActivePage(AdminNavPages.Logs, "Logs");
+}
+
+<div class="sticky-header">
+	<h2 class="my-1">@ViewData["Title"]</h2>
+</div>
+
+<ul class="list-unstyled">
+    @foreach (var file in Model.LogFiles)
+    {
+        <li>
+            <a asp-action="LogsView" asp-route-file="@file.Name" asp-route-offset="@Model.LogFileOffset">@file.Name</a>
+            <a asp-action="LogsView" asp-route-file="@file.Name" asp-route-offset="@Model.LogFileOffset" asp-route-download="true" class="mx-2">
+                <vc:icon symbol="actions-download" />
+            </a>
+        </li>
+    }
+</ul>
+
+@{
+    var total = Model.LogFileCount;
+    var countOnPage = Model.LogFiles?.Count ?? 0;
+
+    var shownFrom = total == 0 ? 0 : Model.LogFileOffset + 1;
+    var shownTo   = Model.LogFileOffset + countOnPage;
+
+    var hasPrev   = Model.LogFileOffset > 0;
+    var prevOffset = Math.Max(0, Model.LogFileOffset - Math.Max(1, countOnPage));
+
+    var hasNext   = shownTo < total;
+    var nextOffset = hasNext ? shownTo : Model.LogFileOffset;
+}
+<nav aria-label="Logs pagination" class="w-100">
+    <ul class="pagination float-start">
+        <li class="page-item @(hasPrev ? null : "disabled")">
+            <a class="page-link" asp-action="LogsView" asp-route-offset="@prevOffset" aria-label="Previous">&laquo;</a>
+        </li>
+        <li class="page-item disabled">
+            <span class="page-link">
+                @($"Showing {shownFrom}–{shownTo} of {total}")
+            </span>
+        </li>
+        <li class="page-item @(hasNext ? null : "disabled")">
+            <a class="page-link" asp-action="LogsView" asp-route-offset="@nextOffset" aria-label="Next">&raquo;</a>
+        </li>
+    </ul>
+</nav>
+
+@if (!string.IsNullOrEmpty(Model.Log))
+{
+<br>
+<br>
+<br>
+
+<pre>
+@Model.Log
+</pre>
+}
+
+@section FooterScripts {
+    <partial name="_ValidationScriptsPartial" />
+}
