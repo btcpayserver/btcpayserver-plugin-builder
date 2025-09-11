@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Npgsql;
+using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
@@ -24,11 +25,15 @@ public class AdminController(
     DBConnectionFactory connectionFactory,
     EmailService emailService,
     UserVerifiedCache userVerifiedCache,
-    ReferrerNavigationService referrerNavigation)
+    ReferrerNavigationService referrerNavigation,
+    PluginBuilderOptions pbOptions)
+
     : Controller
 {
     // settings editor
     private const string ProtectedKeys = SettingsKeys.EmailSettings;
+
+    private readonly string _logFile = pbOptions.LogFile;
 
     [HttpGet("plugins")]
     public async Task<IActionResult> ListPlugins(AdminPluginSettingViewModel? model = null)
@@ -533,6 +538,73 @@ public class AdminController(
         await userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
         return Ok();
     }
+
+    [Route("server/logs/{file?}")]
+        public async Task<IActionResult> LogsView(string? file = null, int offset = 0, bool download = false)
+        {
+            if (offset < 0) offset = 0;
+
+            var vm = new LogsViewModel();
+
+            if (string.IsNullOrEmpty(_logFile))
+            {
+                TempData[TempDataConstant.WarningMessage] =
+                    "Log file path is not configured. Set PluginBuilder:LogFile (or debuglog / PLUGIN_BUILDER_LOG_FILE).";
+                return View("Logs", vm);
+            }
+
+            var di = Directory.GetParent(_logFile);
+            if (di is null)
+            {
+                TempData[TempDataConstant.WarningMessage] = "Could not find the logs directory.";
+                return View("Logs", vm);
+            }
+
+            var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(_logFile);
+            var fileExtension = Path.GetExtension(_logFile);
+            // We are checking if "di" is null above yet accessing GetFiles on it, this could lead to an exception?
+            var logFiles = di.GetFiles($"{fileNameWithoutExtension}*{fileExtension}");
+            vm.LogFileCount = logFiles.Length;
+            vm.LogFiles = logFiles
+                .OrderBy(info => info.LastWriteTime)
+                .Skip(offset)
+                .Take(5)
+                .ToList();
+            vm.LogFileOffset = offset;
+
+            if (string.IsNullOrEmpty(file) || !file.EndsWith(fileExtension, StringComparison.Ordinal))
+                return View("Logs", vm);
+            vm.Log = "";
+            var fi = vm.LogFiles.FirstOrDefault(o => o.Name == file);
+            if (fi == null)
+                return NotFound();
+            try
+            {
+                var fileStream = new FileStream(
+                    fi.FullName,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite);
+                if (download)
+                {
+                    return new FileStreamResult(fileStream, "text/plain")
+                    {
+                        FileDownloadName = file
+                    };
+                }
+                await using (fileStream)
+                {
+                    using var reader = new StreamReader(fileStream);
+                    vm.Log = await reader.ReadToEndAsync();
+                }
+            }
+            catch
+            {
+                return NotFound();
+            }
+
+            return View("Logs", vm);
+        }
 
     private async Task<List<PluginUsersViewModel>> GetPluginUsers(NpgsqlConnection conn, string slug)
     {
