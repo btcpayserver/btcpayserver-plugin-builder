@@ -37,7 +37,7 @@ public class AccountController(
 
             var action = nameof(HomeController.VerifyEmail);
             var ctrl = nameof(HomeController).Replace("Controller", "");
-            return RedirectToAction(action, ctrl);
+            return RedirectToAction(action, ctrl, new { email = user.Email! });
         }
 
         return RedirectToAction(nameof(AccountDetails));

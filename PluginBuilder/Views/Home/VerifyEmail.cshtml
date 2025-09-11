@@ -1,19 +1,7 @@
 @model string
 @{
-    ViewData["Title"] = "Verify Email Address";
-    Layout = "_LayoutHomeModal";
+	Layout = "_LayoutHomeModal";
+	ViewData["VerifyEmailLayout"] = Layout;
 }
-<div class="row justify-content-center mb-2">
-    <div class="col text-center">
-        <a tabindex="-1" href="/">
-            <img src="~/img/btcpay-logo.svg" alt="BTCPay Server" class="mb-4" height="70" />
-        </a>
-        <h1 class="h2 mb-3">@ViewData["Title"]</h1>
-    </div>
-</div>
-<div class="account-form">
-    <p class="text-center mt-2 mb-0">
-        Please check <b>@Model</b> email address for verification email from us!<br />
-        If you find it in spam, please mark it as not spam to receive future emails from us.
-    </p>
-</div>
+
+<partial name="_VerifyEmailTemplate" model="Model" />
