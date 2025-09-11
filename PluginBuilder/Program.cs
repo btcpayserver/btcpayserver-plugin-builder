@@ -17,6 +17,9 @@ using PluginBuilder.HostedServices;
 using PluginBuilder.Hubs;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
+using Serilog;
+using Serilog.Extensions.Logging;
+using PluginBuilder.Configuration;
 
 namespace PluginBuilder;
 
@@ -68,7 +71,7 @@ public class Program
         builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Critical);
         builder.Logging.AddFilter("Microsoft.AspNetCore.Antiforgery.Internal", LogLevel.Critical);
 
-        AddServices(builder.Configuration, builder.Services);
+        AddServices(builder.Configuration, builder.Services, builder.Environment);
     }
 
     public void Configure(WebApplication app)
@@ -108,7 +111,7 @@ public class Program
         app.MapControllers();
     }
 
-    public void AddServices(IConfiguration configuration, IServiceCollection services)
+    public void AddServices(IConfiguration configuration, IServiceCollection services, IHostEnvironment env)
     {
         services.AddControllersWithViews()
             .AddRazorRuntimeCompilation()
@@ -118,10 +121,29 @@ public class Program
             })
             .AddNewtonsoftJson(o => o.SerializerSettings.Formatting = Formatting.Indented)
             .AddApplicationPart(typeof(Program).Assembly);
-        if (configuration["DATADIR"] is string datadir)
-            services.AddDataProtection()
-                .SetApplicationName("Plugin Builder")
-                .PersistKeysToFileSystem(new DirectoryInfo(datadir));
+
+        var pbOptions = PluginBuilderOptions.ConfigureDataDirAndDebugLog(configuration, env);
+        services.AddSingleton(pbOptions);
+
+        services.AddDataProtection()
+            .SetApplicationName("Plugin Builder")
+            .PersistKeysToFileSystem(new DirectoryInfo(pbOptions.DataDir));
+
+        const long maxDebugLogFileSize = 50 * 1024 * 1024;
+        Log.Logger = new LoggerConfiguration()
+            .Enrich.FromLogContext()
+            .MinimumLevel.Is(pbOptions.LogLevel)
+            .WriteTo.Console()
+            .WriteTo.File(pbOptions.LogFile,
+                rollingInterval: RollingInterval.Day,
+                fileSizeLimitBytes: maxDebugLogFileSize,
+                rollOnFileSizeLimit: true,
+                retainedFileCountLimit: 1,
+                shared: true)
+            .CreateLogger();
+
+        services.AddLogging(lb => lb.AddProvider(new SerilogLoggerProvider(Log.Logger, dispose: true)));
+
         services.AddHostedService<DatabaseStartupHostedService>();
         services.AddHostedService<DockerStartupHostedService>();
         services.AddHostedService<AzureStartupHostedService>();
