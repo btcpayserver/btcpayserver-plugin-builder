@@ -4,11 +4,15 @@
 	Layout = "_LayoutPublicModal";
 }
 
-
-
 <partial name="_PublicHeader" />
 
 <div class="container">
+	<div class="row mb-4">
+		<div class="col-12 text-center">
+			<h3 class="display-5 fw-bold">BTCPay Server Plugins</h3>
+			<p class="text-muted">Extend and customize your BTCPay Server with community and official plugins.</p>
+		</div>
+	</div>
 	<div class="row mb-4">
 		<form method="get" asp-action="AllPlugins">
 			<div class="input-group">
@@ -17,28 +21,31 @@
 		</form>
 	</div>
 	<div class="row">
-		@foreach (var plugin in Model)
+		@if (Model != null && Model.Any())
 		{
-			var owner = @plugin.GetGithubRepository()?.Owner;
-			<div class="col-md-6 mb-4">
-				<div class="card h-100 plugin-card" data-type="community">
-					<div class="card-body">
-						<div class="row">
-							<div style="display: flex; align-items: flex-start; margin-bottom: 20px;">
-								<div style="margin-right: 15px;">
-											<partial name="_PluginLogo" model="plugin" />
-								</div>
-								<div>
-									<h3 style="margin-top: 0; margin-bottom: 5px;">
-										<a asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.ProjectSlug">@plugin.ManifestInfo["Name"]?.ToString()</a>
-									</h3>
-									<p style="margin-bottom: 5px;">@plugin.ManifestInfo["Description"]?.ToString()</p>
-									<div style="font-size: 0.875em; color: #6c757d;">
-										<div style="margin-bottom: 3px;">
-											<span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
-										</div>
-										<div>
-											Latest Version: @plugin.Version
+			@foreach (var plugin in Model)
+			{
+				var owner = @plugin.GetGithubRepository()?.Owner;
+				<div class="col-md-6 mb-4">
+					<div class="card h-100 plugin-card" data-type="community">
+						<div class="card-body">
+							<div class="row">
+								<div style="display: flex; align-items: flex-start; margin-bottom: 20px;">
+									<div style="margin-right: 15px;">
+										<partial name="_PluginLogo" model="plugin" />
+									</div>
+									<div>
+										<h3 style="margin-top: 0; margin-bottom: 5px;">
+											<a asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.ProjectSlug">@plugin.ManifestInfo["Name"]?.ToString()</a>
+										</h3>
+										<p style="margin-bottom: 5px;">@plugin.ManifestInfo["Description"]?.ToString()</p>
+										<div style="font-size: 0.875em; color: #6c757d;">
+											<div style="margin-bottom: 3px;">
+												<span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
+											</div>
+											<div>
+												Latest Version: @plugin.Version
+											</div>
 										</div>
 									</div>
 								</div>
@@ -46,8 +53,14 @@
 						</div>
 					</div>
 				</div>
+			}
+		}
+		else
+		{
+			<div class="col-12 text-center py-5">
+				<h4>No plugins available yet</h4>
+				<p class="text-muted">Check back later, or login to upload one.</p>
 			</div>
 		}
 	</div>
 </div>
-

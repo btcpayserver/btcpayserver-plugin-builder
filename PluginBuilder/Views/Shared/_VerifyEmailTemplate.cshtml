@@ -1,0 +1,26 @@
+@model string
+@{
+	Layout = ViewData["VerifyEmailLayout"] as string ?? "_Layout";
+	var title = ViewData["VerifyEmailTitle"] as string ?? "Verify Email to use Plugin Builder";
+	var description = ViewData["VerifyEmailDescription"] as string;
+}
+<div class="row justify-content-center mb-2">
+	<div class="col text-center">
+		<a tabindex="-1" href="/">
+			<img src="~/img/btcpay-logo.svg" alt="BTCPay Server" class="mb-4" height="70" />
+		</a>
+		<h1 class="h2 mb-3">@title</h1>
+	</div>
+</div>
+<div class="account-form">
+	<p class="text-center mt-2 mb-0">
+		Please check your email: <b>@Model</b> for verification email from us!<br />
+		If you find it in spam, please mark it as not spam to receive future emails from us.
+	</p>
+	@if (!string.IsNullOrEmpty(description))
+	{
+		<p class="text-center mt-2 mb-0">
+			@description
+		</p>
+	}	
+</div>
