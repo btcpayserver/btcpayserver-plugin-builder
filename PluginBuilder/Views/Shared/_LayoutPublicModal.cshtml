@@ -5,8 +5,9 @@
 <html lang="en">
 <head>
 	<title>@ViewData["Title"]</title>
-	<partial name="_CommonHead"></partial>
-	<style>
+    <partial name="_CommonHead"></partial>
+    @RenderSection("Meta", required: false)
+    <style>
 		body, section, .content-wrapper {
 			margin: 0;
 			padding: 0;
