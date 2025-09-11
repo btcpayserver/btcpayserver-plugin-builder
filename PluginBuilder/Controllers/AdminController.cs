@@ -423,6 +423,7 @@ public class AdminController(
         await using var conn = await connectionFactory.Open();
         var emailSettingsJson = JsonConvert.SerializeObject(model);
         await conn.SettingsSetAsync("EmailSettings", emailSettingsJson);
+        await emailVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
     }
 
     [HttpGet("emailsender")]
