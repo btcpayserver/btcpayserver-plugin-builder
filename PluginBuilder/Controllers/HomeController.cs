@@ -135,7 +135,10 @@ public class HomeController(
                 new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
             var email = user.Email!;
             await emailService.SendVerifyEmail(email, link);
-            return RedirectToAction(nameof(VerifyEmail), new { email, sent = true });
+            ViewData["VerifyEmailTitle"] = "Email confirmation required to sign in";
+            ViewData["VerifyEmailDescription"] =
+                "After you confirm your email, please sign in again to continue.";
+            return View(nameof(VerifyEmail), model: email);
         }
 
         await signInManager.SignInAsync(user, isPersistent: model.RememberMe);
