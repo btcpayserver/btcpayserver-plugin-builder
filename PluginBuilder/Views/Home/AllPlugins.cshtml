@@ -44,7 +44,9 @@
 												<span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
 											</div>
 											<div>
-												Latest Version: @plugin.Version
+												Version: @plugin.Version - Published:
+												@(DateTimeOffset.TryParse(plugin.BuildInfo?["buildDate"]?.ToString(), out var parsedDate)
+																					? parsedDate.ToString("MMM dd, yyyy") : "")
 											</div>
 										</div>
 									</div>

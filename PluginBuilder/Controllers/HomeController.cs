@@ -260,7 +260,14 @@ public class HomeController(
                    p.settings,
                    b.manifest_info,
                    b.build_info,
-                   p.visibility
+                   p.visibility,
+                    (
+                        SELECT b2.created_at
+                        FROM builds b2
+                        WHERE b2.plugin_slug = v.plugin_slug
+                        ORDER BY b2.id ASC
+                        LIMIT 1
+                    ) AS created_at
             FROM versions v
             JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
             JOIN plugins p ON b.plugin_slug = p.slug
@@ -299,7 +306,8 @@ public class HomeController(
             BuildInfo = JObject.Parse((string)row.build_info),
             ManifestInfo = JObject.Parse((string)row.manifest_info),
             PluginLogo = settings.Logo,
-            Documentation = settings.Documentation
+            Documentation = settings.Documentation,
+            CreatedDate = (DateTimeOffset)row.created_at
         };
 
         ViewBag.Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir);
