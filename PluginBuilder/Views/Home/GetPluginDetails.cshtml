@@ -5,8 +5,8 @@
 @model PublishedPlugin
 @{
 	Layout = "_LayoutPublicModal";
-	var title = @Model.ManifestInfo["Name"]?.ToString();
-	var description = @Model.ManifestInfo["Description"]?.ToString();
+	var title = Model.ManifestInfo["Name"]?.ToString();
+	var description = Model.ManifestInfo["Description"]?.ToString();
 	var desc = string.IsNullOrWhiteSpace(description) ? "Plugin for BTCPay Server" : description;
 	var owner = Model.GetGithubRepository()?.Owner;
 	var dependencies = Model.ManifestInfo["Dependencies"] as JArray;
