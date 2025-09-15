@@ -121,7 +121,7 @@
 							</div>
 							<div class="row mb-3">
 								<div class="col-6">
-									<strong>Last Published</strong>
+									<strong>Published</strong>
 								</div>
 								<div class="col-6 text-end">
 									@(DateTimeOffset.TryParse(Model.BuildInfo?["buildDate"]?.ToString(), out var parsedDate) ? parsedDate.ToString("MMM dd, yyyy") : "")
