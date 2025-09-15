@@ -5,46 +5,36 @@
 @model PublishedPlugin
 @{
 	Layout = "_LayoutPublicModal";
+	var title = Model.ManifestInfo["Name"]?.ToString();
+	var description = Model.ManifestInfo["Description"]?.ToString();
+	var desc = string.IsNullOrWhiteSpace(description) ? "Plugin for BTCPay Server" : description;
 	var owner = Model.GetGithubRepository()?.Owner;
 	var dependencies = Model.ManifestInfo["Dependencies"] as JArray;
+
 	var sourceUrl = Model.GetGithubRepository()?.GetSourceUrl(
 			Model.BuildInfo?["gitCommit"]?.ToString(),
 			Model.BuildInfo?["pluginDir"]?.ToString()
 		);
-}
-
-@{
-    var title   = (string?)Model.ManifestInfo?["Name"] ?? Model.ProjectSlug ?? "BTCPay Plugin";
-    var rawDesc = (string?)Model.ManifestInfo?["Description"];
-    var desc    = string.IsNullOrWhiteSpace(rawDesc) ? "Plugin for BTCPay Server" : rawDesc;
-
-    ViewData["Title"] = title;
-
-    var pageUrl = Url.Action(
-        nameof(HomeController.GetPluginDetails), "Home",
-        new { pluginSlug = Model.ProjectSlug },
-        protocol: Context.Request.Scheme,
-        host: Context.Request.Host.ToString()
-    );
+	var pluginUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = Model.ProjectSlug },
+		protocol: Context.Request.Scheme, host: Context.Request.Host.ToString());
 }
 
 @section Meta {
-    <!-- Open Graph -->
+    <!-- Open Graph and Twitter metadata -->
     <meta property="og:type"        content="website" />
     <meta property="og:title"       content="@title" />
     <meta property="og:description" content="@desc" />
-    <meta property="og:url"         content="@pageUrl" />
+    <meta property="og:url"         content="@pluginUrl" />
     <meta property="og:image"       content="@Model.PluginLogo" />
     <meta property="og:site_name"   content="BTCPay Server Plugin Builder" />
-    <meta property="og:locale" content="en_US">
+    <meta property="og:locale" content="en_US" />
 
-    <!-- Twitter -->
     <meta name="twitter:card"        content="summary_large_image" />
     <meta name="twitter:title"       content="@title" />
     <meta name="twitter:description" content="@desc" />
     <meta name="twitter:image"       content="@Model.PluginLogo" />
 
-    <link rel="canonical" href="@pageUrl" />
+	<link rel="canonical" href="@pluginUrl" />
 }
 
 <partial name="_PublicHeader" />
@@ -65,7 +55,7 @@
 						<partial name="_PluginLogo" model="Model" />
 					</div>
 					<div>
-						<h1 class="display-6 mb-1">@Model.ManifestInfo["Name"]?.ToString()</h1>
+						<h1 class="display-6 mb-1">@title</h1>
 						<span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
 					</div>
 					<a asp-action="Download" asp-controller="Api"
@@ -86,7 +76,7 @@
 					<div class="card">
 						<div class="card-body">
 							<h4>Description</h4>
-							<p>@Model.ManifestInfo["Description"]?.ToString()</p>
+							<p>@description</p>
 						</div>
 					</div>
 					@if (ViewBag.Contributors is List<GitHubContributor> contributors && contributors.Any())
@@ -129,6 +119,14 @@
 									@Model.Version
 								</div>
 							</div>
+							<div class="row mb-3">
+								<div class="col-6">
+									<strong>Published</strong>
+								</div>
+								<div class="col-6 text-end">
+									@(DateTimeOffset.TryParse(Model.BuildInfo?["buildDate"]?.ToString(), out var parsedDate) ? parsedDate.ToString("MMM dd, yyyy") : "")
+								</div>
+							</div>
 							@if (!string.IsNullOrEmpty(sourceUrl))
 							{
 								<div class="row mb-3">
@@ -159,7 +157,7 @@
 							{
 								foreach (var dependency in dependencies)
 								{
-									<div class="row mb-2">
+									<div class="row mb-3">
 										<div class="col-6">
 											<strong>@dependency["Identifier"]</strong>
 										</div>
@@ -169,6 +167,14 @@
 									</div>
 								}
 							}
+							<div class="row mb-3">
+								<div class="col-6">
+									<strong>Created</strong>
+								</div>
+								<div class="col-6 text-end">
+									@Model.CreatedDate.ToString("MMM dd, yyyy")
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
