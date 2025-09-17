@@ -203,7 +203,7 @@ public class AdminController(
             case "AssignOwnership":
                 {
                     await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
-                    TempData[TempDataConstant.SuccessMessage] = "Plugin owener assignment was successful";
+                    TempData[TempDataConstant.SuccessMessage] = "Plugin owner assignment was successful";
                     break;
                 }
             default:
