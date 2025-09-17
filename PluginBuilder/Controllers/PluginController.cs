@@ -37,7 +37,7 @@ public class PluginController(
         if (settings is null)
             return NotFound();
 
-        var pluginOwner = await conn.RetrievePluginOwner(pluginSlug);
+        var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
         var vm = settings.ToPluginSettingViewModel();
         vm.IsPluginOwner = pluginOwner == userId;
         return View(vm);
@@ -53,7 +53,7 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         var existingSetting = await conn.GetSettings(pluginSlug);
         settingViewModel.LogoUrl = existingSetting?.Logo;
-        var pluginOwner = await conn.RetrievePluginOwner(pluginSlug);
+        var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
         settingViewModel.IsPluginOwner = pluginOwner == userId;
 
         if (settingViewModel is null)

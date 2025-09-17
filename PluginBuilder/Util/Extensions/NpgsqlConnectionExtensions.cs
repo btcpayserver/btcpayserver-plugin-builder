@@ -74,7 +74,7 @@ public static class NpgsqlConnectionExtensions
             new { pluginSlug = pluginSlug.ToString() });
     }
 
-    public static async Task<string?> RetrievePluginOwner(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    public static async Task<string?> RetrievePluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         return await connection.QueryFirstOrDefaultAsync<string>(
             "SELECT user_id FROM users_plugins WHERE plugin_slug=@pluginSlug AND is_primary_owner IS TRUE;",
@@ -94,7 +94,7 @@ public static class NpgsqlConnectionExtensions
         await tx.CommitAsync();
     }
 
-    public static async Task RevokePluginOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task RevokePluginPrimaryOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
         await connection.ExecuteAsync(
             @"UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",

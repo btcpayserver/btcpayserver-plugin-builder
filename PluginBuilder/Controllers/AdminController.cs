@@ -196,7 +196,7 @@ public class AdminController(
         {
             case "RevokeOwnership":
                 {
-                    await conn.RevokePluginOwnership(pluginSlug, userId);
+                    await conn.RevokePluginPrimaryOwnership(pluginSlug, userId);
                     TempData[TempDataConstant.SuccessMessage] = "Plugin ownership has been revoked";
                     break;
                 }
@@ -527,7 +527,7 @@ public class AdminController(
 
     private async Task<List<PluginUsersViewModel>> GetPluginUsers(NpgsqlConnection conn, string slug)
     {
-        var ownerId = await conn.RetrievePluginOwner(slug);
+        var ownerId = await conn.RetrievePluginPrimaryOwner(slug);
         var userIds = (await conn.RetrievePluginUserIds(slug)).ToList();
 
         if (userIds.Count == 0)
