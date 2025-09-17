@@ -427,7 +427,7 @@ public class PluginController(
         try
         {
             await ownershipService.LeaveAsync(pluginSlug, userManager.GetUserId(User) ?? throw new InvalidOperationException());
-            TempData[TempDataConstant.SuccessMessage] = "You left as user.";
+            TempData[TempDataConstant.SuccessMessage] = "You have left the plugin owners.";
         }
         catch (InvalidOperationException ex) { TempData[TempDataConstant.WarningMessage] = ex.Message; }
         return RedirectToAction(nameof(Owners), new { pluginSlug });
