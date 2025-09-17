@@ -74,7 +74,9 @@ public class DashboardController(
                 return View(model);
             }
         }
-        await conn.AddUserPlugin(pluginSlug, userManager.GetUserId(User)!);
+        var userId = userManager.GetUserId(User)!;
+        await conn.AddUserPlugin(pluginSlug, userId);
+        await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl });
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }
