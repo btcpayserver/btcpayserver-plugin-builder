@@ -50,6 +50,15 @@ public class DashboardController(
             return RedirectToAction("AccountDetails", "Account");
         }
 
+        var userId = userManager.GetUserId(User)!;
+
+        if (!await conn.IsGithubAccountVerified(userId))
+        {
+            TempData[TempDataConstant.WarningMessage] =
+                "You need to verify your Github Account in order to create and publish plugins";
+            return RedirectToAction("AccountDetails", "Account");
+        }
+
         if (!await conn.NewPlugin(pluginSlug))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
@@ -74,7 +83,6 @@ public class DashboardController(
                 return View(model);
             }
         }
-        var userId = userManager.GetUserId(User)!;
         await conn.AddUserPlugin(pluginSlug, userId);
         await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl });
