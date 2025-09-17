@@ -35,9 +35,22 @@
         {
             @if (Model.GenerateForm)
             {
-                <form id="@Html.Id("ConfirmForm")" method="post" action="@Url.EnsureLocal(actionUrl, Context.Request)" rel="noreferrer noopener">
-                    @{ ModalContent(); }
-                </form>
+                var resolved = Url.EnsureLocal(actionUrl, Context.Request);
+
+                if (!string.IsNullOrEmpty(resolved))
+                {
+                    <form id="@Html.Id("ConfirmForm")" method="post" action="@resolved">
+                        @Html.AntiForgeryToken()
+                        @{ ModalContent(); }
+                    </form>
+                }
+                else
+                {
+                    <form id="@Html.Id("ConfirmForm")" method="post">
+                        @Html.AntiForgeryToken()
+                        @{ ModalContent(); }
+                    </form>
+                }
             }
             else
             {
