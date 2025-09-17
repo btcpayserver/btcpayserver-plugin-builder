@@ -1,0 +1,123 @@
+@using Microsoft.AspNetCore.Mvc.TagHelpers
+@using PluginBuilder.DataModels
+@model PluginBuilder.ViewModels.Plugin.PluginOwnersPageViewModel
+
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage(PluginNavPages.Owners, "Plugin Owners");
+}
+
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h2 class="mb-0">
+        @ViewData["Title"]
+    </h2>
+</div>
+
+@if (Model.IsPrimaryOwner)
+{
+    <div class="payment-box mx-0 mb-4">
+        <form asp-action="AddOwner"
+              asp-route-pluginSlug="@Model.PluginSlug"
+              method="post">
+            @Html.AntiForgeryToken()
+
+            <div class="input-group">
+                <input type="email"
+                       name="email"
+                       class="form-control"
+                       placeholder="user@example.com"
+                       required />
+                <button type="submit" class="btn btn-primary">Add</button>
+            </div>
+        </form>
+    </div>
+}
+
+<div class="card">
+    <div class="list-group list-group-flush">
+        @if (Model.Owners.Count > 0)
+        {
+            @foreach (var o in Model.Owners)
+            {
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle d-inline-flex justify-content-center align-items-center"
+                             style="width:32px;height:32px;background:#eef;font-weight:700;">
+                            @o.Email?[0].ToString().ToUpper()
+                        </div>
+                        <div class="lh-sm">
+                            <div class="fw-semibold">@o.Email</div>
+                        </div>
+                        @if (o.IsPrimary)
+                        {
+                            <span class="badge bg-warning text-dark ms-2">Primary Owner</span>
+                        }
+                    </div>
+
+                    <div class="d-flex gap-2 align-items-center">
+                        @if (Model.IsPrimaryOwner && !o.IsPrimary)
+                        {
+                            <form method="post" asp-action="TransferPrimaryOwner" asp-route-pluginSlug="@Model.PluginSlug"  asp-route-userId="@o.UserId">
+                                <button
+                                    id="transfer-@o.UserId"
+                                    type="button"
+                                    class="btn btn-link p-0 text-warning"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#ConfirmModal"
+                                    data-title="Transfer primary owner"
+                                    data-description='Transfer primary ownership to <strong>@o.Email</strong>?
+                                                        <div class="alert alert-warning mt-2 mb-0 small">
+                                                          <strong>Irreversible:</strong> Only the new primary owner can transfer it back and add new users.
+                                                        </div>'
+                                    data-confirm="Confirm"
+                                    data-button-class="btn-warning"
+                                    text-translate="true">Transfer Primary
+                                </button>
+                            </form>
+
+                            <span class="mx-2">|</span>
+
+                            <form method="post" asp-action="RemoveOwner" asp-route-pluginSlug="@Model.PluginSlug"  asp-route-userId="@o.UserId">
+                                <button
+                                    id="remove-@o.UserId"
+                                    type="button"
+                                    class="btn btn-link p-0 text-danger"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#ConfirmModal"
+                                    data-title="Remove owner"
+                                    data-description='Remove <strong>@o.Email</strong> from owners?'
+                                    data-confirm="Remove"
+                                    text-translate="true">Remove
+                                </button>
+                            </form>
+                        }
+
+                        @if (!Model.IsPrimaryOwner && o.UserId == Model.CurrentUserId && !o.IsPrimary)
+                        {
+                            <form id="leave-@Model.CurrentUserId"
+                                  asp-action="LeaveOwner"
+                                  asp-route-pluginSlug="@Model.PluginSlug"
+                                  method="post" class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <button type="button"
+                                        class="btn btn-link p-0 text-danger"
+                                        data-bs-toggle="modal" data-bs-target="#ConfirmModal"
+                                        data-title="Leave plugin"
+                                        data-description="Leave ownership of this plugin?"
+                                        data-confirm="Leave">
+                                    Leave
+                                </button>
+                            </form>
+                        }
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="list-group-item text-muted">No owners yet.</div>
+        }
+    </div>
+</div>
+
+<partial name="_Confirm" model="@(new ConfirmModel( title: "Confirm action",  desc: "Are you sure?", action: "Confirm"))" />
