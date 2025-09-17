@@ -28,32 +28,36 @@
                 $continue.value = $target.value;
 
 
-            const { title, description, confirm, confirmInput } = $target.dataset
+            const { title, description, confirm, confirmInput, buttonClass } = $target.dataset
             const action = $target.dataset.action || ($target.nodeName === 'A'
                 ? $target.getAttribute('href')
                 : $target.form.getAttribute('action'))
-            if ($form && !$form.hasAttribute('action')) $form.setAttribute('action', action)
+            if ($form && action) $form.setAttribute('action', action)
             if (title) $title.textContent = title
             if (description) $description.innerHTML = description
             if (confirm) $continue.textContent = confirm
+            const defaultBtnClass = "@Model.ButtonClass";
+            $continue.className = 'btn modal-confirm ' + ((buttonClass || '').trim() || defaultBtnClass);
             if (confirmInput) {
                 $text.removeAttribute('hidden')
                 $continue.setAttribute('disabled', 'disabled')
                 $inputText.textContent = confirmInput
                 $input.setAttribute("autocomplete", "off")
-                $input.addEventListener('input', event => {
+                $input.oninput = (event) => {
                     event.target.value.trim() === confirmInput
                         ? $continue.removeAttribute('disabled')
                         : $continue.setAttribute('disabled', 'disabled')
-                })
-                $form.addEventListener('submit', event => {
+                }
+                $form.onsubmit = (event) => {
                     if ($input.value.trim() !== confirmInput) {
                         event.preventDefault()
                     }
-                })
+                }
             } else {
                 $text.setAttribute('hidden', 'hidden')
                 $continue.removeAttribute('disabled')
+                $input.oninput = null
+                if ($form) $form.onsubmit = null
             }
         })
         modal.addEventListener('shown.bs.modal', event => {

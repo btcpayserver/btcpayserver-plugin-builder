@@ -29,8 +29,8 @@ public class ConfirmModel
     }
 
     public bool   GenerateForm   { get; set; } = true;
-    public string Title          { get; set; }
-    public string Description    { get; set; }
+    public string Title          { get; set; } = string.Empty;
+    public string Description    { get; set; } = string.Empty;
     public bool   DescriptionHtml{ get; set; }
     public string? Action         { get; set; }
     public string? ActionName     { get; set; }
