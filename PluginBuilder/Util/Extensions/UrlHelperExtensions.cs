@@ -10,8 +10,17 @@ public static class UrlHelperExtensions
             return url;
         if (httpRequest is null)
             return null;
-        if (Uri.TryCreate(url, UriKind.Absolute, out var r) && r.Host.Equals(httpRequest.Host.Host) && (!httpRequest.IsHttps || r.Scheme == "https"))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
+            return null;
+
+        var reqScheme = httpRequest.Scheme;
+        var reqPort = httpRequest.Host.Port ?? (httpRequest.IsHttps ? 443 : 80);
+        var uriPort = u.IsDefaultPort ? (u.Scheme == "https" ? 443 : 80) : u.Port;
+        if (string.Equals(u.Host, httpRequest.Host.Host, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(u.Scheme, reqScheme, StringComparison.OrdinalIgnoreCase)
+            && uriPort == reqPort)
             return url;
+
         return null;
     }
 }
