@@ -241,22 +241,9 @@ public static class NpgsqlConnectionExtensions
             });
 
         var currId = await connection.GetLatestPluginBuildNumber(pluginSlug);
-        if (currId == 0)
-        {
-            const string assignOwnerSql = """
-                UPDATE users_plugins
-                SET is_primary_owner = TRUE
-                WHERE plugin_slug = @plugin_slug
-                AND NOT EXISTS (
-                    SELECT 1 FROM users_plugins WHERE plugin_slug = @plugin_slug AND is_primary_owner IS TRUE
-                );
-                """;
-            await connection.ExecuteAsync(assignOwnerSql, new { plugin_slug = pluginSlug.ToString() });
-            if (firstBuildEvent is not null)
-            {
-                await firstBuildEvent.OnFirstBuildCreated(connection, pluginSlug);
-            }
-        }
+        if (currId == 0 && firstBuildEvent is not null)
+            await firstBuildEvent.OnFirstBuildCreated(connection, pluginSlug);
+
         return buildId;
     }
 
