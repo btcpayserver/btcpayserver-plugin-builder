@@ -107,6 +107,13 @@ public static class NpgsqlConnectionExtensions
             new { pluginSlug = pluginSlug.ToString(), userId });
     }
 
+    public static async Task RemovePluginOwner(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    {
+        await connection.ExecuteAsync(
+            "DELETE FROM users_plugins WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
+            new { pluginSlug = pluginSlug.ToString(), userId });
+    }
+
     public static async Task<bool> NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         var count = await connection.ExecuteAsync("INSERT INTO plugins (slug) VALUES (@id) ON CONFLICT DO NOTHING;",

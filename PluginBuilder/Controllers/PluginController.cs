@@ -11,6 +11,7 @@ using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Controllers;
 
@@ -22,7 +23,8 @@ public class PluginController(
     BuildService buildService,
     AzureStorageClient azureStorageClient,
     EmailVerifiedLogic emailVerifiedLogic,
-    FirstBuildEvent firstBuildEvent)
+    FirstBuildEvent firstBuildEvent,
+    OwnershipService ownershipService)
     : Controller
 {
     [HttpGet("settings")]
@@ -339,5 +341,95 @@ public class PluginController(
         }
 
         return null;
+    }
+
+    [HttpGet("owners")]
+    public async Task<IActionResult> Owners([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug)
+    {
+        var currentUserId = userManager.GetUserId(User);
+
+        await using var conn = await connectionFactory.Open();
+
+        var ids       = (await conn.RetrievePluginUserIds(pluginSlug)).ToList();
+        var primaryId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+
+        var owners = new List<OwnerVm>();
+        if (ids.Count > 0)
+        {
+            var users = await userManager.FindUsersByIdsAsync(ids);
+            owners.AddRange(users.Select(u => new OwnerVm
+                (
+                    u.Id,
+                    u.Email ?? u.Id,
+                    IsPrimary: u.Id == primaryId
+                )
+            ));
+        }
+
+        var isOwner   = ids.Contains(currentUserId ?? throw new InvalidOperationException());
+        var isPrimary = primaryId == currentUserId;
+
+        PluginOwnersPageViewModel vm = new()
+        {
+            PluginSlug     = pluginSlug.ToString(),
+            CurrentUserId  = currentUserId,
+            IsPluginOwner  = isOwner,
+            IsPrimaryOwner = isPrimary,
+            Owners         = owners
+        };
+
+        return View(vm);
+    }
+
+    [HttpPost("owners")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddOwner([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, [FromForm] string email)
+    {
+        try
+        {
+            await ownershipService.AddOwnerByEmailAsync(pluginSlug, email, userManager.GetUserId(User) ?? throw new InvalidOperationException());
+            TempData[TempDataConstant.SuccessMessage] = "User added.";
+        }
+        catch (InvalidOperationException ex) { TempData[TempDataConstant.WarningMessage] = ex.Message; }
+        return RedirectToAction(nameof(Owners), new { pluginSlug });
+    }
+
+    [HttpPost("owners/{userId}/transfer-primary")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TransferPrimaryOwner([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, string userId)
+    {
+        try
+        {
+            await ownershipService.TransferPrimaryAsync(pluginSlug, userId, userManager.GetUserId(User) ?? throw new InvalidOperationException());
+            TempData[TempDataConstant.SuccessMessage] = "Primary owner transferred.";
+        }
+        catch (InvalidOperationException ex) { TempData[TempDataConstant.WarningMessage] = ex.Message; }
+        return RedirectToAction(nameof(Owners), new { pluginSlug });
+    }
+
+    [HttpPost("owners/{userId}/remove")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveOwner([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, string userId)
+    {
+        try
+        {
+            await ownershipService.RemoveOwnerAsync(pluginSlug, userId, userManager.GetUserId(User) ?? throw new InvalidOperationException());
+            TempData[TempDataConstant.SuccessMessage] = "User removed.";
+        }
+        catch (InvalidOperationException ex) { TempData[TempDataConstant.WarningMessage] = ex.Message; }
+        return RedirectToAction(nameof(Owners), new { pluginSlug });
+    }
+
+    [HttpPost("owner/leave")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> LeaveOwner([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug)
+    {
+        try
+        {
+            await ownershipService.LeaveAsync(pluginSlug, userManager.GetUserId(User) ?? throw new InvalidOperationException());
+            TempData[TempDataConstant.SuccessMessage] = "You left as user.";
+        }
+        catch (InvalidOperationException ex) { TempData[TempDataConstant.WarningMessage] = ex.Message; }
+        return RedirectToAction(nameof(Owners), new { pluginSlug });
     }
 }
