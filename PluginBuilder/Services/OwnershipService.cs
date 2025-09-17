@@ -1,3 +1,4 @@
+using Dapper;
 using Microsoft.AspNetCore.Identity;
 using PluginBuilder.Util.Extensions;
 
@@ -16,14 +17,19 @@ public sealed class OwnershipService(
         if (primaryOwner != currentUserId)
             throw new InvalidOperationException("Only primary owners can add new owners.");
 
+        email = email.Trim();
+
+        if (string.IsNullOrWhiteSpace(email))
+            throw new ArgumentException("Email cannot be empty.", nameof(email));
+
         var user = await userManager.FindByEmailAsync(email)
                    ?? throw new InvalidOperationException("User not found.");
 
         if (!await userManager.IsEmailConfirmedAsync(user))
-            throw new InvalidOperationException("Owner must have an confirmed email.");
+            throw new InvalidOperationException("Owner must have a confirmed email.");
 
         if (!await conn.IsGithubAccountVerified(user.Id))
-            throw new InvalidOperationException("Owner must have a Github account verified.");
+            throw new InvalidOperationException("Owner must have a verified Github account.");
 
         await conn.AddUserPlugin(slug, user.Id);
     }
@@ -45,9 +51,19 @@ public sealed class OwnershipService(
     public async Task RemoveOwnerAsync(PluginSlug slug, string targetUserId, string currentUserId)
     {
         await using var conn = await connectionFactory.Open();
+        await using var tx = await conn.BeginTransactionAsync();
 
-        var primaryId   = await conn.RetrievePluginPrimaryOwner(slug);
-        var ownersCount = (await conn.RetrievePluginUserIds(slug)).Count();
+        var owners = (await conn.QueryAsync<(string UserId, bool IsPrimary)>(
+            """
+            SELECT user_id AS UserId, is_primary_owner AS IsPrimary
+                      FROM users_plugins
+                      WHERE plugin_slug = @slug
+                      FOR UPDATE;
+            """,
+            new { slug = slug.ToString() }, tx)).ToList();
+
+        var ownersCount = owners.Count;
+        var primaryId   = owners.FirstOrDefault(o => o.IsPrimary).UserId;
 
         var currentIsPrimary = primaryId == currentUserId;
         if (!currentIsPrimary && targetUserId != currentUserId)
@@ -59,22 +75,43 @@ public sealed class OwnershipService(
         if (ownersCount <= 1)
             throw new InvalidOperationException("Cannot remove the last owner.");
 
-        await conn.RemovePluginOwner(slug, targetUserId);
+        var deleted = await conn.RemovePluginOwner(slug, targetUserId, tx);
+
+        if (deleted != 1)
+            throw new InvalidOperationException("Target owner not found.");
+
+        await tx.CommitAsync();
     }
 
     public async Task LeaveAsync(PluginSlug slug, string currentUserId)
     {
         await using var conn = await connectionFactory.Open();
+        await using var tx = await conn.BeginTransactionAsync();
 
-        var primaryOwnerId   = await conn.RetrievePluginPrimaryOwner(slug);
-        var ownersCount = (await conn.RetrievePluginUserIds(slug)).Count();
+        var owners = (await conn.QueryAsync<(string UserId, bool IsPrimary)>(
+            """
+            SELECT user_id AS UserId, is_primary_owner AS IsPrimary
+            FROM users_plugins
+            WHERE plugin_slug = @slug
+            FOR UPDATE;
+            """,
+            new { slug = slug.ToString() }, tx)).ToList();
+
+        if (owners.All(o => o.UserId != currentUserId))
+            throw new InvalidOperationException("You are not an owner.");
+
+        var primaryOwnerId = owners.FirstOrDefault(o => o.IsPrimary).UserId;
 
         if (primaryOwnerId == currentUserId)
             throw new InvalidOperationException("Transfer primary before leaving.");
 
-        if (ownersCount <= 1)
+        if (owners.Count <= 1)
             throw new InvalidOperationException("Cannot leave as the last owner.");
 
-        await conn.RemovePluginOwner(slug, currentUserId);
+        var deleted = await conn.RemovePluginOwner(slug, currentUserId, tx);
+        if (deleted != 1)
+            throw new InvalidOperationException("Owner record not found.");
+
+        await tx.CommitAsync();
     }
 }
