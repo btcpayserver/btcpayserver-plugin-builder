@@ -60,9 +60,12 @@ public class DashboardController(
             return RedirectToAction("AccountDetails", "Account");
         }
 
+        await using var tx = await conn.BeginTransactionAsync();
+
         if (!await conn.NewPlugin(pluginSlug))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+            await tx.RollbackAsync();
             return View(model);
         }
 
@@ -72,21 +75,25 @@ public class DashboardController(
             if (!model.Logo.ValidateUploadedImage(out errorMessage))
             {
                 ModelState.AddModelError(nameof(model.Logo), $"Image upload validation failed: {errorMessage}");
+                await tx.RollbackAsync();
                 return View(model);
             }
             try
             {
-                model.LogoUrl = await azureStorageClient.UploadImageFile(model.Logo, $"{model.Logo.FileName}");
+                var ext = Path.GetExtension(model.Logo.FileName);
+                var safeName = $"{pluginSlug}-{Guid.NewGuid():N}{ext}";
+                model.LogoUrl = await azureStorageClient.UploadImageFile(model.Logo, safeName);
             }
             catch (Exception)
             {
                 ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. An error occurred while uploading logo image");
+                await tx.RollbackAsync();
                 return View(model);
             }
         }
-        await conn.AddUserPlugin(pluginSlug, userId);
-        await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
+        await conn.AddUserPlugin(pluginSlug, userId, true);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl });
+        await tx.CommitAsync();
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }
 }
