@@ -33,6 +33,7 @@ public class DashboardController(
     }
 
     [HttpPost("/plugins/create")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
     {
         if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
