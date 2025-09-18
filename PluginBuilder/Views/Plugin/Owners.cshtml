@@ -66,7 +66,10 @@
                                 class="btn btn-link p-0 text-warning"
                                 data-bs-toggle="modal"
                                 data-bs-target="#ConfirmModal"
-                                data-action="@Url.Action("TransferPrimaryOwner", new { pluginSlug = Model.PluginSlug, userId = o.UserId })"
+                                data-action='@Url.EnsureLocal(
+                                                 Url.Action("TransferPrimaryOwner", new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
+                                                 Context.Request
+                                             )'
                                 data-title="Transfer primary owner"
                                 data-description='Transfer primary ownership to <strong>@o.Email</strong>?
                                                     <div class="alert alert-warning mt-2 mb-0 small">
@@ -86,7 +89,10 @@
                                 class="btn btn-link p-0 text-danger"
                                 data-bs-toggle="modal"
                                 data-bs-target="#ConfirmModal"
-                                data-action="@Url.Action("RemoveOwner", new { pluginSlug = Model.PluginSlug, userId = o.UserId })"
+                                data-action='@Url.EnsureLocal(
+                                                 Url.Action("RemoveOwner", new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
+                                                 Context.Request
+                                             )'
                                 data-title="Remove owner"
                                 data-description='Remove <strong>@o.Email</strong> from owners?'
                                 data-description-html="true"
@@ -101,7 +107,10 @@
                                     class="btn btn-link p-0 text-danger"
                                     data-bs-toggle="modal"
                                     data-bs-target="#ConfirmModal"
-                                    data-action='@Url.Action("LeaveOwner", new { pluginSlug = Model.PluginSlug })'
+                                    data-action='@Url.EnsureLocal(
+                                                     Url.Action("LeaveOwner", new { pluginSlug = Model.PluginSlug }),
+                                                     Context.Request
+                                                 )'
                                     data-title="Leave plugin"
                                     data-description="Leave ownership of this plugin?"
                                     data-confirm="Leave">
