@@ -75,7 +75,7 @@ public sealed class OwnershipService(
         if (ownersCount <= 1)
             throw new InvalidOperationException("Cannot remove the last owner.");
 
-        var deleted = await conn.RemovePluginOwner(slug, targetUserId, tx);
+        var deleted = await conn.RemovePluginOwner(slug, targetUserId);
 
         if (deleted != 1)
             throw new InvalidOperationException("Target owner not found.");
@@ -108,7 +108,7 @@ public sealed class OwnershipService(
         if (owners.Count <= 1)
             throw new InvalidOperationException("Cannot leave as the last owner.");
 
-        var deleted = await conn.RemovePluginOwner(slug, currentUserId, tx);
+        var deleted = await conn.RemovePluginOwner(slug, currentUserId);
         if (deleted != 1)
             throw new InvalidOperationException("Owner record not found.");
 
