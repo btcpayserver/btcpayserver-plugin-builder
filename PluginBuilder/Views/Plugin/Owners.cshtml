@@ -37,7 +37,7 @@
     <div class="list-group list-group-flush">
         @if (Model.Owners.Count > 0)
         {
-            @foreach (var o in Model.OwnersPrimaryFirst)
+            @foreach (var o in Model.Owners)
             {
                 <div class="list-group-item d-flex justify-content-between align-items-center">
                     <div class="d-flex align-items-center gap-3">
@@ -72,6 +72,7 @@
                                                     <div class="alert alert-warning mt-2 mb-0 small">
                                                       <strong>Irreversible:</strong> Only the new primary owner can transfer it back and add new users.
                                                     </div>'
+                                data-description-html="true"
                                 data-confirm="Confirm"
                                 data-button-class="btn-warning"
                                 text-translate="true">Transfer Primary
@@ -88,6 +89,7 @@
                                 data-action="@Url.Action("RemoveOwner", new { pluginSlug = Model.PluginSlug, userId = o.UserId })"
                                 data-title="Remove owner"
                                 data-description='Remove <strong>@o.Email</strong> from owners?'
+                                data-description-html="true"
                                 data-confirm="Remove"
                                 text-translate="true">Remove
                             </button>

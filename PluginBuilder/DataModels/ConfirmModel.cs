@@ -11,6 +11,7 @@ public class ConfirmModel
         string desc,
         string? action = null,
         string buttonClass = ButtonClassDefault,
+        bool descriptionHtml = false,
         string? actionName = null,
         string? controllerName = null)
     {
@@ -20,12 +21,7 @@ public class ConfirmModel
         ActionName     = actionName;
         ControllerName = controllerName;
         ButtonClass    = buttonClass;
-
-        if (!string.IsNullOrEmpty(Description) &&
-            Description.Contains("<strong>", StringComparison.InvariantCultureIgnoreCase))
-        {
-            DescriptionHtml = true;
-        }
+        DescriptionHtml = descriptionHtml;
     }
 
     public bool   GenerateForm   { get; set; } = true;
