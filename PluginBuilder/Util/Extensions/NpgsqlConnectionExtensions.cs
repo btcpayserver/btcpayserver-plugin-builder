@@ -100,26 +100,27 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task RevokePluginPrimaryOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
-        await connection.ExecuteAsync(
+        var updated = await connection.ExecuteAsync(
             @"UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
             new { pluginSlug = pluginSlug.ToString(), userId });
+        if (updated != 1)
+            throw new InvalidOperationException("Primary flag not revoked.");
     }
 
-    public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId, bool isPrimary = false)
     {
-        await connection.ExecuteAsync("INSERT INTO users_plugins (user_id, plugin_slug) VALUES (@userId, @pluginSlug) ON CONFLICT DO NOTHING",
-            new { pluginSlug = pluginSlug.ToString(), userId });
+        await connection.ExecuteAsync("INSERT INTO users_plugins (user_id, plugin_slug, is_primary_owner) VALUES (@userId, @pluginSlug, @isPrimary) ON CONFLICT DO NOTHING",
+            new { pluginSlug = pluginSlug.ToString(), userId, isPrimary });
     }
 
     public static Task<int> RemovePluginOwner(
         this NpgsqlConnection connection,
         PluginSlug pluginSlug,
-        string userId,
-        NpgsqlTransaction? tx = null)
+        string userId)
     {
         return connection.ExecuteAsync(
             "DELETE FROM users_plugins WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
-            new { pluginSlug = pluginSlug.ToString(), userId }, tx);
+            new { pluginSlug = pluginSlug.ToString(), userId });
     }
 
     public static async Task<bool> NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
