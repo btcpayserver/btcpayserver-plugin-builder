@@ -346,35 +346,28 @@ public class PluginController(
     [HttpGet("owners")]
     public async Task<IActionResult> Owners([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug)
     {
-        var currentUserId = userManager.GetUserId(User);
+        var currentUserId = userManager.GetUserId(User) ?? throw new InvalidOperationException();
 
         await using var conn = await connectionFactory.Open();
 
-        var ids       = (await conn.RetrievePluginUserIds(pluginSlug)).ToList();
-        var primaryId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+        var owners = (await conn.QueryAsync<OwnerVm>(
+            """
+            SELECT u."Id"    AS "UserId",
+                   u."Email" AS "Email",
+                   up.is_primary_owner AS "IsPrimary"
+            FROM users_plugins up
+            JOIN "AspNetUsers" u ON u."Id" = up.user_id
+            WHERE up.plugin_slug = @slug
+            ORDER BY up.is_primary_owner DESC, COALESCE(u."Email", u."Id");
+            """,
+            new { slug = pluginSlug.ToString() }
+        )).ToList();
 
-        var owners = new List<OwnerVm>();
-        if (ids.Count > 0)
-        {
-            var users = await userManager.FindUsersByIdsAsync(ids);
-            owners.AddRange(users.Select(u => new OwnerVm
-                (
-                    u.Id,
-                    u.Email ?? u.Id,
-                    IsPrimary: u.Id == primaryId
-                )
-            ));
-        }
-
-        var isOwner   = ids.Contains(currentUserId ?? throw new InvalidOperationException());
-        var isPrimary = primaryId == currentUserId;
-
-        PluginOwnersPageViewModel vm = new()
+        var vm = new PluginOwnersPageViewModel
         {
             PluginSlug     = pluginSlug.ToString(),
             CurrentUserId  = currentUserId,
-            IsPluginOwner  = isOwner,
-            IsPrimaryOwner = isPrimary,
+            IsPrimaryOwner = owners.Any(o => o.UserId == currentUserId && o.IsPrimary),
             Owners         = owners
         };
 
