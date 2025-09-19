@@ -16,18 +16,19 @@
 @if (Model.IsPrimaryOwner)
 {
     <div class="payment-box mx-0 mb-4">
-        <form asp-action="AddOwner"
-              asp-route-pluginSlug="@Model.PluginSlug"
-              method="post">
+        <form class="col-xl-7"
+            asp-action="AddOwner"
+            asp-route-pluginSlug="@Model.PluginSlug"
+            method="post">
             @Html.AntiForgeryToken()
 
-            <div class="input-group">
+            <div class="input-group gap-3">
                 <input type="email"
                        name="email"
                        class="form-control"
                        placeholder="user@example.com"
                        required />
-                <button type="submit" class="btn btn-primary">Add</button>
+                <button type="submit" class="btn btn-primary rounded">Add</button>
             </div>
         </form>
     </div>
@@ -63,7 +64,7 @@
                             <button
                                 id="transfer-@o.UserId"
                                 type="button"
-                                class="btn btn-link p-0 text-warning"
+                                class="btn btn-link p-0 text-success"
                                 data-bs-toggle="modal"
                                 data-bs-target="#ConfirmModal"
                                 data-action='@Url.EnsureLocal(
@@ -73,7 +74,6 @@
                                 data-title="Transfer primary owner"
                                 data-description="Transfer primary ownership to @o.Email? This action is irreversible. Only the new primary owner can transfer it back and add new users."
                                 data-confirm="Confirm"
-                                data-button-class="btn-warning"
                                 text-translate="true">Transfer Primary
                             </button>
 
@@ -104,7 +104,7 @@
                                     data-bs-toggle="modal"
                                     data-bs-target="#ConfirmModal"
                                     data-action='@Url.EnsureLocal(
-                                                     Url.Action("LeaveOwner", new { pluginSlug = Model.PluginSlug }),
+                                                     Url.Action("RemoveOwner", new { pluginSlug = Model.PluginSlug, userId = Model.CurrentUserId }),
                                                      Context.Request
                                                  )'
                                     data-title="Leave plugin"
