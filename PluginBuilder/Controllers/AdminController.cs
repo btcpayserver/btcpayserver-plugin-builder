@@ -196,18 +196,26 @@ public class AdminController(
         {
             case "RevokeOwnership":
                 {
-                    await conn.RevokePluginPrimaryOwnership(pluginSlug, userId);
+                    var ok = await conn.RevokePluginPrimaryOwnership(pluginSlug, userId);
+                    if (!ok)
+                    {
+                        TempData[TempDataConstant.WarningMessage] = "Error revoking primary ownership";
+                        return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+                    }
                     TempData[TempDataConstant.SuccessMessage] = "Plugin ownership has been revoked";
                     break;
                 }
             case "AssignOwnership":
                 {
-                    await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
+                    var ok = await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
+                    if (!ok)
+                    {
+                        TempData[TempDataConstant.WarningMessage] = "Error assigning primary ownership";
+                        return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+                    }
                     TempData[TempDataConstant.SuccessMessage] = "Plugin owner assignment was successful";
                     break;
                 }
-            default:
-                break;
         }
         return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
     }

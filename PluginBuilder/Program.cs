@@ -137,7 +137,6 @@ public class Program
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
         services.AddSingleton<FirstBuildEvent>();
-        services.AddScoped<OwnershipService>();
 
         // shared controller logic
         services.AddSingleton<EmailVerifiedCache>();

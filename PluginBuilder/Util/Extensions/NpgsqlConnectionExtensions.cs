@@ -81,7 +81,7 @@ public static class NpgsqlConnectionExtensions
             new { pluginSlug = pluginSlug.ToString() });
     }
 
-    public static async Task AssignPluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task<bool> AssignPluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
         await using var tx = await connection.BeginTransactionAsync();
         await connection.ExecuteAsync(
@@ -93,18 +93,18 @@ public static class NpgsqlConnectionExtensions
             new { pluginSlug = pluginSlug.ToString(), userId }, tx);
 
         if (updated != 1)
-            throw new InvalidOperationException("Target owner not found for assignment.");
+            return false;
 
         await tx.CommitAsync();
+        return true;
     }
 
-    public static async Task RevokePluginPrimaryOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task<bool> RevokePluginPrimaryOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
         var updated = await connection.ExecuteAsync(
             @"UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
             new { pluginSlug = pluginSlug.ToString(), userId });
-        if (updated != 1)
-            throw new InvalidOperationException("Primary flag not revoked.");
+        return updated == 1;
     }
 
     public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId, bool isPrimary = false)
