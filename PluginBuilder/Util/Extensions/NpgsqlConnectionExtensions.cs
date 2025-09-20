@@ -74,36 +74,52 @@ public static class NpgsqlConnectionExtensions
             new { pluginSlug = pluginSlug.ToString() });
     }
 
-    public static async Task<string?> RetrievePluginOwner(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    public static async Task<string?> RetrievePluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         return await connection.QueryFirstOrDefaultAsync<string>(
             "SELECT user_id FROM users_plugins WHERE plugin_slug=@pluginSlug AND is_primary_owner IS TRUE;",
             new { pluginSlug = pluginSlug.ToString() });
     }
 
-    public static async Task AssignPluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task<bool> AssignPluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
-        using var tx = connection.BeginTransaction();
+        await using var tx = await connection.BeginTransactionAsync();
         await connection.ExecuteAsync(
             "UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND is_primary_owner IS TRUE;",
             new { pluginSlug = pluginSlug.ToString() }, tx);
 
-        await connection.ExecuteAsync(
+        var updated = await connection.ExecuteAsync(
             @"UPDATE users_plugins SET is_primary_owner = TRUE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
             new { pluginSlug = pluginSlug.ToString(), userId }, tx);
+
+        if (updated != 1)
+            return false;
+
         await tx.CommitAsync();
+        return true;
     }
 
-    public static async Task RevokePluginOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task<bool> RevokePluginPrimaryOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
-        await connection.ExecuteAsync(
+        var updated = await connection.ExecuteAsync(
             @"UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
             new { pluginSlug = pluginSlug.ToString(), userId });
+        return updated == 1;
     }
 
-    public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId, bool isPrimary = false)
     {
-        await connection.ExecuteAsync("INSERT INTO users_plugins VALUES (@userId, @pluginSlug) ON CONFLICT DO NOTHING",
+        await connection.ExecuteAsync("INSERT INTO users_plugins (user_id, plugin_slug, is_primary_owner) VALUES (@userId, @pluginSlug, @isPrimary) ON CONFLICT DO NOTHING",
+            new { pluginSlug = pluginSlug.ToString(), userId, isPrimary });
+    }
+
+    public static Task<int> RemovePluginOwner(
+        this NpgsqlConnection connection,
+        PluginSlug pluginSlug,
+        string userId)
+    {
+        return connection.ExecuteAsync(
+            "DELETE FROM users_plugins WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
             new { pluginSlug = pluginSlug.ToString(), userId });
     }
 
@@ -234,22 +250,9 @@ public static class NpgsqlConnectionExtensions
             });
 
         var currId = await connection.GetLatestPluginBuildNumber(pluginSlug);
-        if (currId == 0)
-        {
-            const string assignOwnerSql = """
-                UPDATE users_plugins
-                SET is_primary_owner = TRUE
-                WHERE plugin_slug = @plugin_slug
-                AND NOT EXISTS (
-                    SELECT 1 FROM users_plugins WHERE plugin_slug = @plugin_slug AND is_primary_owner IS TRUE
-                );
-                """;
-            await connection.ExecuteAsync(assignOwnerSql, new { plugin_slug = pluginSlug.ToString() });
-            if (firstBuildEvent is not null)
-            {
-                await firstBuildEvent.OnFirstBuildCreated(connection, pluginSlug);
-            }
-        }
+        if (currId == 0 && firstBuildEvent is not null)
+            await firstBuildEvent.OnFirstBuildCreated(connection, pluginSlug);
+
         return buildId;
     }
 

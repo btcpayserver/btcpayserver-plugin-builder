@@ -54,7 +54,7 @@ public class AdminController(
         var rows = await conn.QueryAsync($"""
                                          SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
                                          FROM plugins p
-                                         LEFT JOIN users_plugins up ON p.slug = up.plugin_slug
+                                         LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
                                          LEFT JOIN (
                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
@@ -73,7 +73,7 @@ public class AdminController(
             {
                 ProjectSlug = row.slug,
                 Visibility = row.visibility,
-                PublisherEmail = row.email
+                PrimaryOwnerEmail = row.email
             };
             if (row.ver != null)
             {
@@ -196,18 +196,26 @@ public class AdminController(
         {
             case "RevokeOwnership":
                 {
-                    await conn.RevokePluginOwnership(pluginSlug, userId);
+                    var ok = await conn.RevokePluginPrimaryOwnership(pluginSlug, userId);
+                    if (!ok)
+                    {
+                        TempData[TempDataConstant.WarningMessage] = "Error revoking primary ownership";
+                        return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+                    }
                     TempData[TempDataConstant.SuccessMessage] = "Plugin ownership has been revoked";
                     break;
                 }
             case "AssignOwnership":
                 {
-                    await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
-                    TempData[TempDataConstant.SuccessMessage] = "Plugin owener assignment was successful";
+                    var ok = await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
+                    if (!ok)
+                    {
+                        TempData[TempDataConstant.WarningMessage] = "Error assigning primary ownership";
+                        return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+                    }
+                    TempData[TempDataConstant.SuccessMessage] = "Plugin owner assignment was successful";
                     break;
                 }
-            default:
-                break;
         }
         return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
     }
@@ -527,7 +535,7 @@ public class AdminController(
 
     private async Task<List<PluginUsersViewModel>> GetPluginUsers(NpgsqlConnection conn, string slug)
     {
-        var ownerId = await conn.RetrievePluginOwner(slug);
+        var ownerId = await conn.RetrievePluginPrimaryOwner(slug);
         var userIds = (await conn.RetrievePluginUserIds(slug)).ToList();
 
         if (userIds.Count == 0)

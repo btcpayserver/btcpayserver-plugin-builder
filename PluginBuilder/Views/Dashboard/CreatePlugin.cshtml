@@ -7,7 +7,8 @@
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
 <div class="row">
     <div class="col-xl-8 col-xxl-constrain">
-		<form asp-action="CreatePlugin" enctype="multipart/form-data">
+        <form asp-action="CreatePlugin" enctype="multipart/form-data">
+            @Html.AntiForgeryToken()
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
             <div class="form-group">
                 <label asp-for="PluginSlug" class="form-label" data-required></label>
