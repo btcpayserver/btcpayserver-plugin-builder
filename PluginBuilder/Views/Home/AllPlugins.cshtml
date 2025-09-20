@@ -2,6 +2,22 @@
 @model List<PublishedPlugin>
 @{
 	Layout = "_LayoutPublicModal";
+    var title = "BTCPay Server Plugin Directory";
+    var desc = "Extend and customize your BTCPay Server with community and official plugins.";
+    ViewData["Title"] = title;
+}
+
+@section Meta {
+    <!-- Open Graph and Twitter metadata -->
+    <meta property="og:type"        content="website" />
+    <meta property="og:title"       content="@title" />
+    <meta property="og:description" content="@desc" />
+    <meta property="og:site_name"   content="BTCPay Server Plugin Builder" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card"        content="summary_large_image" />
+    <meta name="twitter:title"       content="@title" />
+    <meta name="twitter:description" content="@desc" />
 }
 
 <partial name="_PublicHeader" />

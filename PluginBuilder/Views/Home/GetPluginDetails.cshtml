@@ -6,6 +6,7 @@
 @{
 	Layout = "_LayoutPublicModal";
 	var title = Model.ManifestInfo["Name"]?.ToString();
+    ViewData["Title"] = title;
 	var description = Model.ManifestInfo["Description"]?.ToString();
 	var desc = string.IsNullOrWhiteSpace(description) ? "Plugin for BTCPay Server" : description;
 	var owner = Model.GetGithubRepository()?.Owner;
