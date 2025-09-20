@@ -54,7 +54,7 @@ public class AdminController(
         var rows = await conn.QueryAsync($"""
                                          SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
                                          FROM plugins p
-                                         LEFT JOIN users_plugins up ON p.slug = up.plugin_slug
+                                         LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
                                          LEFT JOIN (
                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
@@ -73,7 +73,7 @@ public class AdminController(
             {
                 ProjectSlug = row.slug,
                 Visibility = row.visibility,
-                PublisherEmail = row.email
+                PrimaryOwnerEmail = row.email
             };
             if (row.ver != null)
             {
