@@ -58,13 +58,16 @@ public class PluginController(
 
         if (settingViewModel is null)
             return NotFound();
-        if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
-            ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
-        if (!string.IsNullOrEmpty(settingViewModel.GitRepository) && !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
-            ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository should be an absolute URL");
-        if (!ModelState.IsValid)
+        if (string.IsNullOrEmpty(settingViewModel.GitRepository) || !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
+        {
+            ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository is required and should be an absolute URL");
             return View(settingViewModel);
-
+        }
+        if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
+        {
+            ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
+            return View(settingViewModel);
+        }
         if (settingViewModel.Logo != null)
         {
             if (!settingViewModel.Logo.ValidateUploadedImage(out string errorMessage))
