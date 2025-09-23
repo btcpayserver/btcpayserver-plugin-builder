@@ -22,8 +22,9 @@ public class PluginController(
     UserManager<IdentityUser> userManager,
     BuildService buildService,
     AzureStorageClient azureStorageClient,
-    EmailVerifiedLogic emailVerifiedLogic,
-    FirstBuildEvent firstBuildEvent)
+    UserVerifiedLogic userVerifiedLogic,
+    FirstBuildEvent firstBuildEvent,
+    IUserClaimsPrincipalFactory<IdentityUser> principalFactory )
     : Controller
 {
     [HttpGet("settings")]
@@ -100,11 +101,18 @@ public class PluginController(
         PluginSlug pluginSlug, long? copyBuild = null)
     {
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
+        }
+
+        if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
+        {
+            TempData[TempDataConstant.WarningMessage] =
+                        "You need to verify your GitHub account in order to create and publish plugins";
+                    return RedirectToAction("AccountDetails", "Account");
         }
 
         var settings = await conn.GetSettings(pluginSlug);
@@ -142,7 +150,7 @@ public class PluginController(
         if (!ModelState.IsValid)
             return View(model);
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";
@@ -394,13 +402,21 @@ public class PluginController(
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
+            if (await conn.UserOwnsPlugin(user.Id, pluginSlug))
+            {
+                TempData[TempDataConstant.WarningMessage] = "User is already an owner.";
+                return RedirectToAction(nameof(Owners), new { pluginSlug });
+            }
+
+            var targetPrincipal = await principalFactory.CreateAsync(user);
+
+            if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(targetPrincipal))
             {
                 TempData[TempDataConstant.WarningMessage] = "Owner must have a confirmed email.";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            if (!await conn.IsGithubAccountVerified(user.Id))
+            if (!await userVerifiedLogic.IsUserGithubVerified(targetPrincipal, conn))
             {
                 TempData[TempDataConstant.WarningMessage] = "Owner must have a verified Github account.";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });

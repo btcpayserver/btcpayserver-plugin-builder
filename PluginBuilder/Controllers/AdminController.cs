@@ -23,7 +23,7 @@ public class AdminController(
     RoleManager<IdentityRole> roleManager,
     DBConnectionFactory connectionFactory,
     EmailService emailService,
-    EmailVerifiedCache emailVerifiedCache,
+    UserVerifiedCache userVerifiedCache,
     ReferrerNavigationService referrerNavigation)
     : Controller
 {
@@ -96,7 +96,7 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
-        await emailVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
+        await userVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
         TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
         return RedirectToAction("ListPlugins");
     }
@@ -431,7 +431,7 @@ public class AdminController(
         await using var conn = await connectionFactory.Open();
         var emailSettingsJson = JsonConvert.SerializeObject(model);
         await conn.SettingsSetAsync("EmailSettings", emailSettingsJson);
-        await emailVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
+        await userVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
     }
 
     [HttpGet("emailsender")]
@@ -517,7 +517,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsSetAsync(key, value);
-        await emailVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
+        await userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
         return RedirectToAction(nameof(SettingsEditor));
     }
 
@@ -529,7 +529,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsDeleteAsync(key);
-        await emailVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
+        await userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
         return Ok();
     }
 

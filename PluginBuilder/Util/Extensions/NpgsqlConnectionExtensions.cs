@@ -339,12 +339,26 @@ public static class NpgsqlConnectionExtensions
                 "INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedEmailForLogin, value = "true" });
         }
+
+        if (result.All(r => r.key != SettingsKeys.VerifiedGithub))
+        {
+            await connection.ExecuteAsync(
+                "INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.VerifiedGithub, value = "true" });
+        }
     }
 
     public static async Task<bool> GetVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection)
     {
         var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedEmailForPluginPublish);
         return bool.TryParse(settingValue, out var result) && result;
+    }
+
+    public static async Task UpdateVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection, bool newValue)
+    {
+        var stringValue = newValue.ToString().ToLowerInvariant();
+        await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = @Key",
+            new { Value = stringValue, Key = SettingsKeys.VerifiedEmailForPluginPublish });
     }
 
     public static async Task<bool> GetVerifiedEmailForLoginSetting(this NpgsqlConnection connection)
@@ -358,10 +372,9 @@ public static class NpgsqlConnectionExtensions
         return SettingsGetAsync(connection, SettingsKeys.FirstPluginBuildReviewers);
     }
 
-    public static async Task UpdateVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection, bool newValue)
+    public static async Task<bool> GetVerifiedGithubSetting(this NpgsqlConnection connection)
     {
-        var stringValue = newValue.ToString().ToLowerInvariant();
-        await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = @Key",
-            new { Value = stringValue, Key = SettingsKeys.VerifiedEmailForPluginPublish });
+        var v = await SettingsGetAsync(connection, SettingsKeys.VerifiedGithub);
+        return bool.TryParse(v, out var b) && b;
     }
 }

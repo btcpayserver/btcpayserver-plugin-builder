@@ -14,7 +14,7 @@ public class DashboardController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
     AzureStorageClient azureStorageClient,
-    EmailVerifiedLogic emailVerifiedLogic) : Controller
+    UserVerifiedLogic userVerifiedLogic) : Controller
 {
     // plugin methods
 
@@ -22,14 +22,18 @@ public class DashboardController(
     public async Task<IActionResult> CreatePlugin()
     {
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
 
-        return View();
+        if (await userVerifiedLogic.IsUserGithubVerified(User, conn)) return View();
+
+        TempData[TempDataConstant.WarningMessage] =
+            "You need to verify your GitHub account in order to create and publish plugins";
+        return RedirectToAction("AccountDetails", "Account");
     }
 
     [HttpPost("/plugins/create")]
@@ -44,7 +48,7 @@ public class DashboardController(
         }
 
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";
@@ -53,7 +57,7 @@ public class DashboardController(
 
         var userId = userManager.GetUserId(User)!;
 
-        if (!await conn.IsGithubAccountVerified(userId))
+        if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your Github Account in order to create and publish plugins";
