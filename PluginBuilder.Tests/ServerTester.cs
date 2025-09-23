@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PluginBuilder.Services;
@@ -119,6 +120,7 @@ public class ServerTester : IAsyncDisposable
     }
 
     public async Task<FullBuildId> CreateAndBuildPluginAsync(
+        string userId,
         string slug = PluginSlug,
         string gitRef = GitRef,
         string pluginDir = PluginDir)
@@ -126,7 +128,7 @@ public class ServerTester : IAsyncDisposable
         var conn = await GetService<DBConnectionFactory>().Open();
         var buildService = GetService<BuildService>();
 
-        await conn.NewPlugin(slug, Guid.NewGuid().ToString());
+        await conn.NewPlugin(slug, userId);
         var buildId = await conn.NewBuild(slug, new PluginBuildParameters(RepoUrl)
         {
             GitRef = gitRef,
@@ -138,4 +140,27 @@ public class ServerTester : IAsyncDisposable
         return fullBuildId;
     }
 
+    public async Task<string> CreateFakeUserAsync(string? email = null, bool confirmEmail = true, bool githubVerified = true)
+    {
+        using var scope = WebApp.Services.CreateScope();
+        var userMgr = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+
+        email ??= $"u{Guid.NewGuid():N}@a.com";
+        var user = new IdentityUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = confirmEmail
+        };
+        var res = await userMgr.CreateAsync(user, "Test1234!");
+        if (!res.Succeeded)
+            throw new InvalidOperationException("Failed to create test user: " + string.Join(", ", res.Errors.Select(e => e.Description)));
+
+        if (!githubVerified) return user.Id;
+
+        await using var conn = await GetService<DBConnectionFactory>().Open();
+        await conn.VerifyGithubAccount(user.Id, "https://gist.github.com/dummy/123");
+
+        return user.Id;
+    }
 }
