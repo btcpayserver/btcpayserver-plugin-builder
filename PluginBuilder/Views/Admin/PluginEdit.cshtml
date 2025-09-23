@@ -34,24 +34,29 @@
 								<span class="badge bg-success me-2">Owner</span>
 							}
 						</div>
-						<div class="text-end">
-							<a asp-controller="Admin"
-							   asp-action="ManagePluginOwnership"
-							   asp-route-userId="@user.UserId"
-							   asp-route-pluginSlug="@Model.Slug"
-							   asp-route-command="@(user.IsPluginOwner ? "RevokeOwnership" : "AssignOwnership")"
-							   class="btn btn-sm me-2 @(user.IsPluginOwner ? "btn-outline-danger" : "btn-outline-primary")">
-								@(user.IsPluginOwner ? "Revoke Ownership" : "Set as Owner")
-							</a>
-						</div>
-					</div>
+                        <div class="text-end">
+                            <form method="post"
+                                  asp-controller="Admin"
+                                  asp-action="ManagePluginOwnership"
+                                  asp-route-pluginSlug="@Model.Slug"
+                                  asp-route-userId="@user.UserId"
+                                  asp-route-command="@(user.IsPluginOwner ? "RevokeOwnership" : "AssignOwnership")"
+                                  class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <button type="submit"
+                                        class="btn btn-sm me-2 mb-2 @(user.IsPluginOwner ? "btn-outline-danger" : "btn-outline-primary")">
+                                    @(user.IsPluginOwner ? "Revoke Ownership" : "Set as Owner")
+                                </button>
+                            </form>
+                        </div>
+                    </div>
 				}
 			</div>
 		</div>
 	}
 
 	<div class="col-md-8 col-lg-6">
-		<form asp-action="Edit">
+		<form asp-action="PluginEdit">
 			<div class="mb-3">
 				<label asp-for="Settings" class="form-label"></label>
 				<textarea asp-for="Settings" class="form-control" rows="5"></textarea>

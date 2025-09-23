@@ -182,7 +182,8 @@ public class AdminController(
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
     }
 
-    [HttpGet]
+    [HttpPost("plugins/{pluginSlug}/ownership")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> ManagePluginOwnership(string pluginSlug, string userId, string command = "")
     {
         await using var conn = await connectionFactory.Open();
@@ -202,7 +203,7 @@ public class AdminController(
                         TempData[TempDataConstant.WarningMessage] = "Error revoking primary ownership";
                         return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
                     }
-                    TempData[TempDataConstant.SuccessMessage] = "Plugin ownership has been revoked";
+                    TempData[TempDataConstant.SuccessMessage] = "Primary ownership revoked";
                     break;
                 }
             case "AssignOwnership":
@@ -213,7 +214,7 @@ public class AdminController(
                         TempData[TempDataConstant.WarningMessage] = "Error assigning primary ownership";
                         return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
                     }
-                    TempData[TempDataConstant.SuccessMessage] = "Plugin owner assignment was successful";
+                    TempData[TempDataConstant.SuccessMessage] = "Primary owner assigned";
                     break;
                 }
         }
