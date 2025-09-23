@@ -349,18 +349,7 @@ public class PluginController(
 
         await using var conn = await connectionFactory.Open();
 
-        var owners = (await conn.QueryAsync<OwnerVm>(
-            """
-            SELECT u."Id"    AS "UserId",
-                   u."Email" AS "Email",
-                   up.is_primary_owner AS "IsPrimary"
-            FROM users_plugins up
-            JOIN "AspNetUsers" u ON u."Id" = up.user_id
-            WHERE up.plugin_slug = @slug
-            ORDER BY up.is_primary_owner DESC, COALESCE(u."Email", u."Id");
-            """,
-            new { slug = pluginSlug.ToString() }
-        )).ToList();
+        var owners = await conn.GetPluginOwners(pluginSlug);
 
         var vm = new PluginOwnersPageViewModel
         {

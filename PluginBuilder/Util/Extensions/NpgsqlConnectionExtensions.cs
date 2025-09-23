@@ -4,6 +4,7 @@ using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Util.Extensions;
 
@@ -121,6 +122,23 @@ public static class NpgsqlConnectionExtensions
         return connection.ExecuteAsync(
             "DELETE FROM users_plugins WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
             new { pluginSlug = pluginSlug.ToString(), userId });
+    }
+
+    public static async Task<List<OwnerVm>> GetPluginOwners(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        const string sql = """
+                           SELECT
+                               u."Id"               AS "UserId",
+                               u."Email"            AS "Email",
+                               up.is_primary_owner  AS "IsPrimary"
+                           FROM users_plugins up
+                           JOIN "AspNetUsers" u ON u."Id" = up.user_id
+                           WHERE up.plugin_slug = @slug
+                           ORDER BY up.is_primary_owner DESC, COALESCE(u."Email", u."Id");
+                           """;
+
+        var owners = await connection.QueryAsync<OwnerVm>(sql, new { slug = pluginSlug.ToString() });
+        return owners.ToList();
     }
 
     public static async Task<bool> NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
