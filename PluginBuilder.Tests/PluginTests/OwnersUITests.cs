@@ -25,8 +25,7 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
 
         var slug = "owners-" + PlaywrightTester.GetRandomUInt256()[..8];
         await t.GoToUrl("/plugins/create");
-        await t.Page!.FillAsync("#PluginSlug", slug);
-        await t.Page.ClickAsync("#Create");
+        await Expect(t.Page).ToHaveURLAsync(new Regex("/account/details$", RegexOptions.IgnoreCase));
         await Expect(t.Page.Locator(".alert-warning")).ToBeVisibleAsync();
 
         await t.VerifyEmailAndGithubAsync(userA);

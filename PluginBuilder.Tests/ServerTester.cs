@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PluginBuilder.Controllers.Logic;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 
@@ -89,6 +91,9 @@ public class ServerTester : IAsyncDisposable
 
         await using var conn = await GetService<DBConnectionFactory>().Open();
         await conn.ReloadTypesAsync();
+        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
+        var verfCache = GetService<UserVerifiedCache>();
+        await verfCache.RefreshAllUserVerifiedSettings(conn);
     }
 
     public HttpClient CreateHttpClient()
