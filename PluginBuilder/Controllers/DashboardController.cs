@@ -60,22 +60,17 @@ public class DashboardController(
             return RedirectToAction("AccountDetails", "Account");
         }
 
-        await using var tx = await conn.BeginTransactionAsync();
-
-        if (!await conn.NewPlugin(pluginSlug))
+        if (!await conn.NewPlugin(pluginSlug, userId))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
-            await tx.RollbackAsync();
             return View(model);
         }
-
         if (model.Logo != null)
         {
             string errorMessage;
             if (!model.Logo.ValidateUploadedImage(out errorMessage))
             {
                 ModelState.AddModelError(nameof(model.Logo), $"Image upload validation failed: {errorMessage}");
-                await tx.RollbackAsync();
                 return View(model);
             }
             try
@@ -87,13 +82,10 @@ public class DashboardController(
             catch (Exception)
             {
                 ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. An error occurred while uploading logo image");
-                await tx.RollbackAsync();
                 return View(model);
             }
         }
-        await conn.AddUserPlugin(pluginSlug, userId, true);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl });
-        await tx.CommitAsync();
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }
 }

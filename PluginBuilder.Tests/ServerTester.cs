@@ -126,7 +126,7 @@ public class ServerTester : IAsyncDisposable
         var conn = await GetService<DBConnectionFactory>().Open();
         var buildService = GetService<BuildService>();
 
-        await conn.NewPlugin(slug);
+        await conn.NewPlugin(slug, Guid.NewGuid().ToString());
         var buildId = await conn.NewBuild(slug, new PluginBuildParameters(RepoUrl)
         {
             GitRef = gitRef,

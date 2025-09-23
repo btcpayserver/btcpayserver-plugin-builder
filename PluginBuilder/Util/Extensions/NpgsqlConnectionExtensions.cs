@@ -141,11 +141,16 @@ public static class NpgsqlConnectionExtensions
         return owners.ToList();
     }
 
-    public static async Task<bool> NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    public static async Task<bool> NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
         var count = await connection.ExecuteAsync("INSERT INTO plugins (slug) VALUES (@id) ON CONFLICT DO NOTHING;",
             new { id = pluginSlug.ToString() });
-        return count == 1;
+        if (count == 1)
+        {
+            await connection.AddUserPlugin(pluginSlug, userId, true);
+            return true;
+        }
+        return false;
     }
 
     public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo,
