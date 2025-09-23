@@ -130,7 +130,7 @@ public class ServerTester : IAsyncDisposable
         string gitRef = GitRef,
         string pluginDir = PluginDir)
     {
-        var conn = await GetService<DBConnectionFactory>().Open();
+        await using var conn = await GetService<DBConnectionFactory>().Open();
         var buildService = GetService<BuildService>();
 
         await conn.NewPlugin(slug, userId);

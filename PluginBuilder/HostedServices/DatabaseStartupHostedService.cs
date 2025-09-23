@@ -34,8 +34,8 @@ public class DatabaseStartupHostedService : IHostedService
             await RunScripts(conn);
             await CleanupScript(conn);
 
-            await _userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
             await conn.SettingsInitialize();
+            await _userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
         }
         catch (NpgsqlException pgex) when (pgex.SqlState == "3D000")
         {

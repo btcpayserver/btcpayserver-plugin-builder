@@ -21,13 +21,14 @@ public class DashboardController(
     [HttpGet("/plugins/create")]
     public async Task<IActionResult> CreatePlugin()
     {
-        await using var conn = await connectionFactory.Open();
         if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
+
+        await using var conn = await connectionFactory.Open();
 
         if (await userVerifiedLogic.IsUserGithubVerified(User, conn)) return View();
 
@@ -60,7 +61,7 @@ public class DashboardController(
         if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
         {
             TempData[TempDataConstant.WarningMessage] =
-                "You need to verify your Github Account in order to create and publish plugins";
+                "You need to verify your GitHub Account in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
 
