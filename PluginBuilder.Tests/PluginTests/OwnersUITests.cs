@@ -35,8 +35,8 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await t.Page.ClickAsync("#Create");
         await t.GoToUrl($"/plugins/{slug}/owners");
         await t.AssertNoError();
-        await Expect(t.Page.Locator(".list-group-item .fw-semibold")).ToContainTextAsync(userA);
-        await Expect(t.Page.Locator(".list-group-item")).ToContainTextAsync("Primary Owner");
+        await Expect(t.Page.Locator("table tbody tr")).ToContainTextAsync(userA);
+        await Expect(t.Page.Locator("table tbody tr")).ToContainTextAsync("Primary Owner");
 
         await t.Logout();
         await t.GoToUrl("/register");
@@ -58,7 +58,7 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await addForm.FillAsync(userB);
         await t.Page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Add" }).ClickAsync();
 
-        var bRow = t.Page.Locator(".list-group-item").Filter(new LocatorFilterOptions { HasText = userB });
+        var bRow = t.Page.Locator("table tbody tr").Filter(new LocatorFilterOptions { HasText = userB });
         await Expect(bRow).ToBeVisibleAsync();
 
         var removeBtn = bRow.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Remove" });
@@ -66,11 +66,11 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         var confirmBtn = t.Page.Locator("#ConfirmContinue");
         await Expect(confirmBtn).ToBeVisibleAsync();
         await confirmBtn.ClickAsync();
-        await Expect(t.Page.Locator(".list-group-item").Filter(new LocatorFilterOptions { HasText = userB })).ToHaveCountAsync(0);
+        await Expect(t.Page.Locator("table tbody tr").Filter(new LocatorFilterOptions { HasText = userB })).ToHaveCountAsync(0);
 
         await addForm.FillAsync(userB);
         await t.Page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Add" }).ClickAsync();
-        bRow = t.Page.Locator(".list-group-item").Filter(new LocatorFilterOptions { HasText = userB });
+        bRow = t.Page.Locator("table tbody tr").Filter(new LocatorFilterOptions { HasText = userB });
         await Expect(bRow).ToBeVisibleAsync();
         var transferBtn = bRow.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Transfer Primary" });
         await transferBtn.ClickAsync();
@@ -79,7 +79,7 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await Expect(bRow).ToContainTextAsync("Primary Owner");
         await Expect(t.Page.Locator("form[method='post'] >> input[name='email']")).ToHaveCountAsync(0);
 
-        var aRow = t.Page.Locator(".list-group-item").Filter(new LocatorFilterOptions { HasText = userA });
+        var aRow = t.Page.Locator("table tbody tr").Filter(new LocatorFilterOptions { HasText = userA });
         var leaveBtn = aRow.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Leave" });
         await leaveBtn.ClickAsync();
         await Task.WhenAll(
