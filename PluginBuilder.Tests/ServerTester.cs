@@ -18,6 +18,12 @@ public class ServerTester : IAsyncDisposable
     private WebApplication? _WebApp;
     public int Port { get; set; } = Utils.FreeTcpPort();
 
+    public const string RepoUrl   = "https://github.com/NicolasDorier/btcpayserver";
+    public const string GitRef    = "plugins/collection2";
+    public const string PluginDir = "Plugins/BTCPayServer.Plugins.RockstarStylist";
+    public const string BuildCfg  = "Release";
+    public const string PluginSlug = "rockstar-stylist";
+
 
     public ServerTester(string testFolder, XUnitLogger logs)
     {
@@ -43,7 +49,7 @@ public class ServerTester : IAsyncDisposable
             await _WebApp.DisposeAsync();
             _WebApp = null;
         }
-        
+
         foreach (var d in disposables) await d.DisposeAsync();
     }
 
@@ -65,7 +71,7 @@ public class ServerTester : IAsyncDisposable
         var projectDir = FindPluginBuilderDirectory();
         var webappBuilder = host.CreateWebApplicationBuilder(new WebApplicationOptions
         {
-            ContentRootPath = projectDir, 
+            ContentRootPath = projectDir,
             WebRootPath = Path.Combine(projectDir, "wwwroot"),
             Args = [$"--urls=http://127.0.0.1:{Port}"]
         });
@@ -90,7 +96,7 @@ public class ServerTester : IAsyncDisposable
         client.BaseAddress = new Uri(WebApp.Urls.First(), UriKind.Absolute);
         return client;
     }
-    
+
     private string FindPluginBuilderDirectory()
     {
         var solutionDirectory = TryGetSolutionDirectoryInfo();
@@ -111,17 +117,17 @@ public class ServerTester : IAsyncDisposable
 
         return directory;
     }
-    
+
     public async Task<FullBuildId> CreateAndBuildPluginAsync(
-        string slug = "rockstar-stylist",
-        string gitRef = "plugins/collection2",
-        string pluginDir = "Plugins/BTCPayServer.Plugins.RockstarStylist")
+        string slug = PluginSlug,
+        string gitRef = GitRef,
+        string pluginDir = PluginDir)
     {
         var conn = await GetService<DBConnectionFactory>().Open();
         var buildService = GetService<BuildService>();
 
         await conn.NewPlugin(slug);
-        var buildId = await conn.NewBuild(slug, new PluginBuildParameters("https://github.com/NicolasDorier/btcpayserver")
+        var buildId = await conn.NewBuild(slug, new PluginBuildParameters(RepoUrl)
         {
             GitRef = gitRef,
             PluginDirectory = pluginDir
