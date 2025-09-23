@@ -145,12 +145,11 @@ public static class NpgsqlConnectionExtensions
     {
         var count = await connection.ExecuteAsync("INSERT INTO plugins (slug) VALUES (@id) ON CONFLICT DO NOTHING;",
             new { id = pluginSlug.ToString() });
-        if (count == 1)
-        {
-            await connection.AddUserPlugin(pluginSlug, userId, true);
-            return true;
-        }
-        return false;
+
+        if (count != 1) return false;
+
+        await connection.AddUserPlugin(pluginSlug, userId, true);
+        return true;
     }
 
     public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo,

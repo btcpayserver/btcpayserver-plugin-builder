@@ -394,7 +394,7 @@ public class PluginController(
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            if (!await userManager.IsEmailConfirmedAsync(user))
+            if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
             {
                 TempData[TempDataConstant.WarningMessage] = "Owner must have a confirmed email.";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
