@@ -14,7 +14,7 @@
 </div>
 
 
-@if (Model.Owners.Any())
+@if (Model.Owners?.Any() == true)
 {
     <div class="row">
         <div class="col-xxl-constrain col-xl-8">
@@ -27,8 +27,8 @@
                     @Html.AntiForgeryToken()
 
                     <input type="email" name="email" class="form-control" placeholder="user@example.com" style="flex: 1 1 14rem" required />
-                    <button type="submit" role="button" class="btn btn-primary text-nowrap flex-grow-1 flex-sm-grow-0" id="AddUser" text-translate="true">Add
-                        Owner
+                    <button type="submit" class="btn btn-primary text-nowrap flex-grow-1 flex-sm-grow-0" id="AddUser">
+                        Add Owner
                     </button>
                 </form>
             }
@@ -36,8 +36,8 @@
                 <table class="table table-hover">
                     <thead>
                     <tr>
-                        <th>Email</th>
-                        <th class="text-end text-nowrap">Actions</th>
+                        <th scope="col">Email</th>
+                        <th scope="col" class="text-end text-nowrap">Actions</th>
                     </tr>
                     </thead>
                     <tbody>
