@@ -5,7 +5,7 @@
     {
         if (string.IsNullOrWhiteSpace(name)) return "";
         var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0].ToString().ToUpper());
-        return string.Concat(parts.Take(4));
+        return string.Concat(parts.Take(3));
     }
 }
 

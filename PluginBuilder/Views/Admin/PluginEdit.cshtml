@@ -22,34 +22,32 @@
 	@if (Model.PluginUsers?.Any() == true)
 	{
 		<div class="container my-4">
-			<h6>Plugin Users</h6>
+			<h6 class="mb-3">Plugin Users</h6>
 			<div class="col-md-8 col-lg-6">
 				@foreach (var user in Model.PluginUsers)
 				{
-					<div class="d-flex justify-content-between align-items-center">
+					<div class="d-flex justify-content-between align-items-center border-bottom py-2">
 						<div>
-							<strong>Email:</strong> @user.Email
+							<span class="fw-semibold">@user.Email</span>
 							@if (user.IsPluginOwner)
 							{
-								<span class="badge bg-success me-2">Owner</span>
+								<span class="badge bg-success ms-2">Owner</span>
 							}
 						</div>
-                        <div class="text-end">
-                            <form method="post"
-                                  asp-controller="Admin"
-                                  asp-action="ManagePluginOwnership"
-                                  asp-route-pluginSlug="@Model.Slug"
-                                  asp-route-userId="@user.UserId"
-                                  asp-route-command="@(user.IsPluginOwner ? "RevokeOwnership" : "AssignOwnership")"
-                                  class="d-inline">
-                                @Html.AntiForgeryToken()
-                                <button type="submit"
-                                        class="btn btn-sm me-2 mb-2 @(user.IsPluginOwner ? "btn-outline-danger" : "btn-outline-primary")">
-                                    @(user.IsPluginOwner ? "Revoke Ownership" : "Set as Owner")
-                                </button>
-                            </form>
-                        </div>
-                    </div>
+						<form method="post"
+							  asp-controller="Admin"
+							  asp-action="ManagePluginOwnership"
+							  asp-route-pluginSlug="@Model.Slug"
+							  asp-route-userId="@user.UserId"
+							  asp-route-command="@(user.IsPluginOwner ? "RevokeOwnership" : "AssignOwnership")"
+							  class="d-inline">
+							@Html.AntiForgeryToken()
+							<button type="submit"
+									class="btn @(user.IsPluginOwner ? "btn-link text-danger" : "btn-link text-primary")">
+								@(user.IsPluginOwner ? "Revoke" : "Make Owner")
+							</button>
+						</form>
+					</div>
 				}
 			</div>
 		</div>

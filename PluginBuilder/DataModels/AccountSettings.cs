@@ -4,6 +4,9 @@ namespace PluginBuilder.DataModels;
 
 public class AccountSettings
 {
+    [Display(Name = "Display Name")]
+    public string? UserName { get; set; }
+
     [Display(Name = "Github username")]
     public string? Github { get; set; }
 

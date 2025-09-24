@@ -108,6 +108,22 @@
 							</div>
 						</div>
 					}
+					@if (Model.OwnersDisplayName != null && Model.OwnersDisplayName.Any())
+					{
+						<div class="card mt-4">
+							<div class="card-body">
+								<h4>Owner(s)</h4>
+								<div class="row">
+									@foreach (var displayName in Model.OwnersDisplayName)
+									{
+										<div class="col-md-6 d-flex align-items-center m-3">
+											<span>@displayName</span>
+										</div>
+									}
+								</div>
+							</div>
+						</div>
+					}
 				</div>
 				<div class="col-md-4">
 					<div class="card">

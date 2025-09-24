@@ -129,8 +129,9 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
                            SELECT
                                u."Id"               AS "UserId",
-                               u."Email"            AS "Email",
-                               up.is_primary_owner  AS "IsPrimary"
+                               up.is_primary_owner  AS "IsPrimary",
+                               u."Email",
+                               u."AccountDetail"
                            FROM users_plugins up
                            JOIN "AspNetUsers" u ON u."Id" = up.user_id
                            WHERE up.plugin_slug = @slug

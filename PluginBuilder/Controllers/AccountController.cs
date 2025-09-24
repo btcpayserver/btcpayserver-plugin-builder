@@ -78,6 +78,7 @@ public class AccountController(
         accountSettings.Nostr = model.Settings.Nostr;
         accountSettings.Twitter = model.Settings.Twitter;
         accountSettings.Email = model.Settings.Email;
+        accountSettings.UserName = model.Settings.UserName;
         await conn.SetAccountDetailSettings(accountSettings, user!.Id);
 
         TempData[TempDataConstant.SuccessMessage] = "Account details updated successfully";

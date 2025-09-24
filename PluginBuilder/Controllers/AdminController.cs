@@ -243,7 +243,7 @@ public class AdminController(
             {
                 Id = user.Id,
                 Email = user.Email!,
-                UserName = user.UserName!,
+                UserName = accountSettings.UserName ?? user.UserName!,
                 EmailConfirmed = user.EmailConfirmed,
                 Roles = userRoles,
                 PendingNewEmail = accountSettings?.PendingNewEmail

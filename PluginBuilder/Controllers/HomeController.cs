@@ -297,10 +297,19 @@ public class HomeController(
         if (row is null)
             return NotFound();
 
+        string[] owners = Array.Empty<string>();
+        var pluginOwners = await conn.GetPluginOwners(pluginSlug);
+        if (pluginOwners?.Any() == true)
+        {
+            owners = pluginOwners.Select(o => o.AccountDetail).Where(d => !string.IsNullOrEmpty(d))
+                .Select(d => JsonConvert.DeserializeObject<AccountSettings>(d!, CamelCaseSerializerSettings.Instance)?.UserName)
+                .Where(u => !string.IsNullOrEmpty(u)).Select(u => u!).ToArray()!;
+        }
         var settings = JsonConvert.DeserializeObject<PluginSettings>((string)row.settings)!;
 
         var plugin = new PublishedPlugin
         {
+            OwnersDisplayName = owners,
             ProjectSlug = pluginSlug.ToString(),
             Version = string.Join('.', row.ver),
             BuildInfo = JObject.Parse((string)row.build_info),
@@ -312,7 +321,6 @@ public class HomeController(
 
         ViewBag.Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir);
         ViewBag.ShowHiddenNotice = (int)row.visibility == (int)PluginVisibilityEnum.Hidden;
-
         return View(plugin);
     }
 

@@ -18,6 +18,7 @@ public class PublishedVersion
 
 public class PublishedPlugin : PublishedVersion
 {
+    public string[] OwnersDisplayName { get; set; }
     public DateTimeOffset CreatedDate { get; set; }
     static Regex GithubRepositoryRegex = new Regex("^https://(www\\.)?github\\.com/([^/]+)/([^/]+)/?");
     public string gitRepository => BuildInfo?["gitRepository"]?.ToString();
