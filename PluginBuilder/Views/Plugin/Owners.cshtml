@@ -13,107 +13,106 @@
     </h2>
 </div>
 
-@if (Model.IsPrimaryOwner)
-{
-    <form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8"
-          asp-action="AddOwner"
-          asp-route-pluginSlug="@Model.PluginSlug"
-          method="post">
-        @Html.AntiForgeryToken()
-        <div class="col-md-6">
-            <div class="input-group input-group-sm">
-                <input type="email"
-                       name="email"
-                       class="form-control"
-                       placeholder="user@example.com"
-                       required />
-                <button type="submit" class="btn btn-sm btn-primary rounded">Add</button>
-            </div>
-        </div>
-    </form>
-}
 
 @if (Model.Owners.Any())
 {
-    <div class="table-responsive">
-        <table class="table table-hover">
-            <thead>
-            <tr>
-                <th>Email</th>
-                <th class="text-end text-nowrap"></th>
-            </tr>
-            </thead>
-            <tbody>
-            @foreach (var o in Model.Owners)
+    <div class="row">
+        <div class="col-xxl-constrain col-xl-8">
+            @if (Model.IsPrimaryOwner)
             {
-                <tr>
-                    <td class="align-middle">
-                        @(!string.IsNullOrEmpty(o.Email) ? o.Email : o.UserId)
-                        @if (o.IsPrimary)
-                        {
-                            <span class="badge bg-warning text-dark ms-2">Primary Owner</span>
-                        }
-                    </td>
-                    <td class="text-end text-nowrap align-middle">
-                        @if (Model.IsPrimaryOwner && !o.IsPrimary)
-                        {
-                            <button
-                                id="transfer-@o.UserId"
-                                type="button"
-                                class="btn btn-link p-0 text-success"
-                                data-bs-toggle="modal"
-                                data-bs-target="#ConfirmModal"
-                                data-action='@Url.EnsureLocal(
-                                                 Url.Action("TransferPrimaryOwner", new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
-                                                 Context.Request
-                                             )'
-                                data-title="Transfer primary owner"
-                                data-description="Transfer primary ownership to @o.Email? This action is irreversible. Only the new primary owner can transfer it back and add new users."
-                                data-confirm="Confirm">
-                                Transfer Primary
-                            </button>
+                <form class="d-flex flex-wrap align-items-center gap-3"
+                      asp-action="AddOwner"
+                      asp-route-pluginSlug="@Model.PluginSlug"
+                      method="post">
+                    @Html.AntiForgeryToken()
 
-                            <span class="mx-2">|</span>
-
-                            <button
-                                id="remove-@o.UserId"
-                                type="button"
-                                class="btn btn-link p-0 text-danger"
-                                data-bs-toggle="modal"
-                                data-bs-target="#ConfirmModal"
-                                data-action='@Url.EnsureLocal(
-                                                 Url.Action("RemoveOwner", new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
-                                                 Context.Request
-                                             )'
-                                data-title="Remove owner"
-                                data-description='Remove <strong>@o.Email</strong> from owners?'
-                                data-description-html="true"
-                                data-confirm="Remove">
-                                Remove
-                            </button>
-                        }
-
-                        @if (!Model.IsPrimaryOwner && o.UserId == Model.CurrentUserId && !o.IsPrimary)
-                        {
-                            <button type="button"
-                                    class="btn btn-link p-0 text-danger"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#ConfirmModal"
-                                    data-action='@Url.EnsureLocal(
-                                                     Url.Action("RemoveOwner", new { pluginSlug = Model.PluginSlug, userId = Model.CurrentUserId }),
-                                                     Context.Request
-                                                 )'
-                                    data-title="Leave plugin"
-                                    data-description="Leave ownership of this plugin?"
-                                    data-confirm="Leave">
-                                Leave
-                            </button>
-                        }
-                    </td>
-                </tr>
+                    <input type="email" name="email" class="form-control" placeholder="user@example.com" style="flex: 1 1 14rem" required />
+                    <button type="submit" role="button" class="btn btn-primary text-nowrap flex-grow-1 flex-sm-grow-0" id="AddUser" text-translate="true">Add
+                        Owner
+                    </button>
+                </form>
             }
-            </tbody>
-        </table>
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th class="text-end text-nowrap">Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var o in Model.Owners)
+                    {
+                        <tr>
+                            <td class="align-middle">
+                                @(!string.IsNullOrEmpty(o.Email) ? o.Email : o.UserId)
+                                @if (o.IsPrimary)
+                                {
+                                    <span class="badge bg-warning text-dark ms-2">Primary Owner</span>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap align-middle">
+                                @if (Model.IsPrimaryOwner && !o.IsPrimary)
+                                {
+                                    <button
+                                        id="transfer-@o.UserId"
+                                        type="button"
+                                        class="btn btn-link p-0 text-success"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#ConfirmModal"
+                                        data-action='@Url.EnsureLocal(
+                                                         Url.Action("TransferPrimaryOwner", new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
+                                                         Context.Request
+                                                     )'
+                                        data-title="Transfer primary owner"
+                                        data-description="Transfer primary ownership to @o.Email? This action is irreversible. Only the new primary owner can transfer it back and add new users."
+                                        data-confirm="Confirm">
+                                        Transfer Primary
+                                    </button>
+
+                                    <span class="mx-2">|</span>
+
+                                    <button
+                                        id="remove-@o.UserId"
+                                        type="button"
+                                        class="btn btn-link p-0 text-danger"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#ConfirmModal"
+                                        data-action='@Url.EnsureLocal(
+                                                         Url.Action("RemoveOwner", new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
+                                                         Context.Request
+                                                     )'
+                                        data-title="Remove owner"
+                                        data-description='Remove <strong>@o.Email</strong> from owners?'
+                                        data-description-html="true"
+                                        data-confirm="Remove">
+                                        Remove
+                                    </button>
+                                }
+
+                                @if (!Model.IsPrimaryOwner && o.UserId == Model.CurrentUserId && !o.IsPrimary)
+                                {
+                                    <button type="button"
+                                            class="btn btn-link p-0 text-danger"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#ConfirmModal"
+                                            data-action='@Url.EnsureLocal(
+                                                             Url.Action("RemoveOwner", new { pluginSlug = Model.PluginSlug, userId = Model.CurrentUserId }),
+                                                             Context.Request
+                                                         )'
+                                            data-title="Leave plugin"
+                                            data-description="Leave ownership of this plugin?"
+                                            data-confirm="Leave">
+                                        Leave
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 }
 else
@@ -121,4 +120,4 @@ else
     <p class="text-secondary mt-3">There are no owners yet.</p>
 }
 
-<partial name="_Confirm" model="@(new ConfirmModel( title: "Confirm action",  desc: "Are you sure?", action: "Confirm"))" />
+<partial name="_Confirm" model="@(new ConfirmModel(title: "Confirm action", desc: "Are you sure?", action: "Confirm"))" />
