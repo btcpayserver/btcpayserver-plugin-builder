@@ -4,6 +4,7 @@ using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Util.Extensions;
 
@@ -74,44 +75,81 @@ public static class NpgsqlConnectionExtensions
             new { pluginSlug = pluginSlug.ToString() });
     }
 
-    public static async Task<string?> RetrievePluginOwner(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    public static async Task<string?> RetrievePluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         return await connection.QueryFirstOrDefaultAsync<string>(
             "SELECT user_id FROM users_plugins WHERE plugin_slug=@pluginSlug AND is_primary_owner IS TRUE;",
             new { pluginSlug = pluginSlug.ToString() });
     }
 
-    public static async Task AssignPluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task<bool> AssignPluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
-        using var tx = connection.BeginTransaction();
+        await using var tx = await connection.BeginTransactionAsync();
         await connection.ExecuteAsync(
             "UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND is_primary_owner IS TRUE;",
             new { pluginSlug = pluginSlug.ToString() }, tx);
 
-        await connection.ExecuteAsync(
+        var updated = await connection.ExecuteAsync(
             @"UPDATE users_plugins SET is_primary_owner = TRUE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
             new { pluginSlug = pluginSlug.ToString(), userId }, tx);
+
+        if (updated != 1)
+            return false;
+
         await tx.CommitAsync();
+        return true;
     }
 
-    public static async Task RevokePluginOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task<bool> RevokePluginPrimaryOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
-        await connection.ExecuteAsync(
+        var updated = await connection.ExecuteAsync(
             @"UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
             new { pluginSlug = pluginSlug.ToString(), userId });
+        return updated == 1;
     }
 
-    public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId, bool isPrimary = false)
     {
-        await connection.ExecuteAsync("INSERT INTO users_plugins VALUES (@userId, @pluginSlug) ON CONFLICT DO NOTHING",
+        await connection.ExecuteAsync("INSERT INTO users_plugins (user_id, plugin_slug, is_primary_owner) VALUES (@userId, @pluginSlug, @isPrimary) ON CONFLICT DO NOTHING",
+            new { pluginSlug = pluginSlug.ToString(), userId, isPrimary });
+    }
+
+    public static Task<int> RemovePluginOwner(
+        this NpgsqlConnection connection,
+        PluginSlug pluginSlug,
+        string userId)
+    {
+        return connection.ExecuteAsync(
+            "DELETE FROM users_plugins WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
             new { pluginSlug = pluginSlug.ToString(), userId });
     }
 
-    public static async Task<bool> NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    public static async Task<List<OwnerVm>> GetPluginOwners(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        const string sql = """
+                           SELECT
+                               u."Id"               AS "UserId",
+                               u."Email"            AS "Email",
+                               up.is_primary_owner  AS "IsPrimary"
+                           FROM users_plugins up
+                           JOIN "AspNetUsers" u ON u."Id" = up.user_id
+                           WHERE up.plugin_slug = @slug
+                           ORDER BY up.is_primary_owner DESC, COALESCE(u."Email", u."Id");
+                           """;
+
+        var owners = await connection.QueryAsync<OwnerVm>(sql, new { slug = pluginSlug.ToString() });
+        return owners.ToList();
+    }
+
+    public static async Task<bool> NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
         var count = await connection.ExecuteAsync("INSERT INTO plugins (slug) VALUES (@id) ON CONFLICT DO NOTHING;",
             new { id = pluginSlug.ToString() });
-        return count == 1;
+
+        if (count != 1) return false;
+
+        await connection.AddUserPlugin(pluginSlug, userId, true);
+        return true;
     }
 
     public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo,
@@ -234,22 +272,9 @@ public static class NpgsqlConnectionExtensions
             });
 
         var currId = await connection.GetLatestPluginBuildNumber(pluginSlug);
-        if (currId == 0)
-        {
-            const string assignOwnerSql = """
-                UPDATE users_plugins
-                SET is_primary_owner = TRUE
-                WHERE plugin_slug = @plugin_slug
-                AND NOT EXISTS (
-                    SELECT 1 FROM users_plugins WHERE plugin_slug = @plugin_slug AND is_primary_owner IS TRUE
-                );
-                """;
-            await connection.ExecuteAsync(assignOwnerSql, new { plugin_slug = pluginSlug.ToString() });
-            if (firstBuildEvent is not null)
-            {
-                await firstBuildEvent.OnFirstBuildCreated(connection, pluginSlug);
-            }
-        }
+        if (currId == 0 && firstBuildEvent is not null)
+            await firstBuildEvent.OnFirstBuildCreated(connection, pluginSlug);
+
         return buildId;
     }
 
@@ -314,12 +339,26 @@ public static class NpgsqlConnectionExtensions
                 "INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedEmailForLogin, value = "true" });
         }
+
+        if (result.All(r => r.key != SettingsKeys.VerifiedGithub))
+        {
+            await connection.ExecuteAsync(
+                "INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.VerifiedGithub, value = "false" });
+        }
     }
 
     public static async Task<bool> GetVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection)
     {
         var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedEmailForPluginPublish);
         return bool.TryParse(settingValue, out var result) && result;
+    }
+
+    public static async Task UpdateVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection, bool newValue)
+    {
+        var stringValue = newValue.ToString().ToLowerInvariant();
+        await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = @Key",
+            new { Value = stringValue, Key = SettingsKeys.VerifiedEmailForPluginPublish });
     }
 
     public static async Task<bool> GetVerifiedEmailForLoginSetting(this NpgsqlConnection connection)
@@ -333,10 +372,9 @@ public static class NpgsqlConnectionExtensions
         return SettingsGetAsync(connection, SettingsKeys.FirstPluginBuildReviewers);
     }
 
-    public static async Task UpdateVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection, bool newValue)
+    public static async Task<bool> GetVerifiedGithubSetting(this NpgsqlConnection connection)
     {
-        var stringValue = newValue.ToString().ToLowerInvariant();
-        await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = @Key",
-            new { Value = stringValue, Key = SettingsKeys.VerifiedEmailForPluginPublish });
+        var v = await SettingsGetAsync(connection, SettingsKeys.VerifiedGithub);
+        return bool.TryParse(v, out var b) && b;
     }
 }

@@ -7,4 +7,5 @@ public static class SettingsKeys
     public const string VerifiedEmailForPluginPublish = nameof(VerifiedEmailForPluginPublish);
     public const string VerifiedEmailForLogin = nameof(VerifiedEmailForLogin);
     public const string FirstPluginBuildReviewers = nameof(FirstPluginBuildReviewers);
+    public const string VerifiedGithub = nameof(VerifiedGithub);
 }

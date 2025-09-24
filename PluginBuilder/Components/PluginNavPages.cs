@@ -3,5 +3,6 @@ namespace PluginBuilder.Components;
 public enum PluginNavPages
 {
     Dashboard,
-    Settings
+    Settings,
+    Owners
 }

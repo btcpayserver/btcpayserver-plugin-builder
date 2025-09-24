@@ -22,9 +22,9 @@
         @if (Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Any())
         {
             <a asp-controller="Admin" asp-action="EmailSender"
-               asp-route-to="@string.Join(",", Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Select(m => m.PublisherEmail))"
+               asp-route-to="@string.Join(",", Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Select(m => m.PrimaryOwnerEmail))"
                class="btn btn-primary">
-                Email Publishers
+                Email Primary Owners
             </a>
         }
     </div>
@@ -61,7 +61,7 @@
                 <th>BTCPay Min Version</th>
                 <th>Pre-Release</th>
                 <th>Updated At</th>
-                <th>Publisher Email</th>
+                <th>Primary Owner</th>
                 <th>Visibility</th>
                 <th></th>
             </tr>
@@ -83,7 +83,7 @@
                     <td>@plugin.BtcPayMinVer</td>
                     <td>@plugin.PreRelease</td>
                     <td>@plugin.UpdatedAt</td>
-                    <td>@plugin.PublisherEmail</td>
+                    <td>@plugin.PrimaryOwnerEmail</td>
                     <td>@plugin.Visibility</td>
                     <td>
                         <a asp-controller="Admin" asp-action="PluginEdit" asp-route-slug="@plugin.ProjectSlug">Edit</a> |

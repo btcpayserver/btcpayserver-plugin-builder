@@ -139,8 +139,8 @@ public class Program
         services.AddSingleton<FirstBuildEvent>();
 
         // shared controller logic
-        services.AddSingleton<EmailVerifiedCache>();
-        services.AddTransient<EmailVerifiedLogic>();
+        services.AddSingleton<UserVerifiedCache>();
+        services.AddTransient<UserVerifiedLogic>();
         services.AddScoped<ReferrerNavigationService>();
         services.AddHttpContextAccessor();
         services.AddSingleton<IActionContextAccessor, ActionContextAccessor>();

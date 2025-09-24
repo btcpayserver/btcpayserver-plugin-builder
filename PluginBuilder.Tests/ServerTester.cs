@@ -5,8 +5,11 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PluginBuilder.Controllers.Logic;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 
@@ -17,6 +20,12 @@ public class ServerTester : IAsyncDisposable
     private readonly List<IAsyncDisposable> disposables = new();
     private WebApplication? _WebApp;
     public int Port { get; set; } = Utils.FreeTcpPort();
+
+    public const string RepoUrl   = "https://github.com/NicolasDorier/btcpayserver";
+    public const string GitRef    = "plugins/collection2";
+    public const string PluginDir = "Plugins/BTCPayServer.Plugins.RockstarStylist";
+    public const string BuildCfg  = "Release";
+    public const string PluginSlug = "rockstar-stylist";
 
 
     public ServerTester(string testFolder, XUnitLogger logs)
@@ -43,7 +52,7 @@ public class ServerTester : IAsyncDisposable
             await _WebApp.DisposeAsync();
             _WebApp = null;
         }
-        
+
         foreach (var d in disposables) await d.DisposeAsync();
     }
 
@@ -65,7 +74,7 @@ public class ServerTester : IAsyncDisposable
         var projectDir = FindPluginBuilderDirectory();
         var webappBuilder = host.CreateWebApplicationBuilder(new WebApplicationOptions
         {
-            ContentRootPath = projectDir, 
+            ContentRootPath = projectDir,
             WebRootPath = Path.Combine(projectDir, "wwwroot"),
             Args = [$"--urls=http://127.0.0.1:{Port}"]
         });
@@ -82,6 +91,9 @@ public class ServerTester : IAsyncDisposable
 
         await using var conn = await GetService<DBConnectionFactory>().Open();
         await conn.ReloadTypesAsync();
+        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
+        var verfCache = GetService<UserVerifiedCache>();
+        await verfCache.RefreshAllUserVerifiedSettings(conn);
     }
 
     public HttpClient CreateHttpClient()
@@ -90,7 +102,7 @@ public class ServerTester : IAsyncDisposable
         client.BaseAddress = new Uri(WebApp.Urls.First(), UriKind.Absolute);
         return client;
     }
-    
+
     private string FindPluginBuilderDirectory()
     {
         var solutionDirectory = TryGetSolutionDirectoryInfo();
@@ -111,17 +123,18 @@ public class ServerTester : IAsyncDisposable
 
         return directory;
     }
-    
+
     public async Task<FullBuildId> CreateAndBuildPluginAsync(
-        string slug = "rockstar-stylist",
-        string gitRef = "plugins/collection2",
-        string pluginDir = "Plugins/BTCPayServer.Plugins.RockstarStylist")
+        string userId,
+        string slug = PluginSlug,
+        string gitRef = GitRef,
+        string pluginDir = PluginDir)
     {
-        var conn = await GetService<DBConnectionFactory>().Open();
+        await using var conn = await GetService<DBConnectionFactory>().Open();
         var buildService = GetService<BuildService>();
 
-        await conn.NewPlugin(slug);
-        var buildId = await conn.NewBuild(slug, new PluginBuildParameters("https://github.com/NicolasDorier/btcpayserver")
+        await conn.NewPlugin(slug, userId);
+        var buildId = await conn.NewBuild(slug, new PluginBuildParameters(RepoUrl)
         {
             GitRef = gitRef,
             PluginDirectory = pluginDir
@@ -132,4 +145,27 @@ public class ServerTester : IAsyncDisposable
         return fullBuildId;
     }
 
+    public async Task<string> CreateFakeUserAsync(string? email = null, bool confirmEmail = true, bool githubVerified = true)
+    {
+        using var scope = WebApp.Services.CreateScope();
+        var userMgr = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+
+        email ??= $"u{Guid.NewGuid():N}@a.com";
+        var user = new IdentityUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = confirmEmail
+        };
+        var res = await userMgr.CreateAsync(user, "Test1234!");
+        if (!res.Succeeded)
+            throw new InvalidOperationException("Failed to create test user: " + string.Join(", ", res.Errors.Select(e => e.Description)));
+
+        if (!githubVerified) return user.Id;
+
+        await using var conn = await GetService<DBConnectionFactory>().Open();
+        await conn.VerifyGithubAccount(user.Id, "https://gist.github.com/dummy/123");
+
+        return user.Id;
+    }
 }

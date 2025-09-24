@@ -23,7 +23,7 @@ public class AdminController(
     RoleManager<IdentityRole> roleManager,
     DBConnectionFactory connectionFactory,
     EmailService emailService,
-    EmailVerifiedCache emailVerifiedCache,
+    UserVerifiedCache userVerifiedCache,
     ReferrerNavigationService referrerNavigation)
     : Controller
 {
@@ -54,7 +54,7 @@ public class AdminController(
         var rows = await conn.QueryAsync($"""
                                          SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
                                          FROM plugins p
-                                         LEFT JOIN users_plugins up ON p.slug = up.plugin_slug
+                                         LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
                                          LEFT JOIN (
                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
@@ -73,7 +73,7 @@ public class AdminController(
             {
                 ProjectSlug = row.slug,
                 Visibility = row.visibility,
-                PublisherEmail = row.email
+                PrimaryOwnerEmail = row.email
             };
             if (row.ver != null)
             {
@@ -96,7 +96,7 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
-        await emailVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
+        await userVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
         TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
         return RedirectToAction("ListPlugins");
     }
@@ -182,7 +182,8 @@ public class AdminController(
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
     }
 
-    [HttpGet]
+    [HttpPost("plugins/{pluginSlug}/ownership")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> ManagePluginOwnership(string pluginSlug, string userId, string command = "")
     {
         await using var conn = await connectionFactory.Open();
@@ -196,18 +197,26 @@ public class AdminController(
         {
             case "RevokeOwnership":
                 {
-                    await conn.RevokePluginOwnership(pluginSlug, userId);
-                    TempData[TempDataConstant.SuccessMessage] = "Plugin ownership has been revoked";
+                    var ok = await conn.RevokePluginPrimaryOwnership(pluginSlug, userId);
+                    if (!ok)
+                    {
+                        TempData[TempDataConstant.WarningMessage] = "Error revoking primary ownership";
+                        return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+                    }
+                    TempData[TempDataConstant.SuccessMessage] = "Primary ownership revoked";
                     break;
                 }
             case "AssignOwnership":
                 {
-                    await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
-                    TempData[TempDataConstant.SuccessMessage] = "Plugin owener assignment was successful";
+                    var ok = await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
+                    if (!ok)
+                    {
+                        TempData[TempDataConstant.WarningMessage] = "Error assigning primary ownership";
+                        return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+                    }
+                    TempData[TempDataConstant.SuccessMessage] = "Primary owner assigned";
                     break;
                 }
-            default:
-                break;
         }
         return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
     }
@@ -423,7 +432,7 @@ public class AdminController(
         await using var conn = await connectionFactory.Open();
         var emailSettingsJson = JsonConvert.SerializeObject(model);
         await conn.SettingsSetAsync("EmailSettings", emailSettingsJson);
-        await emailVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
+        await userVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
     }
 
     [HttpGet("emailsender")]
@@ -509,7 +518,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsSetAsync(key, value);
-        await emailVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
+        await userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
         return RedirectToAction(nameof(SettingsEditor));
     }
 
@@ -521,13 +530,13 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsDeleteAsync(key);
-        await emailVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
+        await userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
         return Ok();
     }
 
     private async Task<List<PluginUsersViewModel>> GetPluginUsers(NpgsqlConnection conn, string slug)
     {
-        var ownerId = await conn.RetrievePluginOwner(slug);
+        var ownerId = await conn.RetrievePluginPrimaryOwner(slug);
         var userIds = (await conn.RetrievePluginUserIds(slug)).ToList();
 
         if (userIds.Count == 0)

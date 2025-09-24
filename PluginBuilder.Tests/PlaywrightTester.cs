@@ -2,9 +2,12 @@ using System;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
+using Dapper;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
+using PluginBuilder.Services;
 using Xunit;
 
 namespace PluginBuilder.Tests;
@@ -14,13 +17,13 @@ public class PlaywrightTester : IAsyncDisposable
     public ServerTester Server { get; set; }
     public Uri? ServerUri;
     public IBrowser? Browser { get; private set; }
-    public IPage? Page { get; set; } 
+    public IPage? Page { get; set; }
     XUnitLogger Logger { get; }
     private string? CreatedUser;
     public string? Password { get; private set; }
     public bool IsAdmin { get; private set; }
 
-    
+
     public PlaywrightTester(XUnitLogger logger, ServerTester? server = null)
     {
         Logger = logger;
@@ -46,7 +49,7 @@ public class PlaywrightTester : IAsyncDisposable
         await GoToLogin();
         await AssertNoError();
     }
-    
+
     public async ValueTask DisposeAsync()
     {
         await SafeDispose(async () => await Page?.CloseAsync()!);
@@ -59,7 +62,7 @@ public class PlaywrightTester : IAsyncDisposable
         try { if (action != null) await action(); }
         catch { /* ignore */ }
     }
-    
+
     public async Task AssertNoError()
     {
         if (Page is null)
@@ -83,7 +86,7 @@ public class PlaywrightTester : IAsyncDisposable
         var title = await Page.TitleAsync();
         Assert.DoesNotContain("Error", title, StringComparison.OrdinalIgnoreCase);
     }
-    
+
     public async Task<IResponse?> GoToUrl(string uri)
     {
         var fullUrl = new Uri(ServerUri ?? throw new InvalidOperationException(), uri).ToString();
@@ -99,8 +102,8 @@ public class PlaywrightTester : IAsyncDisposable
         await Page?.Locator("#Nav-Account").ClickAsync()!;
         await Page.Locator("#Nav-Logout").ClickAsync();
     }
-    
-    
+
+
     public static string GetRandomUInt256()
     {
         var bytes = new byte[32];
@@ -108,7 +111,7 @@ public class PlaywrightTester : IAsyncDisposable
         rng.GetBytes(bytes);
         return BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
     }
-    
+
     public async Task<string> RegisterNewUser(bool isAdmin = false)
     {
         var usr = GetRandomUInt256()[(64 - 20)..] + "@a.com";
@@ -132,4 +135,19 @@ public class PlaywrightTester : IAsyncDisposable
         await Page.ClickAsync("#LoginButton");
     }
 
+    public async Task VerifyEmailAndGithubAsync(string email)
+    {
+        await using var scope = Server.WebApp.Services.CreateAsyncScope();
+        var factory = scope.ServiceProvider.GetRequiredService<DBConnectionFactory>();
+        await using var conn = await factory.Open();
+
+        await conn.ExecuteAsync(
+            """
+            UPDATE "AspNetUsers"
+                  SET "EmailConfirmed" = TRUE,
+                      "GithubGistUrl" = 'https://gist.github.com/test-eligibility'
+                  WHERE "Email" = @Email;
+            """,
+            new { Email = email });
+    }
 }

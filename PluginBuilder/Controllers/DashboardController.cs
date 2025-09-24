@@ -14,25 +14,31 @@ public class DashboardController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
     AzureStorageClient azureStorageClient,
-    EmailVerifiedLogic emailVerifiedLogic) : Controller
+    UserVerifiedLogic userVerifiedLogic) : Controller
 {
     // plugin methods
 
     [HttpGet("/plugins/create")]
     public async Task<IActionResult> CreatePlugin()
     {
-        await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
 
-        return View();
+        await using var conn = await connectionFactory.Open();
+
+        if (await userVerifiedLogic.IsUserGithubVerified(User, conn)) return View();
+
+        TempData[TempDataConstant.WarningMessage] =
+            "You need to verify your GitHub account in order to create and publish plugins";
+        return RedirectToAction("AccountDetails", "Account");
     }
 
     [HttpPost("/plugins/create")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
     {
         if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
@@ -43,19 +49,27 @@ public class DashboardController(
         }
 
         await using var conn = await connectionFactory.Open();
-        if (!await emailVerifiedLogic.IsUserEmailVerifiedForPublish(User))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] =
                 "You need to verify your email address in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
 
-        if (!await conn.NewPlugin(pluginSlug))
+        var userId = userManager.GetUserId(User)!;
+
+        if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
+        {
+            TempData[TempDataConstant.WarningMessage] =
+                "You need to verify your GitHub Account in order to create and publish plugins";
+            return RedirectToAction("AccountDetails", "Account");
+        }
+
+        if (!await conn.NewPlugin(pluginSlug, userId))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
             return View(model);
         }
-
         if (model.Logo != null)
         {
             string errorMessage;
@@ -66,7 +80,9 @@ public class DashboardController(
             }
             try
             {
-                model.LogoUrl = await azureStorageClient.UploadImageFile(model.Logo, $"{model.Logo.FileName}");
+                var ext = Path.GetExtension(model.Logo.FileName);
+                var safeName = $"{pluginSlug}-{Guid.NewGuid():N}{ext}";
+                model.LogoUrl = await azureStorageClient.UploadImageFile(model.Logo, safeName);
             }
             catch (Exception)
             {
@@ -74,7 +90,6 @@ public class DashboardController(
                 return View(model);
             }
         }
-        await conn.AddUserPlugin(pluginSlug, userManager.GetUserId(User)!);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl });
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }

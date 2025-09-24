@@ -43,7 +43,8 @@ public class UnitTest1 : UnitTestBase
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         //https://github.com/NicolasDorier/btcpayserver/tree/plugins/collection2/Plugins/BTCPayServer.Plugins.RockstarStylist
-        var fullBuildId = await tester.CreateAndBuildPluginAsync();
+        var ownerId = await tester.CreateFakeUserAsync();
+        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId);
 
         var client = tester.CreateHttpClient();
         var versions = await client.GetPublishedVersions("1.4.6.0", true);
@@ -86,6 +87,7 @@ public class UnitTest1 : UnitTestBase
 
         // Another plugin slug try to hijack the package
         await tester.CreateAndBuildPluginAsync(
+            ownerId,
             slug: "rockstar-stylist-fake",
             gitRef: "plugins/collection2",
             pluginDir: "Plugins/BTCPayServer.Plugins.RockstarStylist"
@@ -107,7 +109,7 @@ public class UnitTest1 : UnitTestBase
         versions = await client.GetPublishedVersions("1.4.6.0", true, true);
         Assert.Equal("1.0.2.1", versions[0].Version);
         Assert.Equal("1.0.2.0", versions[1].Version);
-                
+
         // listed - always render
         await conn.ExecuteAsync("UPDATE plugins SET visibility = 'listed' WHERE slug = 'rockstar-stylist'");
         var res = await client.GetPublishedVersions("2.1.0.0", false);
@@ -120,7 +122,7 @@ public class UnitTest1 : UnitTestBase
 
         res = await client.GetPublishedVersions("2.1.0.0", false, searchPluginName: "rockstar");
         Assert.Contains(res, p => p.ProjectSlug == "rockstar-stylist");
-    
+
         var raw = await client.GetStringAsync("/api/v1/plugins");
         var legacyRes = JsonConvert.DeserializeObject<PublishedVersion[]>(raw);
         Assert.Contains(legacyRes, p => p.ProjectSlug == "rockstar-stylist");

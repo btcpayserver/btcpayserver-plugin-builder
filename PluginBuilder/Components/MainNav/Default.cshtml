@@ -26,6 +26,13 @@
                                     <span>Settings</span>
                                 </a>
                             </li>
+                            <li class="nav-item">
+                                <a asp-area="" asp-controller="Plugin" asp-action="Owners" asp-route-pluginSlug="@Model.PluginSlug"
+                                   class="nav-link js-scroll-trigger @ViewData.IsActivePage(PluginNavPages.Owners)" id="StoreNav-Owners">
+                                    <vc:icon symbol="users" />
+                                    <span>Owners</span>
+                                </a>
+                            </li>
                         </ul>
                     </div>
                 </div>

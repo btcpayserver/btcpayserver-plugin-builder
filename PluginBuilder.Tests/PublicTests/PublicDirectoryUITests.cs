@@ -19,12 +19,14 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
     public async Task PublicDirectory_RespectsPluginVisibility()
     {
         await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
         await tester.StartAsync();
 
         var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
 
         const string slug = "rockstar-stylist";
-        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync();
+        var ownerId = await tester.Server.CreateFakeUserAsync();
+        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId);
 
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",

@@ -25,7 +25,7 @@ public class HomeController(
     SignInManager<IdentityUser> signInManager,
     EmailService emailService,
     HttpClient httpClient,
-    EmailVerifiedLogic emailVerifiedLogic,
+    UserVerifiedLogic userVerifiedLogic,
     ServerEnvironment env)
     : Controller
 {
@@ -119,10 +119,10 @@ public class HomeController(
             return View(model);
         }
 
-        if (emailVerifiedLogic.IsEmailVerificationRequiredForLogin)
+        if (userVerifiedLogic.IsEmailVerificationRequiredForLogin)
         {
             var principal = await signInManager.CreateUserPrincipalAsync(user);
-            var isVerified = await emailVerifiedLogic.IsUserEmailVerifiedForLogin(principal);
+            var isVerified = await userVerifiedLogic.IsUserEmailVerifiedForLogin(principal);
 
             if (isVerified)
             {
