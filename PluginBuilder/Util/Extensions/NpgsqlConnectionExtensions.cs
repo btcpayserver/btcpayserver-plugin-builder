@@ -344,7 +344,7 @@ public static class NpgsqlConnectionExtensions
         {
             await connection.ExecuteAsync(
                 "INSERT INTO settings (key, value) VALUES (@key, @value)",
-                new { key = SettingsKeys.VerifiedGithub, value = "true" });
+                new { key = SettingsKeys.VerifiedGithub, value = "false" });
         }
     }
 
