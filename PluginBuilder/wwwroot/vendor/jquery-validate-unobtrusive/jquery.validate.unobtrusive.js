@@ -346,7 +346,7 @@
     });
 
     if ($jQval.methods.extension) {
-        adapters.addSingleVal("accept", "mimtype");
+        adapters.addSingleVal("accept", "mimetype");
         adapters.addSingleVal("extension", "extension");
     } else {
         // for backward compatibility, when the 'extension' validation method does not exist, such as with versions
