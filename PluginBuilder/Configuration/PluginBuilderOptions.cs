@@ -5,8 +5,9 @@ namespace PluginBuilder.Configuration;
 public sealed class PluginBuilderOptions
 {
     public required string DataDir { get; init; }
-    public required string LogFile { get; init; }
-    public required LogEventLevel LogLevel { get; init; }
+    public string? DebugLogFile { get; init; }
+    public LogEventLevel? DebugLogLevel { get; init; }
+    public int LogRetainCount { get; init; } = 1;
 
     public static PluginBuilderOptions ConfigureDataDirAndDebugLog(IConfiguration conf, IHostEnvironment env)
     {
@@ -20,20 +21,37 @@ public sealed class PluginBuilderOptions
         var rawLog =
             conf["debuglog"] ??
             conf["PluginBuilder:LogFile"] ??
-            Environment.GetEnvironmentVariable("PLUGIN_BUILDER_LOG_FILE") ??
-            "logs/pluginbuilder.log";
-        var logFile = Path.IsPathRooted(rawLog) ? rawLog : Path.GetFullPath(Path.Combine(dataDir, rawLog));
-        Directory.CreateDirectory(Path.GetDirectoryName(logFile)!);
+            Environment.GetEnvironmentVariable("PLUGIN_BUILDER_LOG_FILE");
 
-        var rawLevel = conf["debugloglevel"] ??
-                       (env.IsDevelopment() ? nameof(LogEventLevel.Debug) : nameof(LogEventLevel.Information));
-        var level = Enum.TryParse(rawLevel, true, out LogEventLevel parsed) ? parsed : LogEventLevel.Information;
+        string? logFile = null;
+        if (!string.IsNullOrWhiteSpace(rawLog))
+        {
+            logFile = Path.IsPathRooted(rawLog!)
+                ? rawLog
+                : Path.GetFullPath(Path.Combine(dataDir, rawLog!));
+            Directory.CreateDirectory(Path.GetDirectoryName(logFile)!);
+        }
+
+        var rawLevel = conf["debugloglevel"];
+        LogEventLevel? level = null;
+        if (!string.IsNullOrWhiteSpace(rawLevel) &&
+            Enum.TryParse(rawLevel, true, out LogEventLevel parsed))
+        {
+            level = parsed;
+        }
+
+        var retainRaw = conf["PluginBuilder:LogRetainCount"] ?? conf["debuglogretaincount"];
+        var retain = 1;
+        if (int.TryParse(retainRaw, out var retainParsed) && retainParsed > 0)
+            retain = retainParsed;
+
 
         return new PluginBuilderOptions
         {
             DataDir = dataDir,
-            LogFile = logFile,
-            LogLevel = level
+            DebugLogFile = logFile,
+            DebugLogLevel = level,
+            LogRetainCount = retain
         };
     }
 }
