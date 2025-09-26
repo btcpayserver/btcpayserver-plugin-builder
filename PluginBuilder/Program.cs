@@ -31,10 +31,17 @@ public class Program
         return new Program().Start(args);
     }
 
-    public Task Start(string[]? args = null)
+    public async Task Start(string[]? args = null)
     {
         var app = CreateWebApplication(args);
-        return app.RunAsync();
+        try
+        {
+            await app.RunAsync();
+        }
+        finally
+        {
+            await Log.CloseAndFlushAsync();
+        }
     }
 
     public WebApplication CreateWebApplication(string[]? args = null)
