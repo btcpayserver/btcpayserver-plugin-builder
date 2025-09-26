@@ -17,6 +17,9 @@ using PluginBuilder.HostedServices;
 using PluginBuilder.Hubs;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
+using Serilog;
+using Serilog.Extensions.Logging;
+using PluginBuilder.Configuration;
 
 namespace PluginBuilder;
 
@@ -28,10 +31,17 @@ public class Program
         return new Program().Start(args);
     }
 
-    public Task Start(string[]? args = null)
+    public async Task Start(string[]? args = null)
     {
         var app = CreateWebApplication(args);
-        return app.RunAsync();
+        try
+        {
+            await app.RunAsync();
+        }
+        finally
+        {
+            await Log.CloseAndFlushAsync();
+        }
     }
 
     public WebApplication CreateWebApplication(string[]? args = null)
@@ -63,12 +73,19 @@ public class Program
 #if DEBUG
         builder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
 #endif
+        var verbose = builder.Configuration.GetValue<bool>("verbose");
+        if (!verbose)
+            builder.Logging.AddFilter("Events", LogLevel.Warning);
+
+        // Uncomment this to see EF queries
+        // builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Trace);
+        builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Migrations", LogLevel.Information);
         builder.Logging.AddFilter("Microsoft", LogLevel.Error);
         builder.Logging.AddFilter("Microsoft.Hosting", LogLevel.Information);
         builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Critical);
         builder.Logging.AddFilter("Microsoft.AspNetCore.Antiforgery.Internal", LogLevel.Critical);
 
-        AddServices(builder.Configuration, builder.Services);
+        AddServices(builder.Configuration, builder.Services, builder.Environment);
     }
 
     public void Configure(WebApplication app)
@@ -108,7 +125,7 @@ public class Program
         app.MapControllers();
     }
 
-    public void AddServices(IConfiguration configuration, IServiceCollection services)
+    public void AddServices(IConfiguration configuration, IServiceCollection services, IHostEnvironment env)
     {
         services.AddControllersWithViews()
             .AddRazorRuntimeCompilation()
@@ -118,10 +135,34 @@ public class Program
             })
             .AddNewtonsoftJson(o => o.SerializerSettings.Formatting = Formatting.Indented)
             .AddApplicationPart(typeof(Program).Assembly);
-        if (configuration["DATADIR"] is string datadir)
-            services.AddDataProtection()
-                .SetApplicationName("Plugin Builder")
-                .PersistKeysToFileSystem(new DirectoryInfo(datadir));
+
+        var pbOptions = PluginBuilderOptions.ConfigureDataDirAndDebugLog(configuration, env);
+        services.AddSingleton(pbOptions);
+
+        services.AddDataProtection()
+            .SetApplicationName("Plugin Builder")
+            .PersistKeysToFileSystem(new DirectoryInfo(pbOptions.DataDir));
+
+        const long maxDebugLogFileSize = 2_000_000;
+
+        services.AddLogging(logBuilder =>
+        {
+            var debugLogFile = pbOptions.DebugLogFile;
+            if (string.IsNullOrEmpty(debugLogFile)) return;
+
+            Log.Logger = new LoggerConfiguration()
+                .Enrich.FromLogContext()
+                .MinimumLevel.Is(pbOptions.DebugLogLevel ?? Serilog.Events.LogEventLevel.Information)
+                .WriteTo.File(debugLogFile,
+                    rollingInterval: RollingInterval.Day,
+                    fileSizeLimitBytes: maxDebugLogFileSize,
+                    rollOnFileSizeLimit: true,
+                    retainedFileCountLimit: pbOptions.LogRetainCount)
+                .CreateLogger();
+
+            logBuilder.AddProvider(new SerilogLoggerProvider(Log.Logger));
+        });
+
         services.AddHostedService<DatabaseStartupHostedService>();
         services.AddHostedService<DockerStartupHostedService>();
         services.AddHostedService<AzureStartupHostedService>();

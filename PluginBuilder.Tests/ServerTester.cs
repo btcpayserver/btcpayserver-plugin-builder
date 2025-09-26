@@ -63,8 +63,10 @@ public class ServerTester : IAsyncDisposable
 
     public async Task Start()
     {
-        var dbName = TestFolder;
-        if (!ReuseDatabase) dbName = TestFolder + "_" + DateTimeOffset.UtcNow.Ticks / 100000;
+        var dbName = ReuseDatabase
+            ? TestFolder
+            : $"{TestFolder}_{Guid.NewGuid():N}";
+
         dbName = dbName.ToLowerInvariant();
         Logs.LogInformation($"DbName: {dbName}");
         Environment.SetEnvironmentVariable("PB_POSTGRES", "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=61932;Database=" + dbName);

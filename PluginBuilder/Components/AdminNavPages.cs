@@ -1,9 +1,10 @@
-namespace PluginBuilder;
+namespace PluginBuilder.Components;
 
 public enum AdminNavPages
 {
     Users,
     Plugins,
     EmailSettings,
-    Settings
+    Settings,
+    Logs
 }
