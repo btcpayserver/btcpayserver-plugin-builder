@@ -537,7 +537,7 @@ public class AdminController(
         return Ok();
     }
 
-    [Route("server/logs/{file?}")]
+    [HttpGet("server/logs/{file?}")]
     public async Task<IActionResult> LogsView(string? file = null, int offset = 0, bool download = false)
     {
         if (offset < 0) offset = 0;
@@ -562,7 +562,7 @@ public class AdminController(
         var fileExtension = Path.GetExtension(pbOptions.DebugLogFile);
 
         var allFiles = logsDirectory.GetFiles($"{fileNameWithoutExtension}*{fileExtension}")
-                         .OrderBy(info => info.LastWriteTime)
+                         .OrderByDescending(info => info.LastWriteTime)
                          .ToList();
 
         vm.LogFileCount = allFiles.Count;
@@ -581,10 +581,7 @@ public class AdminController(
             var fileStream = new FileStream(selectedFile.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             if (download)
             {
-                return new FileStreamResult(fileStream, "text/plain")
-                {
-                    FileDownloadName = file
-                };
+                return File(fileStream, "text/plain", file, enableRangeProcessing: true);
             }
 
             await using (fileStream)
