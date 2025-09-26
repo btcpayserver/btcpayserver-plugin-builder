@@ -66,6 +66,13 @@ public class Program
 #if DEBUG
         builder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
 #endif
+        var verbose = builder.Configuration.GetValue<bool>("verbose");
+        if (!verbose)
+            builder.Logging.AddFilter("Events", LogLevel.Warning);
+
+        // Uncomment this to see EF queries
+        // builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Trace);
+        builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Migrations", LogLevel.Information);
         builder.Logging.AddFilter("Microsoft", LogLevel.Error);
         builder.Logging.AddFilter("Microsoft.Hosting", LogLevel.Information);
         builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Critical);
@@ -129,20 +136,25 @@ public class Program
             .SetApplicationName("Plugin Builder")
             .PersistKeysToFileSystem(new DirectoryInfo(pbOptions.DataDir));
 
-        const long maxDebugLogFileSize = 50 * 1024 * 1024;
-        Log.Logger = new LoggerConfiguration()
-            .Enrich.FromLogContext()
-            .MinimumLevel.Is(pbOptions.LogLevel)
-            .WriteTo.Console()
-            .WriteTo.File(pbOptions.LogFile,
-                rollingInterval: RollingInterval.Day,
-                fileSizeLimitBytes: maxDebugLogFileSize,
-                rollOnFileSizeLimit: true,
-                retainedFileCountLimit: 1,
-                shared: true)
-            .CreateLogger();
+        const long maxDebugLogFileSize = 2_000_000;
 
-        services.AddLogging(lb => lb.AddProvider(new SerilogLoggerProvider(Log.Logger, dispose: true)));
+        services.AddLogging(logBuilder =>
+        {
+            var debugLogFile = pbOptions.DebugLogFile;
+            if (string.IsNullOrEmpty(debugLogFile)) return;
+
+            Log.Logger = new LoggerConfiguration()
+                .Enrich.FromLogContext()
+                .MinimumLevel.Is(pbOptions.DebugLogLevel ?? Serilog.Events.LogEventLevel.Information)
+                .WriteTo.File(debugLogFile,
+                    rollingInterval: RollingInterval.Day,
+                    fileSizeLimitBytes: maxDebugLogFileSize,
+                    rollOnFileSizeLimit: true,
+                    retainedFileCountLimit: pbOptions.LogRetainCount)
+                .CreateLogger();
+
+            logBuilder.AddProvider(new SerilogLoggerProvider(Log.Logger));
+        });
 
         services.AddHostedService<DatabaseStartupHostedService>();
         services.AddHostedService<DockerStartupHostedService>();
