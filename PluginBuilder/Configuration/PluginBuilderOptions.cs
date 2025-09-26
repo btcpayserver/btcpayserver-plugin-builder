@@ -26,13 +26,19 @@ public sealed class PluginBuilderOptions
         string? logFile = null;
         if (!string.IsNullOrWhiteSpace(rawLog))
         {
-            logFile = Path.IsPathRooted(rawLog!)
+            logFile = Path.IsPathRooted(rawLog)
                 ? rawLog
-                : Path.GetFullPath(Path.Combine(dataDir, rawLog!));
-            Directory.CreateDirectory(Path.GetDirectoryName(logFile)!);
+                : Path.GetFullPath(Path.Combine(dataDir, rawLog));
+
+            var logDir = Path.GetDirectoryName(logFile);
+
+            if (!string.IsNullOrEmpty(logDir))
+            {
+                Directory.CreateDirectory(logDir);
+            }
         }
 
-        var rawLevel = conf["debugloglevel"];
+        var rawLevel = conf["debugloglevel"] ?? conf["PluginBuilder:DebugLogLevel"];
         LogEventLevel? level = null;
         if (!string.IsNullOrWhiteSpace(rawLevel) &&
             Enum.TryParse(rawLevel, true, out LogEventLevel parsed))
