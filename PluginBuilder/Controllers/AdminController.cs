@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Npgsql;
+using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
@@ -24,7 +25,9 @@ public class AdminController(
     DBConnectionFactory connectionFactory,
     EmailService emailService,
     UserVerifiedCache userVerifiedCache,
-    ReferrerNavigationService referrerNavigation)
+    ReferrerNavigationService referrerNavigation,
+    PluginBuilderOptions pbOptions)
+
     : Controller
 {
     // settings editor
@@ -532,6 +535,67 @@ public class AdminController(
         var result = await conn.SettingsDeleteAsync(key);
         await userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
         return Ok();
+    }
+
+    [HttpGet("server/logs/{file?}")]
+    public async Task<IActionResult> LogsView(string? file = null, int offset = 0, bool download = false)
+    {
+        if (offset < 0) offset = 0;
+
+        var vm = new LogsViewModel();
+
+        if (string.IsNullOrEmpty(pbOptions.DebugLogFile))
+        {
+            TempData[TempDataConstant.WarningMessage] =
+                "File Logging Option not specified. You need to set debuglog and optionally debugloglevel in the configuration or through runtime arguments";
+            return View("Logs", vm);
+        }
+
+        var logsDirectory = Directory.GetParent(pbOptions.DebugLogFile);
+        if (logsDirectory is null)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Could not load log files";
+            return View("Logs", vm);
+        }
+
+        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(pbOptions.DebugLogFile);
+        var fileExtension = Path.GetExtension(pbOptions.DebugLogFile);
+
+        var allFiles = logsDirectory.GetFiles($"{fileNameWithoutExtension}*{fileExtension}")
+                         .OrderByDescending(info => info.LastWriteTime)
+                         .ToList();
+
+        vm.LogFileCount = allFiles.Count;
+        vm.LogFiles = allFiles.Skip(offset).Take(5).ToList();
+        vm.LogFileOffset = offset;
+
+        if (string.IsNullOrEmpty(file) || !file.EndsWith(fileExtension, StringComparison.Ordinal))
+            return View("Logs", vm);
+
+        var selectedFile = allFiles.FirstOrDefault(f => f.Name.Equals(file, StringComparison.Ordinal));
+        if (selectedFile is null)
+            return NotFound();
+
+        try
+        {
+            var fileStream = new FileStream(selectedFile.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (download)
+            {
+                return File(fileStream, "text/plain", file, enableRangeProcessing: true);
+            }
+
+            await using (fileStream)
+            using (var reader = new StreamReader(fileStream))
+            {
+                vm.Log = await reader.ReadToEndAsync();
+            }
+        }
+        catch
+        {
+            return NotFound();
+        }
+
+        return View("Logs", vm);
     }
 
     private async Task<List<PluginUsersViewModel>> GetPluginUsers(NpgsqlConnection conn, string slug)

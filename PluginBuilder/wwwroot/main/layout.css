@@ -362,8 +362,14 @@
     position: -webkit-sticky;
     position: sticky;
     top: 0;
-    z-index: 1020;
+    z-index: 1021;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--btcpay-space-m);
+    align-items: center;
+    justify-content: space-between;
     background: var(--btcpay-body-bg);
+    margin-top: calc(var(--content-padding-top) * -1);
     /* pull it out of the content padding and adjust its inner padding to make up for that space */
     margin-left: calc(var(--content-padding-horizontal) * -1);
     margin-right: calc(var(--content-padding-horizontal) * -1);

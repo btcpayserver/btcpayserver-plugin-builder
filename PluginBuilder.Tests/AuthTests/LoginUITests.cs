@@ -15,6 +15,7 @@ public class LoginPageTests(ITestOutputHelper output) : PageTest
     public async Task Login_Fails_With_InvalidCredentials()
     {
         await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
         await tester.StartAsync();
 
         await tester.GoToLogin();
@@ -27,6 +28,7 @@ public class LoginPageTests(ITestOutputHelper output) : PageTest
     public async Task Login_Succeeds_With_ValidPassword()
     {
         await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
         await tester.StartAsync();
 
         await tester.GoToUrl("/register");

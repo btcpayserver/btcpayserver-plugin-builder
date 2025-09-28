@@ -112,6 +112,13 @@
                                         <span text-translate="true">Public Directory</span>
                                     </a>
                                 </li>
+                                <li class="nav-item">
+                                    <a asp-area="" asp-controller="Admin" asp-action="LogsView"
+                                       class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.Logs)" id="AdminNav-Logs">
+                                        <vc:icon symbol="server-settings" />
+                                        <span text-translate="true">Logs</span>
+                                    </a>
+                                </li>
                             </ul>
                         </div>
                     </div>
