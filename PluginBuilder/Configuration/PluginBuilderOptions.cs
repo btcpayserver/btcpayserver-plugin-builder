@@ -15,7 +15,7 @@ public sealed class PluginBuilderOptions
             conf["DATADIR"] ??
             conf["datadir"] ??
             conf["PluginBuilder:DataDir"] ??
-            Path.Combine(env.ContentRootPath, "Data");
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PluginBuilder");
         Directory.CreateDirectory(dataDir);
 
         var rawLog =
