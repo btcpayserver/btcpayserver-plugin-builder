@@ -15,7 +15,7 @@ public sealed class PluginBuilderOptions
             conf["DATADIR"] ??
             conf["datadir"] ??
             conf["PluginBuilder:DataDir"] ??
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PluginBuilder");
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BTCPayServer-PluginBuilder");
         Directory.CreateDirectory(dataDir);
 
         var rawLog =
