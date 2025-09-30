@@ -12,16 +12,10 @@ public sealed class PluginBuilderOptions
     public static PluginBuilderOptions ConfigureDataDirAndDebugLog(IConfiguration conf, IHostEnvironment env)
     {
         var dataDir =
-            conf["DATADIR"] ??
-            conf["datadir"] ??
-            conf["PluginBuilder:DataDir"] ??
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BTCPayServer-PluginBuilder");
         Directory.CreateDirectory(dataDir);
 
-        var rawLog =
-            conf["debuglog"] ??
-            conf["PluginBuilder:LogFile"] ??
-            Environment.GetEnvironmentVariable("PLUGIN_BUILDER_LOG_FILE");
+        var rawLog = conf["debuglog"];
 
         string? logFile = null;
         if (!string.IsNullOrWhiteSpace(rawLog))
@@ -38,7 +32,7 @@ public sealed class PluginBuilderOptions
             }
         }
 
-        var rawLevel = conf["debugloglevel"] ?? conf["PluginBuilder:DebugLogLevel"];
+        var rawLevel = conf["debugloglevel"];
         LogEventLevel? level = null;
         if (!string.IsNullOrWhiteSpace(rawLevel) &&
             Enum.TryParse(rawLevel, true, out LogEventLevel parsed))
@@ -46,7 +40,7 @@ public sealed class PluginBuilderOptions
             level = parsed;
         }
 
-        var retainRaw = conf["PluginBuilder:LogRetainCount"] ?? conf["debuglogretaincount"];
+        var retainRaw = conf["debuglogretaincount"];
         var retain = 1;
         if (int.TryParse(retainRaw, out var retainParsed) && retainParsed > 0)
             retain = retainParsed;
