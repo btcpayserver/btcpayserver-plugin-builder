@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
@@ -20,6 +21,8 @@ public class ServerTester : IAsyncDisposable
     private readonly List<IAsyncDisposable> disposables = new();
     private WebApplication? _WebApp;
     public int Port { get; set; } = Utils.FreeTcpPort();
+    private string? _dbname;
+    private string? _serverConnString;
 
     public const string RepoUrl   = "https://github.com/NicolasDorier/btcpayserver";
     public const string GitRef    = "plugins/collection2";
@@ -53,6 +56,24 @@ public class ServerTester : IAsyncDisposable
             _WebApp = null;
         }
 
+        // If we are not reusing the database, drop the test database to keep environments clean
+        if (!ReuseDatabase && !string.IsNullOrEmpty(_dbname) && !string.IsNullOrEmpty(_serverConnString))
+        {
+            try
+            {
+                await DropDatabaseAsync();
+                Logs.LogInformation("Dropped test database {db}", _dbname);
+            }
+            catch (Exception ex)
+            {
+                Logs.LogInformation("Could not drop test database {db}: {message}", _dbname, ex.Message);
+            }
+            finally
+            {
+                _dbname = null;
+            }
+        }
+
         foreach (var d in disposables) await d.DisposeAsync();
     }
 
@@ -74,10 +95,15 @@ public class ServerTester : IAsyncDisposable
 
             Logs.LogInformation("DbName: {dbName} (attempt {attempt})", dbName, attempt);
 
-            Environment.SetEnvironmentVariable("PB_POSTGRES",
-                "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=61932;Database=" + dbName);
+            var connStr = "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=61932;Database=" + dbName;
+            Environment.SetEnvironmentVariable("PB_POSTGRES", connStr);
             Environment.SetEnvironmentVariable("PB_STORAGE_CONNECTION_STRING",
                 "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==");
+
+            // Track the database used for this test run to allow cleanup
+            _dbname = dbName;
+            var csb = new NpgsqlConnectionStringBuilder(connStr) { Database = "postgres" };
+            _serverConnString = csb.ToString();
 
             Program host = new();
             var projectDir = FindPluginBuilderDirectory();
@@ -198,8 +224,33 @@ public class ServerTester : IAsyncDisposable
         ex switch
         {
             null => false,
-            Npgsql.PostgresException { SqlState: "23505" or "42P04" } => true,
+            PostgresException { SqlState: "42P04" } => true,
             AggregateException a => a.InnerExceptions.Any(IsPgDbNameConflict),
             _ => IsPgDbNameConflict(ex.InnerException)
         };
+
+    private async Task DropDatabaseAsync()
+    {
+        if (string.IsNullOrEmpty(_serverConnString) || string.IsNullOrEmpty(_dbname))
+            return;
+
+        await using var conn = new NpgsqlConnection(_serverConnString);
+        await conn.OpenAsync();
+
+        // Terminate all remaining connections to the target DB (including idle ones)
+        await using (var terminate = new NpgsqlCommand(
+                     "select pg_terminate_backend(pid) from pg_stat_activity where datname = @db and pid <> pg_backend_pid();",
+                     conn))
+        {
+            terminate.Parameters.AddWithValue("db", _dbname);
+            await terminate.ExecuteNonQueryAsync();
+        }
+
+        var safeDb = _dbname.Replace("\"", "\"\"");
+        var dropSql = $"DROP DATABASE IF EXISTS \"{safeDb}\";";
+        await using (var drop = new NpgsqlCommand(dropSql, conn))
+        {
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
 }
