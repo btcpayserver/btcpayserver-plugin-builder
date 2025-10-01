@@ -6,8 +6,10 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
@@ -20,12 +22,16 @@ public class ServerTester : IAsyncDisposable
     private readonly List<IAsyncDisposable> disposables = new();
     private WebApplication? _WebApp;
     public int Port { get; set; } = Utils.FreeTcpPort();
+    private string? _dbname;
+    private string? _serverConnString;
 
     public const string RepoUrl   = "https://github.com/NicolasDorier/btcpayserver";
     public const string GitRef    = "plugins/collection2";
     public const string PluginDir = "Plugins/BTCPayServer.Plugins.RockstarStylist";
     public const string BuildCfg  = "Release";
     public const string PluginSlug = "rockstar-stylist";
+
+    private const string StorageConnectionString = "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==";
 
 
     public ServerTester(string testFolder, XUnitLogger logs)
@@ -53,6 +59,25 @@ public class ServerTester : IAsyncDisposable
             _WebApp = null;
         }
 
+        // If we are not reusing the database, drop the test database to keep environments clean
+        if (!ReuseDatabase && !string.IsNullOrEmpty(_dbname) && !string.IsNullOrEmpty(_serverConnString))
+        {
+            try
+            {
+                await DropDatabaseAsync();
+                Logs.LogInformation("Dropped test database {db}", _dbname);
+            }
+            catch (Exception ex)
+            {
+                Logs.LogInformation("Could not drop test database {db}: {message}", _dbname, ex.Message);
+            }
+            finally
+            {
+                _dbname = null;
+                _serverConnString = null;
+            }
+        }
+
         foreach (var d in disposables) await d.DisposeAsync();
     }
 
@@ -63,15 +88,20 @@ public class ServerTester : IAsyncDisposable
 
     public async Task Start()
     {
+        var baseName = TestFolder.ToLowerInvariant();
         var dbName = ReuseDatabase
-            ? TestFolder
-            : $"{TestFolder}_{Guid.NewGuid():N}";
+            ? baseName
+            : $"{baseName}_{Guid.NewGuid():N}".ToLowerInvariant();
 
-        dbName = dbName.ToLowerInvariant();
-        Logs.LogInformation($"DbName: {dbName}");
-        Environment.SetEnvironmentVariable("PB_POSTGRES", "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=61932;Database=" + dbName);
-        Environment.SetEnvironmentVariable("PB_STORAGE_CONNECTION_STRING",
-            "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==");
+        Logs.LogInformation("DbName: {dbName}", dbName);
+
+        var connStr = "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=61932;Database=" + dbName;
+
+        // Track the database used for this test run to allow cleanup
+        _dbname = dbName;
+        var csb = new NpgsqlConnectionStringBuilder(connStr) { Database = "postgres" };
+        _serverConnString = csb.ToString();
+
         Program host = new();
         var projectDir = FindPluginBuilderDirectory();
         var webappBuilder = host.CreateWebApplicationBuilder(new WebApplicationOptions
@@ -80,13 +110,22 @@ public class ServerTester : IAsyncDisposable
             WebRootPath = Path.Combine(projectDir, "wwwroot"),
             Args = [$"--urls=http://127.0.0.1:{Port}"]
         });
-        webappBuilder.Services.AddHttpClient();
 
+        // Inject configuration directly instead of using environment variables to avoid cross-test contamination
+        webappBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["POSTGRES"] = connStr,
+            ["STORAGE_CONNECTION_STRING"] = StorageConnectionString
+        });
+
+        webappBuilder.Services.AddHttpClient();
         webappBuilder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
         webappBuilder.Logging.AddProvider(Logs);
         ConfigureServices?.Invoke(webappBuilder.Services);
+
         var webapp = webappBuilder.Build();
         host.Configure(webapp);
+
         disposables.Add(webapp);
         await webapp.StartAsync();
         _WebApp = webapp;
@@ -169,5 +208,31 @@ public class ServerTester : IAsyncDisposable
         await conn.VerifyGithubAccount(user.Id, "https://gist.github.com/dummy/123");
 
         return user.Id;
+    }
+
+
+    private async Task DropDatabaseAsync()
+    {
+        if (string.IsNullOrEmpty(_serverConnString) || string.IsNullOrEmpty(_dbname))
+            return;
+
+        await using var conn = new NpgsqlConnection(_serverConnString);
+        await conn.OpenAsync();
+
+        // Terminate all remaining connections to the target DB (including idle ones)
+        await using (var terminate = new NpgsqlCommand(
+                         "select pg_terminate_backend(pid) from pg_stat_activity where datname = @db and pid <> pg_backend_pid();",
+                         conn))
+        {
+            terminate.Parameters.AddWithValue("db", _dbname);
+            await terminate.ExecuteNonQueryAsync();
+        }
+
+        var safeDb = _dbname.Replace("\"", "\"\"");
+        var dropSql = $"DROP DATABASE IF EXISTS \"{safeDb}\";";
+        await using (var drop = new NpgsqlCommand(dropSql, conn))
+        {
+            await drop.ExecuteNonQueryAsync();
+        }
     }
 }
