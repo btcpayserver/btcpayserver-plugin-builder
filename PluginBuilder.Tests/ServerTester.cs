@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -29,6 +30,8 @@ public class ServerTester : IAsyncDisposable
     public const string PluginDir = "Plugins/BTCPayServer.Plugins.RockstarStylist";
     public const string BuildCfg  = "Release";
     public const string PluginSlug = "rockstar-stylist";
+
+    private const string StorageConnectionString = "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==";
 
 
     public ServerTester(string testFolder, XUnitLogger logs)
@@ -71,6 +74,7 @@ public class ServerTester : IAsyncDisposable
             finally
             {
                 _dbname = null;
+                _serverConnString = null;
             }
         }
 
@@ -85,66 +89,52 @@ public class ServerTester : IAsyncDisposable
     public async Task Start()
     {
         var baseName = TestFolder.ToLowerInvariant();
-        var maxAttempts = ReuseDatabase ? 1 : 3;
+        var dbName = ReuseDatabase
+            ? baseName
+            : $"{baseName}_{Guid.NewGuid():N}".ToLowerInvariant();
 
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        Logs.LogInformation("DbName: {dbName}", dbName);
+
+        var connStr = "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=61932;Database=" + dbName;
+
+        // Track the database used for this test run to allow cleanup
+        _dbname = dbName;
+        var csb = new NpgsqlConnectionStringBuilder(connStr) { Database = "postgres" };
+        _serverConnString = csb.ToString();
+
+        Program host = new();
+        var projectDir = FindPluginBuilderDirectory();
+        var webappBuilder = host.CreateWebApplicationBuilder(new WebApplicationOptions
         {
-            var dbName = ReuseDatabase
-                ? baseName
-                : $"{baseName}_{Guid.NewGuid():N}".ToLowerInvariant();
+            ContentRootPath = projectDir,
+            WebRootPath = Path.Combine(projectDir, "wwwroot"),
+            Args = [$"--urls=http://127.0.0.1:{Port}"]
+        });
 
-            Logs.LogInformation("DbName: {dbName} (attempt {attempt})", dbName, attempt);
+        // Inject configuration directly instead of using environment variables to avoid cross-test contamination
+        webappBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["POSTGRES"] = connStr,
+            ["STORAGE_CONNECTION_STRING"] = StorageConnectionString
+        });
 
-            var connStr = "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=61932;Database=" + dbName;
-            Environment.SetEnvironmentVariable("PB_POSTGRES", connStr);
-            Environment.SetEnvironmentVariable("PB_STORAGE_CONNECTION_STRING",
-                "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==");
+        webappBuilder.Services.AddHttpClient();
+        webappBuilder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
+        webappBuilder.Logging.AddProvider(Logs);
+        ConfigureServices?.Invoke(webappBuilder.Services);
 
-            // Track the database used for this test run to allow cleanup
-            _dbname = dbName;
-            var csb = new NpgsqlConnectionStringBuilder(connStr) { Database = "postgres" };
-            _serverConnString = csb.ToString();
+        var webapp = webappBuilder.Build();
+        host.Configure(webapp);
 
-            Program host = new();
-            var projectDir = FindPluginBuilderDirectory();
-            var webappBuilder = host.CreateWebApplicationBuilder(new WebApplicationOptions
-            {
-                ContentRootPath = projectDir,
-                WebRootPath = Path.Combine(projectDir, "wwwroot"),
-                Args = [$"--urls=http://127.0.0.1:{Port}"]
-            });
-            webappBuilder.Services.AddHttpClient();
-            webappBuilder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
-            webappBuilder.Logging.AddProvider(Logs);
-            ConfigureServices?.Invoke(webappBuilder.Services);
+        disposables.Add(webapp);
+        await webapp.StartAsync();
+        _WebApp = webapp;
 
-            var webapp = webappBuilder.Build();
-            host.Configure(webapp);
-
-            try
-            {
-                disposables.Add(webapp);
-                await webapp.StartAsync();
-                _WebApp = webapp;
-
-                await using var conn = await GetService<DBConnectionFactory>().Open();
-                await conn.ReloadTypesAsync();
-                await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-                var verfCache = GetService<UserVerifiedCache>();
-                await verfCache.RefreshAllUserVerifiedSettings(conn);
-
-                return;
-            }
-            catch (Exception ex) when (IsPgDbNameConflict(ex) && !ReuseDatabase)
-            {
-                Logs.LogInformation("DB name conflict detected, retrying with a new database name...");
-                try { await webapp.DisposeAsync(); } catch { /* ignore */ }
-                disposables.Remove(webapp);
-                _WebApp = null;
-            }
-        }
-
-        throw new InvalidOperationException("Failed to start test server after multiple DB name retries.");
+        await using var conn = await GetService<DBConnectionFactory>().Open();
+        await conn.ReloadTypesAsync();
+        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
+        var verfCache = GetService<UserVerifiedCache>();
+        await verfCache.RefreshAllUserVerifiedSettings(conn);
     }
 
     public HttpClient CreateHttpClient()
@@ -220,14 +210,6 @@ public class ServerTester : IAsyncDisposable
         return user.Id;
     }
 
-    private static bool IsPgDbNameConflict(Exception? ex) =>
-        ex switch
-        {
-            null => false,
-            PostgresException { SqlState: "42P04" or "23505" } => true,
-            AggregateException a => a.InnerExceptions.Any(IsPgDbNameConflict),
-            _ => IsPgDbNameConflict(ex.InnerException)
-        };
 
     private async Task DropDatabaseAsync()
     {
@@ -239,8 +221,8 @@ public class ServerTester : IAsyncDisposable
 
         // Terminate all remaining connections to the target DB (including idle ones)
         await using (var terminate = new NpgsqlCommand(
-                     "select pg_terminate_backend(pid) from pg_stat_activity where datname = @db and pid <> pg_backend_pid();",
-                     conn))
+                         "select pg_terminate_backend(pid) from pg_stat_activity where datname = @db and pid <> pg_backend_pid();",
+                         conn))
         {
             terminate.Parameters.AddWithValue("db", _dbname);
             await terminate.ExecuteNonQueryAsync();
