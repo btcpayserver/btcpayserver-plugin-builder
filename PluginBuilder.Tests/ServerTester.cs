@@ -224,7 +224,7 @@ public class ServerTester : IAsyncDisposable
         ex switch
         {
             null => false,
-            PostgresException { SqlState: "42P04" } => true,
+            PostgresException { SqlState: "42P04" or "23505" } => true,
             AggregateException a => a.InnerExceptions.Any(IsPgDbNameConflict),
             _ => IsPgDbNameConflict(ex.InnerException)
         };
