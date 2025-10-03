@@ -56,6 +56,54 @@
                 <input asp-for="Settings.Email" class="form-control" type="email" placeholder="plugins@satoshi.com" />
                 <span asp-validation-for="Settings.Email" class="text-danger"></span>
             </div>
+
+			<div class="form-group">
+				<label for="Settings.GpgPublicKey" class="form-label">PGP Public Key</label>
+				@{
+					DateTimeOffset? expiryDate = null;
+					if (Model.Settings.GPGKey?.ValidDays > 0)
+					{
+						expiryDate = Model.Settings.GPGKey.CreatedDate.AddDays(Model.Settings.GPGKey.ValidDays);
+					}
+				}
+				@if (expiryDate.HasValue)
+				{
+					if (expiryDate.Value < DateTime.UtcNow)
+					{
+						<div class="alert alert-danger mt-2">
+							Your PGP key expired on @expiryDate.Value.ToString("yyyy-MM-dd").
+						</div>
+					}
+					else if (expiryDate.Value <= DateTime.UtcNow.AddMonths(1))
+					{
+						<div class="alert alert-warning mt-2">
+							Your PGP key will expire on @expiryDate.Value.ToString("yyyy-MM-dd").
+						</div>
+					}
+				}
+
+				<div id="gpg-key-wrapper">
+					@if (string.IsNullOrEmpty(Model.Settings.GPGKey?.PublicKey) || ViewBag.ResetKey == true)
+					{
+						<textarea asp-for="Settings.GPGKey.PublicKey" class="form-control" rows="6"
+								  placeholder="Paste your armored GPG public key here..."></textarea>
+						<span asp-validation-for="Settings.GPGKey.PublicKey" class="text-danger"></span>
+					}
+					else
+					{
+						<div class="d-flex align-items-center">
+							<span class="text-muted">
+								A PGP key is already set (Key Id: @Model.Settings.GPGKey?.KeyId)
+							</span>
+							<button type="button" class="btn btn-sm btn-outline-danger ms-2"
+									onclick="document.getElementById('reset-key-form').submit();">
+								Reset Key
+							</button>
+						</div>
+					}
+				</div>
+			</div>
+
             <div class="form-group mt-4">
                 <input type="submit" class="btn btn-primary" id="Save" value="Save" />
             </div>

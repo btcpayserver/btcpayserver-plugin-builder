@@ -9,7 +9,16 @@
 
     <div class="d-flex flex-column flex-sm-row align-items-center gap-3">
 
-        <div class="d-flex align-items-center">
+        <div class="d-flex align-items-center gap-4">
+			<form asp-controller="Admin" asp-action="UpdateGPGSignatureRequirement" method="post" class="d-flex align-items-center">
+				<input type="checkbox" class="btcpay-toggle me-2" id="gpgSignatureToggle"
+					   asp-for="@Model.VerifiedGPGSignatureForPluginRelease"
+					   onchange="this.form.submit()" />
+				<label class="form-check-label text-wrap" for="gpgSignatureToggle">
+					Require GPG signature for release
+				</label>
+			</form>
+
             <form asp-controller="Admin" asp-action="UpdateVerifiedEmailForPublishRequirement" method="post" class="d-flex align-items-center">
                 <input type="checkbox" class="btcpay-toggle me-2" id="featureToggle" asp-for="@Model.VerifiedEmailForPluginPublish"
                        onchange="this.form.submit()" />
