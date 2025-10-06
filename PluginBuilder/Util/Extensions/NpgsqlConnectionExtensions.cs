@@ -129,8 +129,9 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
                            SELECT
                                u."Id"               AS "UserId",
-                               u."Email"            AS "Email",
-                               up.is_primary_owner  AS "IsPrimary"
+                               up.is_primary_owner  AS "IsPrimary",
+                               u."Email",
+                               u."AccountDetail"
                            FROM users_plugins up
                            JOIN "AspNetUsers" u ON u."Id" = up.user_id
                            WHERE up.plugin_slug = @slug
@@ -333,6 +334,12 @@ public static class NpgsqlConnectionExtensions
                 "INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedEmailForPluginPublish, value = "true" });
         }
+        if (result.All(r => r.key != SettingsKeys.VerifiedGPGSignatureForPluginRelease))
+        {
+            await connection.ExecuteAsync(
+                "INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.VerifiedGPGSignatureForPluginRelease, value = "false" });
+        }
         if (result.All(r => r.key != SettingsKeys.VerifiedEmailForLogin))
         {
             await connection.ExecuteAsync(
@@ -354,11 +361,17 @@ public static class NpgsqlConnectionExtensions
         return bool.TryParse(settingValue, out var result) && result;
     }
 
-    public static async Task UpdateVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection, bool newValue)
+    public static async Task<bool> GetGPGSettingForPluginRelease(this NpgsqlConnection connection)
+    {
+        var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedGPGSignatureForPluginRelease);
+        return bool.TryParse(settingValue, out var result) && result;
+    }
+
+    public static async Task UpdatePluginAdminSettings(this NpgsqlConnection connection, string settingKey, bool newValue)
     {
         var stringValue = newValue.ToString().ToLowerInvariant();
         await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = @Key",
-            new { Value = stringValue, Key = SettingsKeys.VerifiedEmailForPluginPublish });
+            new { Value = stringValue, Key = settingKey });
     }
 
     public static async Task<bool> GetVerifiedEmailForLoginSetting(this NpgsqlConnection connection)

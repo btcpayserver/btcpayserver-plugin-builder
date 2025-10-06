@@ -84,7 +84,7 @@ public class AccountController(
         {
             PgpKeyViewModel? keyViewModel = null;
             string message;
-            var isPublicKeyValid = _gpgService.ValidateArmouredPublicKey(model.Settings.GPGKey.PublicKey, out message, out keyViewModel);
+            var isPublicKeyValid = _gpgService.ValidateArmouredPublicKey(model.Settings.GPGKey.PublicKey.Trim(), out message, out keyViewModel);
             if (!isPublicKeyValid)
             {
                 TempData[TempDataConstant.WarningMessage] = $"GPG Key is not valid: {message}";

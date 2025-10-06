@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
@@ -91,18 +92,35 @@ public class AdminController(
 
         model.Plugins = plugins;
         model.VerifiedEmailForPluginPublish = await conn.GetVerifiedEmailForPluginPublishSetting();
+        model.VerifiedGPGSignatureForPluginRelease = await conn.GetGPGSettingForPluginRelease();
         return View(model);
     }
 
     [HttpPost]
-    public async Task<IActionResult> UpdateVerifiedEmailForPublishRequirement(bool verifiedEmailForPluginPublish)
+    public async Task<IActionResult> UpdatePluginRequirementSetting(string command, bool verifiedEmailForPluginPublish, bool verifiedGPGSignatureForPluginRelease)
     {
         await using var conn = await connectionFactory.Open();
-        await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
-        await userVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
-        TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
+        switch (command)
+        {
+            case "gpg_signature":
+                await conn.UpdatePluginAdminSettings(SettingsKeys.VerifiedGPGSignatureForPluginRelease, verifiedGPGSignatureForPluginRelease);
+                await userVerifiedCache.RefreshIsGPGSignatureRequirementForRelease(conn);
+                TempData[TempDataConstant.SuccessMessage] = "GPG signature requirement for plugin release updated successfully";
+                break;
+
+            case "verified_email":
+                await conn.UpdatePluginAdminSettings(SettingsKeys.VerifiedEmailForPluginPublish, verifiedEmailForPluginPublish);
+                await userVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
+                TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
+                break;
+
+            default:
+                TempData[TempDataConstant.WarningMessage] = "Invalid update command.";
+                break;
+        }
         return RedirectToAction("ListPlugins");
     }
+
 
 
     [HttpGet("plugins/edit/{slug}")]

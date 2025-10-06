@@ -11,6 +11,7 @@ public class PluginOwnersPageViewModel
 
 public record OwnerVm(
     string UserId,
+    bool IsPrimary,
     string? Email,
-    bool IsPrimary
+    string? AccountDetail
 );

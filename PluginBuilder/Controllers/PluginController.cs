@@ -1,3 +1,4 @@
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -21,6 +22,7 @@ public class PluginController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
     BuildService buildService,
+    GPGKeyService gpgKeyService,
     AzureStorageClient azureStorageClient,
     UserVerifiedLogic userVerifiedLogic,
     FirstBuildEvent firstBuildEvent,
@@ -193,32 +195,69 @@ public class PluginController(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
         [ModelBinder(typeof(PluginVersionModelBinder))]
-        PluginVersion version, string command)
+        PluginVersion version, string command, IFormFile? signatureFile)
     {
         await using var conn = await connectionFactory.Open();
 
-        if (command == "remove")
+        switch (command)
         {
-            var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)>(
+            case "remove":
+                var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)>(
                 "SELECT v.build_id, p.identifier FROM versions v JOIN plugins p ON v.plugin_slug = p.slug WHERE plugin_slug=@pluginSlug AND ver=@version",
                 new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-            FullBuildId fullBuildId = new(pluginSlug, pluginBuild.buildId);
-            await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
-                new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-            await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
-            return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
-        }
-        // Email notifications are now handled on first build creation, not on release.
+                FullBuildId fullBuildId = new(pluginSlug, pluginBuild.buildId);
+                await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
+                    new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
+                await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
+                return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
-        await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease WHERE plugin_slug=@pluginSlug AND ver=@version",
-            new
-            {
-                pluginSlug = pluginSlug.ToString(),
-                version = version.VersionParts,
-                preRelease = command == "unrelease"
-            });
+            case "sign_release":
+                if (signatureFile == null || signatureFile.Length == 0)
+                {
+                    TempData[TempDataConstant.WarningMessage] = "Please upload a valid GPG signature file (.asc)";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+                string armouredSignature;
+                using (var reader = new StreamReader(signatureFile.OpenReadStream()))
+                {
+                    armouredSignature = await reader.ReadToEndAsync();
+                }
+                var rawSignedBytes = Encoding.UTF8.GetBytes("b0605762a6a7bbfc4f69fb8abe171a01c07180e4");
+
+                string message;
+                bool isValid = gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User),
+                    armouredSignature, rawSignedBytes, out message);
+
+                if (!isValid)
+                {
+                    TempData[TempDataConstant.WarningMessage] = message;
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+
+                // Update versions.. but this time with signed property
+                await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease WHERE plugin_slug=@pluginSlug AND ver=@version",
+                    new
+                    {
+                        pluginSlug = pluginSlug.ToString(),
+                        version = version.VersionParts,
+                        preRelease = false
+                    });
+                break;
+
+            default:
+                await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease WHERE plugin_slug=@pluginSlug AND ver=@version",
+                    new
+                    {
+                        pluginSlug = pluginSlug.ToString(),
+                        version = version.VersionParts,
+                        preRelease = command == "unrelease"
+                    });
+                // make the new table sign .column null when command is unrelease..
+                break;
+        }
+
         TempData[TempDataConstant.SuccessMessage] =
-            $"Version {version} {(command == "release" ? "released" : "unreleased")}";
+            $"Version {version} {(command == "release" || command == "sign_release" ? "released" : "unreleased")}";
         return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
     }
 
@@ -265,12 +304,13 @@ public class PluginController(
         vm.DownloadLink = buildInfo?.Url;
         vm.State = row.state;
         vm.CreatedDate = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
-        vm.Commit = buildInfo?.GitCommit?.Substring(0, 8);
+        vm.Commit = buildInfo?.GitCommit;
         vm.Repository = buildInfo?.GitRepository;
         vm.GitRef = buildInfo?.GitRef;
         vm.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, pluginSlug.ToString());
         vm.RepositoryLink = GetUrl(buildInfo);
         vm.DownloadLink = buildInfo?.Url;
+        vm.RequireGPGSignatureForRelease = await conn.GetGPGSettingForPluginRelease();
         //vm.Error = buildInfo?.Error;
         vm.Published = row.published;
         //var buildId = await conn.NewBuild(pluginSlug);

@@ -58,7 +58,7 @@
             </div>
 
 			<div class="form-group">
-				<label for="Settings.GpgPublicKey" class="form-label">PGP Public Key</label>
+				<label for="Settings.GpgPublicKey" class="form-label">GPG Public Key</label>
 				@{
 					DateTimeOffset? expiryDate = null;
 					if (Model.Settings.GPGKey?.ValidDays > 0)
@@ -71,35 +71,39 @@
 					if (expiryDate.Value < DateTime.UtcNow)
 					{
 						<div class="alert alert-danger mt-2">
-							Your PGP key expired on @expiryDate.Value.ToString("yyyy-MM-dd").
+							Your GPG key expired on @expiryDate.Value.ToString("yyyy-MM-dd").
 						</div>
 					}
 					else if (expiryDate.Value <= DateTime.UtcNow.AddMonths(1))
 					{
 						<div class="alert alert-warning mt-2">
-							Your PGP key will expire on @expiryDate.Value.ToString("yyyy-MM-dd").
+							Your GPG key will expire on @expiryDate.Value.ToString("yyyy-MM-dd").
 						</div>
 					}
 				}
-
-				<div id="gpg-key-wrapper">
-					@if (string.IsNullOrEmpty(Model.Settings.GPGKey?.PublicKey) || ViewBag.ResetKey == true)
+				<div>
+					@if (!string.IsNullOrEmpty(Model.Settings.GPGKey?.Fingerprint))
 					{
-						<textarea asp-for="Settings.GPGKey.PublicKey" class="form-control" rows="6"
-								  placeholder="Paste your armored GPG public key here..."></textarea>
-						<span asp-validation-for="Settings.GPGKey.PublicKey" class="text-danger"></span>
-					}
-					else
-					{
-						<div class="d-flex align-items-center">
+						<div id="existing-key-section" class="d-flex align-items-center">
 							<span class="text-muted">
-								A PGP key is already set (Key Id: @Model.Settings.GPGKey?.KeyId)
+								A GPG key is already set (Fingerprint: @Model.Settings.GPGKey?.Fingerprint)
 							</span>
-							<button type="button" class="btn btn-sm btn-outline-danger ms-2"
-									onclick="document.getElementById('reset-key-form').submit();">
+							<button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="showResetKeyForm();">
 								Reset Key
 							</button>
 						</div>
+
+						<div id="reset-key-section" class="mt-3" style="display:none;">
+							<textarea asp-for="Settings.GPGKey.PublicKey" class="form-control" rows="8"
+									  placeholder="Paste your armored GPG public key here..."></textarea>
+							<span asp-validation-for="Settings.GPGKey.PublicKey" class="text-danger"></span>
+						</div>
+					}
+					else
+					{
+						<textarea asp-for="Settings.GPGKey.PublicKey" class="form-control" rows="8"
+								  placeholder="Paste your armored GPG public key here..."></textarea>
+						<span asp-validation-for="Settings.GPGKey.PublicKey" class="text-danger"></span>
 					}
 				</div>
 			</div>
@@ -110,3 +114,13 @@
         </form>
     </div>
 </div>
+
+
+@section FooterScripts {
+	<script>
+		function showResetKeyForm() {
+			document.getElementById("existing-key-section").style.display = "none";
+			document.getElementById("reset-key-section").style.display = "block";
+		}
+	</script>
+}

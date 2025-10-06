@@ -1,12 +1,23 @@
 using System.Text;
+using Newtonsoft.Json;
 using Org.BouncyCastle.Bcpg;
 using Org.BouncyCastle.Bcpg.OpenPgp;
+using PluginBuilder.DataModels;
+using PluginBuilder.Util;
+using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 
 namespace PluginBuilder.Services;
 
 public class GPGKeyService
 {
+    private readonly DBConnectionFactory _connectionFactory;
+
+    public GPGKeyService(DBConnectionFactory connectionFactory)
+    {
+        _connectionFactory = connectionFactory;
+    }
+
     public bool ValidateArmouredPublicKey(string publicKey, out string message, out PgpKeyViewModel? vm)
     {
         vm = null;
@@ -63,14 +74,11 @@ public class GPGKeyService
                 return false;
             }
 
-            var revokedKey = key.IsRevoked();
-            bool revoked = key.GetSignatures().OfType<PgpSignature>().Any(sig => sig.SignatureType == PgpSignature.KeyRevocation);
             if (key.IsRevoked() || key.GetSignatures().OfType<PgpSignature>().Any(sig => sig.SignatureType == PgpSignature.KeyRevocation))
             {
                 message = "Key is revoked";
                 return false;
             }
-
             vm = new PgpKeyViewModel
             {
                 KeyId = key.KeyId.ToString("X"),
@@ -89,5 +97,66 @@ public class GPGKeyService
             message = "An error occured while validating public key";
             return false;
         }
+    }
+
+
+    public bool VerifyDetachedSignature(string pluginslug, string userId, string armouredSignature, byte[] rawSignedBytes, out string message)
+    {
+        message = null;
+        try
+        {
+            var publicKey = GetPluginOwnerPublicKeys(pluginslug, userId).GetAwaiter().GetResult();
+            if (string.IsNullOrEmpty(publicKey))
+            {
+                message = "No public keys found for this user. Kindly update your account profile with your GPG public key";
+                return false;
+            }
+            using Stream pubIn = new MemoryStream(Encoding.ASCII.GetBytes(publicKey));
+            PgpPublicKeyRingBundle pubBundle = new PgpPublicKeyRingBundle(PgpUtilities.GetDecoderStream(pubIn));
+
+            using Stream sigIn = new MemoryStream(Encoding.ASCII.GetBytes(armouredSignature));
+            PgpObjectFactory sigFact = new PgpObjectFactory(PgpUtilities.GetDecoderStream(sigIn));
+            PgpSignatureList sigList = (PgpSignatureList)sigFact.NextPgpObject();
+            if (sigList.Count == 0)
+            {
+                message = "No signature found in armour.";
+                return false;
+            }
+
+            PgpSignature signature = sigList[0];
+            PgpPublicKey signingKey = pubBundle.GetPublicKey(signature.KeyId);
+            if (signingKey == null)
+            {
+                message = "Signature was made with a key not not associated with the user's public key";
+                return false;
+            }
+
+            signature.InitVerify(signingKey);
+            signature.Update(rawSignedBytes);
+            bool ok = signature.Verify();
+            message = ok ? "Signature valid." : "Unable to verify signature. Commit mismatch";
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            message = $"Verification failed: {ex.Message}";
+            return false;
+        }
+    }
+
+
+    private async Task<string> GetPluginOwnerPublicKeys(string pluginSlug, string userId)
+    {
+        await using var conn = await _connectionFactory.Open();
+        var pluginOwners = await conn.GetPluginOwners(pluginSlug);
+        if (pluginOwners?.Any() == false) return string.Empty;
+
+        var owner = pluginOwners.FirstOrDefault(o => o.UserId == userId);
+        if (owner == null || string.IsNullOrEmpty(owner.AccountDetail)) return string.Empty;
+
+        var accountSettings = JsonConvert.DeserializeObject<AccountSettings>(owner.AccountDetail, CamelCaseSerializerSettings.Instance);
+        if (accountSettings?.GPGKey == null || string.IsNullOrEmpty(accountSettings.GPGKey.PublicKey)) return string.Empty;
+
+        return accountSettings.GPGKey.PublicKey;
     }
 }
