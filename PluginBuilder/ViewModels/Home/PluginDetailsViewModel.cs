@@ -30,7 +30,7 @@ public class ReviewItem
     public int Rating { get; set; }
     public string? Body { get; set; }
     public string? PluginVersion { get; set; }
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
     public bool IsReviewOwner { get; set; }
     public int UpCount { get; set; }
     public int DownCount { get; set; }
