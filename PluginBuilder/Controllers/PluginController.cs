@@ -216,10 +216,13 @@ public class PluginController(
                 var build_info = await conn.QueryFirstOrDefaultAsync<string>("SELECT build_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
                     new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
-                var buildInfo = build_info is null ? null : BuildInfo.Parse(build_info);
+                if (build_info is null || BuildInfo.Parse(build_info) is not { } buildInfo || string.IsNullOrEmpty(buildInfo.GitCommit))
+                {
+                    TempData[TempDataConstant.WarningMessage] = "Build information for plugin not available";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
 
-                var rawSignedBytes = Encoding.UTF8.GetBytes(buildInfo?.GitCommit);
-
+                var rawSignedBytes = Encoding.UTF8.GetBytes(buildInfo.GitCommit);
                 var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User),
                   rawSignedBytes, signatureFile);
 

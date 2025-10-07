@@ -39,12 +39,14 @@ public class GPGKeyService
             {
                 foreach (PgpPublicKey k in keyRing.GetPublicKeys())
                 {
-                    if (!k.IsEncryptionKey || k.IsMasterKey)
+                    if (k.GetSignatures().OfType<PgpSignature>()
+                         .Any(sig => (sig.GetHashedSubPackets().GetKeyFlags() & PgpKeyFlags.CanSign) != 0))
                     {
                         key = k;
                         break;
                     }
                 }
+
                 if (key != null)
                     break;
             }
@@ -134,7 +136,7 @@ public class GPGKeyService
             PgpPublicKey signingKey = pubBundle.GetPublicKey(signature.KeyId);
             if (signingKey == null)
             {
-                return new SignatureProofResponse(false, "File was signed with a key not not associated with the user's public key");
+                return new SignatureProofResponse(false, "File was signed with a key not associated with the user's public key");
             }
             signature.InitVerify(signingKey);
             signature.Update(rawSignedBytes);
