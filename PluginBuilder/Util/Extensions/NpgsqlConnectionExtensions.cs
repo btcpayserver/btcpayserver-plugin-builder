@@ -390,7 +390,7 @@ public static class NpgsqlConnectionExtensions
         string userId,
         int rating,
         string? body,
-        string? pluginVersion)
+        int[]? pluginVersion)
     {
         const string sql = """
                                INSERT INTO plugin_reviews
@@ -402,10 +402,7 @@ public static class NpgsqlConnectionExtensions
                                      @rating,
                                      NULL,
                                      NULLIF(@body,''),
-                                     CASE
-                                       WHEN NULLIF(@plugin_version,'') IS NULL THEN NULL
-                                       ELSE string_to_array(@plugin_version, '.')::int[]
-                                     END,
+                                     @plugin_version,
                                      NOW(), NOW()
                                    )
                                ON CONFLICT (plugin_slug, user_id)
@@ -478,7 +475,7 @@ public static class NpgsqlConnectionExtensions
         {
             const string sql = """
                                UPDATE plugin_reviews
-                               SET helpful_voters = helpful_voters - @userId
+                               SET helpful_voters = COALESCE(helpful_voters, '{}'::jsonb) - @userId
                                WHERE id = @id AND plugin_slug = @slug
                                """;
             var rows = await conn.ExecuteAsync(sql, new
@@ -499,7 +496,11 @@ public static class NpgsqlConnectionExtensions
         {
             const string sql = """
                                UPDATE plugin_reviews
-                               SET helpful_voters = jsonb_set(helpful_voters, ARRAY[@userId], to_jsonb(@isHelpful)::jsonb, true)
+                               SET helpful_voters = jsonb_set(
+                                   COALESCE(helpful_voters, '{}'::jsonb),
+                                   ARRAY[@userId],
+                                   to_jsonb(@isHelpful)::jsonb,
+                                   true)
                                WHERE id = @id AND plugin_slug = @slug
                                """;
             var rows = await conn.ExecuteAsync(sql, new

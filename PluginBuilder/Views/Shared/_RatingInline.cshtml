@@ -1,18 +1,21 @@
 @using System.Globalization
 @model PluginBuilder.ViewModels.RatingInlineViewModel
 @{
-    var avg     = Model.Average;
+    var avg = Model.Average;
+    if (avg < 0m) avg = 0m;
+    else if (avg > 5m) avg = 5m;
+
     var total   = Model.TotalReviews;
     var full    = (int)Math.Floor(avg);
     var frac    = avg - full;
-    var halfStarWidth = Math.Clamp(frac * 100m, 0m, 100m);
+    var halfStarWidth = Math.Clamp(frac * 100m, 0m, 100m).ToString("0.#", CultureInfo.InvariantCulture) + "%";
     var hasFrac = frac > 0m;
 
     var aria = string.IsNullOrWhiteSpace(Model.AriaLabelPrefix)
         ? $"{avg:0.0} of 5 stars"
         : $"{Model.AriaLabelPrefix}: {avg:0.0} of 5 stars";
 
-    var iconSize = string.IsNullOrWhiteSpace(Model.IconSize) ? "fs-5" : Model.IconSize;
+    var iconSize = Model.IconSize;
 }
 
 <div class="d-inline-flex align-items-center gap-1 lh-1">
@@ -46,7 +49,7 @@
                         <span class="text-secondary @iconSize position-absolute" style="inset:0;">
                             <vc:icon symbol="star-fill" />
                         </span>
-                        <span class="text-warning @iconSize position-absolute overflow-hidden" style="inset:0; width:@($"{halfStarWidth:0.#}")%;">
+                        <span class="text-warning @iconSize position-absolute overflow-hidden" style="inset:0; width:@halfStarWidth">
                             <vc:icon symbol="star-fill" />
                         </span>
                         <span class="opacity-0 @iconSize d-inline-block">

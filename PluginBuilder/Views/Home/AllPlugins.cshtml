@@ -1,5 +1,5 @@
 @using PluginBuilder.APIModels
-@model List<PublishedPlugin>
+@model List<PublishedPlugin>?
 @{
     Layout = "_LayoutPublicModal";
     var title = "BTCPay Server Plugin Directory";
@@ -38,7 +38,7 @@
         </form>
     </div>
     <div class="row">
-        @if (Model.Any())
+        @if (Model != null && Model.Any())
         {
             @foreach (var plugin in Model)
             {

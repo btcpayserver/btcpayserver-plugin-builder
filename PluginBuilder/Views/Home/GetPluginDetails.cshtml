@@ -55,7 +55,10 @@
                     </div>
                     <div>
                         <h1 class="display-6 mb-1">@Model.Plugin.PluginTitle</h1>
-                        <span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
+                        @if (!string.IsNullOrWhiteSpace(owner))
+                        {
+                            <span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
+                        }
                     </div>
                     <a asp-action="Download" asp-controller="Api"
                        asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
@@ -366,9 +369,12 @@
                                                 <label class="form-label me-2 mb-0">Version</label>
                                                 <select name="PluginVersion" class="form-select form-select-sm w-auto">
                                                     <option value="">N/A</option>
-                                                    @foreach (var version in Model.PluginVersions)
+                                                    @if (Model.PluginVersions != null)
                                                     {
-                                                        <option value="@version">@version</option>
+                                                        foreach (var version in Model.PluginVersions)
+                                                        {
+                                                            <option value="@version">@version</option>
+                                                        }
                                                     }
                                                 </select>
                                             </div>
