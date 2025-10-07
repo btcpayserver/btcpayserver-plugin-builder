@@ -203,6 +203,7 @@ public class PluginController(
                 "SELECT v.build_id, p.identifier FROM versions v JOIN plugins p ON v.plugin_slug = p.slug WHERE plugin_slug=@pluginSlug AND ver=@version",
                 new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
 
+        var requireGPGSignature = await conn.RequiresGPGSignatureForPluginRelease();
         switch (command)
         {
             case "remove":
@@ -243,6 +244,11 @@ public class PluginController(
                 break;
 
             default:
+                if (requireGPGSignature && command == "release")
+                {
+                    TempData[TempDataConstant.WarningMessage] = "A verified GPG signature is required to release this version";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
                 await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease," +
                     "signatureproof = CASE WHEN @preRelease THEN NULL ELSE signatureproof END" +
                     " WHERE plugin_slug=@pluginSlug AND ver=@version",

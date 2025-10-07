@@ -98,7 +98,7 @@ public class GPGKeyService
         }
         catch
         {
-            message = "An error occured while validating public key";
+            message = "An error occurred while validating public key";
             return false;
         }
     }
