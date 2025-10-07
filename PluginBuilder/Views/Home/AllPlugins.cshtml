@@ -38,7 +38,7 @@
         </form>
     </div>
     <div class="row">
-        @if (Model != null && Model.Any())
+        @if (Model.Any())
         {
             @foreach (var plugin in Model)
             {
@@ -67,6 +67,19 @@
                                                     ? parsedDate.ToString("MMM dd, yyyy")
                                                     : "")
                                             </div>
+
+                                            <div class="mt-2 w-100 text-start d-flex align-items-center gap-2">
+                                                <partial name="_RatingInline"
+                                                         model="@(new RatingInlineViewModel
+                                                                {
+                                                                    Average = plugin.RatingSummary?.Average ?? 0m,
+                                                                    TotalReviews = plugin.RatingSummary?.TotalReviews ?? 0,
+                                                                    ShowNumber = false,
+                                                                    ShowTotalReviews = true,
+                                                                    AriaLabelPrefix = plugin.ManifestInfo["Name"]?.ToString()
+                                                                })" />
+                                            </div>
+
                                         </div>
                                     </div>
                                 </div>
