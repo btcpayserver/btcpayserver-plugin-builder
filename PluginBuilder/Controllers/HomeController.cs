@@ -203,10 +203,20 @@ public class HomeController(
         await using var conn = await connectionFactory.Open();
 
         var query = $"""
-                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info
+                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info,
+                            COALESCE(r.avg_rating, 0)::numeric(10,2) AS avg_rating,
+                            COALESCE(r.total_reviews, 0)             AS total_reviews
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
                      JOIN plugins p ON b.plugin_slug = p.slug
+                     LEFT JOIN (
+                       SELECT
+                         plugin_slug,
+                         AVG(rating) AS avg_rating,
+                         COUNT(*)    AS total_reviews
+                       FROM plugin_reviews
+                       GROUP BY plugin_slug
+                     ) r ON r.plugin_slug = lv.plugin_slug
                      WHERE b.manifest_info IS NOT NULL
                      AND b.build_info IS NOT NULL
                      AND (
@@ -220,7 +230,7 @@ public class HomeController(
                      ORDER BY manifest_info->>'Name'
                      """;
 
-        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(
+        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, decimal avg_rating, int total_reviews)>(
             query,
             new
             {
@@ -244,7 +254,12 @@ public class HomeController(
                 Version = string.Join('.', r.ver),
                 BuildInfo = JObject.Parse(r.build_info),
                 ManifestInfo = manifestInfo,
-                PluginLogo = settings?.Logo
+                PluginLogo = settings?.Logo,
+                RatingSummary = new PluginRatingSummary
+                {
+                    Average      = Math.Round(r.avg_rating, 2),
+                    TotalReviews = r.total_reviews
+                }
             };
         }));
         return View(versions);
@@ -315,7 +330,7 @@ public class HomeController(
             BuildInfo = JObject.Parse((string)row.build_info),
             ManifestInfo = manifestInfo,
             PluginLogo = settings?.Logo,
-            Documentation = settings.Documentation,
+            Documentation = settings?.Documentation,
             CreatedDate = (DateTimeOffset)row.created_at
         };
         ViewBag.Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir);
