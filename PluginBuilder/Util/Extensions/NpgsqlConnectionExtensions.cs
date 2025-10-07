@@ -361,7 +361,7 @@ public static class NpgsqlConnectionExtensions
         return bool.TryParse(settingValue, out var result) && result;
     }
 
-    public static async Task<bool> GetGPGSettingForPluginRelease(this NpgsqlConnection connection)
+    public static async Task<bool> RequiresGPGSignatureForPluginRelease(this NpgsqlConnection connection)
     {
         var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedGPGSignatureForPluginRelease);
         return bool.TryParse(settingValue, out var result) && result;

@@ -58,7 +58,7 @@ public class UserVerifiedCache
 
     public async Task RefreshIsGPGSignatureRequirementForRelease(NpgsqlConnection conn)
     {
-        IsEmailVerificationRequiredForPublish = await conn.GetGPGSettingForPluginRelease();
+        IsEmailVerificationRequiredForPublish = await conn.RequiresGPGSignatureForPluginRelease();
     }
 
     public async Task RefreshIsVerifiedEmailRequiredForLogin(NpgsqlConnection conn)

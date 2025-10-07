@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 using Newtonsoft.Json;
 using Org.BouncyCastle.Bcpg;
@@ -6,6 +7,7 @@ using PluginBuilder.DataModels;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Services;
 
@@ -100,47 +102,60 @@ public class GPGKeyService
     }
 
 
-    public bool VerifyDetachedSignature(string pluginslug, string userId, string armouredSignature, byte[] rawSignedBytes, out string message)
+    public async Task<SignatureProofResponse> VerifyDetachedSignature(string pluginslug, string userId, byte[] rawSignedBytes, IFormFile? signatureFile)
     {
-        message = null;
         try
         {
-            var publicKey = GetPluginOwnerPublicKeys(pluginslug, userId).GetAwaiter().GetResult();
+            if (signatureFile is not { Length: > 0 })
+                return new SignatureProofResponse(false, "Please upload a valid GPG signature file (.asc)");
+
+            string signatureText;
+            using (var reader = new StreamReader(signatureFile.OpenReadStream()))
+                signatureText = await reader.ReadToEndAsync();
+
+            var publicKey = await GetPluginOwnerPublicKeys(pluginslug, userId);
             if (string.IsNullOrEmpty(publicKey))
             {
-                message = "No public keys found for this user. Kindly update your account profile with your GPG public key";
-                return false;
+                return new SignatureProofResponse(false, "No public keys found for this user. Kindly update your account profile with your GPG public key");
             }
             using Stream pubIn = new MemoryStream(Encoding.ASCII.GetBytes(publicKey));
             PgpPublicKeyRingBundle pubBundle = new PgpPublicKeyRingBundle(PgpUtilities.GetDecoderStream(pubIn));
 
-            using Stream sigIn = new MemoryStream(Encoding.ASCII.GetBytes(armouredSignature));
+            using Stream sigIn = new MemoryStream(Encoding.ASCII.GetBytes(signatureText));
             PgpObjectFactory sigFact = new PgpObjectFactory(PgpUtilities.GetDecoderStream(sigIn));
             PgpSignatureList sigList = (PgpSignatureList)sigFact.NextPgpObject();
-            if (sigList.Count == 0)
+
+            if (sigList.Count <= 0)
             {
-                message = "No signature found in armour.";
-                return false;
+                return new SignatureProofResponse(false, "No signature found in armoured file uploaded");
             }
 
             PgpSignature signature = sigList[0];
             PgpPublicKey signingKey = pubBundle.GetPublicKey(signature.KeyId);
             if (signingKey == null)
             {
-                message = "Signature was made with a key not not associated with the user's public key";
-                return false;
+                return new SignatureProofResponse(false, "File was signed with a key not not associated with the user's public key");
             }
-
             signature.InitVerify(signingKey);
             signature.Update(rawSignedBytes);
             bool ok = signature.Verify();
-            message = ok ? "Signature valid." : "Unable to verify signature. Commit mismatch";
-            return ok;
+            if (!ok)
+            {
+                return new SignatureProofResponse(false, "Unable to verify signature. Commit mismatch");
+            }
+            var signatureProof = new SignatureProof
+            {
+                Armour = signatureText,
+                KeyId = signature.KeyId.ToString("X"),
+                Fingerprint = BitConverter.ToString(signingKey.GetFingerprint()).Replace("-", ""),
+                SignedAt = signature.CreationTime,
+                VerifiedAt = DateTimeOffset.UtcNow
+            };
+            return new SignatureProofResponse(true, "Signature verified successfully", signatureProof);
         }
         catch (Exception ex)
         {
-            message = $"Verification failed: {ex.Message}";
-            return false;
+            return new SignatureProofResponse(false, $"Verification failed: {ex.Message}");
         }
     }
 
@@ -151,7 +166,7 @@ public class GPGKeyService
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         if (pluginOwners?.Any() == false) return string.Empty;
 
-        var owner = pluginOwners.FirstOrDefault(o => o.UserId == userId);
+        var owner = pluginOwners?.FirstOrDefault(o => o.UserId == userId);
         if (owner == null || string.IsNullOrEmpty(owner.AccountDetail)) return string.Empty;
 
         var accountSettings = JsonConvert.DeserializeObject<AccountSettings>(owner.AccountDetail, CamelCaseSerializerSettings.Instance);

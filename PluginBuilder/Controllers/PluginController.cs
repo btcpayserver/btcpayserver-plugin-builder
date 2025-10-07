@@ -199,12 +199,13 @@ public class PluginController(
     {
         await using var conn = await connectionFactory.Open();
 
+        var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)>(
+                "SELECT v.build_id, p.identifier FROM versions v JOIN plugins p ON v.plugin_slug = p.slug WHERE plugin_slug=@pluginSlug AND ver=@version",
+                new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
+
         switch (command)
         {
             case "remove":
-                var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)>(
-                "SELECT v.build_id, p.identifier FROM versions v JOIN plugins p ON v.plugin_slug = p.slug WHERE plugin_slug=@pluginSlug AND ver=@version",
-                new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
                 FullBuildId fullBuildId = new(pluginSlug, pluginBuild.buildId);
                 await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
                     new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
@@ -212,32 +213,26 @@ public class PluginController(
                 return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
             case "sign_release":
-                if (signatureFile == null || signatureFile.Length == 0)
-                {
-                    TempData[TempDataConstant.WarningMessage] = "Please upload a valid GPG signature file (.asc)";
-                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
-                }
-                string armouredSignature;
-                using (var reader = new StreamReader(signatureFile.OpenReadStream()))
-                {
-                    armouredSignature = await reader.ReadToEndAsync();
-                }
-                var rawSignedBytes = Encoding.UTF8.GetBytes("b0605762a6a7bbfc4f69fb8abe171a01c07180e4");
+                var build_info = await conn.QueryFirstOrDefaultAsync<string>("SELECT build_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
+                    new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
-                string message;
-                bool isValid = gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User),
-                    armouredSignature, rawSignedBytes, out message);
+                var buildInfo = build_info is null ? null : BuildInfo.Parse(build_info);
 
-                if (!isValid)
+                var rawSignedBytes = Encoding.UTF8.GetBytes(buildInfo?.GitCommit);
+
+                var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User),
+                  rawSignedBytes, signatureFile);
+
+                if (!signatureVerification.valid)
                 {
-                    TempData[TempDataConstant.WarningMessage] = message;
+                    TempData[TempDataConstant.WarningMessage] = signatureVerification.message;
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
 
-                // Update versions.. but this time with signed property
-                await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease WHERE plugin_slug=@pluginSlug AND ver=@version",
+                await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease, signatureproof = @signatureproof::JSONB WHERE plugin_slug=@pluginSlug AND ver=@version",
                     new
                     {
+                        signatureproof = JsonConvert.SerializeObject(signatureVerification.proof, CamelCaseSerializerSettings.Instance),
                         pluginSlug = pluginSlug.ToString(),
                         version = version.VersionParts,
                         preRelease = false
@@ -245,14 +240,15 @@ public class PluginController(
                 break;
 
             default:
-                await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease WHERE plugin_slug=@pluginSlug AND ver=@version",
+                await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease," +
+                    "signatureproof = CASE WHEN @preRelease THEN NULL ELSE signatureproof END" +
+                    " WHERE plugin_slug=@pluginSlug AND ver=@version",
                     new
                     {
                         pluginSlug = pluginSlug.ToString(),
                         version = version.VersionParts,
                         preRelease = command == "unrelease"
                     });
-                // make the new table sign .column null when command is unrelease..
                 break;
         }
 
@@ -310,7 +306,7 @@ public class PluginController(
         vm.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, pluginSlug.ToString());
         vm.RepositoryLink = GetUrl(buildInfo);
         vm.DownloadLink = buildInfo?.Url;
-        vm.RequireGPGSignatureForRelease = await conn.GetGPGSettingForPluginRelease();
+        vm.RequireGPGSignatureForRelease = await conn.RequiresGPGSignatureForPluginRelease();
         //vm.Error = buildInfo?.Error;
         vm.Published = row.published;
         //var buildId = await conn.NewBuild(pluginSlug);

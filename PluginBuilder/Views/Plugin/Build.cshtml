@@ -80,7 +80,7 @@
 						</span>
 					</div>
 				</div>
-				<form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post" enctype="multipart/form-data">
+				<form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@(Model.Version?.Version ?? "")" method="post" enctype="multipart/form-data">
 					<input type="hidden" name="command" value="sign_release" />
 					<div class="mb-3">
 						<label for="signatureFile" class="form-label">Upload Signature (.asc)</label>
