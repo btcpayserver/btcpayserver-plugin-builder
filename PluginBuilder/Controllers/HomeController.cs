@@ -251,7 +251,7 @@ public class HomeController(
             PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
             RatingSummary = new PluginRatingSummary
             {
-                Average      = Math.Round(r.avg_rating, 2),
+                Average      = r.avg_rating,
                 TotalReviews = r.total_reviews
             }
         }));
@@ -299,8 +299,8 @@ public class HomeController(
             pluginSlug = pluginSlug.ToString(),
             currentUserId = userId,
             isAdmin,
-            skip,
-            take = count,
+            skip = skip ?? 0,
+            take = count ?? 10,
             rating
         };
 
@@ -474,7 +474,14 @@ public class HomeController(
             return RedirectToAction("AccountDetails", "Account");
         }
 
-        await conn.UpsertPluginReview(pluginSlug, userId, rating, body, pluginVersion);
+        int[]? pluginVersionParts = null;
+        if (!string.IsNullOrWhiteSpace(pluginVersion) &&
+            PluginVersion.TryParse(pluginVersion, out var v))
+        {
+            pluginVersionParts = v.VersionParts;
+        }
+
+        await conn.UpsertPluginReview(pluginSlug, userId, rating, body, pluginVersionParts);
 
         var sort = Request.Query["sort"].ToString();
         var url = Url.Action(nameof(GetPluginDetails), "Home",
@@ -663,9 +670,12 @@ public class HomeController(
     {
         if (string.IsNullOrWhiteSpace(url)) return null;
 
-        var u = Uri.TryCreate(url, UriKind.Absolute, out var abs)
-            ? abs
-            : new Uri("https://" + url.TrimStart('/'));
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
+        {
+            var prefixed = "https://" + url.TrimStart('/');
+            if (!Uri.TryCreate(prefixed, UriKind.Absolute, out u))
+                return null;
+        }
 
         var segs = u.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (segs.Length == 0) return null;
