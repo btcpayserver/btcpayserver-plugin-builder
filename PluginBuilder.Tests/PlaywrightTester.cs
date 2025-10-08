@@ -38,7 +38,7 @@ public class PlaywrightTester : IAsyncDisposable
         var playwright = await Playwright.CreateAsync();
         Browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
         {
-            Headless = true,
+            Headless = false,
             SlowMo = 0 // 50 if you want to slow down
         });
         var context = await Browser.NewContextAsync();
@@ -60,7 +60,7 @@ public class PlaywrightTester : IAsyncDisposable
     private static async Task SafeDispose(Func<Task> action)
     {
         try { if (action != null) await action(); }
-        catch { /* ignore */ }
+        catch { }
     }
 
     public async Task AssertNoError()

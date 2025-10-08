@@ -10,6 +10,8 @@ namespace PluginBuilder.Util.Extensions;
 
 public static class NpgsqlConnectionExtensions
 {
+
+    #region Methods relating to plugin settings
     public static async Task<PluginSettings?> GetSettings(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         var r = await connection.QueryFirstOrDefaultAsync<string>("SELECT settings FROM plugins WHERE slug=@pluginSlug",
@@ -25,6 +27,20 @@ public static class NpgsqlConnectionExtensions
             new { pluginSlug = pluginSlug.ToString(), settings = JsonConvert.SerializeObject(pluginSettings, CamelCaseSerializerSettings.Instance) });
         return count == 1;
     }
+
+    public static async Task<bool> SetPluginSettingsAndVisibility(this NpgsqlConnection connection, PluginSlug pluginSlug, string settings, string visibility)
+    {
+        var affectedRows = await connection.ExecuteAsync(
+            "UPDATE plugins SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum WHERE slug = @pluginSlug",
+            new { pluginSlug = pluginSlug.ToString(), settings, visibility });
+
+        return affectedRows == 1;
+    }
+
+    #endregion
+
+
+    #region Methods relating to User account settings
 
     public static async Task SetAccountDetailSettings(this NpgsqlConnection connection, AccountSettings accountSettings, string userId)
     {
@@ -61,6 +77,11 @@ public static class NpgsqlConnectionExtensions
         );
         return !string.IsNullOrEmpty(githubGistUrl);
     }
+
+    #endregion
+
+
+    #region Methods relating to plugin owners/users
 
     public static async Task<bool> UserOwnsPlugin(this NpgsqlConnection connection, string userId, PluginSlug pluginSlug)
     {
@@ -140,6 +161,11 @@ public static class NpgsqlConnectionExtensions
         var owners = await connection.QueryAsync<OwnerVm>(sql, new { slug = pluginSlug.ToString() });
         return owners.ToList();
     }
+
+    #endregion
+
+
+    #region Methods relating to plugin and builds
 
     public static async Task<bool> NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
@@ -283,7 +309,11 @@ public static class NpgsqlConnectionExtensions
         return await connection.ExecuteScalarAsync<long>("SELECT curr_id FROM builds_ids WHERE plugin_slug = @plugin_slug", new { plugin_slug = pluginSlug.ToString() });
     }
 
-    // Methods related to getting / setting settings in the DB
+    #endregion
+
+
+    #region Methods related to getting / setting settings in the DB
+
     public static Task<IEnumerable<(string key, string value)>> SettingsGetAllAsync(this NpgsqlConnection connection)
     {
         var query = "SELECT key, value FROM settings";
@@ -377,4 +407,6 @@ public static class NpgsqlConnectionExtensions
         var v = await SettingsGetAsync(connection, SettingsKeys.VerifiedGithub);
         return bool.TryParse(v, out var b) && b;
     }
+
+    #endregion
 }

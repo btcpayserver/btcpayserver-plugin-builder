@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Playwright.Xunit;
 using Xunit;
@@ -18,10 +19,10 @@ public class LoginPageTests(ITestOutputHelper output) : PageTest
         tester.Server.ReuseDatabase = false;
         await tester.StartAsync();
 
-        await tester.GoToLogin();
         await tester.LogIn("wrong-credentials@a.com");
-
-        await Expect(tester.Page?.Locator("body") ?? throw new InvalidOperationException()).ToContainTextAsync("Invalid login attempt");
+        var errorLocator = tester.Page.Locator(".validation-summary-errors");
+        await Expect(errorLocator).ToBeVisibleAsync();
+        await Expect(errorLocator).ToContainTextAsync("Invalid login attempt");
     }
 
     [Fact]
@@ -33,13 +34,9 @@ public class LoginPageTests(ITestOutputHelper output) : PageTest
 
         await tester.GoToUrl("/register");
         var email = await tester.RegisterNewUser();
-
-        await Expect(tester.Page?.Locator("body") ?? throw new InvalidOperationException()).ToContainTextAsync("Builds");
-
+        await Expect(tester.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
         await tester.Logout();
-        await tester.GoToLogin();
         await tester.LogIn(email);
-
-        await Expect(tester.Page.Locator("body")).ToContainTextAsync("Builds");
+        await Expect(tester.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
     }
 }

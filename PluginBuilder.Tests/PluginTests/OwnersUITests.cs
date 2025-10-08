@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Playwright;
@@ -21,12 +22,12 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
 
         await t.GoToUrl("/register");
         var userA = await t.RegisterNewUser();
-        await Expect(t.Page!.Locator("body")).ToContainTextAsync("Builds");
+        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
 
         var slug = "owners-" + PlaywrightTester.GetRandomUInt256()[..8];
         await t.GoToUrl("/plugins/create");
-        await Expect(t.Page).ToHaveURLAsync(new Regex("/account/details$", RegexOptions.IgnoreCase));
-        await Expect(t.Page.Locator(".alert-warning")).ToBeVisibleAsync();
+        await Expect(t.Page!).ToHaveURLAsync(new Regex("/account/details$", RegexOptions.IgnoreCase));
+        await Expect(t.Page!.Locator(".alert-warning")).ToBeVisibleAsync();
 
         await t.VerifyEmailAndGithubAsync(userA);
         await t.GoToUrl("/plugins/create");

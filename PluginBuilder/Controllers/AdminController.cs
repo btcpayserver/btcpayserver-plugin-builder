@@ -138,18 +138,9 @@ public class AdminController(
             return View(model);
         }
 
-        var affectedRows = await conn.ExecuteAsync("""
-                                                    UPDATE plugins
-                                                    SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum
-                                                    WHERE slug = @slug
-                                                   """,
-            new
-            {
-                settings = model.Settings,
-                visibility = model.Visibility.ToString().ToLowerInvariant(),
-                slug
-            });
-        if (affectedRows == 0) return NotFound();
+        var setPluginSettings = await conn.SetPluginSettingsAndVisibility(slug, model.Settings, model.Visibility.ToString().ToLowerInvariant());
+
+        if (!setPluginSettings) return NotFound();
 
         return referrerNavigation.RedirectToReferrerOr(this, "ListPlugins");
     }
