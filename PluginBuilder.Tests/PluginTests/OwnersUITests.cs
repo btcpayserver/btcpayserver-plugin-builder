@@ -1,4 +1,3 @@
-using System.Diagnostics.Metrics;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Playwright;
@@ -41,7 +40,7 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await t.Logout();
         await t.GoToUrl("/register");
         var userB = await t.RegisterNewUser();
-        await Expect(t.Page.Locator("body")).ToContainTextAsync("Builds");
+        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
         await t.Logout();
 
         await t.GoToLogin();
@@ -82,10 +81,8 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         var aRow = t.Page.Locator("table tbody tr").Filter(new LocatorFilterOptions { HasText = userA });
         var leaveBtn = aRow.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Leave" });
         await leaveBtn.ClickAsync();
-        await Task.WhenAll(
-            t.Page.WaitForURLAsync(url => !url.EndsWith($"/plugins/{slug}/owners")),
-            t.Page.ClickAsync("#ConfirmContinue")
-        );
+        await t.Page.ClickAsync("#ConfirmContinue");
+        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
 
         await Expect(t.Page.Locator(".alert-success"))
             .ToContainTextAsync(new Regex("(Owner removed|You have left)", RegexOptions.IgnoreCase));

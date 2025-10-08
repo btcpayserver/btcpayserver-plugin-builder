@@ -38,7 +38,7 @@ public class PlaywrightTester : IAsyncDisposable
         var playwright = await Playwright.CreateAsync();
         Browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
         {
-            Headless = false,
+            Headless = true,
             SlowMo = 0 // 50 if you want to slow down
         });
         var context = await Browser.NewContextAsync();
