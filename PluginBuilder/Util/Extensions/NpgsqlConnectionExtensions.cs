@@ -394,13 +394,12 @@ public static class NpgsqlConnectionExtensions
     {
         const string sql = """
                                INSERT INTO plugin_reviews
-                                   (plugin_slug, user_id, rating, title, body, plugin_version, created_at, updated_at)
+                                   (plugin_slug, user_id, rating, body, plugin_version, created_at, updated_at)
                                VALUES
                                    (
                                      @plugin_slug,
                                      @user_id,
                                      @rating,
-                                     NULL,
                                      NULLIF(@body,''),
                                      @plugin_version,
                                      NOW(), NOW()
