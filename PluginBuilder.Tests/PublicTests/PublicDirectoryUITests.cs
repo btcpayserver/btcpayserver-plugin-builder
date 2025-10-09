@@ -39,6 +39,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         // Listed should be visible
         await conn.ExecuteAsync("UPDATE plugins SET visibility = 'listed' WHERE slug = @Slug", new { Slug = slug });
         await tester.GoToUrl("/public/plugins");
+
         await tester.Page!.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']");
         Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
 
@@ -50,6 +51,8 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         // Unlisted shouldn't be visible
         await conn.ExecuteAsync("UPDATE plugins SET visibility = 'unlisted' WHERE slug = @Slug", new { Slug = slug });
         await tester.GoToUrl("/public/plugins");
+        await tester.Page.ReloadAsync();
+        Assert.False(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
 
         // Unlisted with search term should be visible
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync("rockstar");
