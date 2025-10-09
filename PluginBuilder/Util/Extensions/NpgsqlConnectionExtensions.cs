@@ -498,7 +498,7 @@ public static class NpgsqlConnectionExtensions
                                SET helpful_voters = jsonb_set(
                                    COALESCE(helpful_voters, '{}'::jsonb),
                                    ARRAY[@userId],
-                                   to_jsonb(@isHelpful)::jsonb,
+                                   to_jsonb(@isHelpful),
                                    true)
                                WHERE id = @id AND plugin_slug = @slug
                                """;
