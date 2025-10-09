@@ -329,16 +329,16 @@
                             <a id="write-review"></a>
                             @if (User.Identity?.IsAuthenticated == true)
                             {
-                                <form method="post" asp-action="UpsertReview" asp-controller="Home" asp-route-pluginSlug="@Model.Plugin.ProjectSlug">
+                                if (Model.IsOwner == true)
+                                {
+                                    <div class="alert alert-warning mb-3">
+                                        Owners can’t review their own plugin.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <form method="post" asp-action="UpsertReview" asp-controller="Home" asp-route-pluginSlug="@Model.Plugin.ProjectSlug">
                                     @Html.AntiForgeryToken()
-
-                                    <input type="number"
-                                           name="Rating"
-                                           id="ratingInput"
-                                           value="0"
-                                           min="1" max="5"
-                                           required
-                                           class="visually-hidden" />
 
                                     <div class="row align-items-center g-2 mb-3">
 
@@ -361,22 +361,31 @@
                                                         </span>
                                                     </button>
                                                 }
+                                                <input type="number"
+                                                       name="Rating"
+                                                       id="ratingInput"
+                                                       value="0"
+                                                       min="1" max="5"
+                                                       required
+                                                       class="visually-hidden" />
                                             </div>
                                         </div>
 
                                         <div class="col-auto">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center overflow-visible">
                                                 <label class="form-label me-2 mb-0">Version</label>
-                                                <select name="PluginVersion" class="form-select form-select-sm w-auto">
-                                                    <option value="">N/A</option>
-                                                    @if (Model.PluginVersions != null)
-                                                    {
-                                                        foreach (var version in Model.PluginVersions)
+                                                <div class="overflow-visible position-relative">
+                                                    <select name="PluginVersion" class="form-select form-select-sm w-auto">
+                                                        <option value="">N/A</option>
+                                                        @if (Model.PluginVersions != null)
                                                         {
-                                                            <option value="@version">@version</option>
+                                                            foreach (var version in Model.PluginVersions)
+                                                            {
+                                                                <option value="@version">@version</option>
+                                                            }
                                                         }
-                                                    }
-                                                </select>
+                                                    </select>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -388,6 +397,7 @@
 
                                     <button class="btn btn-primary">Submit</button>
                                 </form>
+                                }
                             }
                             else
                             {
