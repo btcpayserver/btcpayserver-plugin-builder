@@ -97,30 +97,14 @@ public class AdminController(
     }
 
     [HttpPost]
-    public async Task<IActionResult> UpdatePluginRequirementSetting(string command, bool verifiedEmailForPluginPublish, bool verifiedGPGSignatureForPluginRelease)
+    public async Task<IActionResult> UpdateVerifiedEmailForPublishRequirement(bool verifiedEmailForPluginPublish)
     {
         await using var conn = await connectionFactory.Open();
-        switch (command)
-        {
-            case "gpg_signature":
-                await conn.UpdatePluginAdminSettings(SettingsKeys.VerifiedGPGSignatureForPluginRelease, verifiedGPGSignatureForPluginRelease);
-                await userVerifiedCache.RefreshIsGPGSignatureRequirementForRelease(conn);
-                TempData[TempDataConstant.SuccessMessage] = "GPG signature requirement for plugin release updated successfully";
-                break;
-
-            case "verified_email":
-                await conn.UpdatePluginAdminSettings(SettingsKeys.VerifiedEmailForPluginPublish, verifiedEmailForPluginPublish);
-                await userVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
-                TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
-                break;
-
-            default:
-                TempData[TempDataConstant.WarningMessage] = "Invalid update command.";
-                break;
-        }
+        await conn.UpdatePluginAdminSettings(SettingsKeys.VerifiedEmailForPluginPublish, verifiedEmailForPluginPublish);
+        await userVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
+        TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
         return RedirectToAction("ListPlugins");
     }
-
 
 
     [HttpGet("plugins/edit/{slug}")]

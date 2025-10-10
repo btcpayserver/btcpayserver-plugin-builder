@@ -18,12 +18,3 @@ public record OwnerVm(
     string? AccountDetail
 );
 
-public record SignatureProofResponse(bool valid, string message, SignatureProof? proof = null);
-public class SignatureProof
-{
-    public string Armour { get; init; }
-    public string KeyId { get; init; }
-    public string Fingerprint { get; init; }
-    public DateTime SignedAt { get; init; }
-    public DateTimeOffset VerifiedAt { get; init; }
-}

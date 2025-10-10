@@ -232,15 +232,7 @@ public class PluginController(
                     TempData[TempDataConstant.WarningMessage] = signatureVerification.message;
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
-
-                await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease, signatureproof = @signatureproof::JSONB WHERE plugin_slug=@pluginSlug AND ver=@version",
-                    new
-                    {
-                        signatureproof = JsonConvert.SerializeObject(signatureVerification.proof, CamelCaseSerializerSettings.Instance),
-                        pluginSlug = pluginSlug.ToString(),
-                        version = version.VersionParts,
-                        preRelease = false
-                    });
+                await conn.UpdateVersionReleaseStatus(pluginSlug, command, version, signatureVerification.proof);
                 break;
 
             default:
@@ -249,15 +241,7 @@ public class PluginController(
                     TempData[TempDataConstant.WarningMessage] = "A verified GPG signature is required to release this version";
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
-                await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease," +
-                    "signatureproof = CASE WHEN @preRelease THEN NULL ELSE signatureproof END" +
-                    " WHERE plugin_slug=@pluginSlug AND ver=@version",
-                    new
-                    {
-                        pluginSlug = pluginSlug.ToString(),
-                        version = version.VersionParts,
-                        preRelease = command == "unrelease"
-                    });
+                await conn.UpdateVersionReleaseStatus(pluginSlug, command, version);
                 break;
         }
 
@@ -288,8 +272,8 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         var row =
             await conn
-                .QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release)>(
-                    "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
+                .QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release, string signatureproof)>(
+                    "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release, v.signatureproof FROM builds b " +
                     "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                     "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
                     "LIMIT 1",
@@ -300,11 +284,14 @@ public class PluginController(
             "ORDER BY created_at;",
             new { pluginSlug = pluginSlug.ToString(), buildId });
         var logs = string.Join("\r\n", logLines);
+        var signatureProof = string.IsNullOrWhiteSpace(row.signatureproof)
+            ? new SignatureProof() : JsonConvert.DeserializeObject<SignatureProof>(row.signatureproof, CamelCaseSerializerSettings.Instance) ?? new SignatureProof();
+
         BuildViewModel vm = new();
         var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
         var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
         vm.FullBuildId = new FullBuildId(pluginSlug, buildId);
-        vm.ManifestInfo = NiceJson(row.manifest_info);
+        vm.ManifestInfo = NiceJson(row.manifest_info, signatureProof?.Fingerprint);
         vm.BuildInfo = buildInfo?.ToString(Formatting.Indented);
         vm.DownloadLink = buildInfo?.Url;
         vm.State = row.state;
@@ -325,12 +312,14 @@ public class PluginController(
         return View(vm);
     }
 
-    private string? NiceJson(string? json)
+    private string? NiceJson(string? json, string? fingerprint = null)
     {
         if (json is null)
             return null;
         var data = JObject.Parse(json);
         data = new JObject(data.Properties().OrderBy(p => p.Name));
+        if (!string.IsNullOrWhiteSpace(fingerprint))
+            data["SignatureFingerprint"] = fingerprint;
         return data.ToString(Formatting.Indented);
     }
 

@@ -1,4 +1,3 @@
-using System;
 using System.Text;
 using Newtonsoft.Json;
 using Org.BouncyCastle.Bcpg;
@@ -7,7 +6,6 @@ using PluginBuilder.DataModels;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
-using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Services;
 
@@ -22,6 +20,7 @@ public class GPGKeyService
 
     public bool ValidateArmouredPublicKey(string publicKey, out string message, out PgpKeyViewModel? vm)
     {
+        publicKey = publicKey.Trim();
         vm = null;
         if (publicKey.Contains("-----BEGIN PGP PRIVATE KEY BLOCK-----", StringComparison.OrdinalIgnoreCase))
         {
