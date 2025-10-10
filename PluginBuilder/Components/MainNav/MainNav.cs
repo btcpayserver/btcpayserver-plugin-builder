@@ -33,6 +33,7 @@ public class MainNav : ViewComponent
             foreach (var r in rows)
                 vm.Versions.Add(new PluginVersionViewModel
                 {
+                    PluginSlug = pluginSlug?.ToString(),
                     Version = new PluginBuilder.PluginVersion(r.ver).ToString(),
                     PreRelease = r.pre_release,
                     Published = true,
