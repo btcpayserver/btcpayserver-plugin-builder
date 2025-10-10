@@ -25,7 +25,7 @@
 			</form>
 		</div>
 
-        @if (Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Any())
+        @if (Model.Plugins.Any(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)))
         {
             <a asp-controller="Admin" asp-action="EmailSender"
                asp-route-to="@string.Join(",", Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Select(m => m.PrimaryOwnerEmail))"

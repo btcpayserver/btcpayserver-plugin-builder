@@ -224,7 +224,7 @@ public class PluginController(
                 }
 
                 var rawSignedBytes = Encoding.UTF8.GetBytes(buildInfo.GitCommit);
-                var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User),
+                var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User)!,
                   rawSignedBytes, signatureFile);
 
                 if (!signatureVerification.valid)
@@ -262,7 +262,7 @@ public class PluginController(
         }
 
         TempData[TempDataConstant.SuccessMessage] =
-            $"Version {version} {(command == "release" || command == "sign_release" ? "released" : "unreleased")}";
+            $"Version {version} {(command is "release" or "sign_release" ? "released" : "unreleased")}";
         return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
     }
 

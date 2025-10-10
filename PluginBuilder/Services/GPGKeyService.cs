@@ -1,4 +1,3 @@
-using System;
 using System.Text;
 using Newtonsoft.Json;
 using Org.BouncyCastle.Bcpg;
@@ -11,15 +10,8 @@ using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Services;
 
-public class GPGKeyService
+public class GPGKeyService(DBConnectionFactory connectionFactory)
 {
-    private readonly DBConnectionFactory _connectionFactory;
-
-    public GPGKeyService(DBConnectionFactory connectionFactory)
-    {
-        _connectionFactory = connectionFactory;
-    }
-
     public bool ValidateArmouredPublicKey(string publicKey, out string message, out PgpKeyViewModel? vm)
     {
         vm = null;
@@ -39,12 +31,9 @@ public class GPGKeyService
             {
                 foreach (PgpPublicKey k in keyRing.GetPublicKeys())
                 {
-                    if (k.GetSignatures().OfType<PgpSignature>()
-                         .Any(sig => (sig.GetHashedSubPackets().GetKeyFlags() & PgpKeyFlags.CanSign) != 0))
-                    {
-                        key = k;
-                        break;
-                    }
+                    if (k.GetSignatures().All(sig => ((sig.GetHashedSubPackets()?.GetKeyFlags()) & PgpKeyFlags.CanSign) == 0)) continue;
+                    key = k;
+                    break;
                 }
 
                 if (key != null)
@@ -78,7 +67,7 @@ public class GPGKeyService
                 return false;
             }
 
-            if (key.IsRevoked() || key.GetSignatures().OfType<PgpSignature>().Any(sig => sig.SignatureType == PgpSignature.KeyRevocation))
+            if (key.IsRevoked() || key.GetSignatures().Any(sig => sig.SignatureType == PgpSignature.KeyRevocation))
             {
                 message = "Key is revoked";
                 return false;
@@ -103,7 +92,6 @@ public class GPGKeyService
         }
     }
 
-
     public async Task<SignatureProofResponse> VerifyDetachedSignature(string pluginslug, string userId, byte[] rawSignedBytes, IFormFile? signatureFile)
     {
         try
@@ -120,10 +108,10 @@ public class GPGKeyService
             {
                 return new SignatureProofResponse(false, "No public keys found for this user. Kindly update your account profile with your GPG public key");
             }
-            using Stream pubIn = new MemoryStream(Encoding.ASCII.GetBytes(publicKey));
+            await using Stream pubIn = new MemoryStream(Encoding.ASCII.GetBytes(publicKey));
             PgpPublicKeyRingBundle pubBundle = new PgpPublicKeyRingBundle(PgpUtilities.GetDecoderStream(pubIn));
 
-            using Stream sigIn = new MemoryStream(Encoding.ASCII.GetBytes(signatureText));
+            await using Stream sigIn = new MemoryStream(Encoding.ASCII.GetBytes(signatureText));
             PgpObjectFactory sigFact = new PgpObjectFactory(PgpUtilities.GetDecoderStream(sigIn));
             PgpSignatureList sigList = (PgpSignatureList)sigFact.NextPgpObject();
 
@@ -161,14 +149,13 @@ public class GPGKeyService
         }
     }
 
-
     private async Task<string> GetPluginOwnerPublicKeys(string pluginSlug, string userId)
     {
-        await using var conn = await _connectionFactory.Open();
+        await using var conn = await connectionFactory.Open();
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
-        if (pluginOwners?.Any() == false) return string.Empty;
+        if (pluginOwners.Count != 0 == false) return string.Empty;
 
-        var owner = pluginOwners?.FirstOrDefault(o => o.UserId == userId);
+        var owner = pluginOwners.FirstOrDefault(o => o.UserId == userId);
         if (owner == null || string.IsNullOrEmpty(owner.AccountDetail)) return string.Empty;
 
         var accountSettings = JsonConvert.DeserializeObject<AccountSettings>(owner.AccountDetail, CamelCaseSerializerSettings.Instance);

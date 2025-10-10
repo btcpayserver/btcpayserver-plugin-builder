@@ -5,7 +5,6 @@ using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
-using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Account;
 
 namespace PluginBuilder.Controllers;
@@ -72,7 +71,7 @@ public class AccountController(
     {
         if (!ModelState.IsValid) return View(model);
 
-        var user = await userManager.GetUserAsync(User)!;
+        var user = await userManager.GetUserAsync(User);
 
         await using var conn = await connectionFactory.Open();
         var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
@@ -82,17 +81,15 @@ public class AccountController(
         accountSettings.Email = model.Settings.Email;
         if (!string.IsNullOrEmpty(model.Settings.GPGKey?.PublicKey))
         {
-            PgpKeyViewModel? keyViewModel = null;
-            string message;
-            var isPublicKeyValid = _gpgService.ValidateArmouredPublicKey(model.Settings.GPGKey.PublicKey.Trim(), out message, out keyViewModel);
+            var isPublicKeyValid = _gpgService.ValidateArmouredPublicKey(model.Settings.GPGKey.PublicKey.Trim(), out var message, out var keyViewModel);
             if (!isPublicKeyValid)
             {
                 TempData[TempDataConstant.WarningMessage] = $"GPG Key is not valid: {message}";
                 return View(model);
             }
-            accountSettings.GPGKey = keyViewModel!;
+            accountSettings.GPGKey = keyViewModel;
         }
-        await conn.SetAccountDetailSettings(accountSettings, user!.Id);
+        await conn.SetAccountDetailSettings(accountSettings, user.Id);
 
         TempData[TempDataConstant.SuccessMessage] = "Account details updated successfully";
         return RedirectToAction(nameof(AccountDetails));
