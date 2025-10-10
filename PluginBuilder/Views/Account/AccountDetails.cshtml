@@ -15,13 +15,15 @@
                 {
                     <span class="badge bg-success ml-2">Confirmed</span>
                 }
-                <div class="input-group">
-                    <input asp-for="AccountEmail" class="form-control" placeholder="" readonly="readonly" />
+                <div class="d-flex align-items-center">
+                    <input asp-for="AccountEmail" class="form-control" readonly />
                     @if (Model.NeedToVerifyEmail)
                     {
-                        <div class="input-group-append">
-                            <a asp-controller="Account" asp-action="VerifyEmail" class="btn btn-secondary">Verify Email</a>
-                        </div>
+                        <a asp-controller="Account"
+                           asp-action="VerifyEmail"
+						   class="btn btn-sm btn-outline-success ms-2">
+                            Verify
+                        </a>
                     }
                 </div>
             </div>
@@ -31,13 +33,15 @@
                 {
                     <span class="badge bg-success ml-2">Confirmed</span>
                 }
-                <div class="input-group">
+                <div class="d-flex align-items-center">
                     <input asp-for="Settings.Github" class="form-control" placeholder="https://github.com/satoshi" readonly="readonly" />
                     @if (!Model.GithubAccountVerified)
                     {
-                        <div class="input-group-append">
-                            <a asp-controller="Account" asp-action="VerifyGithubAccount" class="btn btn-secondary">Verify GitHub</a>
-                        </div>
+                        <a asp-controller="Account"
+                           asp-action="VerifyGithubAccount"
+                           class="btn btn-sm btn-outline-success ms-2">
+                            Verify
+                        </a>
                     }
                 </div>
             </div>
@@ -56,9 +60,77 @@
                 <input asp-for="Settings.Email" class="form-control" type="email" placeholder="plugins@satoshi.com" />
                 <span asp-validation-for="Settings.Email" class="text-danger"></span>
             </div>
+
+			<div class="form-group">
+				<label for="Settings.GpgPublicKey" class="form-label">GPG Public Key</label>
+				@{
+					DateTimeOffset? expiryDate = null;
+					if (Model.Settings.GPGKey?.ValidDays > 0)
+					{
+						expiryDate = Model.Settings.GPGKey.CreatedDate.AddDays(Model.Settings.GPGKey.ValidDays);
+					}
+                }
+                @if (!string.IsNullOrEmpty(Model.Settings.GPGKey?.Fingerprint) && (!expiryDate.HasValue || expiryDate > DateTimeOffset.UtcNow))
+                {
+                    <span class="badge bg-success ms-2">Confirmed</span>
+                }
+
+				@if (expiryDate.HasValue)
+				{
+					if (expiryDate.Value < DateTimeOffset.UtcNow)
+					{
+						<div class="alert alert-danger mt-2">
+							Your GPG key expired on @expiryDate.Value.ToString("yyyy-MM-dd").
+						</div>
+					}
+					else if (expiryDate.Value <= DateTimeOffset.UtcNow.AddMonths(1))
+					{
+						<div class="alert alert-warning mt-2">
+							Your GPG key will expire on @expiryDate.Value.ToString("yyyy-MM-dd").
+						</div>
+					}
+				}
+				<div>
+					@if (!string.IsNullOrEmpty(Model.Settings.GPGKey?.Fingerprint))
+					{
+                        <div id="existing-key-section" class="d-flex align-items-center">
+                            <input class="form-control" readonly
+                                   value="Fingerprint: @Model.Settings.GPGKey?.Fingerprint" />
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-danger ms-2"
+                                    onclick="showResetKeyForm();">
+                                Replace
+                            </button>
+                        </div>
+
+                        <div id="reset-key-section" class="mt-3" style="display:none;">
+							<textarea asp-for="Settings.GPGKey.PublicKey" class="form-control" rows="8"
+									  placeholder="Paste your armored GPG public key here..."></textarea>
+							<span asp-validation-for="Settings.GPGKey.PublicKey" class="text-danger"></span>
+						</div>
+					}
+					else
+					{
+						<textarea asp-for="Settings.GPGKey.PublicKey" class="form-control" rows="8"
+								  placeholder="Paste your armored GPG public key here..."></textarea>
+						<span asp-validation-for="Settings.GPGKey.PublicKey" class="text-danger"></span>
+					}
+				</div>
+			</div>
+
             <div class="form-group mt-4">
                 <input type="submit" class="btn btn-primary" id="Save" value="Save" />
             </div>
         </form>
     </div>
 </div>
+
+
+@section FooterScripts {
+	<script>
+		function showResetKeyForm() {
+			document.getElementById("existing-key-section").style.display = "none";
+			document.getElementById("reset-key-section").style.display = "block";
+		}
+	</script>
+}

@@ -12,6 +12,7 @@ namespace PluginBuilder.Controllers;
 [Authorize]
 [Route("/account/")]
 public class AccountController(
+    GPGKeyService _gpgService,
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
     ExternalAccountVerificationService externalAccountVerificationService,
@@ -70,7 +71,7 @@ public class AccountController(
     {
         if (!ModelState.IsValid) return View(model);
 
-        var user = await userManager.GetUserAsync(User)!;
+        var user = await userManager.GetUserAsync(User);
 
         await using var conn = await connectionFactory.Open();
         var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
@@ -78,7 +79,21 @@ public class AccountController(
         accountSettings.Nostr = model.Settings.Nostr;
         accountSettings.Twitter = model.Settings.Twitter;
         accountSettings.Email = model.Settings.Email;
-        await conn.SetAccountDetailSettings(accountSettings, user!.Id);
+        if (!string.IsNullOrEmpty(model.Settings.GPGKey?.PublicKey))
+        {
+            var isPublicKeyValid = _gpgService.ValidateArmouredPublicKey(model.Settings.GPGKey.PublicKey.Trim(), out var message, out var keyViewModel);
+            if (!isPublicKeyValid)
+            {
+                TempData[TempDataConstant.WarningMessage] = $"GPG Key is not valid: {message}";
+                return View(model);
+            }
+            accountSettings.GPGKey = keyViewModel;
+        }
+        else
+        {
+            accountSettings.GPGKey = new();
+        }
+        await conn.SetAccountDetailSettings(accountSettings, user.Id);
 
         TempData[TempDataConstant.SuccessMessage] = "Account details updated successfully";
         return RedirectToAction(nameof(AccountDetails));

@@ -46,6 +46,7 @@ public class UserVerifiedLogic(
 public class UserVerifiedCache
 {
     public bool IsEmailVerificationRequiredForPublish { get; private set; }
+    public bool IsGPGSignatureRequiredForRelease { get; private set; }
     public bool IsEmailVerificationRequiredForLogin { get; private set; }
     public bool IsGithubVerificationRequired { get; private set; }
 
@@ -53,6 +54,11 @@ public class UserVerifiedCache
     public async Task RefreshIsVerifiedEmailRequiredForPublish(NpgsqlConnection conn)
     {
         IsEmailVerificationRequiredForPublish = await conn.GetVerifiedEmailForPluginPublishSetting();
+    }
+
+    public async Task RefreshIsGPGSignatureRequirementForRelease(NpgsqlConnection conn)
+    {
+        IsGPGSignatureRequiredForRelease = await conn.RequiresGPGSignatureForPluginRelease();
     }
 
     public async Task RefreshIsVerifiedEmailRequiredForLogin(NpgsqlConnection conn)
@@ -69,6 +75,7 @@ public class UserVerifiedCache
     public async Task RefreshAllUserVerifiedSettings(NpgsqlConnection conn)
     {
         await RefreshIsVerifiedEmailRequiredForPublish(conn);
+        await RefreshIsGPGSignatureRequirementForRelease(conn);
         await RefreshIsVerifiedEmailRequiredForLogin(conn);
         await RefreshIsVerifiedGithubRequired(conn);
     }
