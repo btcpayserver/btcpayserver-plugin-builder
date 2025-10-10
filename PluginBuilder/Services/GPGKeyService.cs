@@ -153,7 +153,7 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
     {
         await using var conn = await connectionFactory.Open();
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
-        if (pluginOwners.Count != 0 == false) return string.Empty;
+        if (pluginOwners == null || pluginOwners.Count != 0 == false) return string.Empty;
 
         var owner = pluginOwners.FirstOrDefault(o => o.UserId == userId);
         if (owner == null || string.IsNullOrEmpty(owner.AccountDetail)) return string.Empty;

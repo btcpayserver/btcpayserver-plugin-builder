@@ -89,6 +89,10 @@ public class AccountController(
             }
             accountSettings.GPGKey = keyViewModel;
         }
+        else
+        {
+            accountSettings.GPGKey = new();
+        }
         await conn.SetAccountDetailSettings(accountSettings, user.Id);
 
         TempData[TempDataConstant.SuccessMessage] = "Account details updated successfully";
