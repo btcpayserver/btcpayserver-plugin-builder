@@ -270,9 +270,16 @@ public class BuildService
         var refName = string.IsNullOrWhiteSpace(gitRef) ? "HEAD" : gitRef;
         var dir = string.IsNullOrWhiteSpace(pluginDir) ? "" : pluginDir.Trim('/');
 
-        var apiUrl = string.IsNullOrEmpty(dir)
-            ? $"https://api.github.com/repos/{owner}/{repo}/contents?ref={refName}"
-            : $"https://api.github.com/repos/{owner}/{repo}/contents/{dir}?ref={refName}";
+        var encodedRef = Uri.EscapeDataString(refName);
+        var encodedDir = string.IsNullOrWhiteSpace(dir)
+            ? ""
+            : string.Join('/',
+                dir.Split('/', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(Uri.EscapeDataString));
+
+        var apiUrl = string.IsNullOrEmpty(encodedDir)
+            ? $"https://api.github.com/repos/{owner}/{repo}/contents?ref={encodedRef}"
+            : $"https://api.github.com/repos/{owner}/{repo}/contents/{encodedDir}?ref={encodedRef}";
 
         using var resp = await _httpClient.GetAsync(apiUrl);
         var body = await resp.Content.ReadAsStringAsync();
@@ -290,12 +297,22 @@ public class BuildService
         if (csprojs.Count > 1)
             throw new BuildServiceException("Multiple .csproj found. Keep exactly one.");
 
-        using var csprojResp = await _httpClient.GetAsync(csprojs[0].download_url!);
-        var xml = await csprojResp.Content.ReadAsStringAsync();
-        var doc = XDocument.Parse(xml);
+        var downloadUrl = csprojs[0].download_url;
+        if (string.IsNullOrWhiteSpace(downloadUrl))
+            throw new BuildServiceException($"GitHub item '{csprojs[0].name}' has no download_url.");
 
-        return doc.Descendants("AssemblyName").FirstOrDefault()?.Value
-               ?? Path.GetFileNameWithoutExtension(csprojs[0].name);
+        using var csprojResp = await _httpClient.GetAsync(downloadUrl);
+        var csprojBody = await csprojResp.Content.ReadAsStringAsync();
+
+        if (!csprojResp.IsSuccessStatusCode || string.IsNullOrWhiteSpace(csprojBody))
+            throw new BuildServiceException(
+                $"GitHub error downloading '{csprojs[0].name}' from {downloadUrl} (HTTP {(int)csprojResp.StatusCode}).\nBody: {csprojBody}");
+
+        var doc = XDocument.Parse(csprojBody);
+        var assemblyName = doc.Descendants("AssemblyName").FirstOrDefault()?.Value
+                           ?? Path.GetFileNameWithoutExtension(csprojs[0].name);
+
+        return assemblyName;
     }
 
     private (string owner, string repo) ExtractOwnerRepo(string repoUrl)
