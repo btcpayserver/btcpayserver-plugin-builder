@@ -217,6 +217,11 @@ public class PluginController(
                 var manifest_info = await conn.QueryFirstOrDefaultAsync<string>("SELECT manifest_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
                     new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
+                if (signatureFile is null)
+                {
+                    TempData[TempDataConstant.WarningMessage] = "\"Signature file is required";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
                 var message = GetManifestHash(NiceJson(manifest_info), true);
                 if (string.IsNullOrEmpty(message))
                 {
@@ -313,7 +318,7 @@ public class PluginController(
         return View(vm);
     }
 
-    private string GetManifestHash(string manifestInfo, bool requiresGPGSignature)
+    private string GetManifestHash(string? manifestInfo, bool requiresGPGSignature)
     {
         if (!requiresGPGSignature || string.IsNullOrEmpty(manifestInfo)) return string.Empty;
 

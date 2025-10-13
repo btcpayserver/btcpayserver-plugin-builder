@@ -19,6 +19,10 @@
 			<div class="form-group d-flex align-items-center">
 				<input asp-for="RequireGPGSignatureForRelease" type="checkbox" class="btcpay-toggle me-3" disabled="@(!Model.IsPluginOwner)" />
 				<label asp-for="RequireGPGSignatureForRelease" class="form-check-label"></label>
+				@if (!Model.IsPluginOwner)
+				{
+					<input type="hidden" asp-for="RequireGPGSignatureForRelease" />
+				}
 			</div>
             <div class="form-group">
                 <label asp-for="Documentation" class="form-label"></label>
