@@ -19,4 +19,5 @@ public class BuildViewModel
     public string RepositoryLink { get; internal set; }
     public string Logs { get; set; }
     public bool RequireGPGSignatureForRelease { get; set; }
+    public string ManifestInfoSha256Hash { get; set; }
 }

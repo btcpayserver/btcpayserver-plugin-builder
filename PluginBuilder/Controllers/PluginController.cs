@@ -214,18 +214,17 @@ public class PluginController(
                 return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
             case "sign_release":
-                var build_info = await conn.QueryFirstOrDefaultAsync<string>("SELECT build_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
+                var manifest_info = await conn.QueryFirstOrDefaultAsync<string>("SELECT manifest_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
                     new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
-                if (build_info is null || BuildInfo.Parse(build_info) is not { } buildInfo || string.IsNullOrEmpty(buildInfo.GitCommit))
+                var message = GetManifestHash(NiceJson(manifest_info), true);
+                if (string.IsNullOrEmpty(message))
                 {
-                    TempData[TempDataConstant.WarningMessage] = "Build information for plugin not available";
+                    TempData[TempDataConstant.WarningMessage] = "manifest information for plugin not available";
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
-
-                var rawSignedBytes = Encoding.UTF8.GetBytes(buildInfo.GitCommit);
-                var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User)!,
-                  rawSignedBytes, signatureFile);
+                var rawSignedBytes = Encoding.UTF8.GetBytes(message);
+                var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User)!, rawSignedBytes, signatureFile);
 
                 if (!signatureVerification.valid)
                 {
@@ -304,6 +303,7 @@ public class PluginController(
         vm.RepositoryLink = GetUrl(buildInfo);
         vm.DownloadLink = buildInfo?.Url;
         vm.RequireGPGSignatureForRelease = pluginSetting?.RequireGPGSignatureForRelease ?? false;
+        vm.ManifestInfoSha256Hash = GetManifestHash(NiceJson(row.manifest_info), vm.RequireGPGSignatureForRelease);
         //vm.Error = buildInfo?.Error;
         vm.Published = row.published;
         //var buildId = await conn.NewBuild(pluginSlug);
@@ -311,6 +311,15 @@ public class PluginController(
         if (logs != "")
             vm.Logs = logs;
         return View(vm);
+    }
+
+    private string GetManifestHash(string manifestInfo, bool requiresGPGSignature)
+    {
+        if (!requiresGPGSignature || string.IsNullOrEmpty(manifestInfo)) return string.Empty;
+
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(manifestInfo));
+        return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
     }
 
     private string? NiceJson(string? json, string? fingerprint = null)
