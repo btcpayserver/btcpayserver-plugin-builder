@@ -203,7 +203,7 @@ public class PluginController(
                 "SELECT v.build_id, p.identifier FROM versions v JOIN plugins p ON v.plugin_slug = p.slug WHERE plugin_slug=@pluginSlug AND ver=@version",
                 new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
 
-        var requireGPGSignature = await conn.RequiresGPGSignatureForPluginRelease();
+        var pluginSettings = await conn.GetSettings(pluginSlug);
         switch (command)
         {
             case "remove":
@@ -236,7 +236,7 @@ public class PluginController(
                 break;
 
             default:
-                if (requireGPGSignature && command == "release")
+                if (pluginSettings?.RequireGPGSignatureForRelease == true && command == "release")
                 {
                     TempData[TempDataConstant.WarningMessage] = "A verified GPG signature is required to release this version";
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
@@ -287,6 +287,7 @@ public class PluginController(
         var signatureProof = string.IsNullOrWhiteSpace(row.signatureproof)
             ? new SignatureProof() : JsonConvert.DeserializeObject<SignatureProof>(row.signatureproof, CamelCaseSerializerSettings.Instance) ?? new SignatureProof();
 
+        var pluginSetting = await conn.GetSettings(pluginSlug); 
         BuildViewModel vm = new();
         var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
         var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
@@ -302,7 +303,7 @@ public class PluginController(
         vm.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, pluginSlug.ToString());
         vm.RepositoryLink = GetUrl(buildInfo);
         vm.DownloadLink = buildInfo?.Url;
-        vm.RequireGPGSignatureForRelease = await conn.RequiresGPGSignatureForPluginRelease();
+        vm.RequireGPGSignatureForRelease = pluginSetting?.RequireGPGSignatureForRelease ?? false;
         //vm.Error = buildInfo?.Error;
         vm.Published = row.published;
         //var buildId = await conn.NewBuild(pluginSlug);

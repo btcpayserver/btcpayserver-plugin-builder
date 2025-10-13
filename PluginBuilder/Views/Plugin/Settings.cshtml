@@ -15,6 +15,11 @@
     <div class="col-xl-8 col-xxl-constrain">
 		<form asp-action="Settings" enctype="multipart/form-data">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+			<div class="form-group d-flex align-items-center">
+				<input asp-for="RequireGPGSignatureForRelease" type="checkbox" class="btcpay-toggle me-3" disabled="@(!Model.IsPluginOwner)" />
+				<label asp-for="RequireGPGSignatureForRelease" class="form-check-label"></label>
+			</div>
             <div class="form-group">
                 <label asp-for="Documentation" class="form-label"></label>
                 <input asp-for="Documentation" class="form-control" placeholder="https://docs.btcpayserver.org/PodServer/" />

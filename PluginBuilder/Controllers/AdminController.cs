@@ -92,7 +92,6 @@ public class AdminController(
 
         model.Plugins = plugins;
         model.VerifiedEmailForPluginPublish = await conn.GetVerifiedEmailForPluginPublishSetting();
-        model.VerifiedGPGSignatureForPluginRelease = await conn.RequiresGPGSignatureForPluginRelease();
         return View(model);
     }
 
