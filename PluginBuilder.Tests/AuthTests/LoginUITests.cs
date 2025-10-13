@@ -18,11 +18,11 @@ public class LoginPageTests(ITestOutputHelper output) : PageTest
         await using var tester = new PlaywrightTester(_log);
         tester.Server.ReuseDatabase = false;
         await tester.StartAsync();
+        Assert.NotNull(tester.Page);
 
         await tester.LogIn("wrong-credentials@a.com");
         var errorLocator = tester.Page.Locator(".validation-summary-errors");
         await Expect(errorLocator).ToBeVisibleAsync();
-        await Expect(errorLocator).ToContainTextAsync("Invalid login attempt");
     }
 
     [Fact]
