@@ -94,6 +94,10 @@ public class PluginController(
             settingViewModel.Logo = null;
             settingViewModel.LogoUrl = null;
         }
+        if (!settingViewModel.IsPluginOwner && existingSetting is not null)
+        {
+            settingViewModel.RequireGPGSignatureForRelease = existingSetting.RequireGPGSignatureForRelease;
+        }
         var settings = settingViewModel.ToPluginSettings();
         await conn.SetPluginSettings(pluginSlug, settings);
         TempData[TempDataConstant.SuccessMessage] = "Settings updated";
@@ -219,7 +223,7 @@ public class PluginController(
 
                 if (signatureFile is null)
                 {
-                    TempData[TempDataConstant.WarningMessage] = "\"Signature file is required";
+                    TempData[TempDataConstant.WarningMessage] = "Signature file is required";
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
                 var message = GetManifestHash(NiceJson(manifest_info), true);
