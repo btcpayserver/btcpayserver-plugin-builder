@@ -60,7 +60,7 @@ public class PlaywrightTester : IAsyncDisposable
     private static async Task SafeDispose(Func<Task> action)
     {
         try { if (action != null) await action(); }
-        catch { /* ignore */ }
+        catch { }
     }
 
     public async Task AssertNoError()

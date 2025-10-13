@@ -21,12 +21,12 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
 
         await t.GoToUrl("/register");
         var userA = await t.RegisterNewUser();
-        await Expect(t.Page!.Locator("body")).ToContainTextAsync("Builds");
+        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
 
         var slug = "owners-" + PlaywrightTester.GetRandomUInt256()[..8];
         await t.GoToUrl("/plugins/create");
-        await Expect(t.Page).ToHaveURLAsync(new Regex("/account/details$", RegexOptions.IgnoreCase));
-        await Expect(t.Page.Locator(".alert-warning")).ToBeVisibleAsync();
+        await Expect(t.Page!).ToHaveURLAsync(new Regex("/account/details$", RegexOptions.IgnoreCase));
+        await Expect(t.Page!.Locator(".alert-warning")).ToBeVisibleAsync();
 
         await t.VerifyEmailAndGithubAsync(userA);
         await t.GoToUrl("/plugins/create");
@@ -40,7 +40,7 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await t.Logout();
         await t.GoToUrl("/register");
         var userB = await t.RegisterNewUser();
-        await Expect(t.Page.Locator("body")).ToContainTextAsync("Builds");
+        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
         await t.Logout();
 
         await t.GoToLogin();
@@ -81,10 +81,8 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         var aRow = t.Page.Locator("table tbody tr").Filter(new LocatorFilterOptions { HasText = userA });
         var leaveBtn = aRow.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Leave" });
         await leaveBtn.ClickAsync();
-        await Task.WhenAll(
-            t.Page.WaitForURLAsync(url => !url.EndsWith($"/plugins/{slug}/owners")),
-            t.Page.ClickAsync("#ConfirmContinue")
-        );
+        await t.Page.ClickAsync("#ConfirmContinue");
+        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
 
         await Expect(t.Page.Locator(".alert-success"))
             .ToContainTextAsync(new Regex("(Owner removed|You have left)", RegexOptions.IgnoreCase));
