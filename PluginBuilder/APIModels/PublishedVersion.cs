@@ -103,7 +103,7 @@ public class GitHubContributor
     public int Contributions { get; set; }
 }
 
-public sealed class PluginRatingSummary
+public class PluginRatingSummary
 {
     public decimal Average { get; set; }
     public int TotalReviews { get; set; }

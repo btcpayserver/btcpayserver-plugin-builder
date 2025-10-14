@@ -264,7 +264,7 @@ public class HomeController(
                 PluginLogo = settings?.Logo,
                 RatingSummary = new PluginRatingSummary
                 {
-                    Average      = Math.Round(r.avg_rating, 2),
+                    Average = r.avg_rating,
                     TotalReviews = r.total_reviews
                 }
             };
@@ -446,7 +446,6 @@ public class HomeController(
 
         return View(vm);
     }
-
 
     [HttpPost("public/plugins/{pluginSlug}/reviews/upsert")]
     [ValidateAntiForgeryToken]
