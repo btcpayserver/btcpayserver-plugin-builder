@@ -394,7 +394,7 @@ public class HomeController(
                       ?? new PluginRatingSummary();
 
         // third
-        var items = (await multi.ReadAsync<ReviewItem>()).ToList();
+        var items = (await multi.ReadAsync<Review>()).ToList();
 
         foreach (var item in items)
         {
@@ -435,7 +435,7 @@ public class HomeController(
             Plugin = plugin,
             Sort = model.Sort,
             Skip = model.Skip,
-            Items = items,
+            Reviews = items,
             IsAdmin = isAdmin,
             IsOwner = isOwner,
             PluginVersions = versions.ToList(),

@@ -190,7 +190,7 @@
                                 </div>
                             </div>
 
-                            @if (!Model.Items.Any())
+                            @if (!Model.Reviews.Any())
                             {
                                 <div class="text-muted">
                                     No reviews yet.
@@ -199,7 +199,7 @@
                             }
                             else
                             {
-                                @foreach (var review in Model.Items)
+                                @foreach (var review in Model.Reviews)
                                 {
                                     const string helpfulBaseBtn = "btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center";
 
