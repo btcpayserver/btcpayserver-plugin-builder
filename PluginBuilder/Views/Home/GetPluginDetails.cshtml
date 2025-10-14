@@ -173,6 +173,7 @@
                                            asp-route-sort="newest"
                                            asp-route-skip="0"
                                            asp-route-count="@Model.Count"
+                                           asp-route-RatingFilter="@(Model.RatingFilter)"
                                            asp-fragment="reviews">
                                             Newest
                                         </a>
@@ -183,6 +184,7 @@
                                            asp-route-sort="helpful"
                                            asp-route-skip="0"
                                            asp-route-count="@Model.Count"
+                                           asp-route-RatingFilter="@(Model.RatingFilter)"
                                            asp-fragment="reviews">
                                             Most helpful
                                         </a>
@@ -207,7 +209,7 @@
                                     var upClass   = helpfulBaseBtn   + " " + (voted == true  ? "text-success" : "text-secondary");
                                     var downClass = helpfulBaseBtn + " " + (voted == false ? "text-danger"  : "text-secondary");
 
-                                    <div id="review-card" class="border rounded p-3 mb-3">
+                                    <div class="test-review-card border rounded p-3 mb-3">
                                       <div class="d-flex align-items-start">
                                         <div class="flex-grow-1">
 
@@ -237,7 +239,7 @@
                                             }
                                           </div>
 
-                                          <div id="review-rating" class="mt-1 d-inline-flex align-items-center gap-1" data-rating="@review.Rating" title="@($"{review.Rating} out of 5")">
+                                          <div class="test-review-rating mt-1 d-inline-flex align-items-center gap-1" data-rating="@review.Rating" title="@($"{review.Rating} out of 5")">
                                             @for (var i = 1; i <= 5; i++)
                                             {
                                                 <span class="@(i <= review.Rating ? "text-warning" : "text-secondary") lh-1">
@@ -250,12 +252,12 @@
                                         <div class="ms-auto d-inline-flex align-items-center gap-3">
                                             @if (review.IsReviewOwner)
                                             {
-                                                <span id="upvote-count" class="btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center text-muted"
+                                                <span class="test-upvote-disabled btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center text-muted"
                                                       aria-disabled="true" title="Authors can't vote their own review" style="cursor: default;">
                                                     <vc:icon symbol="thumb-up" />
                                                     <span class="small ms-1">@review.UpCount</span>
                                                 </span>
-                                                <span id="downvote-count" class="btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center text-muted"
+                                                <span class="test-downvote-disabled btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center text-muted"
                                                       aria-disabled="true" title="Authors can't vote their own review" style="cursor: default;">
                                                     <vc:icon symbol="thumb-down" />
                                                     <span class="small ms-1">@review.DownCount</span>
@@ -264,12 +266,12 @@
                                             else
                                             {
                                                 <!-- Upvote -->
-                                                <form id="upvote-form" method="post"
+                                                <form method="post"
                                                       asp-action="VoteReview"
                                                       asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
                                                       asp-route-id="@review.Id"
                                                       asp-route-isHelpful="true"
-                                                      class="d-inline">
+                                                      class="test-upvote-form d-inline">
                                                     @Html.AntiForgeryToken()
                                                     <button type="submit"
                                                             class="@upClass"
@@ -282,12 +284,12 @@
                                                 </form>
 
                                                 <!-- Downvote -->
-                                                <form id="downvote-form" method="post"
+                                                <form method="post"
                                                       asp-action="VoteReview"
                                                       asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
                                                       asp-route-id="@review.Id"
                                                       asp-route-isHelpful="false"
-                                                      class="d-inline">
+                                                      class="test-downvote-form d-inline">
                                                     @Html.AntiForgeryToken()
                                                     <button type="submit"
                                                             class="@downClass"
