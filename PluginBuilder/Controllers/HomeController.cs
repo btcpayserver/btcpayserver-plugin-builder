@@ -258,7 +258,7 @@ public class HomeController(
             PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
             RatingSummary = new PluginRatingSummary
             {
-                Average      = r.avg_rating,
+                Average = r.avg_rating,
                 TotalReviews = r.total_reviews
             }
         }));
@@ -409,12 +409,12 @@ public class HomeController(
         var plugin = new PublishedPlugin
         {
             ProjectSlug = pluginSlug.ToString(),
-            Version = (string)pluginDetails.ver_str,
-            BuildInfo = JObject.Parse((string)pluginDetails.build_info),
-            ManifestInfo = JObject.Parse((string)pluginDetails.manifest_info),
+            Version = pluginDetails.ver_str,
+            BuildInfo = JObject.Parse(pluginDetails.build_info),
+            ManifestInfo = JObject.Parse(pluginDetails.manifest_info),
             PluginLogo = settings.Logo,
             Documentation = settings.Documentation,
-            CreatedDate = (DateTimeOffset)pluginDetails.created_at,
+            CreatedDate = pluginDetails.created_at,
             RatingSummary = summary
         };
 
@@ -438,7 +438,6 @@ public class HomeController(
 
         return View(vm);
     }
-
 
     [HttpPost("public/plugins/{pluginSlug}/reviews/upsert")]
     [ValidateAntiForgeryToken]
