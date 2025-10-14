@@ -99,6 +99,7 @@ public class PlaywrightTester : IAsyncDisposable
     }
     public async Task Logout()
     {
+        await GoToUrl("/");
         await Page?.Locator("#Nav-Account").ClickAsync()!;
         await Page.Locator("#Nav-Logout").ClickAsync();
     }

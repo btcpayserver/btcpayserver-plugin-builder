@@ -5,15 +5,14 @@ namespace PluginBuilder.ViewModels.Home;
 
 public sealed class PluginDetailsViewModel : BasePagingViewModel
 {
-
     public PluginDetailsViewModel()
     {
         Count = 10;
     }
     public PublishedPlugin Plugin { get; init; } = new();
     public string Sort { get; set; } = "newest";
-    public IReadOnlyList<ReviewItem> Items { get; init; } = Array.Empty<ReviewItem>();
-    public override int CurrentPageCount => Items.Count;
+    public IReadOnlyList<Review> Reviews { get; init; } = Array.Empty<Review>();
+    public override int CurrentPageCount => Reviews.Count;
     public bool IsAdmin { get; set; }
     public bool? IsOwner { get; set; }
     public List<string>? PluginVersions { get; set; }
@@ -22,7 +21,7 @@ public sealed class PluginDetailsViewModel : BasePagingViewModel
     public int? RatingFilter  { get; set; }
 }
 
-public class ReviewItem
+public class Review
 {
     public long Id { get; set; }
     public string? AuthorUrl { get; set; }
