@@ -409,7 +409,13 @@ public static class NpgsqlConnectionExtensions
                                    rating         = EXCLUDED.rating,
                                    body           = EXCLUDED.body,
                                    plugin_version = EXCLUDED.plugin_version,
-                                   updated_at     = NOW();
+                                   updated_at     = NOW(),
+                                   helpful_voters = CASE
+                                   WHEN (plugin_reviews.rating IS DISTINCT FROM EXCLUDED.rating)
+                                     OR (COALESCE(plugin_reviews.body,'') IS DISTINCT FROM COALESCE(EXCLUDED.body,''))
+                                   THEN '{}'::jsonb
+                                   ELSE plugin_reviews.helpful_voters
+                                   END;
                            """;
 
         return connection.ExecuteAsync(sql, new
@@ -495,8 +501,7 @@ public static class NpgsqlConnectionExtensions
         {
             const string sql = """
                                UPDATE plugin_reviews
-                               SET helpful_voters = jsonb_set(
-                                   COALESCE(helpful_voters, '{}'::jsonb),
+                               SET helpful_voters = jsonb_set((helpful_voters),
                                    ARRAY[@userId],
                                    to_jsonb(@isHelpful),
                                    true)
