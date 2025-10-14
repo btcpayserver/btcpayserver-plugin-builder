@@ -150,7 +150,7 @@
                             @if (currentRating is not null)
                             {
                                 <div class="mb-2">
-                                    <span class="badge bg-secondary">
+                                    <span id="rating-filter-badge" class="badge bg-secondary">
                                         Filtering by @currentRating★
                                     </span>
                                 </div>
@@ -194,7 +194,7 @@
                             {
                                 <div class="text-muted">
                                     No reviews yet.
-                                    <a class="link-primary" href="#write-review">Be the first to write one</a>.
+                                    <a class="text-success fw-semibold text-decoration-none hover-underline" href="#write-review">Be the first to write one</a>.
                                 </div>
                             }
                             else
@@ -207,7 +207,7 @@
                                     var upClass   = helpfulBaseBtn   + " " + (voted == true  ? "text-success" : "text-secondary");
                                     var downClass = helpfulBaseBtn + " " + (voted == false ? "text-danger"  : "text-secondary");
 
-                                    <div class="border rounded p-3 mb-3">
+                                    <div id="review-card" class="border rounded p-3 mb-3">
                                       <div class="d-flex align-items-start">
                                         <div class="flex-grow-1">
 
@@ -237,7 +237,7 @@
                                             }
                                           </div>
 
-                                          <div class="mt-1 d-inline-flex align-items-center gap-1" title="@($"{review.Rating} out of 5")">
+                                          <div id="review-rating" class="mt-1 d-inline-flex align-items-center gap-1" data-rating="@review.Rating" title="@($"{review.Rating} out of 5")">
                                             @for (var i = 1; i <= 5; i++)
                                             {
                                                 <span class="@(i <= review.Rating ? "text-warning" : "text-secondary") lh-1">
@@ -248,46 +248,57 @@
                                         </div>
 
                                         <div class="ms-auto d-inline-flex align-items-center gap-3">
-                                          @if (!review.IsReviewOwner)
-                                          {
-                                            <!-- Upvote -->
-                                            <form method="post"
-                                                  asp-action="VoteReview"
-                                                  asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                                                  asp-route-id="@review.Id"
-                                                  asp-route-isHelpful="true"
-                                                  class="d-inline">
-                                              @Html.AntiForgeryToken()
-                                              <button
-                                                  type="submit"
-                                                  class="@upClass"
-                                                  onmouseover="this.classList.add('text-success');this.classList.remove('text-secondary')"
-                                                  onmouseout="this.classList.remove('text-success');this.classList.add('text-secondary')"
-                                                  aria-label="Mark this review as helpful">
-                                                <vc:icon symbol="thumb-up" />
-                                                <span class="small ms-1">@review.UpCount</span>
-                                              </button>
-                                            </form>
+                                            @if (review.IsReviewOwner)
+                                            {
+                                                <span id="upvote-count" class="btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center text-muted"
+                                                      aria-disabled="true" title="Authors can't vote their own review" style="cursor: default;">
+                                                    <vc:icon symbol="thumb-up" />
+                                                    <span class="small ms-1">@review.UpCount</span>
+                                                </span>
+                                                <span id="downvote-count" class="btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center text-muted"
+                                                      aria-disabled="true" title="Authors can't vote their own review" style="cursor: default;">
+                                                    <vc:icon symbol="thumb-down" />
+                                                    <span class="small ms-1">@review.DownCount</span>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <!-- Upvote -->
+                                                <form id="upvote-form" method="post"
+                                                      asp-action="VoteReview"
+                                                      asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                                                      asp-route-id="@review.Id"
+                                                      asp-route-isHelpful="true"
+                                                      class="d-inline">
+                                                    @Html.AntiForgeryToken()
+                                                    <button type="submit"
+                                                            class="@upClass"
+                                                            onmouseover="this.classList.add('text-success');this.classList.remove('text-secondary')"
+                                                            onmouseout="this.classList.remove('text-success');this.classList.add('text-secondary')"
+                                                            aria-label="Mark this review as helpful">
+                                                        <vc:icon symbol="thumb-up" />
+                                                        <span class="small ms-1">@review.UpCount</span>
+                                                    </button>
+                                                </form>
 
-                                            <!-- Downvote -->
-                                            <form method="post"
-                                                  asp-action="VoteReview"
-                                                  asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                                                  asp-route-id="@review.Id"
-                                                  asp-route-isHelpful="false"
-                                                  class="d-inline">
-                                              @Html.AntiForgeryToken()
-                                              <button
-                                                  type="submit"
-                                                  class="@downClass"
-                                                  onmouseover="this.classList.add('text-danger');this.classList.remove('text-secondary')"
-                                                  onmouseout="this.classList.remove('text-danger');this.classList.add('text-secondary')"
-                                                  aria-label="Mark this review as not helpful">
-                                                <vc:icon symbol="thumb-down" />
-                                                <span class="small ms-1">@review.DownCount</span>
-                                              </button>
-                                            </form>
-                                          }
+                                                <!-- Downvote -->
+                                                <form id="downvote-form" method="post"
+                                                      asp-action="VoteReview"
+                                                      asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                                                      asp-route-id="@review.Id"
+                                                      asp-route-isHelpful="false"
+                                                      class="d-inline">
+                                                    @Html.AntiForgeryToken()
+                                                    <button type="submit"
+                                                            class="@downClass"
+                                                            onmouseover="this.classList.add('text-danger');this.classList.remove('text-secondary')"
+                                                            onmouseout="this.classList.remove('text-danger');this.classList.add('text-secondary')"
+                                                            aria-label="Mark this review as not helpful">
+                                                        <vc:icon symbol="thumb-down" />
+                                                        <span class="small ms-1">@review.DownCount</span>
+                                                    </button>
+                                                </form>
+                                            }
                                         </div>
                                       </div>
 
@@ -331,13 +342,13 @@
                             {
                                 if (Model.IsOwner == true)
                                 {
-                                    <div class="alert alert-warning mb-3">
+                                    <div id="owner-cannot-review" class="alert alert-warning mb-3">
                                         Owners can’t review their own plugin.
                                     </div>
                                 }
                                 else
                                 {
-                                    <form method="post" asp-action="UpsertReview" asp-controller="Home" asp-route-pluginSlug="@Model.Plugin.ProjectSlug">
+                                    <form id="review-form" method="post" asp-action="UpsertReview" asp-controller="Home" asp-route-pluginSlug="@Model.Plugin.ProjectSlug">
                                     @Html.AntiForgeryToken()
 
                                     <div class="row align-items-center g-2 mb-3">
