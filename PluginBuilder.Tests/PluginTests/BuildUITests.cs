@@ -21,7 +21,6 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
 
         await t.GoToUrl("/register");
         var email = await t.RegisterNewUser();
-        await t.VerifyEmailAndGithubAsync(email);
 
         var slugFail = "cb-f-" + PlaywrightTester.GetRandomUInt256()[..8];
         await t.GoToUrl("/plugins/create");
@@ -84,6 +83,6 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
 
         var warn2 = t.Page.Locator(".alert-warning");
         await Expect(warn2).ToBeVisibleAsync();
-        await Expect(warn2).ToContainTextAsync(new Regex("slug", RegexOptions.IgnoreCase));
+        await Expect(warn2).ToContainTextAsync(new Regex("does not belong to project slug", RegexOptions.IgnoreCase));
     }
 }

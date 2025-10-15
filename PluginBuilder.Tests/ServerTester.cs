@@ -134,9 +134,6 @@ public class ServerTester : IAsyncDisposable
 
         await using var conn = await GetService<DBConnectionFactory>().Open();
         await conn.ReloadTypesAsync();
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = GetService<UserVerifiedCache>();
-        await verfCache.RefreshAllUserVerifiedSettings(conn);
     }
 
     public HttpClient CreateHttpClient()
@@ -194,6 +191,7 @@ public class ServerTester : IAsyncDisposable
         var userMgr = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
 
         email ??= $"u{Guid.NewGuid():N}@a.com";
+        password ??= "123456";
         var user = new IdentityUser
         {
             UserName = email,
@@ -255,7 +253,7 @@ public class ServerTester : IAsyncDisposable
         });
 
         using var cts = new CancellationTokenSource(timeout.Value);
-        await using var _ = cts.Token.Register(() => tcs.TrySetCanceled(cts.Token));
+        using var _ = cts.Token.Register(() => tcs.TrySetCanceled(cts.Token));
 
         try
         {
