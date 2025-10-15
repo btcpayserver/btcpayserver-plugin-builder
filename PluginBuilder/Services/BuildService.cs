@@ -317,7 +317,14 @@ public class BuildService
 
     private (string owner, string repo) ExtractOwnerRepo(string repoUrl)
     {
-        var uri = new Uri(repoUrl.Replace(".git", ""));
+        repoUrl = repoUrl.Trim().Replace(".git", "");
+
+        if (!repoUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            repoUrl = "https://" + repoUrl.TrimStart('/');
+
+        if (!Uri.TryCreate(repoUrl, UriKind.Absolute, out var uri))
+            throw new BuildServiceException("Invalid repository URL");
+
         var parts = uri.AbsolutePath.Trim('/').Split('/');
         if (parts.Length < 2) throw new BuildServiceException("Invalid repository URL");
         return (parts[0], parts[1]);
