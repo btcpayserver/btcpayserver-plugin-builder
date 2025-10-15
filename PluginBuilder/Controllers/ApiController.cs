@@ -105,15 +105,19 @@ public class ApiController(
 
         rows.TryGetNonEnumeratedCount(out var count);
         List<PublishedVersion> versions = new(count);
-        versions.AddRange(rows.Select(r => new PublishedVersion
+        versions.AddRange(rows.Select(r =>
         {
-            ProjectSlug = r.plugin_slug,
-            Version = string.Join('.', r.ver),
-            BuildId = r.id,
-            BuildInfo = JObject.Parse(r.build_info),
-            ManifestInfo = JObject.Parse(r.manifest_info),
-            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
-            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+            var settings = JsonConvert.DeserializeObject<PluginSettings>(r.settings);
+            return new PublishedVersion
+            {
+                ProjectSlug = r.plugin_slug,
+                Version = string.Join('.', r.ver),
+                BuildId = r.id,
+                BuildInfo = JObject.Parse(r.build_info),
+                ManifestInfo = JObject.Parse(r.manifest_info),
+                PluginLogo = settings?.Logo,
+                Documentation = settings?.Documentation
+            };
         }));
 
         return Ok(versions);
@@ -160,15 +164,19 @@ public class ApiController(
 
         rows.TryGetNonEnumeratedCount(out var count);
         List<PublishedVersion> versions = new(count);
-        versions.AddRange(rows.Select(r => new PublishedVersion
+        versions.AddRange(rows.Select(r =>
         {
-            ProjectSlug = r.plugin_slug,
-            Version = string.Join('.', r.ver),
-            BuildId = r.id,
-            BuildInfo = JObject.Parse(r.build_info),
-            ManifestInfo = JObject.Parse(r.manifest_info),
-            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
-            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+            var settings = JsonConvert.DeserializeObject<PluginSettings>(r.settings);
+            return new PublishedVersion
+            {
+                ProjectSlug = r.plugin_slug,
+                Version = string.Join('.', r.ver),
+                BuildId = r.id,
+                BuildInfo = JObject.Parse(r.build_info),
+                ManifestInfo = JObject.Parse(r.manifest_info),
+                PluginLogo = settings?.Logo,
+                Documentation = settings?.Documentation
+            };
         }));
 
         return Ok(versions);
@@ -197,6 +205,7 @@ public class ApiController(
             new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
         if (r is null)
             return NotFound();
+        var settings = JsonConvert.DeserializeObject<PluginSettings>((string)r.settings);
         return Ok(new PublishedVersion
         {
             ProjectSlug = pluginSlug.ToString(),
@@ -204,8 +213,8 @@ public class ApiController(
             BuildId = (long)r.build_id,
             BuildInfo = JObject.Parse(r.build_info),
             ManifestInfo = JObject.Parse(r.manifest_info),
-            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
-            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+            PluginLogo = settings?.Logo,
+            Documentation = settings?.Documentation
         });
     }
 
@@ -351,7 +360,8 @@ public class ApiController(
             (
                 from row in rows
                 let latestVerString = string.Join('.', row.ver)
-                let settings = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!
+                let settings = JsonConvert.DeserializeObject<PluginSettings>(row.settings)
+                where settings is not null
                 select new PublishedVersion
                 {
                     ProjectSlug = row.plugin_slug,
