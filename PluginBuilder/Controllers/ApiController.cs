@@ -316,17 +316,14 @@ public class ApiController(
         if (plugins.Length == 0)
             return BadRequest(new { errors = new[] { new ValidationError(nameof(plugins), "At least one plugin must be provided.") } });
 
-        var currentByIdentifier = new Dictionary<string, Version>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in plugins)
-        {
-            if (Version.TryParse(item.Version, out var ver))
-                currentByIdentifier[item.Identifier] = ver;
-        }
+        var identifiers = plugins
+            .Select(p => p.Identifier)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        if (currentByIdentifier.Count == 0)
+        if (identifiers.Length == 0)
             return Ok(Array.Empty<PublishedVersion>());
-
-        var identifiers = currentByIdentifier.Keys.ToArray();
 
         await using var conn = await connectionFactory.Open();
 
@@ -350,29 +347,22 @@ public class ApiController(
                 identifiers
             });
 
-        List<PublishedVersion> updates = new();
-        foreach (var row in rows)
-        {
-            if (!currentByIdentifier.TryGetValue(row.identifier, out var currentVer))
-                continue;
-
-            var latestVerString = string.Join('.', row.ver);
-            var latestVer = new Version(latestVerString);
-
-            if (latestVer > currentVer)
-            {
-                updates.Add(new PublishedVersion
+        var updates =
+            (
+                from row in rows
+                let latestVerString = string.Join('.', row.ver)
+                let settings = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!
+                select new PublishedVersion
                 {
                     ProjectSlug = row.plugin_slug,
                     Version = latestVerString,
                     BuildId = row.id,
                     BuildInfo = JObject.Parse(row.build_info),
                     ManifestInfo = JObject.Parse(row.manifest_info),
-                    PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Logo,
-                    Documentation = JsonConvert.DeserializeObject<PluginSettings>(row.settings)!.Documentation
-                });
-            }
-        }
+                    PluginLogo = settings.Logo,
+                    Documentation = settings.Documentation
+                }
+            ).ToList();
 
         return Ok(updates);
     }
