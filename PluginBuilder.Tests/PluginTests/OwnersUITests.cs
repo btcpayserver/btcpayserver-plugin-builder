@@ -40,6 +40,8 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await t.VerifyEmailAndGithubAsync(userA);
         await t.GoToUrl("/plugins/create");
         await t.Page!.FillAsync("#PluginSlug", slug);
+        await t.Page!.FillAsync("#PluginTitle", slug);
+        await t.Page!.FillAsync("#Description", "Test");
         await t.Page.ClickAsync("#Create");
         await t.GoToUrl($"/plugins/{slug}/owners");
         await t.AssertNoError();

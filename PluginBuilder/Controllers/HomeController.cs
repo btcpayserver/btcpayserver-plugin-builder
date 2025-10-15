@@ -303,18 +303,18 @@ public class HomeController(
         if (row is null)
             return NotFound();
 
-        var settings = JsonConvert.DeserializeObject<PluginSettings>((string)row.settings)!;
+        var settings = string.IsNullOrWhiteSpace((string?)row.settings) ? null : JsonConvert.DeserializeObject<PluginSettings>((string)row.settings);
 
         var manifestInfo = JObject.Parse((string)row.manifest_info);
         var plugin = new PublishedPlugin
         {
-            PluginTitle = settings.PluginTitle ?? manifestInfo["Name"]?.ToString(),
-            Description = settings.Description ?? manifestInfo["Description"]?.ToString(),
+            PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
+            Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
             ProjectSlug = pluginSlug.ToString(),
             Version = string.Join('.', row.ver),
             BuildInfo = JObject.Parse((string)row.build_info),
             ManifestInfo = manifestInfo,
-            PluginLogo = settings.Logo,
+            PluginLogo = settings?.Logo,
             Documentation = settings.Documentation,
             CreatedDate = (DateTimeOffset)row.created_at
         };
