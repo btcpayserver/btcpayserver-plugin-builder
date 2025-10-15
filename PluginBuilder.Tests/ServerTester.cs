@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
@@ -12,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
+using PluginBuilder.Events;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 
@@ -132,9 +134,6 @@ public class ServerTester : IAsyncDisposable
 
         await using var conn = await GetService<DBConnectionFactory>().Open();
         await conn.ReloadTypesAsync();
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = GetService<UserVerifiedCache>();
-        await verfCache.RefreshAllUserVerifiedSettings(conn);
     }
 
     public HttpClient CreateHttpClient()
@@ -186,19 +185,20 @@ public class ServerTester : IAsyncDisposable
         return fullBuildId;
     }
 
-    public async Task<string> CreateFakeUserAsync(string? email = null, bool confirmEmail = true, bool githubVerified = true)
+    public async Task<string> CreateFakeUserAsync(string? email = null, string? password = "123456", bool confirmEmail = true, bool githubVerified = true)
     {
         using var scope = WebApp.Services.CreateScope();
         var userMgr = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
 
         email ??= $"u{Guid.NewGuid():N}@a.com";
+        password ??= "123456";
         var user = new IdentityUser
         {
             UserName = email,
             Email = email,
             EmailConfirmed = confirmEmail
         };
-        var res = await userMgr.CreateAsync(user, "Test1234!");
+        var res = await userMgr.CreateAsync(user, password);
         if (!res.Succeeded)
             throw new InvalidOperationException("Failed to create test user: " + string.Join(", ", res.Errors.Select(e => e.Description)));
 
@@ -233,6 +233,35 @@ public class ServerTester : IAsyncDisposable
         await using (var drop = new NpgsqlCommand(dropSql, conn))
         {
             await drop.ExecuteNonQueryAsync();
+        }
+    }
+
+    public async Task<BuildStates> WaitForBuildToFinishAsync(
+        FullBuildId id,
+        TimeSpan? timeout = null)
+    {
+        timeout ??= TimeSpan.FromMinutes(5);
+
+        var agg = GetService<EventAggregator>();
+        var tcs = new TaskCompletionSource<BuildStates>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        IDisposable? sub = agg.Subscribe<BuildChanged>(e =>
+        {
+            if (!e.FullBuildId.Equals(id)) return;
+            var state = BuildStatesExtensions.FromEventName(e.EventName);
+            if (state.IsTerminal()) tcs.TrySetResult(state);
+        });
+
+        using var cts = new CancellationTokenSource(timeout.Value);
+        using var _ = cts.Token.Register(() => tcs.TrySetCanceled(cts.Token));
+
+        try
+        {
+            return await tcs.Task;
+        }
+        finally
+        {
+            sub?.Dispose();
         }
     }
 }

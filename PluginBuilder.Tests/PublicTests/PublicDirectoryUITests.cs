@@ -68,6 +68,10 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']", new PageWaitForSelectorOptions { State = WaitForSelectorState.Hidden });
         Assert.False(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
 
+        // Try to access hidden plugin page without being owner or admin
+        var response = await tester.GoToUrl("/public/plugins/rockstar-stylist");
+        Assert.Equal(404, response?.Status);
+
         // Log in as plugin owner and access page again
         await tester.GoToUrl("/register");
         var email = await tester.RegisterNewUser();
