@@ -5,6 +5,7 @@ using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Util.Extensions;
@@ -37,6 +38,12 @@ public static class NpgsqlConnectionExtensions
 
         return affectedRows == 1;
     }
+
+    public static async Task<PluginViewModel?> GetPluginDetails(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        return await connection.QueryFirstOrDefaultAsync<PluginViewModel>("SELECT * FROM plugins WHERE slug = @Slug", new { Slug = pluginSlug.ToString() });
+    }
+
 
     #endregion
 

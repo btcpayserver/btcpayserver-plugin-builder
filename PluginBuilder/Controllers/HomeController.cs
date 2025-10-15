@@ -232,15 +232,21 @@ public class HomeController(
 
         rows.TryGetNonEnumeratedCount(out var count);
         List<PublishedPlugin> versions = new(count);
-        versions.AddRange(rows.Select(r => new PublishedPlugin
+        versions.AddRange(rows.Select(r =>
         {
-            ProjectSlug = r.plugin_slug,
-            Version = string.Join('.', r.ver),
-            BuildInfo = JObject.Parse(r.build_info),
-            ManifestInfo = JObject.Parse(r.manifest_info),
-            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
+            var manifestInfo = JObject.Parse(r.manifest_info);
+            PluginSettings? settings = string.IsNullOrWhiteSpace(r.settings) ? null : JsonConvert.DeserializeObject<PluginSettings>(r.settings);
+            return new PublishedPlugin
+            {
+                PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
+                Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
+                ProjectSlug = r.plugin_slug,
+                Version = string.Join('.', r.ver),
+                BuildInfo = JObject.Parse(r.build_info),
+                ManifestInfo = manifestInfo,
+                PluginLogo = settings?.Logo
+            };
         }));
-
         return View(versions);
     }
 
@@ -299,17 +305,19 @@ public class HomeController(
 
         var settings = JsonConvert.DeserializeObject<PluginSettings>((string)row.settings)!;
 
+        var manifestInfo = JObject.Parse((string)row.manifest_info);
         var plugin = new PublishedPlugin
         {
+            PluginTitle = settings.PluginTitle ?? manifestInfo["Name"]?.ToString(),
+            Description = settings.Description ?? manifestInfo["Description"]?.ToString(),
             ProjectSlug = pluginSlug.ToString(),
             Version = string.Join('.', row.ver),
             BuildInfo = JObject.Parse((string)row.build_info),
-            ManifestInfo = JObject.Parse((string)row.manifest_info),
+            ManifestInfo = manifestInfo,
             PluginLogo = settings.Logo,
             Documentation = settings.Documentation,
             CreatedDate = (DateTimeOffset)row.created_at
         };
-
         ViewBag.Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir);
         ViewBag.ShowHiddenNotice = (int)row.visibility == (int)PluginVisibilityEnum.Hidden;
 

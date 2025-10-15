@@ -11,14 +11,12 @@
 
 @if (!string.IsNullOrEmpty(Model.PluginLogo))
 {
-    <img src="@Model.PluginLogo"
-         alt="@Model.ManifestInfo["Name"]?.ToString()"
-         style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" />
+    <img src="@Model.PluginLogo" alt="@Model.PluginTitle" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" />
 }
 else
 {
     <div class="d-flex justify-content-center align-items-center bg-dark text-white fw-bold text-center"
          style="width: 60px; height: 60px; border-radius: 4px; font-size: 24px;">
-        @GetInitials(Model.ManifestInfo["Name"]?.ToString())
+        @GetInitials(Model.PluginTitle)
     </div>
 }
