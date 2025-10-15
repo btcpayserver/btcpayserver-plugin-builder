@@ -105,15 +105,19 @@ public class ApiController(
 
         rows.TryGetNonEnumeratedCount(out var count);
         List<PublishedVersion> versions = new(count);
-        versions.AddRange(rows.Select(r => new PublishedVersion
+        versions.AddRange(rows.Select(r =>
         {
-            ProjectSlug = r.plugin_slug,
-            Version = string.Join('.', r.ver),
-            BuildId = r.id,
-            BuildInfo = JObject.Parse(r.build_info),
-            ManifestInfo = JObject.Parse(r.manifest_info),
-            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
-            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+            var (manifestInfo, pluginSettings) = UpdateManifestPluginData((string)r.manifest_info, (string?)r.settings);
+            return new PublishedVersion
+            {
+                ProjectSlug = r.plugin_slug,
+                Version = string.Join('.', r.ver),
+                BuildId = r.id,
+                BuildInfo = JObject.Parse(r.build_info),
+                ManifestInfo = manifestInfo,
+                PluginLogo = pluginSettings?.Logo,
+                Documentation = pluginSettings?.Documentation
+            };
         }));
 
         return Ok(versions);
@@ -160,15 +164,20 @@ public class ApiController(
 
         rows.TryGetNonEnumeratedCount(out var count);
         List<PublishedVersion> versions = new(count);
-        versions.AddRange(rows.Select(r => new PublishedVersion
+        versions.AddRange(rows.Select(r =>
         {
-            ProjectSlug = r.plugin_slug,
-            Version = string.Join('.', r.ver),
-            BuildId = r.id,
-            BuildInfo = JObject.Parse(r.build_info),
-            ManifestInfo = JObject.Parse(r.manifest_info),
-            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
-            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+
+            var (manifestInfo, pluginSettings) = UpdateManifestPluginData((string)r.manifest_info, (string?)r.settings);
+            return new PublishedVersion
+            {
+                ProjectSlug = r.plugin_slug,
+                Version = string.Join('.', r.ver),
+                BuildId = r.id,
+                BuildInfo = JObject.Parse(r.build_info),
+                ManifestInfo = manifestInfo,
+                PluginLogo = pluginSettings?.Logo,
+                Documentation = pluginSettings?.Documentation
+            };
         }));
 
         return Ok(versions);
@@ -197,15 +206,17 @@ public class ApiController(
             new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
         if (r is null)
             return NotFound();
+
+        var (manifestInfo, pluginSettings) = UpdateManifestPluginData((string)r.manifest_info, (string?)r.settings);
         return Ok(new PublishedVersion
         {
             ProjectSlug = pluginSlug.ToString(),
             Version = version.Version,
             BuildId = (long)r.build_id,
             BuildInfo = JObject.Parse(r.build_info),
-            ManifestInfo = JObject.Parse(r.manifest_info),
-            PluginLogo = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Logo,
-            Documentation = JsonConvert.DeserializeObject<PluginSettings>(r.settings)!.Documentation
+            ManifestInfo = manifestInfo,
+            PluginLogo = pluginSettings?.Logo,
+            Documentation = pluginSettings?.Documentation
         });
     }
 
@@ -384,5 +395,17 @@ public class ApiController(
             select new ValidationError(error.Key, errorMessage.ErrorMessage)).ToList();
 
         return UnprocessableEntity(new { errors });
+    }
+
+    private static (JObject manifest, PluginSettings? settings) UpdateManifestPluginData(string manifestJson, string? settingsJson)
+    {
+        var manifest = JObject.Parse(manifestJson);
+        PluginSettings? settings = string.IsNullOrWhiteSpace(settingsJson) ? null : JsonConvert.DeserializeObject<PluginSettings>(settingsJson);
+        if (settings != null)
+        {
+            manifest["Name"] = settings.PluginTitle ?? manifest["Name"]?.ToString();
+            manifest["Description"] = settings.Description ?? manifest["Description"]?.ToString();
+        }
+        return (manifest, settings);
     }
 }

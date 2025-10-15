@@ -8,6 +8,8 @@ public class PluginViewModel
     public string Slug { get; set; } = null!;
     [ValidateNever]
     public string Identifier { get; set; } = null!;
+
+    [ValidateNever]
     public string Settings { get; set; } = null!;
     public PluginVisibilityEnum Visibility { get; set; }
 }
@@ -16,6 +18,8 @@ public class PluginEditViewModel : PluginViewModel
 {
     [ValidateNever]
     public List<PluginUsersViewModel> PluginUsers { get; set; }
+    [ValidateNever]
+    public PluginSettings PluginSettings { get; set; }
 }
 
 public class PluginUsersViewModel

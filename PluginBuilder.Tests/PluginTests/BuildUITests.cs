@@ -25,6 +25,8 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
         var slugFail = "cb-f-" + PlaywrightTester.GetRandomUInt256()[..8];
         await t.GoToUrl("/plugins/create");
         await t.Page!.FillAsync("#PluginSlug", slugFail);
+        await t.Page!.FillAsync("#PluginTitle", slugFail);
+        await t.Page!.FillAsync("#Description", "Test");
         await t.Page.ClickAsync("#Create");
         await t.AssertNoError();
 
@@ -43,6 +45,8 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
         var slugA = "cb-a-" + PlaywrightTester.GetRandomUInt256()[..8];
         await t.GoToUrl("/plugins/create");
         await t.Page.FillAsync("#PluginSlug", slugA);
+        await t.Page!.FillAsync("#PluginTitle", slugA);
+        await t.Page!.FillAsync("#Description", "Test");
         await t.Page.ClickAsync("#Create");
         await t.AssertNoError();
 
@@ -70,6 +74,8 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
         var slugB = "cb-b-" + PlaywrightTester.GetRandomUInt256()[..8];
         await t.GoToUrl("/plugins/create");
         await t.Page.FillAsync("#PluginSlug", slugB);
+        await t.Page!.FillAsync("#PluginTitle", slugB);
+        await t.Page!.FillAsync("#Description", "Test");
         await t.Page.ClickAsync("#Create");
         await t.AssertNoError();
 

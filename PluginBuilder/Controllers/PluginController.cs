@@ -60,6 +60,12 @@ public class PluginController(
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
         settingViewModel.IsPluginOwner = pluginOwner == userId;
 
+        if (settingViewModel.IsPluginOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Plugin title and description are required";
+            return RedirectToAction(nameof(Settings), "Plugin", new { pluginSlug });
+        }
+
         if (settingViewModel is null)
             return NotFound();
         if (string.IsNullOrEmpty(settingViewModel.GitRepository) || !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
@@ -93,6 +99,11 @@ public class PluginController(
         {
             settingViewModel.Logo = null;
             settingViewModel.LogoUrl = null;
+        }
+        if (!settingViewModel.IsPluginOwner)
+        {
+            settingViewModel.PluginTitle = existingSetting?.PluginTitle;
+            settingViewModel.Description = existingSetting?.Description;
         }
         var settings = settingViewModel.ToPluginSettings();
         await conn.SetPluginSettings(pluginSlug, settings);
