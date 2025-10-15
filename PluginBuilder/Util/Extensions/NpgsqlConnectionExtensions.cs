@@ -408,12 +408,6 @@ public static class NpgsqlConnectionExtensions
         return bool.TryParse(settingValue, out var result) && result;
     }
 
-    public static async Task<bool> RequiresGPGSignatureForPluginRelease(this NpgsqlConnection connection)
-    {
-        var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedGPGSignatureForPluginRelease);
-        return bool.TryParse(settingValue, out var result) && result;
-    }
-
     public static async Task UpdatePluginAdminSettings(this NpgsqlConnection connection, string settingKey, bool newValue)
     {
         var stringValue = newValue.ToString().ToLowerInvariant();

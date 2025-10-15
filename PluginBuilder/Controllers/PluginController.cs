@@ -94,6 +94,10 @@ public class PluginController(
             settingViewModel.Logo = null;
             settingViewModel.LogoUrl = null;
         }
+        if (!settingViewModel.IsPluginOwner && existingSetting is not null)
+        {
+            settingViewModel.RequireGPGSignatureForRelease = existingSetting.RequireGPGSignatureForRelease;
+        }
         var settings = settingViewModel.ToPluginSettings();
         await conn.SetPluginSettings(pluginSlug, settings);
         TempData[TempDataConstant.SuccessMessage] = "Settings updated";
@@ -203,7 +207,7 @@ public class PluginController(
                 "SELECT v.build_id, p.identifier FROM versions v JOIN plugins p ON v.plugin_slug = p.slug WHERE plugin_slug=@pluginSlug AND ver=@version",
                 new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
 
-        var requireGPGSignature = await conn.RequiresGPGSignatureForPluginRelease();
+        var pluginSettings = await conn.GetSettings(pluginSlug);
         switch (command)
         {
             case "remove":
@@ -214,18 +218,22 @@ public class PluginController(
                 return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
             case "sign_release":
-                var build_info = await conn.QueryFirstOrDefaultAsync<string>("SELECT build_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
+                var manifest_info = await conn.QueryFirstOrDefaultAsync<string>("SELECT manifest_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
                     new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
-                if (build_info is null || BuildInfo.Parse(build_info) is not { } buildInfo || string.IsNullOrEmpty(buildInfo.GitCommit))
+                if (signatureFile is null)
                 {
-                    TempData[TempDataConstant.WarningMessage] = "Build information for plugin not available";
+                    TempData[TempDataConstant.WarningMessage] = "Signature file is required";
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
-
-                var rawSignedBytes = Encoding.UTF8.GetBytes(buildInfo.GitCommit);
-                var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User)!,
-                  rawSignedBytes, signatureFile);
+                var message = GetManifestHash(NiceJson(manifest_info), true);
+                if (string.IsNullOrEmpty(message))
+                {
+                    TempData[TempDataConstant.WarningMessage] = "manifest information for plugin not available";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+                var rawSignedBytes = Encoding.UTF8.GetBytes(message);
+                var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User)!, rawSignedBytes, signatureFile);
 
                 if (!signatureVerification.valid)
                 {
@@ -236,7 +244,7 @@ public class PluginController(
                 break;
 
             default:
-                if (requireGPGSignature && command == "release")
+                if (pluginSettings?.RequireGPGSignatureForRelease == true && command == "release")
                 {
                     TempData[TempDataConstant.WarningMessage] = "A verified GPG signature is required to release this version";
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
@@ -287,6 +295,7 @@ public class PluginController(
         var signatureProof = string.IsNullOrWhiteSpace(row.signatureproof)
             ? new SignatureProof() : JsonConvert.DeserializeObject<SignatureProof>(row.signatureproof, CamelCaseSerializerSettings.Instance) ?? new SignatureProof();
 
+        var pluginSetting = await conn.GetSettings(pluginSlug); 
         BuildViewModel vm = new();
         var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
         var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
@@ -302,7 +311,8 @@ public class PluginController(
         vm.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, pluginSlug.ToString());
         vm.RepositoryLink = GetUrl(buildInfo);
         vm.DownloadLink = buildInfo?.Url;
-        vm.RequireGPGSignatureForRelease = await conn.RequiresGPGSignatureForPluginRelease();
+        vm.RequireGPGSignatureForRelease = pluginSetting?.RequireGPGSignatureForRelease ?? false;
+        vm.ManifestInfoSha256Hash = GetManifestHash(NiceJson(row.manifest_info), vm.RequireGPGSignatureForRelease);
         //vm.Error = buildInfo?.Error;
         vm.Published = row.published;
         //var buildId = await conn.NewBuild(pluginSlug);
@@ -310,6 +320,15 @@ public class PluginController(
         if (logs != "")
             vm.Logs = logs;
         return View(vm);
+    }
+
+    private string GetManifestHash(string? manifestInfo, bool requiresGPGSignature)
+    {
+        if (!requiresGPGSignature || string.IsNullOrEmpty(manifestInfo)) return string.Empty;
+
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(manifestInfo));
+        return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
     }
 
     private string? NiceJson(string? json, string? fingerprint = null)

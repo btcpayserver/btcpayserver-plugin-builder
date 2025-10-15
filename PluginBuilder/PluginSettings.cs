@@ -26,4 +26,5 @@ public class PluginSettings
     public string BuildConfig { get; set; }
 
     public string Logo { get; set; }
+    public bool RequireGPGSignatureForRelease { get; set; }
 }

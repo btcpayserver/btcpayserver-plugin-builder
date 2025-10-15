@@ -29,4 +29,7 @@ public class PluginSettingViewModel
     [Display(Name = "Logo")]
     public IFormFile? Logo { get; set; }
     public bool IsPluginOwner { get; set; }
+
+    [Display(Name = "Require GPG verification for plugin releases")]
+    public bool RequireGPGSignatureForRelease { get; set; }
 }
