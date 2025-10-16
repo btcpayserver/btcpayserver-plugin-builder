@@ -11,8 +11,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using PluginBuilder.Controllers.Logic;
-using PluginBuilder.DataModels;
 using PluginBuilder.Events;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;

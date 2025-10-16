@@ -2,7 +2,7 @@
 @model BasePagingViewModel
 
 @{
-    var pageSizeOptions = new[] { 50, 100, 250, 500 };
+    var pageSizeOptions = new[] { 10, 50, 100, 250, 500 };
 }
 
 @if (Model.Total is null || Model.Total.Value > pageSizeOptions.Min())
@@ -14,7 +14,7 @@
                 @if (Model.Skip > 0)
                 {
                     <li class="page-item">
-                        <a class="page-link" tabindex="-1" href="@NavigatePages(-1, Model.Count)" text-translate="true">Prev</a>
+                        <a class="border-0 bg-transparent page-link" tabindex="-1" href="@NavigatePages(-1, Model.Count)" text-translate="true">Prev</a>
                     </li>
                 }
                 <li class="page-item disabled">
