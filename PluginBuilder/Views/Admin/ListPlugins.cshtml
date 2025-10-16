@@ -9,17 +9,17 @@
 
     <div class="d-flex flex-column flex-sm-row align-items-center gap-3">
 
-		<div class="d-flex align-items-center">
-			<form asp-controller="Admin" asp-action="UpdateVerifiedEmailForPublishRequirement" method="post" class="d-flex align-items-center">
-				<input type="checkbox" class="btcpay-toggle me-2" id="featureToggle" asp-for="@Model.VerifiedEmailForPluginPublish"
-					   onchange="this.form.submit()" />
-				<label class="form-check-label text-wrap" for="featureToggle">
-					Require Verified Email for publishing
-				</label>
-			</form>
-		</div>
+        <div class="d-flex align-items-center">
+            <form asp-controller="Admin" asp-action="UpdateVerifiedEmailForPublishRequirement" method="post" class="d-flex align-items-center">
+                <input type="checkbox" class="btcpay-toggle me-2" id="featureToggle" asp-for="@Model.VerifiedEmailForPluginPublish"
+                       onchange="this.form.submit()" />
+                <label class="form-check-label text-wrap" for="featureToggle">
+                    Require Verified Email for publishing
+                </label>
+            </form>
+        </div>
 
-        @if (Model.Plugins.Any(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)))
+        @if (Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Any())
         {
             <a asp-controller="Admin" asp-action="EmailSender"
                asp-route-to="@string.Join(",", Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Select(m => m.PrimaryOwnerEmail))"

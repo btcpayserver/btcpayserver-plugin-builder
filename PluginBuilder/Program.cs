@@ -174,7 +174,6 @@ public class Program
         services.AddSingleton<AzureStorageClient>();
         services.AddSingleton<ServerEnvironment>();
         services.AddSingleton<EventAggregator>();
-        services.AddSingleton<GPGKeyService>();
         services.AddHttpClient();
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();

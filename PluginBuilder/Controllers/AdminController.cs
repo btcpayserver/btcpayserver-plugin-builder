@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
@@ -92,7 +91,6 @@ public class AdminController(
 
         model.Plugins = plugins;
         model.VerifiedEmailForPluginPublish = await conn.GetVerifiedEmailForPluginPublishSetting();
-        model.VerifiedGPGSignatureForPluginRelease = await conn.RequiresGPGSignatureForPluginRelease();
         return View(model);
     }
 
@@ -100,7 +98,7 @@ public class AdminController(
     public async Task<IActionResult> UpdateVerifiedEmailForPublishRequirement(bool verifiedEmailForPluginPublish)
     {
         await using var conn = await connectionFactory.Open();
-        await conn.UpdatePluginAdminSettings(SettingsKeys.VerifiedEmailForPluginPublish, verifiedEmailForPluginPublish);
+        await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
         await userVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
         TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
         return RedirectToAction("ListPlugins");

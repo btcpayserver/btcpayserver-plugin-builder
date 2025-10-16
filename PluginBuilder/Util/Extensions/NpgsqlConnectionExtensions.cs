@@ -4,7 +4,6 @@ using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
-using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Util.Extensions;
@@ -151,9 +150,8 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
                            SELECT
                                u."Id"               AS "UserId",
-                               up.is_primary_owner  AS "IsPrimary",
-                               u."Email",
-                               u."AccountDetail"
+                               u."Email"            AS "Email",
+                               up.is_primary_owner  AS "IsPrimary"
                            FROM users_plugins up
                            JOIN "AspNetUsers" u ON u."Id" = up.user_id
                            WHERE up.plugin_slug = @slug
@@ -197,22 +195,6 @@ public static class NpgsqlConnectionExtensions
                 plugin_slug = fullBuildId.PluginSlug.ToString(),
                 buildId = fullBuildId.BuildId
             });
-    }
-
-    public static async Task<bool> UpdateVersionReleaseStatus(this NpgsqlConnection connection, PluginSlug pluginSlug, string command, PluginVersion version, SignatureProof? signatureProof = null)
-    {
-        var updated = await connection.ExecuteAsync(
-            "UPDATE versions SET pre_release = @preRelease, signatureproof = CASE WHEN @hasSignature THEN @signatureproof::JSONB WHEN @preRelease THEN NULL ELSE signatureproof END " +
-            "WHERE plugin_slug = @pluginSlug AND ver = @version",
-            new
-            {
-                signatureproof = signatureProof != null ? JsonConvert.SerializeObject(signatureProof, CamelCaseSerializerSettings.Instance) : null,
-                hasSignature = signatureProof != null,
-                pluginSlug = pluginSlug.ToString(),
-                version = version.VersionParts,
-                preRelease = command == "unrelease"
-            });
-        return updated == 1;
     }
 
     public static async Task<PluginSlug[]> GetPluginsByUserId(this NpgsqlConnection connection, string userId)
@@ -381,12 +363,6 @@ public static class NpgsqlConnectionExtensions
                 "INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedEmailForPluginPublish, value = "true" });
         }
-        if (result.All(r => r.key != SettingsKeys.VerifiedGPGSignatureForPluginRelease))
-        {
-            await connection.ExecuteAsync(
-                "INSERT INTO settings (key, value) VALUES (@key, @value)",
-                new { key = SettingsKeys.VerifiedGPGSignatureForPluginRelease, value = "false" });
-        }
         if (result.All(r => r.key != SettingsKeys.VerifiedEmailForLogin))
         {
             await connection.ExecuteAsync(
@@ -408,17 +384,11 @@ public static class NpgsqlConnectionExtensions
         return bool.TryParse(settingValue, out var result) && result;
     }
 
-    public static async Task<bool> RequiresGPGSignatureForPluginRelease(this NpgsqlConnection connection)
-    {
-        var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedGPGSignatureForPluginRelease);
-        return bool.TryParse(settingValue, out var result) && result;
-    }
-
-    public static async Task UpdatePluginAdminSettings(this NpgsqlConnection connection, string settingKey, bool newValue)
+    public static async Task UpdateVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection, bool newValue)
     {
         var stringValue = newValue.ToString().ToLowerInvariant();
         await connection.ExecuteAsync("UPDATE settings SET value = @Value WHERE key = @Key",
-            new { Value = stringValue, Key = settingKey });
+            new { Value = stringValue, Key = SettingsKeys.VerifiedEmailForPluginPublish });
     }
 
     public static async Task<bool> GetVerifiedEmailForLoginSetting(this NpgsqlConnection connection)
