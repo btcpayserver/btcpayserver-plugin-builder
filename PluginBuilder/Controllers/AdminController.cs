@@ -9,6 +9,7 @@ using Npgsql;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
+using PluginBuilder.JsonConverters;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
@@ -123,7 +124,7 @@ public class AdminController(
             Settings = plugin.Settings,
             Visibility = plugin.Visibility,
             PluginUsers = pluginUsers,
-            PluginSettings = !string.IsNullOrWhiteSpace(plugin.Settings) ? SafeDeserialize<PluginSettings>(plugin.Settings) : new()
+            PluginSettings = !string.IsNullOrWhiteSpace(plugin.Settings) ? SafeJson.Deserialize<PluginSettings>(plugin.Settings) : new()
         });
     }
 
@@ -138,7 +139,7 @@ public class AdminController(
             return View(model);
         }
         var plugin = await conn.GetPluginDetails(slug);
-        var pluginSettings = !string.IsNullOrWhiteSpace(plugin?.Settings) ? SafeDeserialize<PluginSettings>(plugin.Settings) : new PluginSettings();
+        var pluginSettings = !string.IsNullOrWhiteSpace(plugin?.Settings) ? SafeJson.Deserialize<PluginSettings>(plugin.Settings) : new PluginSettings();
         pluginSettings.PluginTitle = model.PluginSettings.PluginTitle;
         pluginSettings.Description = model.PluginSettings.Description;
         var setPluginSettings = await conn.SetPluginSettingsAndVisibility(slug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
@@ -607,17 +608,5 @@ public class AdminController(
             UserId = u.Id,
             IsPluginOwner = u.Id == ownerId
         }).ToList();
-    }
-
-    private static T SafeDeserialize<T>(string json) where T : new()
-    {
-        try
-        {
-            return JsonConvert.DeserializeObject<T>(json) ?? new T();
-        }
-        catch (JsonException)
-        {
-            return new T();
-        }
     }
 }
