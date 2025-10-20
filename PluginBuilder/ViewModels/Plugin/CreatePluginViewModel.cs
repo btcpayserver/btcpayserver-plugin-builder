@@ -11,6 +11,15 @@ public class CreatePluginViewModel
     [MinLength(4)]
     public string PluginSlug { get; set; }
 
+    [Required]
+    [Display(Name = "Plugin Title")]
+    public string PluginTitle { get; set; }
+
+    [Required]
+    [Display(Name = "Plugin description")]
+    [MaxLength(500)]
+    public string Description { get; set; }
+
     [Display(Name = "Logo")]
     public IFormFile Logo { get; set; }
 

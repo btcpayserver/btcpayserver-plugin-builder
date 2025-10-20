@@ -8,6 +8,8 @@ public static class PluginSettingExtensions
     {
         return new PluginSettings
         {
+            PluginTitle = viewModel.PluginTitle,
+            Description = viewModel.Description,
             Documentation = viewModel.Documentation,
             GitRepository = viewModel.GitRepository,
             GitRef = viewModel.GitRef,
@@ -22,6 +24,8 @@ public static class PluginSettingExtensions
     {
         return new PluginSettingViewModel
         {
+            PluginTitle = settings.PluginTitle,
+            Description = settings.Description,
             Documentation = settings.Documentation,
             GitRepository = settings.GitRepository,
             GitRef = settings.GitRef,

@@ -4,7 +4,7 @@ using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
-using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Util.Extensions;
@@ -36,6 +36,11 @@ public static class NpgsqlConnectionExtensions
             new { pluginSlug = pluginSlug.ToString(), settings, visibility });
 
         return affectedRows == 1;
+    }
+
+    public static async Task<PluginViewModel?> GetPluginDetails(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        return await connection.QueryFirstOrDefaultAsync<PluginViewModel>("SELECT slug, identifier, settings, visibility FROM plugins WHERE slug=@pluginSlug", new { pluginSlug = pluginSlug.ToString() });
     }
 
     #endregion
@@ -151,9 +156,8 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
                            SELECT
                                u."Id"               AS "UserId",
-                               up.is_primary_owner  AS "IsPrimary",
-                               u."Email",
-                               u."AccountDetail"
+                               u."Email"            AS "Email",
+                               up.is_primary_owner  AS "IsPrimary"
                            FROM users_plugins up
                            JOIN "AspNetUsers" u ON u."Id" = up.user_id
                            WHERE up.plugin_slug = @slug
@@ -178,22 +182,6 @@ public static class NpgsqlConnectionExtensions
 
         await connection.AddUserPlugin(pluginSlug, userId, true);
         return true;
-    }
-
-    public static async Task<bool> UpdateVersionReleaseStatus(this NpgsqlConnection connection, PluginSlug pluginSlug, string command, PluginVersion version, SignatureProof? signatureProof = null)
-    {
-        var updated = await connection.ExecuteAsync(
-            "UPDATE versions SET pre_release = @preRelease, signatureproof = CASE WHEN @hasSignature THEN @signatureproof::JSONB WHEN @preRelease THEN NULL ELSE signatureproof END " +
-            "WHERE plugin_slug = @pluginSlug AND ver = @version",
-            new
-            {
-                signatureproof = signatureProof != null ? JsonConvert.SerializeObject(signatureProof, CamelCaseSerializerSettings.Instance) : null,
-                hasSignature = signatureProof != null,
-                pluginSlug = pluginSlug.ToString(),
-                version = version.VersionParts,
-                preRelease = command == "unrelease"
-            });
-        return updated == 1;
     }
 
     public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo,

@@ -24,7 +24,8 @@ public class PluginSettings
     [MaxLength(200)]
     [Display(Name = "Dotnet build configuration ")]
     public string BuildConfig { get; set; }
-
+    public string PluginTitle { get; set; }
+    public string Description { get; set; }
     public string Logo { get; set; }
     public bool RequireGPGSignatureForRelease { get; set; }
 }

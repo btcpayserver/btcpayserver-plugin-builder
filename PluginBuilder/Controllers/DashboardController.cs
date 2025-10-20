@@ -23,18 +23,17 @@ public class DashboardController(
     {
         if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
-            TempData[TempDataConstant.WarningMessage] =
-                "You need to verify your email address in order to create and publish plugins";
-            return RedirectToAction("AccountDetails", "Account");
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your email address in order to create and publish plugins";
+            return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
         }
 
         await using var conn = await connectionFactory.Open();
-
-        if (await userVerifiedLogic.IsUserGithubVerified(User, conn)) return View();
-
-        TempData[TempDataConstant.WarningMessage] =
-            "You need to verify your GitHub account in order to create and publish plugins";
-        return RedirectToAction("AccountDetails", "Account");
+        if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
+        {
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub account in order to create and publish plugins";
+            return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
+        }
+        return View();
     }
 
     [HttpPost("/plugins/create")]
@@ -43,16 +42,14 @@ public class DashboardController(
     {
         if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
         {
-            ModelState.AddModelError(nameof(model.PluginSlug),
-                "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
+            ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
             return View(model);
         }
 
         await using var conn = await connectionFactory.Open();
         if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
-            TempData[TempDataConstant.WarningMessage] =
-                "You need to verify your email address in order to create and publish plugins";
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your email address in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
 
@@ -60,8 +57,7 @@ public class DashboardController(
 
         if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
         {
-            TempData[TempDataConstant.WarningMessage] =
-                "You need to verify your GitHub Account in order to create and publish plugins";
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub Account in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
 
@@ -90,7 +86,7 @@ public class DashboardController(
                 return View(model);
             }
         }
-        await conn.SetPluginSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl });
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl, PluginTitle = model.PluginTitle, Description = model.Description });
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }
 }
