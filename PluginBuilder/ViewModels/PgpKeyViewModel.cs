@@ -13,6 +13,8 @@ public class PgpKeyViewModel
 
 public record SignatureProofResponse(bool valid, string message, SignatureProof? proof = null);
 
+public record UserKey(string PublicKeyArmored, string Fingerprint);
+
 public class SignatureProof
 {
     public string Armour { get; init; }

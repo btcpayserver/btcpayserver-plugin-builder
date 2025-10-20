@@ -7,10 +7,13 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Authentication;
+using PluginBuilder.DataModels;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
+using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Controllers;
 
@@ -375,6 +378,34 @@ public class ApiController(
             ).ToList();
 
         return Ok(updates);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("plugins/{pluginSlug}/owners/keys")]
+    public async Task<IActionResult> GetPluginOwnerPublicKeys(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug)
+    {
+        await using var conn = await connectionFactory.Open();
+
+        var owners = await conn.GetPluginOwners(pluginSlug);
+        List<UserKey> userKeys = new();
+        foreach (var owner in owners)
+        {
+            var accountSettings = JsonConvert.DeserializeObject<AccountSettings>(owner.AccountDetail, CamelCaseSerializerSettings.Instance);
+            if (accountSettings?.GPGKey == null || string.IsNullOrEmpty(accountSettings.GPGKey?.PublicKey) || string.IsNullOrEmpty(accountSettings.GPGKey?.Fingerprint))
+                continue;
+
+            var expiresAt = accountSettings.GPGKey.CreatedDate.AddDays(accountSettings.GPGKey.ValidDays);
+            if (DateTimeOffset.UtcNow.Date > expiresAt.Date)
+                continue;
+
+            userKeys.Add(new UserKey(accountSettings.GPGKey.PublicKey, accountSettings.GPGKey.Fingerprint));
+        }
+        return Ok(new
+        {
+            keys = userKeys
+        });
     }
 
     private IActionResult ValidationErrorResult(ModelStateDictionary modelState)
