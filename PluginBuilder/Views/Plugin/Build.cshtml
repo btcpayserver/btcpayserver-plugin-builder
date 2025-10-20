@@ -26,18 +26,9 @@
             case "uploaded":
                 if (Model.Version is null || Model.Version?.PreRelease is true)
                 {
-					if (Model.RequireGPGSignatureForRelease && !string.IsNullOrEmpty(Model.ManifestInfoSha256Hash))
-					{
-						<button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#signReleaseModal">
-							Sign and Release
-						</button>
-					}
-					else
-					{
-						<form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
-							<button type="submit" name="command" value="release" class="btn btn-primary">Release</button>
-						</form>
-					}
+                    <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
+                        <button type="submit" name="command" value="release" class="btn btn-primary">Release</button>
+                    </form>
                     <a asp-action="CreateBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-copyBuild="@Model.FullBuildId.BuildId"
                        class="btn btn-secondary">Retry</a>
                 }
@@ -61,43 +52,6 @@
     </div>
 </div>
 
-<div class="modal fade" id="signReleaseModal" tabindex="-1" aria-labelledby="signReleaseModalLabel" aria-hidden="true">
-	<div class="modal-dialog modal-dialog-centered">
-		<div class="modal-content">
-			<div class="modal-header">
-				<h5 class="modal-title" id="signReleaseModalLabel">Sign and Release Plugin Version</h5>
-				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-			</div>
-			<div class="modal-body">
-				<div class="mb-2">
-					<p>Download the file below, sign it with your GPG key, then upload the detached signature (<code>.asc</code>).</p>
-					<input type="hidden" id="manifestHash" value="@Model.ManifestInfoSha256Hash" />
-
-					<div class="d-flex align-items-center gap-2 mb-3">
-						<span class="text-muted small">Manifest SHA-256</span>
-						<span role="button" style="cursor:pointer" onclick="downloadHashFile()" title="Download manifest.txt file">
-							<vc:icon symbol="actions-download" />
-						</span>
-					</div>
-
-					<form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@(Model.Version?.Version ?? "")" method="post" enctype="multipart/form-data">
-						@Html.AntiForgeryToken()
-						<input type="hidden" name="command" value="sign_release" />
-						<div class="mb-3">
-							<label for="signatureFile" class="form-label">Upload Signature ( <code>.asc</code> )</label>
-							<input type="file" class="form-control" id="signatureFile" name="signatureFile" accept=".asc" required />
-						</div>
-
-						<button type="submit" class="btn btn-primary">Verify & Release
-						</button>
-					</form>
-				</div>
-			</div>
-		</div>
-	</div>
-</div>
-
-
 <table class="table">
     @if (Model.Version != null)
     {
@@ -120,7 +74,7 @@
             else
             {
                 @("@")
-				<a href="@Model.RepositoryLink" target="_blank" rel="noreferrer noopener">@Model.Commit?.Substring(0, 8)</a>
+                <a href="@Model.RepositoryLink" target="_blank" rel="noreferrer noopener">@Model.Commit</a>
             }
         </td>
     </tr>
@@ -187,21 +141,4 @@
     <script src="~/vendor/highlight.js/highlight.min.js" asp-append-version="true"></script>
     <script src="~/vendor/signalr/signalr.min.js" asp-append-version="true"></script>
     <script src="~/scripts/Build.js" asp-append-version="true"></script>
-
-	<script>
-		function downloadHashFile() {
-		  const hashInput = document.getElementById('manifestHash');
-		  const hash = hashInput?.value?.trim();
-		  const blob = new Blob([hash], { type: 'text/plain' });
-		  const url = URL.createObjectURL(blob);
-
-		  const a = document.createElement('a');
-		  a.href = url;
-		  a.download = `manifest-${hash.substring(0, 7)}.txt`;
-		  document.body.appendChild(a);
-		  a.click();
-		  document.body.removeChild(a);
-		  URL.revokeObjectURL(url);
-		}
-	</script>
 }
