@@ -4,6 +4,7 @@ using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
+using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Util.Extensions;
@@ -150,8 +151,9 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
                            SELECT
                                u."Id"               AS "UserId",
-                               u."Email"            AS "Email",
-                               up.is_primary_owner  AS "IsPrimary"
+                               up.is_primary_owner  AS "IsPrimary",
+                               u."Email",
+                               u."AccountDetail"
                            FROM users_plugins up
                            JOIN "AspNetUsers" u ON u."Id" = up.user_id
                            WHERE up.plugin_slug = @slug
@@ -176,6 +178,22 @@ public static class NpgsqlConnectionExtensions
 
         await connection.AddUserPlugin(pluginSlug, userId, true);
         return true;
+    }
+
+    public static async Task<bool> UpdateVersionReleaseStatus(this NpgsqlConnection connection, PluginSlug pluginSlug, string command, PluginVersion version, SignatureProof? signatureProof = null)
+    {
+        var updated = await connection.ExecuteAsync(
+            "UPDATE versions SET pre_release = @preRelease, signatureproof = CASE WHEN @hasSignature THEN @signatureproof::JSONB WHEN @preRelease THEN NULL ELSE signatureproof END " +
+            "WHERE plugin_slug = @pluginSlug AND ver = @version",
+            new
+            {
+                signatureproof = signatureProof != null ? JsonConvert.SerializeObject(signatureProof, CamelCaseSerializerSettings.Instance) : null,
+                hasSignature = signatureProof != null,
+                pluginSlug = pluginSlug.ToString(),
+                version = version.VersionParts,
+                preRelease = command == "unrelease"
+            });
+        return updated == 1;
     }
 
     public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo,
