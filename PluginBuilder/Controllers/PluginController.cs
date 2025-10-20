@@ -43,7 +43,7 @@ public class PluginController(
 
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
         var vm = settings.ToPluginSettingViewModel();
-        vm.IsPluginOwner = pluginOwner == userId;
+        vm.IsPluginPrimaryOwner = pluginOwner == userId;
         return View(vm);
     }
 
@@ -51,23 +51,24 @@ public class PluginController(
     public async Task<IActionResult> Settings(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        PluginSettingViewModel settingViewModel, [FromForm] bool RemoveLogoFile = false)
+        PluginSettingViewModel settingViewModel, [FromForm] bool removeLogoFile = false)
     {
+        if (settingViewModel is null)
+            return NotFound();
+
         var userId = userManager.GetUserId(User);
         await using var conn = await connectionFactory.Open();
         var existingSetting = await conn.GetSettings(pluginSlug);
         settingViewModel.LogoUrl = existingSetting?.Logo;
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-        settingViewModel.IsPluginOwner = pluginOwner == userId;
+        settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
 
-        if (settingViewModel.IsPluginOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
+        if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
         {
             TempData[TempDataConstant.WarningMessage] = "Plugin title and description are required";
             return RedirectToAction(nameof(Settings), "Plugin", new { pluginSlug });
         }
 
-        if (settingViewModel is null)
-            return NotFound();
         if (string.IsNullOrEmpty(settingViewModel.GitRepository) || !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
         {
             ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository is required and should be an absolute URL");
@@ -78,6 +79,10 @@ public class PluginController(
             ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
             return View(settingViewModel);
         }
+
+        if (existingSetting is null)
+            return NotFound();
+
         if (settingViewModel.Logo != null)
         {
             if (!settingViewModel.Logo.ValidateUploadedImage(out string errorMessage))
@@ -95,15 +100,15 @@ public class PluginController(
                 return View(settingViewModel);
             }
         }
-        else if (RemoveLogoFile)
+        else if (removeLogoFile)
         {
             settingViewModel.Logo = null;
             settingViewModel.LogoUrl = null;
         }
-        if (!settingViewModel.IsPluginOwner)
+        if (!settingViewModel.IsPluginPrimaryOwner)
         {
-            settingViewModel.PluginTitle = existingSetting?.PluginTitle;
-            settingViewModel.Description = existingSetting?.Description;
+            settingViewModel.PluginTitle = existingSetting.PluginTitle;
+            settingViewModel.Description = existingSetting.Description;
         }
         var settings = settingViewModel.ToPluginSettings();
         await conn.SetPluginSettings(pluginSlug, settings);

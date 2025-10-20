@@ -129,7 +129,7 @@ public class AdminController(
         });
     }
 
-    
+
     [HttpPost("plugins/edit/{slug}")]
     public async Task<IActionResult> PluginEdit(string slug, PluginEditViewModel model)
     {
@@ -140,9 +140,9 @@ public class AdminController(
             return View(model);
         }
         var plugin = await conn.GetPluginDetails(slug);
-        var pluginSettings = !string.IsNullOrWhiteSpace(plugin?.Settings) ? SafeDeserialize<PluginSettings>(plugin.Settings) : new();
+        var pluginSettings = !string.IsNullOrWhiteSpace(plugin?.Settings) ? SafeDeserialize<PluginSettings>(plugin.Settings) : new PluginSettings();
         pluginSettings.PluginTitle = model.PluginSettings.PluginTitle;
-        pluginSettings.Description = model.PluginSettings.Description; 
+        pluginSettings.Description = model.PluginSettings.Description;
         var setPluginSettings = await conn.SetPluginSettingsAndVisibility(slug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
         if (!setPluginSettings) return NotFound();
 
@@ -150,7 +150,7 @@ public class AdminController(
         return referrerNavigation.RedirectToReferrerOr(this, "ListPlugins");
     }
 
-   
+
     [HttpGet("plugins/delete/{slug}")]
     public async Task<IActionResult> PluginDelete(string slug)
     {

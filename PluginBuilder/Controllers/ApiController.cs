@@ -107,7 +107,7 @@ public class ApiController(
         List<PublishedVersion> versions = new(count);
         versions.AddRange(rows.Select(r =>
         {
-            var (manifestInfo, pluginSettings) = UpdateManifestPluginData((string)r.manifest_info, (string?)r.settings);
+            var (manifestInfo, pluginSettings) = UpdateManifestPluginData(r.manifest_info, (string?)r.settings);
             return new PublishedVersion
             {
                 ProjectSlug = r.plugin_slug,
