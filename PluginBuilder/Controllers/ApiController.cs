@@ -107,16 +107,16 @@ public class ApiController(
         List<PublishedVersion> versions = new(count);
         versions.AddRange(rows.Select(r =>
         {
-            var settings = JsonConvert.DeserializeObject<PluginSettings>(r.settings);
+            var (manifestInfo, pluginSettings) = UpdateManifestPluginData((string)r.manifest_info, (string?)r.settings);
             return new PublishedVersion
             {
                 ProjectSlug = r.plugin_slug,
                 Version = string.Join('.', r.ver),
                 BuildId = r.id,
                 BuildInfo = JObject.Parse(r.build_info),
-                ManifestInfo = JObject.Parse(r.manifest_info),
-                PluginLogo = settings?.Logo,
-                Documentation = settings?.Documentation
+                ManifestInfo = manifestInfo,
+                PluginLogo = pluginSettings?.Logo,
+                Documentation = pluginSettings?.Documentation
             };
         }));
 
@@ -166,16 +166,16 @@ public class ApiController(
         List<PublishedVersion> versions = new(count);
         versions.AddRange(rows.Select(r =>
         {
-            var settings = JsonConvert.DeserializeObject<PluginSettings>(r.settings);
+            var (manifestInfo, pluginSettings) = UpdateManifestPluginData((string)r.manifest_info, (string?)r.settings);
             return new PublishedVersion
             {
                 ProjectSlug = r.plugin_slug,
                 Version = string.Join('.', r.ver),
                 BuildId = r.id,
                 BuildInfo = JObject.Parse(r.build_info),
-                ManifestInfo = JObject.Parse(r.manifest_info),
-                PluginLogo = settings?.Logo,
-                Documentation = settings?.Documentation
+                ManifestInfo = manifestInfo,
+                PluginLogo = pluginSettings?.Logo,
+                Documentation = pluginSettings?.Documentation
             };
         }));
 
@@ -205,16 +205,17 @@ public class ApiController(
             new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
         if (r is null)
             return NotFound();
-        var settings = JsonConvert.DeserializeObject<PluginSettings>((string)r.settings);
+
+        var (manifestInfo, pluginSettings) = UpdateManifestPluginData((string)r.manifest_info, (string?)r.settings);
         return Ok(new PublishedVersion
         {
             ProjectSlug = pluginSlug.ToString(),
             Version = version.Version,
             BuildId = (long)r.build_id,
             BuildInfo = JObject.Parse(r.build_info),
-            ManifestInfo = JObject.Parse(r.manifest_info),
-            PluginLogo = settings?.Logo,
-            Documentation = settings?.Documentation
+            ManifestInfo = manifestInfo,
+            PluginLogo = pluginSettings?.Logo,
+            Documentation = pluginSettings?.Documentation
         });
     }
 
@@ -360,17 +361,16 @@ public class ApiController(
             (
                 from row in rows
                 let latestVerString = string.Join('.', row.ver)
-                let settings = JsonConvert.DeserializeObject<PluginSettings>(row.settings)
-                where settings is not null
+                let manifestData = UpdateManifestPluginData((string)row.manifest_info, (string?)row.settings)
                 select new PublishedVersion
                 {
                     ProjectSlug = row.plugin_slug,
                     Version = latestVerString,
                     BuildId = row.id,
                     BuildInfo = JObject.Parse(row.build_info),
-                    ManifestInfo = JObject.Parse(row.manifest_info),
-                    PluginLogo = settings.Logo,
-                    Documentation = settings.Documentation
+                    ManifestInfo = manifestData.manifest,
+                    PluginLogo = manifestData.settings?.Logo,
+                    Documentation = manifestData.settings?.Documentation
                 }
             ).ToList();
 
@@ -384,5 +384,17 @@ public class ApiController(
             select new ValidationError(error.Key, errorMessage.ErrorMessage)).ToList();
 
         return UnprocessableEntity(new { errors });
+    }
+
+    private static (JObject manifest, PluginSettings? settings) UpdateManifestPluginData(string manifestJson, string? settingsJson)
+    {
+        var manifest = JObject.Parse(manifestJson);
+        PluginSettings? settings = string.IsNullOrWhiteSpace(settingsJson) ? null : JsonConvert.DeserializeObject<PluginSettings>(settingsJson);
+        if (settings != null)
+        {
+            manifest["Name"] = settings.PluginTitle ?? manifest["Name"]?.ToString();
+            manifest["Description"] = settings.Description ?? manifest["Description"]?.ToString();
+        }
+        return (manifest, settings);
     }
 }

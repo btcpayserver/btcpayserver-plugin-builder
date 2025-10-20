@@ -4,6 +4,7 @@ using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
+using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Util.Extensions;
@@ -35,6 +36,11 @@ public static class NpgsqlConnectionExtensions
             new { pluginSlug = pluginSlug.ToString(), settings, visibility });
 
         return affectedRows == 1;
+    }
+
+    public static async Task<PluginViewModel?> GetPluginDetails(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        return await connection.QueryFirstOrDefaultAsync<PluginViewModel>("SELECT slug, identifier, settings, visibility FROM plugins WHERE slug=@pluginSlug", new { pluginSlug = pluginSlug.ToString() });
     }
 
     #endregion
