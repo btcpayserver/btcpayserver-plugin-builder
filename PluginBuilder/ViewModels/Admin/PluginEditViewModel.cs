@@ -17,9 +17,9 @@ public class PluginViewModel
 public class PluginEditViewModel : PluginViewModel
 {
     [ValidateNever]
-    public required List<PluginUsersViewModel> PluginUsers { get; set; }
+    public List<PluginUsersViewModel> PluginUsers { get; set; }
     [ValidateNever]
-    public required PluginSettings PluginSettings { get; set; }
+    public PluginSettings PluginSettings { get; set; }
 }
 
 public class PluginUsersViewModel

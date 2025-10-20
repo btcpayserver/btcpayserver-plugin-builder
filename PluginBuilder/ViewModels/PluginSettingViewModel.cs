@@ -31,6 +31,6 @@ public class PluginSettingViewModel
     public bool IsPluginPrimaryOwner { get; set; }
 
     [Display(Name = "Plugin Title")]
-    public required string PluginTitle { get; set; }
-    public required string Description { get; set; }
+    public string PluginTitle { get; set; }
+    public string Description { get; set; }
 }

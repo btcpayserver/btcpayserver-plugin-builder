@@ -41,7 +41,7 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task<PluginViewModel?> GetPluginDetails(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
-        return await connection.QueryFirstOrDefaultAsync<PluginViewModel>("SELECT * FROM plugins WHERE slug = @Slug", new { Slug = pluginSlug.ToString() });
+        return await connection.QueryFirstOrDefaultAsync<PluginViewModel>("SELECT slug, identifier, settings, visibility FROM plugins WHERE slug = @Slug", new { Slug = pluginSlug.ToString() });
     }
 
 

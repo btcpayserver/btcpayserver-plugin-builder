@@ -80,9 +80,6 @@ public class PluginController(
             return View(settingViewModel);
         }
 
-        if (existingSetting is null)
-            return NotFound();
-
         if (settingViewModel.Logo != null)
         {
             if (!settingViewModel.Logo.ValidateUploadedImage(out string errorMessage))
@@ -107,8 +104,8 @@ public class PluginController(
         }
         if (!settingViewModel.IsPluginPrimaryOwner)
         {
-            settingViewModel.PluginTitle = existingSetting.PluginTitle;
-            settingViewModel.Description = existingSetting.Description;
+            settingViewModel.PluginTitle = existingSetting?.PluginTitle;
+            settingViewModel.Description = existingSetting?.Description;
         }
         var settings = settingViewModel.ToPluginSettings();
         await conn.SetPluginSettings(pluginSlug, settings);
