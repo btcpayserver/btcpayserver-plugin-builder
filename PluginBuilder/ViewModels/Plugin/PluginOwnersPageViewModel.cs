@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace PluginBuilder.ViewModels.Plugin;
 
 public class PluginOwnersPageViewModel
@@ -13,8 +11,6 @@ public class PluginOwnersPageViewModel
 
 public record OwnerVm(
     string UserId,
-    bool IsPrimary,
     string? Email,
-    string? AccountDetail
+    bool IsPrimary
 );
-
