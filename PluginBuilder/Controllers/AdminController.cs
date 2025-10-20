@@ -9,6 +9,7 @@ using Npgsql;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
+using PluginBuilder.JsonConverters;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
@@ -112,8 +113,7 @@ public class AdminController(
         await using var conn = await connectionFactory.Open();
         var pluginUsers = await GetPluginUsers(conn, slug);
 
-        var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
-            "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
+        var plugin = await conn.GetPluginDetails(slug);
         if (plugin == null)
             return NotFound();
 
@@ -123,11 +123,12 @@ public class AdminController(
             Identifier = plugin.Identifier,
             Settings = plugin.Settings,
             Visibility = plugin.Visibility,
-            PluginUsers = pluginUsers
+            PluginUsers = pluginUsers,
+            PluginSettings = !string.IsNullOrWhiteSpace(plugin.Settings) ? SafeJson.Deserialize<PluginSettings>(plugin.Settings) : new()
         });
     }
 
-    //
+
     [HttpPost("plugins/edit/{slug}")]
     public async Task<IActionResult> PluginEdit(string slug, PluginEditViewModel model)
     {
@@ -137,23 +138,25 @@ public class AdminController(
             model.PluginUsers = await GetPluginUsers(conn, slug);
             return View(model);
         }
-
-        var setPluginSettings = await conn.SetPluginSettingsAndVisibility(slug, model.Settings, model.Visibility.ToString().ToLowerInvariant());
-
+        var plugin = await conn.GetPluginDetails(slug);
+        var pluginSettings = !string.IsNullOrWhiteSpace(plugin?.Settings) ? SafeJson.Deserialize<PluginSettings>(plugin.Settings) : new PluginSettings();
+        pluginSettings.PluginTitle = model.PluginSettings.PluginTitle;
+        pluginSettings.Description = model.PluginSettings.Description;
+        var setPluginSettings = await conn.SetPluginSettingsAndVisibility(slug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
         if (!setPluginSettings) return NotFound();
 
+        TempData[TempDataConstant.SuccessMessage] = "Plugin settings updated successfully";
         return referrerNavigation.RedirectToReferrerOr(this, "ListPlugins");
     }
 
-    // Plugin Delete
+
     [HttpGet("plugins/delete/{slug}")]
     public async Task<IActionResult> PluginDelete(string slug)
     {
         referrerNavigation.StoreReferrer();
 
         await using var conn = await connectionFactory.Open();
-        var plugin = await conn.QueryFirstOrDefaultAsync<PluginViewModel>(
-            "SELECT * FROM plugins WHERE slug = @Slug", new { Slug = slug });
+        var plugin = await conn.GetPluginDetails(slug);
         if (plugin == null) return NotFound();
 
         return View(plugin);
