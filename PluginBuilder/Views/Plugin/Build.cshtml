@@ -26,7 +26,7 @@
             case "uploaded":
                 if (Model.Version is null || Model.Version?.PreRelease is true)
                 {
-					if (Model.RequireGPGSignatureForRelease)
+					if (Model.RequireGPGSignatureForRelease && !string.IsNullOrEmpty(Model.ManifestInfoSha256Hash))
 					{
 						<button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#signReleaseModal">
 							Sign and Release
@@ -70,24 +70,29 @@
 			</div>
 			<div class="modal-body">
 				<div class="mb-2">
-					<p>Please sign the commit number shown below using your GPG keys, then upload a detached GPG signature (.asc)</p>
-					<div class="d-flex align-items-center gap-2">
-						<p class="mb-0">
-							Commit: <code id="commitHash">@Model.Commit</code>
-						</p>
-						<span role="button" style="cursor:pointer" onclick="downloadCommitFile()" title="Download commit txt file">
+					<p>Download the file below, sign it with your GPG key, then upload the detached signature (<code>.asc</code>).</p>
+					<input type="hidden" id="manifestHash" value="@Model.ManifestInfoSha256Hash" />
+
+					<div class="d-flex align-items-center gap-2 mb-3">
+						<span class="text-muted small">Manifest SHA-256</span>
+						<span role="button" style="cursor:pointer" onclick="downloadHashFile()" title="Download manifest.txt file">
 							<vc:icon symbol="actions-download" />
 						</span>
 					</div>
+
+					<form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@(Model.Version?.Version ?? "")" method="post" enctype="multipart/form-data">
+						@Html.AntiForgeryToken()
+						<input type="hidden" name="command" value="sign_release" />
+						<div class="mb-3">
+							<label for="signatureFile" class="form-label">Upload Signature ( <code>.asc</code> )</label>
+							<input type="file" class="form-control" id="signatureFile" name="signatureFile" accept=".asc" required />
+						</div>
+
+						<button type="submit" class="btn btn-primary">
+							Verify & Release
+						</button>
+					</form>
 				</div>
-				<form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@(Model.Version?.Version ?? "")" method="post" enctype="multipart/form-data">
-					<input type="hidden" name="command" value="sign_release" />
-					<div class="mb-3">
-						<label for="signatureFile" class="form-label">Upload Signature (.asc)</label>
-						<input type="file" class="form-control" id="signatureFile" name="signatureFile" accept=".asc" required />
-					</div>
-					<button type="submit" class="btn btn-primary">Verify & Release</button>
-				</form>
 			</div>
 		</div>
 	</div>
@@ -182,4 +187,20 @@
     <script src="~/vendor/highlight.js/highlight.min.js" asp-append-version="true"></script>
     <script src="~/vendor/signalr/signalr.min.js" asp-append-version="true"></script>
     <script src="~/scripts/Build.js" asp-append-version="true"></script>
+
+	<script>
+		function downloadHashFile() {
+		  const hashInput = document.getElementById('manifestHash');
+		  const hash = hashInput?.value?.trim();
+		  const blob = new Blob([hash], { type: 'text/plain' });
+		  const url = URL.createObjectURL(blob);
+		  const a = document.createElement('a');
+		  a.href = url;
+		  a.download = `manifest-${hash.substring(0, 7)}.txt`;
+		  document.body.appendChild(a);
+		  a.click();
+		  document.body.removeChild(a);
+		  URL.revokeObjectURL(url);
+		}
+	</script>
 }
