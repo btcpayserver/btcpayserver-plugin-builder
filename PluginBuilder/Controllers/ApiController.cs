@@ -3,18 +3,14 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Authentication;
-using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
-using PluginBuilder.ViewModels;
-using static Dapper.SqlMapper;
 
 namespace PluginBuilder.Controllers;
 
@@ -153,7 +149,7 @@ public class ApiController(
         await using var conn = await connectionFactory.Open();
 
         var query = $"""
-                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info, , v.signatureproof->>'fingerprint' AS fingerprint
+                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info, v.signatureproof->>'fingerprint' AS fingerprint
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN versions v ON v.plugin_slug = lv.plugin_slug AND v.ver = lv.ver
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
