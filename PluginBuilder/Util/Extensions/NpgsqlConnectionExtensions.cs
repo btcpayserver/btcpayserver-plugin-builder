@@ -480,8 +480,10 @@ public static class NpgsqlConnectionExtensions
         {
             const string sql = """
                                UPDATE plugin_reviews
-                               SET helpful_voters = COALESCE(helpful_voters, '{}'::jsonb) - @userId
-                               WHERE id = @id AND plugin_slug = @slug
+                               SET helpful_voters = helpful_voters - @userId
+                               WHERE id = @id
+                                 AND plugin_slug = @slug
+                                 AND user_id <> @userId;
                                """;
             var rows = await conn.ExecuteAsync(sql, new
             {
@@ -505,7 +507,9 @@ public static class NpgsqlConnectionExtensions
                                    ARRAY[@userId],
                                    to_jsonb(@isHelpful),
                                    true)
-                               WHERE id = @id AND plugin_slug = @slug
+                               WHERE id = @id
+                                 AND plugin_slug = @slug
+                                 AND user_id <> @userId;
                                """;
             var rows = await conn.ExecuteAsync(sql, new
             {
