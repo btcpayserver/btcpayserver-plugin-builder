@@ -43,7 +43,7 @@ public class PluginController(
 
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
         var vm = settings.ToPluginSettingViewModel();
-        vm.IsPluginOwner = pluginOwner == userId;
+        vm.IsPluginPrimaryOwner = pluginOwner == userId;
         return View(vm);
     }
 
@@ -53,25 +53,28 @@ public class PluginController(
         PluginSlug pluginSlug,
         PluginSettingViewModel settingViewModel, [FromForm] bool RemoveLogoFile = false)
     {
-        var userId = userManager.GetUserId(User);
-        await using var conn = await connectionFactory.Open();
-        var existingSetting = await conn.GetSettings(pluginSlug);
-        settingViewModel.LogoUrl = existingSetting?.Logo;
-        var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-        settingViewModel.IsPluginOwner = pluginOwner == userId;
-
         if (settingViewModel is null)
             return NotFound();
-        if (string.IsNullOrEmpty(settingViewModel.GitRepository) || !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
+
+        if (string.IsNullOrWhiteSpace(settingViewModel.GitRepository) || !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
         {
             ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository is required and should be an absolute URL");
             return View(settingViewModel);
         }
+
         if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
         {
             ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
             return View(settingViewModel);
         }
+
+        var userId = userManager.GetUserId(User);
+        await using var conn = await connectionFactory.Open();
+        var existingSetting = await conn.GetSettings(pluginSlug);
+        var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+        settingViewModel.LogoUrl = existingSetting?.Logo;
+        settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
+
         if (settingViewModel.Logo != null)
         {
             if (!settingViewModel.Logo.ValidateUploadedImage(out string errorMessage))
@@ -81,11 +84,11 @@ public class PluginController(
             }
             try
             {
-                settingViewModel.LogoUrl = await azureStorageClient.UploadImageFile(settingViewModel.Logo, $"{settingViewModel.Logo.FileName}");
+                settingViewModel.LogoUrl = await azureStorageClient.UploadImageFile(settingViewModel.Logo, settingViewModel.Logo.FileName);
             }
-            catch (Exception)
+            catch
             {
-                ModelState.AddModelError(nameof(settingViewModel.LogoUrl), "Could not complete settings upload. An error occurred while uploading logo");
+                ModelState.AddModelError(nameof(settingViewModel.LogoUrl), "Could not complete settings upload. An error occurred while uploading image");
                 return View(settingViewModel);
             }
         }
@@ -94,13 +97,15 @@ public class PluginController(
             settingViewModel.Logo = null;
             settingViewModel.LogoUrl = null;
         }
-        if (!settingViewModel.IsPluginOwner && existingSetting is not null)
+        if (!settingViewModel.IsPluginPrimaryOwner && existingSetting is not null)
         {
             settingViewModel.RequireGPGSignatureForRelease = existingSetting.RequireGPGSignatureForRelease;
+            settingViewModel.PluginTitle = existingSetting.PluginTitle;
+            settingViewModel.Description = existingSetting.Description;
         }
         var settings = settingViewModel.ToPluginSettings();
         await conn.SetPluginSettings(pluginSlug, settings);
-        TempData[TempDataConstant.SuccessMessage] = "Settings updated";
+        TempData[TempDataConstant.SuccessMessage] = "Settings updated successfully";
         return RedirectToAction(nameof(Settings), new { pluginSlug });
     }
 

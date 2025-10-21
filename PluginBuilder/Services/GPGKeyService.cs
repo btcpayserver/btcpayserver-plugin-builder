@@ -132,7 +132,7 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
             bool ok = signature.Verify();
             if (!ok)
             {
-                return new SignatureProofResponse(false, "Unable to verify signature. Commit mismatch");
+                return new SignatureProofResponse(false, "Unable to verify signature. Manifest data mismatch");
             }
             var signatureProof = new SignatureProof
             {
@@ -154,7 +154,7 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
     {
         await using var conn = await connectionFactory.Open();
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
-        if (pluginOwners == null || pluginOwners.Count != 0 == false)
+        if (pluginOwners is null || pluginOwners.Count <= 0)
             return string.Empty;
 
         var owner = pluginOwners.FirstOrDefault(o => o.UserId == userId);

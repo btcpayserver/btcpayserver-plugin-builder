@@ -15,6 +15,7 @@ using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Home;
 using PluginBuilder.ModelBinders;
+using PluginBuilder.JsonConverters;
 
 namespace PluginBuilder.Controllers;
 
@@ -235,7 +236,7 @@ public class HomeController(
         versions.AddRange(rows.Select(r =>
         {
             var manifestInfo = JObject.Parse(r.manifest_info);
-            PluginSettings? settings = string.IsNullOrWhiteSpace(r.settings) ? null : JsonConvert.DeserializeObject<PluginSettings>(r.settings);
+            PluginSettings? settings = SafeJson.Deserialize<PluginSettings>(r.settings);
             return new PublishedPlugin
             {
                 PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
@@ -303,7 +304,7 @@ public class HomeController(
         if (row is null)
             return NotFound();
 
-        var settings = string.IsNullOrWhiteSpace((string?)row.settings) ? null : JsonConvert.DeserializeObject<PluginSettings>((string)row.settings);
+        var settings = SafeJson.Deserialize<PluginSettings>((string)row.settings);
 
         var manifestInfo = JObject.Parse((string)row.manifest_info);
         var plugin = new PublishedPlugin
@@ -315,7 +316,7 @@ public class HomeController(
             BuildInfo = JObject.Parse((string)row.build_info),
             ManifestInfo = manifestInfo,
             PluginLogo = settings?.Logo,
-            Documentation = settings.Documentation,
+            Documentation = settings?.Documentation,
             CreatedDate = (DateTimeOffset)row.created_at
         };
         ViewBag.Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir);

@@ -124,7 +124,7 @@ public class AdminController(
             Settings = plugin.Settings,
             Visibility = plugin.Visibility,
             PluginUsers = pluginUsers,
-            PluginSettings = !string.IsNullOrWhiteSpace(plugin.Settings) ? SafeJson.Deserialize<PluginSettings>(plugin.Settings) : new()
+            PluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings)
         });
     }
 
@@ -139,7 +139,7 @@ public class AdminController(
             return View(model);
         }
         var plugin = await conn.GetPluginDetails(slug);
-        var pluginSettings = !string.IsNullOrWhiteSpace(plugin?.Settings) ? SafeJson.Deserialize<PluginSettings>(plugin.Settings) : new PluginSettings();
+        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
         pluginSettings.PluginTitle = model.PluginSettings.PluginTitle;
         pluginSettings.Description = model.PluginSettings.Description;
         var setPluginSettings = await conn.SetPluginSettingsAndVisibility(slug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
