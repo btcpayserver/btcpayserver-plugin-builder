@@ -63,6 +63,23 @@
                 }
             }
 
+            <div class="accordion-item">
+                <div class="accordion-body">
+                    <ul class="navbar-nav">
+                        <li class="nav-item">
+                            <a asp-area=""
+                               asp-controller="Home"
+                               asp-action="AllPlugins"
+                               class="nav-link js-scroll-trigger"
+                               id="Nav-AllPlugins">
+                                <vc:icon symbol="info" />
+                                <span>Public Directory</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
             // Server settings
             @if (User.IsInRole(Roles.ServerAdmin))
             {
@@ -103,13 +120,6 @@
                                        class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.Settings)" id="AdminNav-Settings">
                                         <vc:icon symbol="settings" />
                                         <span text-translate="true">Settings</span>
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a asp-area="" asp-controller="Home" asp-action="AllPlugins"
-                                       class="nav-link js-scroll-trigger" id="AdminNav-AllPlugins">
-                                        <vc:icon symbol="info" />
-                                        <span text-translate="true">Public Directory</span>
                                     </a>
                                 </li>
                                 <li class="nav-item">

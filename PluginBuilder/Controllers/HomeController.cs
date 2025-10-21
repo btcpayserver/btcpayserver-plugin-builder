@@ -15,7 +15,6 @@ using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Home;
 using PluginBuilder.ModelBinders;
-using PluginBuilder.JsonConverters;
 
 namespace PluginBuilder.Controllers;
 
@@ -204,24 +203,41 @@ public class HomeController(
         await using var conn = await connectionFactory.Open();
 
         var query = $"""
-                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info
+                     WITH review_stats AS (
+                       SELECT
+                         plugin_slug,
+                         AVG(rating) AS avg_rating,
+                         COUNT(*)    AS total_reviews
+                       FROM plugin_reviews
+                       GROUP BY plugin_slug
+                     )
+                     SELECT
+                       lv.plugin_slug,
+                       lv.ver,
+                       p.settings,
+                       b.id,
+                       b.manifest_info,
+                       b.build_info,
+                       COALESCE(rs.avg_rating, 0.0) AS avg_rating,
+                       COALESCE(rs.total_reviews, 0) AS total_reviews
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
-                     JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
+                     JOIN builds  b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
                      JOIN plugins p ON b.plugin_slug = p.slug
+                     LEFT JOIN review_stats rs ON rs.plugin_slug = lv.plugin_slug
                      WHERE b.manifest_info IS NOT NULL
-                     AND b.build_info IS NOT NULL
-                     AND (
-                         p.visibility = 'listed'
-                         OR (p.visibility = 'unlisted' AND @hasSearchTerm = true)
-                     )
-                     AND (
-                         @hasSearchTerm = false
-                         OR (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)
-                     )
-                     ORDER BY manifest_info->>'Name'
+                       AND b.build_info IS NOT NULL
+                       AND (
+                           p.visibility = 'listed'
+                           OR (p.visibility = 'unlisted' AND @hasSearchTerm = true)
+                       )
+                       AND (
+                           @hasSearchTerm = false
+                           OR (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)
+                       )
+                     ORDER BY b.manifest_info->>'Name'
                      """;
 
-        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info)>(
+        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, decimal avg_rating, int total_reviews)>(
             query,
             new
             {
@@ -236,7 +252,7 @@ public class HomeController(
         versions.AddRange(rows.Select(r =>
         {
             var manifestInfo = JObject.Parse(r.manifest_info);
-            PluginSettings? settings = SafeJson.Deserialize<PluginSettings>(r.settings);
+            PluginSettings? settings = string.IsNullOrWhiteSpace(r.settings) ? null : JsonConvert.DeserializeObject<PluginSettings>(r.settings);
             return new PublishedPlugin
             {
                 PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
@@ -245,7 +261,12 @@ public class HomeController(
                 Version = string.Join('.', r.ver),
                 BuildInfo = JObject.Parse(r.build_info),
                 ManifestInfo = manifestInfo,
-                PluginLogo = settings?.Logo
+                PluginLogo = settings?.Logo,
+                RatingSummary = new PluginRatingSummary
+                {
+                    Average = r.avg_rating,
+                    TotalReviews = r.total_reviews
+                }
             };
         }));
         return View(versions);
@@ -253,76 +274,272 @@ public class HomeController(
 
     [AllowAnonymous]
     [HttpGet("public/plugins/{pluginSlug}")]
-    public async Task<IActionResult> GetPluginDetails([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug)
+    public async Task<IActionResult> GetPluginDetails(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
+        [FromQuery] PluginDetailsViewModel model)
     {
-        await using var conn = await connectionFactory.Open();
+        model.Sort = model.Sort.ToLowerInvariant() switch { "helpful" => "helpful", _ => "newest" };
+        if (model.RatingFilter is < 1 or > 5) model.RatingFilter = null;
 
         var userId = User.Identity?.IsAuthenticated == true ? userManager.GetUserId(User) : null;
         var isAdmin = User.Identity?.IsAuthenticated == true && User.IsInRole(Roles.ServerAdmin);
 
-        var row = await conn.QueryFirstOrDefaultAsync<dynamic>(
-            """
-            SELECT v.plugin_slug,
-                   v.ver,
-                   p.settings,
-                   b.manifest_info,
-                   b.build_info,
-                   p.visibility,
-                    (
-                        SELECT b2.created_at
-                        FROM builds b2
-                        WHERE b2.plugin_slug = v.plugin_slug
-                        ORDER BY b2.id ASC
-                        LIMIT 1
-                    ) AS created_at
-            FROM versions v
-            JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
-            JOIN plugins p ON b.plugin_slug = p.slug
-            WHERE v.plugin_slug = @pluginSlug
-              AND b.manifest_info IS NOT NULL
-              AND b.build_info IS NOT NULL
-              AND (
-                    p.visibility <> 'hidden'
-                    OR @isAdmin
-                    OR (
-                        @userId IS NOT NULL AND EXISTS (
-                            SELECT 1 FROM users_plugins up
-                            WHERE up.plugin_slug = v.plugin_slug AND up.user_id = @userId
-                        )
-                      )
-                  )
-            ORDER BY v.ver DESC
-            LIMIT 1
-            """,
-            new
+        var orderBy = model.Sort == "helpful"
+            ? " (hv.up_count - hv.down_count) DESC, r.created_at DESC "
+            : " r.created_at DESC ";
+
+        var prms = new
+        {
+            pluginSlug = pluginSlug.ToString(),
+            currentUserId = userId,
+            isAdmin,
+            skip = model.Skip,
+            take = model.Count,
+            sort = model.Sort,
+            rating = model.RatingFilter
+        };
+
+         var sql =
+                         @"
+                         -- FIRST QUERY
+                         SELECT
+                           v.plugin_slug,
+                           array_to_string(v.ver, '.') AS ver_str,
+                           p.settings,
+                           b.manifest_info,
+                           b.build_info,
+                           p.visibility,
+                           (SELECT b2.created_at
+                              FROM builds b2
+                             WHERE b2.plugin_slug = v.plugin_slug
+                             ORDER BY b2.id ASC
+                             LIMIT 1) AS created_at,
+                           (
+                             SELECT array_agg(array_to_string(ver, '.') ORDER BY ver DESC)
+                             FROM versions
+                             WHERE plugin_slug = v.plugin_slug
+                           ) AS versions
+                         FROM versions v
+                         JOIN builds  b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
+                         JOIN plugins p ON b.plugin_slug = p.slug
+                         WHERE v.plugin_slug = @pluginSlug
+                           AND b.manifest_info IS NOT NULL
+                           AND b.build_info  IS NOT NULL
+                           AND (
+                                 p.visibility <> 'hidden'
+                                 OR @isAdmin
+                                 OR (
+                                     @currentUserId IS NOT NULL AND EXISTS (
+                                         SELECT 1 FROM users_plugins up
+                                         WHERE up.plugin_slug = v.plugin_slug AND up.user_id = @currentUserId
+                                     )
+                                 )
+                               )
+                         ORDER BY v.ver DESC
+                         LIMIT 1;
+
+                        -- SECOND QUERY
+                        SELECT
+                          COALESCE(AVG(rating), 0) AS ""Average"",
+                          COUNT(*)                            AS ""TotalReviews"",
+                          COUNT(*) FILTER (WHERE rating = 1)  AS ""C1"",
+                          COUNT(*) FILTER (WHERE rating = 2)  AS ""C2"",
+                          COUNT(*) FILTER (WHERE rating = 3)  AS ""C3"",
+                          COUNT(*) FILTER (WHERE rating = 4)  AS ""C4"",
+                          COUNT(*) FILTER (WHERE rating = 5)  AS ""C5""
+                        FROM plugin_reviews
+                        WHERE plugin_slug = @pluginSlug;
+
+                        -- THIRD QUERY
+                        SELECT
+                          r.id AS Id,
+                          (u.""AccountDetail""->>'github') AS ""AuthorUrl"",
+                          r.rating AS Rating,
+                          r.body AS Body,
+                          array_to_string(r.plugin_version, '.')::text AS ""PluginVersion"",
+                          r.created_at AS ""CreatedAt"",
+                          COALESCE(hv.up_count, 0)   AS ""UpCount"",
+                          COALESCE(hv.down_count, 0) AS ""DownCount"",
+                          ( @currentUserId IS NOT NULL AND r.user_id = @currentUserId ) AS ""IsReviewOwner"",
+                          CASE
+                            WHEN @currentUserId IS NULL THEN NULL
+                            WHEN r.helpful_voters ? @currentUserId
+                              THEN (r.helpful_voters ->> @currentUserId)::boolean
+                            ELSE NULL
+                          END AS ""UserVoteHelpful""
+                        FROM plugin_reviews r
+                        LEFT JOIN ""AspNetUsers"" u ON u.""Id"" = r.user_id
+                        LEFT JOIN LATERAL (
+                          SELECT
+                            COUNT(*) FILTER (WHERE kv.value::boolean)      AS up_count,
+                            COUNT(*) FILTER (WHERE NOT kv.value::boolean)  AS down_count
+                          FROM jsonb_each_text(COALESCE(r.helpful_voters, '{}'::jsonb)) kv
+                        ) hv ON TRUE
+                        WHERE r.plugin_slug = @pluginSlug AND (@rating IS NULL OR r.rating = @rating)
+                        ORDER BY " + orderBy + @"
+                        OFFSET @skip LIMIT @take;"
+                         ;
+
+        await using var conn = await connectionFactory.Open();
+        await using var multi = await conn.QueryMultipleAsync(sql, prms);
+
+        //first
+        var pluginDetails = await multi.ReadFirstOrDefaultAsync<dynamic>();
+        if (pluginDetails is null) return NotFound();
+        var versions = pluginDetails.versions as IEnumerable<string> ?? Enumerable.Empty<string>();
+
+        //second
+        var summary = await multi.ReadFirstOrDefaultAsync<PluginRatingSummary>()
+                      ?? new PluginRatingSummary();
+
+        // third
+        var items = (await multi.ReadAsync<Review>()).ToList();
+
+        foreach (var item in items)
+        {
+            var gh = GetGithubIdentity(item.AuthorUrl, size: 48);
+            if (gh is null)
             {
-                pluginSlug = pluginSlug.ToString(),
-                userId,
-                isAdmin
-            });
-
-        if (row is null)
-            return NotFound();
-
-        var settings = SafeJson.Deserialize<PluginSettings>((string)row.settings);
-
-        var manifestInfo = JObject.Parse((string)row.manifest_info);
+                item.AuthorDisplay   = "Anonymous";
+            }
+            else
+            {
+                item.AuthorDisplay   = gh.Login;
+                item.AuthorUrl       = gh.HtmlUrl;
+                item.AuthorAvatarUrl = gh.AvatarUrl;
+            }
+        }
+        var settings = string.IsNullOrWhiteSpace((string?)pluginDetails.settings) ? null : JsonConvert.DeserializeObject<PluginSettings>((string)pluginDetails.settings);
+        var manifestInfo = JObject.Parse((string)pluginDetails.manifest_info);
         var plugin = new PublishedPlugin
         {
             PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
             Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
             ProjectSlug = pluginSlug.ToString(),
-            Version = string.Join('.', row.ver),
-            BuildInfo = JObject.Parse((string)row.build_info),
             ManifestInfo = manifestInfo,
             PluginLogo = settings?.Logo,
             Documentation = settings?.Documentation,
-            CreatedDate = (DateTimeOffset)row.created_at
+            Version       = (string)pluginDetails.ver_str,
+            BuildInfo     = JObject.Parse((string)pluginDetails.build_info),
+            CreatedDate   = (DateTimeOffset)pluginDetails.created_at,
+            RatingSummary = summary
         };
-        ViewBag.Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir);
-        ViewBag.ShowHiddenNotice = (int)row.visibility == (int)PluginVisibilityEnum.Hidden;
 
-        return View(plugin);
+        var isOwner = false;
+            if (userId != null)
+                isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
+
+        var vm = new PluginDetailsViewModel
+        {
+            Plugin = plugin,
+            Sort = model.Sort,
+            Skip = model.Skip,
+            Reviews = items,
+            IsAdmin = isAdmin,
+            IsOwner = isOwner,
+            PluginVersions = versions.ToList(),
+            ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
+            Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
+            RatingFilter = model.RatingFilter
+        };
+
+        return View(vm);
+    }
+
+    [HttpPost("public/plugins/{pluginSlug}/reviews/upsert")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpsertReview(
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+        int rating,
+        string? body,
+        string? pluginVersion)
+    {
+        if (rating is < 1 or > 5) return BadRequest("Invalid rating.");
+
+        var userId = userManager.GetUserId(User);
+        if (string.IsNullOrEmpty(userId)) return Forbid();
+
+        await using var conn = await connectionFactory.Open();
+
+        var isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
+
+        if (isOwner)
+        {
+            TempData[TempDataConstant.WarningMessage] = "You cannot review your own plugin.";
+            var backUrl = Url.Action(nameof(GetPluginDetails), "Home",
+                new { pluginSlug = pluginSlug.ToString() });
+            return Redirect(backUrl ?? "/");
+        }
+
+        if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
+        {
+            TempData[TempDataConstant.WarningMessage] =
+                "You need to verify your GitHub account in order to review plugins";
+            return RedirectToAction("AccountDetails", "Account");
+        }
+
+        int[]? pluginVersionParts = null;
+        if (!string.IsNullOrWhiteSpace(pluginVersion) &&
+            PluginVersion.TryParse(pluginVersion, out var v))
+        {
+            pluginVersionParts = v.VersionParts;
+        }
+
+        await conn.UpsertPluginReview(pluginSlug, userId, rating, body, pluginVersionParts);
+
+        var sort = Request.Query["sort"].ToString();
+        var url = Url.Action(nameof(GetPluginDetails), "Home",
+            new { pluginSlug = pluginSlug.ToString(), sort = string.IsNullOrEmpty(sort) ? null : sort });
+
+        return Redirect((url ?? "/") + "#reviews");
+    }
+
+    [HttpPost("public/plugins/{pluginSlug}/reviews/{id:long}/vote")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> VoteReview(
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+        long id,
+        bool isHelpful)
+    {
+        var userId = userManager.GetUserId(User);
+        if (string.IsNullOrEmpty(userId)) return Forbid();
+
+        await using var conn = await connectionFactory.Open();
+
+        var current = await conn.GetReviewHelpfulVoteAsync(pluginSlug, id, userId);
+
+        var ok = current == isHelpful
+            ? await conn.RemoveReviewHelpfulVoteAsync(pluginSlug, id, userId)
+            : await conn.UpsertReviewHelpfulVoteAsync(pluginSlug, id, userId, isHelpful);
+
+        if (!ok)
+            TempData[TempDataConstant.WarningMessage] = "Error while updating review helpful vote";
+
+        var url = Url.Action(nameof(GetPluginDetails), new { pluginSlug = pluginSlug.ToString() });
+        return Redirect((url ?? "/") + "#reviews");
+    }
+
+    [HttpPost("public/plugins/{pluginSlug}/reviews/{id:long}/delete")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteReview(
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+        long id)
+    {
+        var userId = userManager.GetUserId(User);
+        if (string.IsNullOrEmpty(userId)) return Forbid();
+
+        var isAdmin = User.Identity?.IsAuthenticated == true && User.IsInRole(Roles.ServerAdmin);
+
+        await using var conn = await connectionFactory.Open();
+
+        var ok = await conn.DeleteReviewAsync(pluginSlug, id, userId, isAdmin);
+
+        if (!ok)
+            TempData[TempDataConstant.WarningMessage] = "Error while deleting review";
+
+        var url = Url.Action(nameof(GetPluginDetails), new { pluginSlug = pluginSlug.ToString() });
+        return Redirect((url ?? "/") + "#reviews");
     }
 
     [AllowAnonymous]
@@ -453,6 +670,45 @@ public class HomeController(
 
         return RedirectToAction(nameof(HomePage), "Home");
     }
+
+    static string? GetGithubHandle(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
+        {
+            var prefixed = "https://" + url.TrimStart('/');
+            if (!Uri.TryCreate(prefixed, UriKind.Absolute, out u))
+                return null;
+        }
+
+        var segs = u.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segs.Length == 0) return null;
+
+        var handle = segs[0];
+        if (handle.Equals("orgs", StringComparison.OrdinalIgnoreCase) ||
+            handle.Equals("users", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return handle;
+    }
+
+    static GitHubContributor? GetGithubIdentity(string? githubUrl, int size = 48)
+    {
+        var handle = GetGithubHandle(githubUrl);
+        if (string.IsNullOrWhiteSpace(handle)) return null;
+
+        var safe = Uri.EscapeDataString(handle);
+        return new GitHubContributor
+        {
+            Login       = handle,
+            HtmlUrl     = $"https://github.com/{safe}",
+            AvatarUrl   = $"https://avatars.githubusercontent.com/{safe}?s={size}",
+            UserViewType= "user",
+            Contributions = 0
+        };
+    }
+
 
     [AllowAnonymous]
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
