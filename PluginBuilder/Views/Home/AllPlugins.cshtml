@@ -76,7 +76,7 @@
                                                                     TotalReviews = plugin.RatingSummary?.TotalReviews ?? 0,
                                                                     ShowNumber = false,
                                                                     ShowTotalReviews = true,
-                                                                    AriaLabelPrefix = plugin.ManifestInfo["Name"]?.ToString()
+                                                                    AriaLabelPrefix = plugin.PluginTitle ?? plugin.ManifestInfo?["Name"]?.ToString()
                                                                 })" />
                                             </div>
 

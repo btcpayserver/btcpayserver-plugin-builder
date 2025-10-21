@@ -9,7 +9,7 @@
 	Layout = "_LayoutPublicModal";
 	var desc = string.IsNullOrWhiteSpace(Model.Plugin.Description) ? "Plugin for BTCPay Server" : Model.Plugin.Description;
 	var owner = Model.Plugin.GetGithubRepository()?.Owner;
-	var dependencies = Model.Plugin.ManifestInfo["Dependencies"] as JArray;
+	var dependencies = Model.Plugin.ManifestInfo?["Dependencies"] as JArray;
 
 	var sourceUrl = Model.Plugin.GetGithubRepository()?.GetSourceUrl(Model.Plugin.BuildInfo?["gitCommit"]?.ToString(), Model.Plugin.BuildInfo?["pluginDir"]?.ToString());
 	var pluginUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = Model.Plugin.ProjectSlug },
@@ -122,8 +122,8 @@
                             <div class="mb-3">
                                 @for (var star = 5; star >= 1; star--)
                                 {
-                                    var count = Model.Plugin.RatingSummary.StarCounts.ContainsKey(star) ? Model.Plugin.RatingSummary.StarCounts[star] : 0;
-                                    var pct   = Model.Plugin.RatingSummary.StarPct.ContainsKey(star)   ? Model.Plugin.RatingSummary.StarPct[star]   : 0;
+                                    var count = Model.Plugin.RatingSummary?.StarCounts?.ContainsKey(star) == true ? Model.Plugin.RatingSummary.StarCounts[star] : 0;
+                                    var pct   = Model.Plugin.RatingSummary?.StarPct?.ContainsKey(star) == true ? Model.Plugin.RatingSummary.StarPct[star] : 0;
                                     var isActive = currentRating == star;
                                     var active = isActive ? "bg-light border rounded px-2" : "";
 
@@ -206,8 +206,8 @@
                                     const string helpfulBaseBtn = "btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center";
 
                                     var voted = review.UserVoteHelpful;
-                                    var upClass   = helpfulBaseBtn   + " " + (voted == true  ? "text-success" : "text-secondary");
-                                    var downClass = helpfulBaseBtn + " " + (voted == false ? "text-danger"  : "text-secondary");
+                                    var upClass   = $"{helpfulBaseBtn} vote-up {(voted == true  ? "text-success" : "text-secondary")}";
+                                    var downClass = $"{helpfulBaseBtn} vote-down {(voted == false ? "text-danger"  : "text-secondary")}";
 
                                     <div class="test-review-card border rounded p-3 mb-3">
                                       <div class="d-flex align-items-start">
@@ -275,8 +275,6 @@
                                                     @Html.AntiForgeryToken()
                                                     <button type="submit"
                                                             class="@upClass"
-                                                            onmouseover="this.classList.add('text-success');this.classList.remove('text-secondary')"
-                                                            onmouseout="this.classList.remove('text-success');this.classList.add('text-secondary')"
                                                             aria-label="Mark this review as helpful">
                                                         <vc:icon symbol="thumb-up" />
                                                         <span class="small ms-1">@review.UpCount</span>
@@ -293,8 +291,6 @@
                                                     @Html.AntiForgeryToken()
                                                     <button type="submit"
                                                             class="@downClass"
-                                                            onmouseover="this.classList.add('text-danger');this.classList.remove('text-secondary')"
-                                                            onmouseout="this.classList.remove('text-danger');this.classList.add('text-secondary')"
                                                             aria-label="Mark this review as not helpful">
                                                         <vc:icon symbol="thumb-down" />
                                                         <span class="small ms-1">@review.DownCount</span>
@@ -496,13 +492,13 @@
                                 <div class="col-6">
                                     <div class="d-flex justify-content-end">
                                         <partial name="_RatingInline" model="@(new RatingInlineViewModel {
-                                                                                 Average        = Model.Plugin.RatingSummary.Average,
-                                                                                 TotalReviews   = Model.Plugin.RatingSummary.TotalReviews,
+                                                                                 Average        = Model.Plugin.RatingSummary?.Average ?? 0,
+                                                                                 TotalReviews   = Model.Plugin.RatingSummary?.TotalReviews ?? 0,
                                                                                  ShowNumber     = true,
                                                                                  SingleStar     = true,
                                                                                  ShowTotalReviews = true,
                                                                                  IconSize       = "fs-5",
-                                                                                 AriaLabelPrefix= Model.Plugin.ManifestInfo["Name"]?.ToString()
+                                                                                 AriaLabelPrefix= Model.Plugin.PluginTitle ?? Model.Plugin.ManifestInfo?["Name"]?.ToString()
                                                                              })" />
                                     </div>
                                 </div>
@@ -553,3 +549,11 @@
         render(input.value);
     })();
 </script>
+
+<style>
+    .btn.vote-up.text-secondary:hover   { color: var(--btcpay-success, #51B13E) !important; }
+    .btn.vote-down.text-secondary:hover { color: var(--btcpay-danger,  #E11900) !important; }
+
+    .btn.vote-up.text-success:hover   { color: var(--btcpay-neutral-600, #6c757d) !important; }
+    .btn.vote-down.text-danger:hover  { color: var(--btcpay-neutral-600, #6c757d) !important; }
+</style>
