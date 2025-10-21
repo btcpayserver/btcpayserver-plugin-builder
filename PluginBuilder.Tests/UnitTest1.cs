@@ -102,7 +102,7 @@ public class UnitTest1 : UnitTestBase
         Assert.Equal("rockstar-stylist", version.ProjectSlug);
 
         // Let's see what happen if there is two versions of the same plugin
-        await conn.ExecuteAsync("INSERT INTO versions VALUES('rockstar-stylist', ARRAY[1,0,2,1], 0, ARRAY[1,4,6,0], 'f', CURRENT_TIMESTAMP), NULL");
+        await conn.ExecuteAsync("INSERT INTO versions VALUES('rockstar-stylist', ARRAY[1,0,2,1], 0, ARRAY[1,4,6,0], 'f', CURRENT_TIMESTAMP, NULL)");
         versions = await client.GetPublishedVersions("1.4.6.0", true);
         version = Assert.Single(versions);
         Assert.Equal("1.0.2.1", version.Version);
