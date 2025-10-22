@@ -335,6 +335,8 @@ public class PluginController(
             b.DownloadLink = buildInfo?.Url;
             b.Error = buildInfo?.Error;
         }
+        // handle require..
+        vm.RequestListing = true;
 
         return View(vm);
     }

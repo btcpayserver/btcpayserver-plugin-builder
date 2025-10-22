@@ -44,6 +44,12 @@
                     Public Page
                 </a>
             }
+			@if (Model.Builds.Any())
+			{
+				<a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary">
+					Request Listing
+				</a>
+			}
             <a id="CreateNewBuild" asp-action="CreateBuild" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary">
                 <span class="fa fa-plus"></span>
                 Create a new build
