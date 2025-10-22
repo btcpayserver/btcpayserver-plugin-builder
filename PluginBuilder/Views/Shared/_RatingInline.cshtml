@@ -21,12 +21,12 @@
 <div class="d-inline-flex align-items-center gap-1 lh-1">
     @if (Model.ShowNumber)
     {
-        <span class="fw-semibold fs-6 align-middle d-inline-flex lh-1">
+        <span class="fw-semibold @iconSize align-middle d-inline-flex lh-1">
             @avg.ToString("0.0", CultureInfo.InvariantCulture)
         </span>
     }
 
-    <span class="d-inline-flex align-items-center lh-1" aria-label="@aria" style="margin-bottom: 3px">
+    <span class="d-inline-flex align-items-center lh-1" aria-label="@aria">
         @if (Model.SingleStar)
         {
             <span class="text-warning @iconSize align-middle lh-1 d-inline-flex">
