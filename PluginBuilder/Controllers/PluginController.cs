@@ -306,13 +306,13 @@ public class PluginController(
         var request = settings?.RequestListing;
         if (request is null)
         {
-            TempData[TempDataConstant.SuccessMessage] = "No listing request exist";
+            TempData[TempDataConstant.WarningMessage] = "No listing request exist";
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
         }
         var now = DateTimeOffset.UtcNow;
         if (now < request.LastReminderEmailSent.AddDays(1))
         {
-            TempData[TempDataConstant.SuccessMessage] = "Please wait 24 hours before sending another reminder";
+            TempData[TempDataConstant.WarningMessage] = "Please wait 24 hours before sending another reminder";
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
         }
         await SendRequestListingEmail(conn, pluginSlug.ToString());

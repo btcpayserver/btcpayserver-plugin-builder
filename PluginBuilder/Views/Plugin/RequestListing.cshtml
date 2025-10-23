@@ -38,12 +38,12 @@
 			<p class="my-3">
 				<strong>Verified social accounts:</strong> All plugin owners’ GitHub accounts are linked and verified. To complete the process
 				<span>
-					<a id="PublicPluginPage" asp-controller="Account" asp-action="AccountDetails" class="text-dark text-decoration-underline">click here</a>
+					<a asp-controller="Account" asp-action="AccountDetails" class="text-dark text-decoration-underline">click here</a>
 				</span>
 			</p>
 			<p class="mb-3">
 				<strong>Plugin Settings:</strong> Plugin logo and documentation url must be set. <span>
-					<a id="PublicPluginPage" asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug" class="text-dark text-decoration-underline">Go to plugin settings to complete</a>
+					<a asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug" class="text-dark text-decoration-underline">Go to plugin settings to complete</a>
 				</span>
 			</p>
 		</div>
