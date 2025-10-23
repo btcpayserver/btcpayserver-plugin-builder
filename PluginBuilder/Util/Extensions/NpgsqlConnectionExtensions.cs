@@ -278,8 +278,7 @@ public static class NpgsqlConnectionExtensions
             }) == 1;
     }
 
-    public static async Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters,
-        FirstBuildEvent? firstBuildEvent = null)
+    public static async Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
     {
         BuildInfo bi = new()
         {
@@ -302,11 +301,6 @@ public static class NpgsqlConnectionExtensions
                 state = BuildStates.Queued.ToEventName(),
                 buildInfo = bi.ToString()
             });
-
-        var currId = await connection.GetLatestPluginBuildNumber(pluginSlug);
-        if (currId == 0 && firstBuildEvent is not null)
-            await firstBuildEvent.OnFirstBuildCreated(connection, pluginSlug);
-
         return buildId;
     }
 

@@ -57,29 +57,31 @@ public class EmailService
         return SendEmail(toEmail, "Verify your account on BTCPay Server Plugin Builder", body);
     }
 
-    public async Task NotifyAdminOnNewPluginBuild(NpgsqlConnection conn, PluginSlug pluginSlug, string pluginPluginUrl)
+    public async Task NotifyAdminOnNewRequestListing(NpgsqlConnection conn, PluginSlug pluginSlug, string pluginPluginUrl, string listingPageUrl)
     {
         var notificationSettingEmails = await conn.GetFirstPluginBuildReviewersSetting();
-        var currId = await conn.GetLatestPluginBuildNumber(pluginSlug);
-        if (string.IsNullOrEmpty(notificationSettingEmails) || currId != 0) return;
+        if (string.IsNullOrEmpty(notificationSettingEmails))
+            return;
 
         var toList = notificationSettingEmails.Split(",", StringSplitOptions.RemoveEmptyEntries).Select(MailboxAddressValidator.Parse);
         var body = $@"
 Hello Admin,
 
-A new plugin has just been published on the BTCPay Server Plugin Builder.
+A new plugin has just been published on the BTCPay Server Plugin Builder and is requesting lisitng to public page.
 
 Plugin URL: {pluginPluginUrl}
 
-Please review and verify the plugin details as soon as possible.
+Listing Page: {listingPageUrl}
+
+Please review and list the plugin details as soon as possible.
 
 Thank you,
 BTCPay Server Plugin Builder";
         try
         {
-            await DeliverEmail(toList, "New Plugin Published on BTCPay Server Plugin Builder", body);
+            await DeliverEmail(toList, "New Plugin Request Listing on BTCPay Server Plugin Builder", body);
         }
-        catch (Exception) {}
+        catch (Exception) { }
     }
 
     public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb()
