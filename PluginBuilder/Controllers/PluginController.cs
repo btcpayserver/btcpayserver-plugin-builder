@@ -312,7 +312,7 @@ public class PluginController(
         var now = DateTimeOffset.UtcNow;
         if (now < request.LastReminderEmailSent.AddDays(1))
         {
-            TempData[TempDataConstant.SuccessMessage] = "No listing request exist";
+            TempData[TempDataConstant.SuccessMessage] = "Please wait 24 hours before sending another reminder";
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
         }
         await SendRequestListingEmail(conn, pluginSlug.ToString());

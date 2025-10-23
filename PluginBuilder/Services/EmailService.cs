@@ -57,7 +57,7 @@ public class EmailService
         return SendEmail(toEmail, "Verify your account on BTCPay Server Plugin Builder", body);
     }
 
-    public async Task NotifyAdminOnNewRequestListing(NpgsqlConnection conn, PluginSlug pluginSlug, string pluginPluginUrl, string listingPageUrl)
+    public async Task NotifyAdminOnNewRequestListing(NpgsqlConnection conn, PluginSlug pluginSlug, string pluginPublicUrl, string listingPageUrl)
     {
         var notificationSettingEmails = await conn.GetFirstPluginBuildReviewersSetting();
         if (string.IsNullOrEmpty(notificationSettingEmails))
@@ -69,7 +69,7 @@ Hello Admin,
 
 A new plugin has just been published on the BTCPay Server Plugin Builder and is requesting lisitng to public page.
 
-Plugin URL: {pluginPluginUrl}
+Plugin URL: {pluginPublicUrl}
 
 Listing Page: {listingPageUrl}
 

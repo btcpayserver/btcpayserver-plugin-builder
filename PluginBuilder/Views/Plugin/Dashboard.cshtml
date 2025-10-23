@@ -46,14 +46,9 @@
             }
 			@if (Model.RequestListing && Model.Builds.Any())
 			{
-				<a id="PublicPluginPage" asp-controller="Plugin" asp-action="RequestListing" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary">
-					Request Listing
-				</a>
+				<a asp-controller="Plugin" asp-action="RequestListing" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary">Request Listing</a>
 			}
-            <a id="CreateNewBuild" asp-action="CreateBuild" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary">
-                <span class="fa fa-plus"></span>
-                Create a new build
-            </a>
+            <a id="CreateNewBuild" asp-action="CreateBuild" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary"><span class="fa fa-plus"></span> Create a new build</a>
         </div>
     }
 </div>
