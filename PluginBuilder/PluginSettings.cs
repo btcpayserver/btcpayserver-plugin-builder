@@ -32,7 +32,7 @@ public class PluginSettings
 
 public class PluginRequestListingRecord
 {
-    public string PluginReleaseDescription { get; set; }
+    public string ReleaseNote { get; set; }
     public string TelegramVerificationMessage { get; set; }
     public string UserReviews { get; set; }
     public DateTimeOffset DateAdded { get; set; }

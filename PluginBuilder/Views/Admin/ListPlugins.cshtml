@@ -18,7 +18,6 @@
                 </label>
             </form>
         </div>
-
         @if (Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Any())
         {
             <a asp-controller="Admin" asp-action="EmailSender"
@@ -84,7 +83,14 @@
                     <td>@plugin.PreRelease</td>
                     <td>@plugin.UpdatedAt</td>
                     <td>@plugin.PrimaryOwnerEmail</td>
-                    <td>@plugin.Visibility</td>
+					<td>
+						@plugin.Visibility
+						@if (plugin.HasPendingListingRequest)
+						{
+							<span class="badge bg-warning ms-1" title="Listing request waiting for review"><vc:icon symbol="new-version" /></span>
+						}
+					</td>
+
                     <td>
                         <a asp-controller="Admin" asp-action="PluginEdit" asp-route-slug="@plugin.ProjectSlug">Edit</a> |
                         <a asp-controller="Admin" asp-action="PluginDelete" asp-route-slug="@plugin.ProjectSlug">Delete</a>

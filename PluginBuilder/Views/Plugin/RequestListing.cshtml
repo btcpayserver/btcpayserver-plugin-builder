@@ -56,9 +56,9 @@
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
             <div class="form-group">
-				<label asp-for="PluginReleaseDescription" class="form-label" data-required>Plugin Description <span class="text-muted">(max 200 characters)</span></label>
-				<textarea asp-for="PluginReleaseDescription" rows="2" maxlength="200" class="form-control" required></textarea>
-				<span asp-validation-for="PluginReleaseDescription" class="text-danger"></span>
+				<label asp-for="ReleaseNote" class="form-label" data-required>Release Note <span class="text-muted">(max 200 characters)</span></label>
+				<textarea asp-for="ReleaseNote" rows="2" maxlength="200" class="form-control" required></textarea>
+				<span asp-validation-for="ReleaseNote" class="text-danger"></span>
 				<span class="text-muted">This will appear in BTCPay Server's social post. Refine it as an elevator pitch.</span>
             </div>
 

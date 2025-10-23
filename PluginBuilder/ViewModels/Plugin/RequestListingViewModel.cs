@@ -5,7 +5,9 @@ namespace PluginBuilder.ViewModels;
 public class RequestListingViewModel
 {
     public string PluginSlug { get; set; }
-    public string PluginReleaseDescription { get; set; }
+
+    [Display(Name = "Release Note")]
+    public string ReleaseNote { get; set; }
     public string TelegramVerificationMessage { get; set; }
     public string UserReviews { get; set; }
     public bool ValidationRequirementMet { get; set; }

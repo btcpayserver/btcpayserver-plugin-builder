@@ -1,4 +1,5 @@
 using System.Data;
+using System.Threading.Tasks;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -233,7 +234,7 @@ public class PluginController(
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
         var request = pluginSettings?.RequestListing;
-        model.PluginReleaseDescription = pluginSettings?.Description;
+        model.ReleaseNote = pluginSettings?.Description;
         if (request != null)
         {
             var now = DateTimeOffset.UtcNow;
@@ -241,11 +242,11 @@ public class PluginController(
             model.PendingListing = true;
             model.TelegramVerificationMessage = request.TelegramVerificationMessage;
             model.UserReviews = request.UserReviews;
-            model.PluginReleaseDescription = request.PluginReleaseDescription;
+            model.ReleaseNote = request.ReleaseNote;
             model.AnnouncementDate = request.AnnouncementDate;
             TempData[TempDataConstant.WarningMessage] = "Your listing request has been sent and is pending validation";
         }
-        model.ValidationRequirementMet = ListingRequirementsMet(pluginSettings, pluginOwners);
+        model.ValidationRequirementMet = await ListingRequirementsMet(conn, pluginSettings, pluginOwners);
         return View(model);
     }
 
@@ -263,8 +264,8 @@ public class PluginController(
         if (plugin?.Visibility == PluginVisibilityEnum.Listed)
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
 
-        if (string.IsNullOrWhiteSpace(model.PluginReleaseDescription))
-            ModelState.AddModelError(nameof(model.PluginReleaseDescription), "Description is required.");
+        if (string.IsNullOrWhiteSpace(model.ReleaseNote))
+            ModelState.AddModelError(nameof(model.ReleaseNote), "Description is required.");
 
         if (string.IsNullOrWhiteSpace(model.TelegramVerificationMessage))
             ModelState.AddModelError(nameof(model.TelegramVerificationMessage), "Telegram verification message is required.");
@@ -275,13 +276,13 @@ public class PluginController(
         if (!ModelState.IsValid)
         {
             var owners = await conn.GetPluginOwners(pluginSlug);
-            model.ValidationRequirementMet = ListingRequirementsMet(pluginSettings, owners);
+            model.ValidationRequirementMet = await ListingRequirementsMet(conn, pluginSettings, owners);
             model.PendingListing = pluginSettings?.RequestListing != null;
             return View(model);
         }
         pluginSettings.RequestListing = new()
         {
-            PluginReleaseDescription = model.PluginReleaseDescription.Trim(),
+            ReleaseNote = model.ReleaseNote.Trim(),
             TelegramVerificationMessage = model.TelegramVerificationMessage.Trim(),
             UserReviews = model.UserReviews.Trim(),
             AnnouncementDate = model.AnnouncementDate,
@@ -321,16 +322,25 @@ public class PluginController(
         return RedirectToAction(nameof(RequestListing), new { pluginSlug });
     }
 
-    private static bool ListingRequirementsMet(PluginSettings plugin, List<OwnerVm> owners)
+    private static async Task<bool> ListingRequirementsMet(NpgsqlConnection conn, PluginSettings plugin, List<OwnerVm> owners)
     {
-        // WOuld need to validate all owners have verified email and github and social account.. then we would add to the requirement check
-        return !string.IsNullOrWhiteSpace(plugin?.GitRepository) && !string.IsNullOrWhiteSpace(plugin?.Documentation) && !string.IsNullOrWhiteSpace(plugin?.Logo);
+        if (plugin == null) return false;
+
+        bool hasRequiredFields = !string.IsNullOrWhiteSpace(plugin.GitRepository) && !string.IsNullOrWhiteSpace(plugin.Documentation) && !string.IsNullOrWhiteSpace(plugin.Logo);
+        if (!hasRequiredFields) return false;
+
+        foreach (var owner in owners)
+        {
+            if (!await conn.IsSocialAccountsVerified(owner.UserId))
+                return false;
+        }
+        return true;
     }
 
     private async Task SendRequestListingEmail(NpgsqlConnection conn, string pluginSlug)
     {
         var pluginPublicUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug }, Request.Scheme);
-        var listingReviewUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug }, Request.Scheme);
+        var listingReviewUrl = Url.Action(nameof(AdminController.PluginEdit), "Admin", new { slug = pluginSlug }, Request.Scheme);
         await emailService.NotifyAdminOnNewRequestListing(conn, pluginSlug, pluginPublicUrl!, listingReviewUrl!);
     }
 

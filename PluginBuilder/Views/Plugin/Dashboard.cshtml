@@ -44,7 +44,7 @@
                     Public Page
                 </a>
             }
-			@if (Model.RequestListing)
+			@if (Model.RequestListing && Model.Builds.Any())
 			{
 				<a id="PublicPluginPage" asp-controller="Plugin" asp-action="RequestListing" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary">
 					Request Listing

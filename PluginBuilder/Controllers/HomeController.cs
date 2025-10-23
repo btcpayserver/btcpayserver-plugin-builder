@@ -80,12 +80,6 @@ public class HomeController(
             b.PluginSlug = row.slug;
             b.PluginIdentifier = row.identifier ?? row.slug;
         }
-        var slug = rows?.First().slug;
-        if (!string.IsNullOrEmpty(slug))
-        {
-            var pluginSettings = await conn.GetPluginDetails(slug);
-            vm.RequestListing = pluginSettings?.Visibility == PluginVisibilityEnum.Unlisted;
-        }
         return View("Views/Plugin/Dashboard", vm);
     }
 
