@@ -487,20 +487,21 @@
                                 </div>
                             </div>
 
-                            <div class="row mb-3">
-                                <div class="col-6"><strong>Rating</strong></div>
+                            <div class="row mb-3 align-items-center">
                                 <div class="col-6">
-                                    <div class="d-flex justify-content-end">
+                                    <strong class="align-middle">Rating</strong>
+                                </div>
+                                <div class="col-6 d-flex align-items-center justify-content-end">
+                                    <span class="d-inline-flex align-items-center lh-1 gap-2">
                                         <partial name="_RatingInline" model="@(new RatingInlineViewModel {
-                                                                                 Average        = Model.Plugin.RatingSummary?.Average ?? 0,
-                                                                                 TotalReviews   = Model.Plugin.RatingSummary?.TotalReviews ?? 0,
-                                                                                 ShowNumber     = true,
-                                                                                 SingleStar     = true,
-                                                                                 ShowTotalReviews = true,
-                                                                                 IconSize       = "fs-5",
-                                                                                 AriaLabelPrefix= Model.Plugin.PluginTitle ?? Model.Plugin.ManifestInfo?["Name"]?.ToString()
-                                                                             })" />
-                                    </div>
+                                               Average        = Model.Plugin.RatingSummary?.Average ?? 0,
+                                               TotalReviews   = Model.Plugin.RatingSummary?.TotalReviews ?? 0,
+                                               ShowNumber     = true,
+                                               SingleStar     = true,
+                                               ShowTotalReviews = true,
+                                               IconSize       = "fs-5"
+                                           })" />
+                                    </span>
                                 </div>
                             </div>
                         </div>

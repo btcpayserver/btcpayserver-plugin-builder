@@ -1,5 +1,13 @@
+@inject IFileVersionProvider FileVersionProvider
 @model PluginBuilder.Components.Icon.IconViewModel
 
+@{
+    var requestPathBase = ViewContext.HttpContext.Request.PathBase;
+    var spritePath = FileVersionProvider.AddFileVersionToPath(
+        requestPathBase,
+        "/img/icon-sprite.svg"
+    );
+}
 <svg role="img" class="icon icon-@Model.Symbol">
-    <use href="/img/icon-sprite.svg#@Model.Symbol"></use>
+    <use href="@spritePath#@Model.Symbol"></use>
 </svg>
