@@ -24,6 +24,7 @@ public class AdminController(
     UserManager<IdentityUser> userManager,
     RoleManager<IdentityRole> roleManager,
     DBConnectionFactory connectionFactory,
+    AzureStorageClient azureStorageClient,
     EmailService emailService,
     UserVerifiedCache userVerifiedCache,
     ReferrerNavigationService referrerNavigation,
@@ -42,7 +43,7 @@ public class AdminController(
         var parameters = new DynamicParameters();
         if (!string.IsNullOrEmpty(model.SearchText))
         {
-            whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText)");
+            whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText OR p.settings->>'PluginTitle' ILIKE @searchText)");
             parameters.Add("searchText", $"%{model.SearchText}%");
         }
         if (!string.IsNullOrEmpty(model.Status) && Enum.TryParse<PluginVisibilityEnum>(model.Status, true, out var statusEnum))
@@ -56,7 +57,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var rows = await conn.QueryAsync($"""
-                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
+                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email, p.settings->>'PluginTitle' AS title
                                          FROM plugins p
                                          LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
@@ -77,7 +78,8 @@ public class AdminController(
             {
                 ProjectSlug = row.slug,
                 Visibility = row.visibility,
-                PrimaryOwnerEmail = row.email
+                PrimaryOwnerEmail = row.email,
+                PluginTitle = row.title
             };
             if (row.ver != null)
             {
@@ -124,13 +126,13 @@ public class AdminController(
             Settings = plugin.Settings,
             Visibility = plugin.Visibility,
             PluginUsers = pluginUsers,
-            PluginSettings = !string.IsNullOrWhiteSpace(plugin.Settings) ? SafeJson.Deserialize<PluginSettings>(plugin.Settings) : new()
+            PluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings)
         });
     }
 
 
     [HttpPost("plugins/edit/{slug}")]
-    public async Task<IActionResult> PluginEdit(string slug, PluginEditViewModel model)
+    public async Task<IActionResult> PluginEdit(string slug, PluginEditViewModel model, [FromForm] bool removeLogoFile = false)
     {
         await using var conn = await connectionFactory.Open();
         if (!ModelState.IsValid)
@@ -139,9 +141,39 @@ public class AdminController(
             return View(model);
         }
         var plugin = await conn.GetPluginDetails(slug);
-        var pluginSettings = !string.IsNullOrWhiteSpace(plugin?.Settings) ? SafeJson.Deserialize<PluginSettings>(plugin.Settings) : new PluginSettings();
+        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
         pluginSettings.PluginTitle = model.PluginSettings.PluginTitle;
         pluginSettings.Description = model.PluginSettings.Description;
+        pluginSettings.GitRepository = model.PluginSettings.GitRepository;
+        pluginSettings.GitRef = model.PluginSettings.GitRef;
+        pluginSettings.BuildConfig = model.PluginSettings.BuildConfig;
+        pluginSettings.Documentation = model.PluginSettings.Documentation;
+        pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
+        if (model.LogoFile != null)
+        {
+            if (!model.LogoFile.ValidateUploadedImage(out string errorMessage))
+            {
+                ModelState.AddModelError(nameof(model.LogoFile), $"Image upload validation failed: {errorMessage}");
+                model.PluginUsers = await GetPluginUsers(conn, slug);
+                return View(model);
+            }
+            try
+            {
+                pluginSettings.Logo = await azureStorageClient.UploadImageFile(model.LogoFile, $"{model.LogoFile.FileName}");
+            }
+            catch (Exception)
+            {
+                ModelState.AddModelError(nameof(model.PluginSettings.Logo), "Could not complete settings upload. An error occurred while uploading logo");
+                model.PluginUsers = await GetPluginUsers(conn, slug);
+                return View(model);
+            }
+        }
+        else if (removeLogoFile)
+        {
+            model.LogoFile = null;
+            pluginSettings.Logo = null;
+        }
+
         var setPluginSettings = await conn.SetPluginSettingsAndVisibility(slug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
         if (!setPluginSettings) return NotFound();
 

@@ -20,7 +20,6 @@
 				<code>@Model.Identifier</code>
 			</div>
 		}
-
 		@if (Model.PluginUsers?.Any() == true)
 		{
 			<div class="mb-5">
@@ -53,7 +52,7 @@
 			</div>
 		}
 
-		<form asp-action="PluginEdit" method="post">
+		<form asp-action="PluginEdit" method="post" enctype="multipart/form-data">
 			@Html.AntiForgeryToken()
 			<div class="mb-3">
 				<label class="form-label fw-semibold">Plugin Title</label>
@@ -63,6 +62,47 @@
 				<label class="form-label fw-semibold">Description</label>
 				<textarea asp-for="PluginSettings.Description" class="form-control" rows="4" placeholder="Enter plugin description">@Model.PluginSettings?.Description</textarea>
 			</div>
+			<div class="form-group">
+				<label asp-for="PluginSettings.GitRepository" class="form-label"></label>
+				<input asp-for="PluginSettings.GitRepository" class="form-control" placeholder="https://github.com/Kukks/btcpayserver" />
+			</div>
+			<div class="form-group">
+				<label asp-for="PluginSettings.Documentation" class="form-label"></label>
+				<input asp-for="PluginSettings.Documentation" class="form-control" placeholder="https://docs.btcpayserver.org/PodServer/" />
+			</div>
+			<div class="form-group">
+				<label asp-for="PluginSettings.GitRef" class="form-label"></label>
+				<input asp-for="PluginSettings.GitRef" class="form-control" placeholder="plugins/collection" />
+			</div>
+			<div class="form-group">
+				<label asp-for="PluginSettings.PluginDirectory" class="form-label"></label>
+				<input asp-for="PluginSettings.PluginDirectory" class="form-control" placeholder="Plugins/BTCPayServer.Plugins.RockstarStylist" />
+			</div>
+			<div class="form-group">
+				<label asp-for="PluginSettings.BuildConfig" class="form-label"></label>
+				<input asp-for="PluginSettings.BuildConfig" class="form-control" placeholder="Release" />
+			</div>
+
+			<div class="form-group">
+				<div class="d-flex align-items-center justify-content-between gap-2">
+					<label asp-for="PluginSettings.Logo" class="form-label"></label>
+					@if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
+					{
+						<button type="submit" class="btn btn-link p-0 text-danger" name="removeLogoFile" value="true">
+							<vc:icon symbol="cross" /> Remove
+						</button>
+					}
+				</div>
+				<div class="d-flex align-items-center gap-3">
+					<input asp-for="LogoFile" type="file" class="form-control flex-grow" accept="image/*">
+					@if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
+					{
+						<img src="@Model.PluginSettings.Logo" alt="Logo" style="height:2.1rem;max-width:10.5rem;" />
+					}
+				</div>
+				<span asp-validation-for="PluginSettings.Logo" class="text-danger"></span>
+			</div>
+
 			<div class="mb-3">
 				<label asp-for="Visibility" class="form-label"></label>
 				<select asp-for="Visibility" class="form-select" asp-items="Html.GetEnumSelectList<PluginVisibilityEnum>()"></select>
