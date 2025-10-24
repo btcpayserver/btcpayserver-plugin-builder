@@ -5,6 +5,7 @@ namespace PluginBuilder.ViewModels.Admin;
 public class AdminPluginViewModel
 {
     public string ProjectSlug { get; set; } = null!;
+    public string? PluginTitle { get; set; }
     public string? Version { get; set; }
     public long? BuildId { get; set; }
     public string? BtcPayMinVer { get; set; }
