@@ -159,7 +159,8 @@ public class AdminController(
             }
             try
             {
-                pluginSettings.Logo = await azureStorageClient.UploadImageFile(model.LogoFile, $"{model.LogoFile.FileName}");
+                var uniqueBlobName = $"{slug}-{Guid.NewGuid()}{Path.GetExtension(model.LogoFile.FileName)}";
+                pluginSettings.Logo = await azureStorageClient.UploadImageFile(model.LogoFile, uniqueBlobName);
             }
             catch (Exception)
             {
