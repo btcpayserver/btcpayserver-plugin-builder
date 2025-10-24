@@ -56,7 +56,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var rows = await conn.QueryAsync($"""
-                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
+                                         SELECT p.slug, p.visibility, p.settings, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email
                                          FROM plugins p
                                          LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
@@ -73,11 +73,13 @@ public class AdminController(
 
         foreach (var row in rows)
         {
+            var pluginSettings = SafeJson.Deserialize<PluginSettings>((string)row.settings);
             AdminPluginViewModel plugin = new()
             {
                 ProjectSlug = row.slug,
                 Visibility = row.visibility,
-                PrimaryOwnerEmail = row.email
+                PrimaryOwnerEmail = row.email,
+                HasPendingListingRequest = pluginSettings?.RequestListing != null && row.visibility == PluginVisibilityEnum.Unlisted
             };
             if (row.ver != null)
             {
@@ -124,7 +126,7 @@ public class AdminController(
             Settings = plugin.Settings,
             Visibility = plugin.Visibility,
             PluginUsers = pluginUsers,
-            PluginSettings = !string.IsNullOrWhiteSpace(plugin.Settings) ? SafeJson.Deserialize<PluginSettings>(plugin.Settings) : new()
+            PluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings)
         });
     }
 
@@ -139,7 +141,7 @@ public class AdminController(
             return View(model);
         }
         var plugin = await conn.GetPluginDetails(slug);
-        var pluginSettings = !string.IsNullOrWhiteSpace(plugin?.Settings) ? SafeJson.Deserialize<PluginSettings>(plugin.Settings) : new PluginSettings();
+        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
         pluginSettings.PluginTitle = model.PluginSettings.PluginTitle;
         pluginSettings.Description = model.PluginSettings.Description;
         var setPluginSettings = await conn.SetPluginSettingsAndVisibility(slug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
