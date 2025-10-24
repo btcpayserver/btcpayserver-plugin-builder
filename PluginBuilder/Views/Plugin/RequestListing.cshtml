@@ -32,21 +32,18 @@
 		<h5 class="alert-heading" text-translate="true">Important notice about listing this plugin</h5>
 		<p class="mb-0">
 			<span text-translate="true">To get this plugin listed with other public BTCPay Server plugins, please ensure you have the following addressed</span>
-			<a href="#warning-details" data-bs-toggle="collapse" class="alert-link" text-translate="true">Read more</a>
 		</p>
-		<div class="collapse" id="warning-details">
-			<p class="my-3">
-				<strong>Verified social accounts:</strong> All plugin owners’ GitHub accounts are linked and verified. To complete the process
-				<span>
-					<a asp-controller="Account" asp-action="AccountDetails" class="text-dark text-decoration-underline">click here</a>
-				</span>
-			</p>
-			<p class="mb-3">
-				<strong>Plugin Settings:</strong> Plugin logo and documentation url must be set. <span>
-					<a asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug" class="text-dark text-decoration-underline">Go to plugin settings to complete</a>
-				</span>
-			</p>
-		</div>
+		<p class="my-3">
+			<strong>Verified social accounts:</strong> All plugin owners’ GitHub accounts are linked and verified. To complete the process
+			<span>
+				<a asp-controller="Account" asp-action="AccountDetails" class="text-dark text-decoration-underline">click here</a>
+			</span>
+		</p>
+		<p class="mb-3">
+			<strong>Plugin Settings:</strong> Plugin logo and documentation url must be set. <span>
+				<a asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug" class="text-dark text-decoration-underline">Go to plugin settings to complete</a>
+			</span>
+		</p>
 	</div>
 }
 
@@ -69,7 +66,7 @@
 			</div>
 
 			<div class="form-group">
-				<label asp-for="UserReviews" class="form-label" data-required></label>
+				<label asp-for="UserReviews" class="form-label" data-required>User Reviews</label>
 				<textarea asp-for="UserReviews" class="form-control" rows="4" placeholder="https://primal.net/e/nevent1qqsqkw7c5qmlue0qvyz784ywrpkvnz2v33js4ajkj2dj0xdjdn6n2qqem7auc" required></textarea>
 				<span asp-validation-for="UserReviews" class="text-danger"></span>
 				<span class="text-muted">Require at least one publicly posted review ( Nostr, X, or user websites) from a reputable Bitcoiner who tested the plugin</span>

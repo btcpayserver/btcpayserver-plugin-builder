@@ -34,7 +34,7 @@
 				@if (Model.PluginUsers?.Any() == true)
 				{
 					<div class="mb-5">
-						<h5 class="fw-bold mb-3">Plugin Users</h5>
+						<h5 class="fw-bold mb-3">Owners</h5>
 						@foreach (var user in Model.PluginUsers)
 						{
 							<div class="d-flex justify-content-between align-items-center border-bottom py-2">
@@ -114,7 +114,7 @@
 				</div>
 
 				<div class="mb-3 row">
-					<label class="col-sm-3 col-form-label fw-semibold">Release Description</label>
+					<label class="col-sm-3 col-form-label fw-semibold">Release Note</label>
 					<div class="col-sm-9">
 						<p class="form-control-plaintext">@Model.PluginSettings.RequestListing.ReleaseNote</p>
 					</div>
