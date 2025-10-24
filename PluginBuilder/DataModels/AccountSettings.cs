@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using PluginBuilder.ViewModels;
 
 namespace PluginBuilder.DataModels;
 
@@ -16,4 +17,5 @@ public class AccountSettings
     [Display(Name = "Public Email address")]
     public string? Email { get; set; }
     public string? PendingNewEmail { get; set; }
+    public PgpKeyViewModel? GPGKey { get; set; }
 }

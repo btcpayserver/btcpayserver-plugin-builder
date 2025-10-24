@@ -15,6 +15,7 @@ using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Home;
 using PluginBuilder.ModelBinders;
+using PluginBuilder.JsonConverters;
 
 namespace PluginBuilder.Controllers;
 
@@ -252,7 +253,7 @@ public class HomeController(
         versions.AddRange(rows.Select(r =>
         {
             var manifestInfo = JObject.Parse(r.manifest_info);
-            PluginSettings? settings = string.IsNullOrWhiteSpace(r.settings) ? null : JsonConvert.DeserializeObject<PluginSettings>(r.settings);
+            PluginSettings? settings = SafeJson.Deserialize<PluginSettings>(r.settings);
             return new PublishedPlugin
             {
                 PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
@@ -410,7 +411,7 @@ public class HomeController(
                 item.AuthorAvatarUrl = gh.AvatarUrl;
             }
         }
-        var settings = string.IsNullOrWhiteSpace((string?)pluginDetails.settings) ? null : JsonConvert.DeserializeObject<PluginSettings>((string)pluginDetails.settings);
+        var settings = SafeJson.Deserialize<PluginSettings>((string)pluginDetails.settings);
         var manifestInfo = JObject.Parse((string)pluginDetails.manifest_info);
         var plugin = new PublishedPlugin
         {

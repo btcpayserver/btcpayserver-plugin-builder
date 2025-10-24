@@ -1,3 +1,4 @@
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -21,6 +22,7 @@ public class PluginController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
     BuildService buildService,
+    GPGKeyService gpgKeyService,
     AzureStorageClient azureStorageClient,
     UserVerifiedLogic userVerifiedLogic,
     FirstBuildEvent firstBuildEvent,
@@ -49,34 +51,29 @@ public class PluginController(
     public async Task<IActionResult> Settings(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        PluginSettingViewModel settingViewModel, [FromForm] bool removeLogoFile = false)
+        PluginSettingViewModel settingViewModel, [FromForm] bool RemoveLogoFile = false)
     {
         if (settingViewModel is null)
             return NotFound();
 
-        var userId = userManager.GetUserId(User);
-        await using var conn = await connectionFactory.Open();
-        var existingSetting = await conn.GetSettings(pluginSlug);
-        settingViewModel.LogoUrl = existingSetting?.Logo;
-        var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-        settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
-
-        if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
-        {
-            TempData[TempDataConstant.WarningMessage] = "Plugin title and description are required";
-            return RedirectToAction(nameof(Settings), "Plugin", new { pluginSlug });
-        }
-
-        if (string.IsNullOrEmpty(settingViewModel.GitRepository) || !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
+        if (string.IsNullOrWhiteSpace(settingViewModel.GitRepository) || !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
         {
             ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository is required and should be an absolute URL");
             return View(settingViewModel);
         }
+
         if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
         {
             ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
             return View(settingViewModel);
         }
+
+        var userId = userManager.GetUserId(User);
+        await using var conn = await connectionFactory.Open();
+        var existingSetting = await conn.GetSettings(pluginSlug);
+        var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+        settingViewModel.LogoUrl = existingSetting?.Logo;
+        settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
 
         if (settingViewModel.Logo != null)
         {
@@ -87,27 +84,28 @@ public class PluginController(
             }
             try
             {
-                settingViewModel.LogoUrl = await azureStorageClient.UploadImageFile(settingViewModel.Logo, $"{settingViewModel.Logo.FileName}");
+                settingViewModel.LogoUrl = await azureStorageClient.UploadImageFile(settingViewModel.Logo, settingViewModel.Logo.FileName);
             }
-            catch (Exception)
+            catch
             {
-                ModelState.AddModelError(nameof(settingViewModel.LogoUrl), "Could not complete settings upload. An error occurred while uploading logo");
+                ModelState.AddModelError(nameof(settingViewModel.LogoUrl), "Could not complete settings upload. An error occurred while uploading image");
                 return View(settingViewModel);
             }
         }
-        else if (removeLogoFile)
+        else if (RemoveLogoFile)
         {
             settingViewModel.Logo = null;
             settingViewModel.LogoUrl = null;
         }
-        if (!settingViewModel.IsPluginPrimaryOwner)
+        if (!settingViewModel.IsPluginPrimaryOwner && existingSetting is not null)
         {
-            settingViewModel.PluginTitle = existingSetting?.PluginTitle;
-            settingViewModel.Description = existingSetting?.Description;
+            settingViewModel.RequireGPGSignatureForRelease = existingSetting.RequireGPGSignatureForRelease;
+            settingViewModel.PluginTitle = existingSetting.PluginTitle;
+            settingViewModel.Description = existingSetting.Description;
         }
         var settings = settingViewModel.ToPluginSettings();
         await conn.SetPluginSettings(pluginSlug, settings);
-        TempData[TempDataConstant.SuccessMessage] = "Settings updated";
+        TempData[TempDataConstant.SuccessMessage] = "Settings updated successfully";
         return RedirectToAction(nameof(Settings), new { pluginSlug });
     }
 
@@ -206,32 +204,59 @@ public class PluginController(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
         [ModelBinder(typeof(PluginVersionModelBinder))]
-        PluginVersion version, string command)
+        PluginVersion version, string command, IFormFile? signatureFile)
     {
         await using var conn = await connectionFactory.Open();
 
-        if (command == "remove")
-        {
-            var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)>(
+        var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)>(
                 "SELECT v.build_id, p.identifier FROM versions v JOIN plugins p ON v.plugin_slug = p.slug WHERE plugin_slug=@pluginSlug AND ver=@version",
                 new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-            FullBuildId fullBuildId = new(pluginSlug, pluginBuild.buildId);
-            await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
-                new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-            await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
-            return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
-        }
-        // Email notifications are now handled on first build creation, not on release.
 
-        await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease WHERE plugin_slug=@pluginSlug AND ver=@version",
-            new
-            {
-                pluginSlug = pluginSlug.ToString(),
-                version = version.VersionParts,
-                preRelease = command == "unrelease"
-            });
-        TempData[TempDataConstant.SuccessMessage] =
-            $"Version {version} {(command == "release" ? "released" : "unreleased")}";
+        var pluginSettings = await conn.GetSettings(pluginSlug);
+
+        switch (command)
+        {
+            case "remove":
+                FullBuildId fullBuildId = new(pluginSlug, pluginBuild.buildId);
+                await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
+                    new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
+                await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
+                return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
+
+            case "sign_release":
+                var manifest_info = await conn.QueryFirstOrDefaultAsync<string>("SELECT manifest_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
+                    new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
+
+                if (signatureFile is null)
+                {
+                    TempData[TempDataConstant.WarningMessage] = "Signature file is required";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+                var message = GetManifestHash(NiceJson(manifest_info), true);
+                if (string.IsNullOrEmpty(message))
+                {
+                    TempData[TempDataConstant.WarningMessage] = "manifest information for plugin not available";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+                var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User)!, Encoding.UTF8.GetBytes(message), signatureFile);
+                if (!signatureVerification.valid)
+                {
+                    TempData[TempDataConstant.WarningMessage] = signatureVerification.message;
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+                await conn.UpdateVersionReleaseStatus(pluginSlug, command, version, signatureVerification.proof);
+                break;
+
+            default:
+                if (pluginSettings?.RequireGPGSignatureForRelease == true && command == "release")
+                {
+                    TempData[TempDataConstant.WarningMessage] = "A verified GPG signature is required to release this version";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+                await conn.UpdateVersionReleaseStatus(pluginSlug, command, version);
+                break;
+        }
+        TempData[TempDataConstant.SuccessMessage] = $"Version {version} {(command is "release" or "sign_release" ? "released" : "unreleased")}";
         return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
     }
 
@@ -257,8 +282,8 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         var row =
             await conn
-                .QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release)>(
-                    "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
+                .QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release, string signatureproof)>(
+                    "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release, v.signatureproof FROM builds b " +
                     "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                     "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
                     "LIMIT 1",
@@ -269,13 +294,16 @@ public class PluginController(
             "ORDER BY created_at;",
             new { pluginSlug = pluginSlug.ToString(), buildId });
         var logs = string.Join("\r\n", logLines);
+        var pluginSetting = await conn.GetSettings(pluginSlug);
+        var signatureProof = string.IsNullOrWhiteSpace(row.signatureproof)
+            ? new SignatureProof() : JsonConvert.DeserializeObject<SignatureProof>(row.signatureproof, CamelCaseSerializerSettings.Instance) ?? new SignatureProof();
+
         BuildViewModel vm = new();
         var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
         var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
         vm.FullBuildId = new FullBuildId(pluginSlug, buildId);
-        vm.ManifestInfo = NiceJson(row.manifest_info);
+        vm.ManifestInfo = NiceJson(row.manifest_info, signatureProof?.Fingerprint);
         vm.BuildInfo = buildInfo?.ToString(Formatting.Indented);
-        vm.DownloadLink = buildInfo?.Url;
         vm.State = row.state;
         vm.CreatedDate = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
         vm.Commit = buildInfo?.GitCommit?.Substring(0, 8);
@@ -284,6 +312,8 @@ public class PluginController(
         vm.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, pluginSlug.ToString());
         vm.RepositoryLink = GetUrl(buildInfo);
         vm.DownloadLink = buildInfo?.Url;
+        vm.RequireGPGSignatureForRelease = pluginSetting?.RequireGPGSignatureForRelease ?? false;
+        vm.ManifestInfoSha256Hash = GetManifestHash(NiceJson(row.manifest_info), vm.RequireGPGSignatureForRelease);
         //vm.Error = buildInfo?.Error;
         vm.Published = row.published;
         //var buildId = await conn.NewBuild(pluginSlug);
@@ -293,12 +323,24 @@ public class PluginController(
         return View(vm);
     }
 
-    private string? NiceJson(string? json)
+    private string GetManifestHash(string? manifestInfo, bool requiresGPGSignature)
+    {
+        if (!requiresGPGSignature || string.IsNullOrEmpty(manifestInfo))
+            return string.Empty;
+
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(manifestInfo));
+        return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+    }
+
+    private string? NiceJson(string? json, string? fingerprint = null)
     {
         if (json is null)
             return null;
         var data = JObject.Parse(json);
         data = new JObject(data.Properties().OrderBy(p => p.Name));
+        if (!string.IsNullOrWhiteSpace(fingerprint))
+            data["SignatureFingerprint"] = fingerprint;
         return data.ToString(Formatting.Indented);
     }
 
