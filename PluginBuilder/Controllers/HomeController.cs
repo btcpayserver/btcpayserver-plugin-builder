@@ -673,13 +673,26 @@ public class HomeController(
     static string? GetGithubHandle(string? url)
     {
         if (string.IsNullOrWhiteSpace(url)) return null;
+        url = url.Trim();
 
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
         {
-            var prefixed = "https://" + url.TrimStart('/');
-            if (!Uri.TryCreate(prefixed, UriKind.Absolute, out u))
-                return null;
+            var raw = url.TrimStart('/');
+            if (raw.StartsWith("github.com/", StringComparison.OrdinalIgnoreCase) ||
+                         raw.StartsWith("www.github.com/", StringComparison.OrdinalIgnoreCase))
+                {
+                if (!Uri.TryCreate("https://" + raw, UriKind.Absolute, out u))
+                    return null;
+                }
+            else
+            {
+                if (!Uri.TryCreate("https://github.com/" + raw, UriKind.Absolute, out u))
+                    return null;
+            }
         }
+
+        if (!u.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) || u.Host.Equals("www.github.com", StringComparison.OrdinalIgnoreCase))
+            return null;
 
         var segs = u.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (segs.Length == 0) return null;

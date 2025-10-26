@@ -76,9 +76,8 @@ public class DashboardController(
             }
             try
             {
-                var ext = Path.GetExtension(model.Logo.FileName);
-                var safeName = $"{pluginSlug}-{Guid.NewGuid():N}{ext}";
-                model.LogoUrl = await azureStorageClient.UploadImageFile(model.Logo, safeName);
+                var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.Logo.FileName)}";
+                model.LogoUrl = await azureStorageClient.UploadImageFile(model.Logo, uniqueBlobName);
             }
             catch (Exception)
             {

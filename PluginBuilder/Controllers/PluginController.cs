@@ -93,7 +93,8 @@ public class PluginController(
             }
             try
             {
-                settingViewModel.LogoUrl = await azureStorageClient.UploadImageFile(settingViewModel.Logo, $"{settingViewModel.Logo.FileName}");
+                var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(settingViewModel.Logo.FileName)}";
+                settingViewModel.LogoUrl = await azureStorageClient.UploadImageFile(settingViewModel.Logo, uniqueBlobName);
             }
             catch (Exception)
             {
