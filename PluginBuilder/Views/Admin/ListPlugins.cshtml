@@ -70,10 +70,10 @@
             @foreach (var plugin in Model.Plugins)
             {
                 <tr>
-                    <td>@plugin.ProjectSlug
+                    <td>@plugin.PluginSlug
 						@if (!string.IsNullOrEmpty(@plugin.Version) && plugin.BuildId.HasValue)
 						{
-							<a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.ProjectSlug">
+							<a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.PluginSlug">
 								<span class="fa fa-globe"></span>
 							</a>
 						}
@@ -86,19 +86,18 @@
                     <td>@plugin.PrimaryOwnerEmail</td>
                     <td>@plugin.Visibility</td>
                     <td>
-                        <a asp-controller="Admin" asp-action="PluginEdit" asp-route-slug="@plugin.ProjectSlug">Edit</a> |
-                        <a asp-controller="Admin" asp-action="PluginDelete" asp-route-slug="@plugin.ProjectSlug">Delete</a>
+                        <a asp-controller="Admin" asp-action="PluginEdit" asp-route-pluginSlug="@plugin.PluginSlug">Edit</a> |
+                        <a asp-controller="Admin" asp-action="PluginDelete" asp-route-pluginSlug="@plugin.PluginSlug">Delete</a>
                     </td>
-                </tr>
+              </tr>
             }
             </tbody>
         </table>
         <vc:pager view-model="Model" />
     </div>
 }
-else
-{
-    <p class="text-secondary mt-3">There are no plugins matching your criteria.</p>
+else{
+<	p class="text-secondary mt-3">There are no plugins matching your criteria.</	p>
 }
 
 <script src="~/scripts/searchtext.js" asp-append-version="true"></script>
