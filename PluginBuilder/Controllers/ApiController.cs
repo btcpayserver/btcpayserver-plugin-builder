@@ -19,8 +19,7 @@ namespace PluginBuilder.Controllers;
 [Authorize(Policy = Policies.OwnPlugin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.BasicAuth)]
 public class ApiController(
     DBConnectionFactory connectionFactory,
-    BuildService buildService,
-    FirstBuildEvent firstBuildEvent)
+    BuildService buildService)
     : ControllerBase
 {
     [AllowAnonymous]
@@ -264,7 +263,7 @@ public class ApiController(
         if (!ModelState.IsValid)
             return ValidationErrorResult(ModelState);
 
-        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter(), firstBuildEvent);
+        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
         var buildUrl = Url.ActionLink(nameof(PluginController.Build), "Plugin",
             new { pluginSlug = pluginSlug.ToString(), buildId });
 

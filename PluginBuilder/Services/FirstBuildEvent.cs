@@ -21,11 +21,4 @@ public class FirstBuildEvent(EmailService emailService, ILogger<FirstBuildEvent>
             logger.LogInformation("FirstBuildEvent cached base URL: {BaseUrl}", _baseUrl);
         }
     }
-
-    public Task OnFirstBuildCreated(NpgsqlConnection conn, PluginSlug pluginSlug)
-    {
-        // Simple starter: only email. Can be extended later.
-        var link = _baseUrl is null ? "(no link)" : $"{_baseUrl}/public/plugins/{pluginSlug}";
-        return emailService.NotifyAdminOnNewPluginBuild(conn, pluginSlug, link);
-    }
 }

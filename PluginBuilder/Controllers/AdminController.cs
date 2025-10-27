@@ -57,7 +57,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var rows = await conn.QueryAsync($"""
-                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email, p.settings->>'PluginTitle' AS title
+                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email, p.settings
                                          FROM plugins p
                                          LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
@@ -74,12 +74,14 @@ public class AdminController(
 
         foreach (var row in rows)
         {
+            var pluginSettings = SafeJson.Deserialize<PluginSettings>((string)row.settings);
             AdminPluginViewModel plugin = new()
             {
                 ProjectSlug = row.slug,
                 Visibility = row.visibility,
                 PrimaryOwnerEmail = row.email,
-                PluginTitle = row.title
+                HasPendingListingRequest = pluginSettings?.RequestListing != null && row.visibility == PluginVisibilityEnum.Unlisted,
+                PluginTitle = pluginSettings?.PluginTitle
             };
             if (row.ver != null)
             {
