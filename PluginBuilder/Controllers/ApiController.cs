@@ -122,7 +122,6 @@ public class ApiController(
                 ManifestInfo = manifestInfo,
                 PluginLogo = settings?.Logo,
                 Documentation = PluginPublicPage(r.plugin_slug),
-                IsSigned = !string.IsNullOrEmpty(r.fingerprint),
                 Fingerprint = r.fingerprint
             };
         }));
@@ -187,7 +186,6 @@ public class ApiController(
                 ManifestInfo = manifestInfo,
                 PluginLogo = settings?.Logo,
                 Documentation = PluginPublicPage(r.plugin_slug),
-                IsSigned = !string.IsNullOrEmpty(r.fingerprint),
                 Fingerprint = r.fingerprint
             };
         }));
@@ -232,7 +230,6 @@ public class ApiController(
             ManifestInfo = manifestInfo,
             PluginLogo = settings?.Logo,
             Documentation = PluginPublicPage(pluginSlug.ToString()),
-            IsSigned = !string.IsNullOrEmpty(r.fingerprint),
             Fingerprint = r.fingerprint
         });
     }
@@ -394,7 +391,6 @@ public class ApiController(
                     ManifestInfo = manifestInfo,
                     PluginLogo = settings?.Logo,
                     Documentation = PluginPublicPage(row.plugin_slug),
-                    IsSigned = !string.IsNullOrEmpty(row.fingerprint),
                     Fingerprint = row.fingerprint
                 }
             ).ToList();

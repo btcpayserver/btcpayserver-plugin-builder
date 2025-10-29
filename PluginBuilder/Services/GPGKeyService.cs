@@ -98,45 +98,62 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
         try
         {
             if (signatureFile is not { Length: > 0 })
-                return new SignatureProofResponse(false, "Please upload a valid GPG signature file (.asc)");
-
-            string signatureText;
-            using (var reader = new StreamReader(signatureFile.OpenReadStream()))
-                signatureText = await reader.ReadToEndAsync();
+                return new SignatureProofResponse(false, "Please upload a valid GPG signature file (.asc or .sig)");
 
             var publicKey = await GetPluginOwnerPublicKeys(pluginslug, userId);
             if (string.IsNullOrEmpty(publicKey))
+                return new SignatureProofResponse(false, "No public keys found for this user.  Kindly update your account profile with your GPG public key");
+
+            byte[] sigBytes;
+            using var ms = new MemoryStream((int)signatureFile.Length);
+            await signatureFile.CopyToAsync(ms);
+            sigBytes = ms.ToArray();
+
+            Stream decodedStream;
+            try
             {
-                return new SignatureProofResponse(false, "No public keys found for this user. Kindly update your account profile with your GPG public key");
+                decodedStream = PgpUtilities.GetDecoderStream(new MemoryStream(sigBytes));
             }
-            await using Stream pubIn = new MemoryStream(Encoding.ASCII.GetBytes(publicKey));
-            PgpPublicKeyRingBundle pubBundle = new PgpPublicKeyRingBundle(PgpUtilities.GetDecoderStream(pubIn));
-
-            await using Stream sigIn = new MemoryStream(Encoding.ASCII.GetBytes(signatureText));
-            PgpObjectFactory sigFact = new PgpObjectFactory(PgpUtilities.GetDecoderStream(sigIn));
-            PgpSignatureList sigList = (PgpSignatureList)sigFact.NextPgpObject();
-
-            if (sigList.Count <= 0)
+            catch (IOException) // not armoured then treat as raw binary
             {
-                return new SignatureProofResponse(false, "No signature found in armoured file uploaded");
+                decodedStream = new MemoryStream(sigBytes);
             }
+            PgpObjectFactory sigFact = new PgpObjectFactory(decodedStream);
+            PgpSignatureList? sigList = null;
+            object? obj;
+            while ((obj = sigFact.NextPgpObject()) != null)
+            {
+                switch (obj)
+                {
+                    case PgpSignatureList list:
+                        sigList = list;
+                        break;
 
-            PgpSignature signature = sigList[0];
-            PgpPublicKey signingKey = pubBundle.GetPublicKey(signature.KeyId);
+                    case PgpCompressedData compressed:
+                        sigFact = new PgpObjectFactory(compressed.GetDataStream());
+                        continue;
+                }
+                if (sigList != null)
+                    break;
+            }
+            if (sigList == null || sigList.Count == 0)
+                return new SignatureProofResponse(false, "No signature found in uploaded file");
+
+            var signature = sigList[0];
+            await using var pubKeyStream = new MemoryStream(Encoding.ASCII.GetBytes(publicKey));
+            var pubBundle = new PgpPublicKeyRingBundle(PgpUtilities.GetDecoderStream(pubKeyStream));
+            var signingKey = pubBundle.GetPublicKey(signature.KeyId);
             if (signingKey == null)
-            {
                 return new SignatureProofResponse(false, "File was signed with a key not associated with the user's public key");
-            }
+
             signature.InitVerify(signingKey);
             signature.Update(rawSignedBytes);
-            bool ok = signature.Verify();
-            if (!ok)
-            {
-                return new SignatureProofResponse(false, "Unable to verify signature. Manifest data mismatch");
-            }
+            if (!signature.Verify())
+                return new SignatureProofResponse(false, "Signature verification failed – manifest data mismatch");
+
             var signatureProof = new SignatureProof
             {
-                Armour = signatureText,
+                Armour = Encoding.ASCII.GetString(sigBytes),
                 KeyId = signature.KeyId.ToString("X"),
                 Fingerprint = BitConverter.ToString(signingKey.GetFingerprint()).Replace("-", ""),
                 SignedAt = signature.CreationTime,

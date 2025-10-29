@@ -1,2 +1,2 @@
 ALTER TABLE versions
-ADD COLUMN signatureproof JSONB NULL;
+ADD COLUMN IF NOT EXISTS signatureproof JSONB NULL;

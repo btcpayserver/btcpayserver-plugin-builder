@@ -17,9 +17,9 @@ public record UserKey(string PublicKeyArmored, string Fingerprint);
 
 public class SignatureProof
 {
-    public string Armour { get; init; }
-    public string KeyId { get; init; }
-    public string Fingerprint { get; init; }
-    public DateTime SignedAt { get; init; }
-    public DateTimeOffset VerifiedAt { get; init; }
+    public string? Armour { get; set; }
+    public string? KeyId { get; set; }
+    public string? Fingerprint { get; set; }
+    public DateTime SignedAt { get; set; }
+    public DateTimeOffset VerifiedAt { get; set; }
 }
