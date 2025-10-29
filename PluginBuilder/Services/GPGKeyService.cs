@@ -140,7 +140,7 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
                 return new SignatureProofResponse(false, "No signature found in uploaded file");
 
             var signature = sigList[0];
-            await using var pubKeyStream = new MemoryStream(Encoding.ASCII.GetBytes(publicKey));
+            using var pubKeyStream = new MemoryStream(Encoding.ASCII.GetBytes(publicKey));
             var pubBundle = new PgpPublicKeyRingBundle(PgpUtilities.GetDecoderStream(pubKeyStream));
             var signingKey = pubBundle.GetPublicKey(signature.KeyId);
             if (signingKey == null)
