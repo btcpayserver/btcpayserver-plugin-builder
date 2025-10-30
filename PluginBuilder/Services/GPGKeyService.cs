@@ -104,20 +104,11 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
             if (string.IsNullOrEmpty(publicKey))
                 return new SignatureProofResponse(false, "No public keys found for this user.  Kindly update your account profile with your GPG public key");
 
-            byte[] sigBytes;
             using var ms = new MemoryStream((int)signatureFile.Length);
             await signatureFile.CopyToAsync(ms);
-            sigBytes = ms.ToArray();
+            var sigBytes = ms.ToArray();
+            var decodedStream = PgpUtilities.GetDecoderStream(new MemoryStream(sigBytes));
 
-            Stream decodedStream;
-            try
-            {
-                decodedStream = PgpUtilities.GetDecoderStream(new MemoryStream(sigBytes));
-            }
-            catch (IOException) // not armoured then treat as raw binary
-            {
-                decodedStream = new MemoryStream(sigBytes);
-            }
             PgpObjectFactory sigFact = new PgpObjectFactory(decodedStream);
             PgpSignatureList? sigList = null;
             object? obj;
