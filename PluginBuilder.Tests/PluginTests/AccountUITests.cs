@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
@@ -42,33 +41,6 @@ public class AccountUITests(ITestOutputHelper output) : PageTest
     """;
 
 
-    [Fact]
-    public async Task Update_Account_Tests()
-    {
-        await using var t = new PlaywrightTester(_log);
-        t.Server.ReuseDatabase = false;
-        await t.StartAsync();
-
-        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<UserVerifiedCache>();
-        await verfCache.RefreshAllUserVerifiedSettings(conn);
-
-        await t.GoToUrl("/register");
-        var user = await t.RegisterNewUser();
-        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
-
-        await t.Page!.ClickAsync("#Nav-Account");
-        await t.Page!.ClickAsync("#Nav-ManageAccount");
-        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/account/details$", RegexOptions.IgnoreCase));
-        await t.Page!.FillAsync("#Settings_GPGKey_PublicKey", "This is not a GPG key at all!");
-        await t.Page!.ClickAsync("#Save");
-        await Expect(t.Page!.Locator(".alert-warning")).ToContainTextAsync("GPG Key is not valid");
-        await t.Page!.FillAsync("#Settings_GPGKey_PublicKey", samplePublicKey);
-        await t.Page!.ClickAsync("#Save");
-        await t.AssertNoError();
-    }
-
 
     [Fact]
     public async Task Validate_GPG_Settings_Update_For_Release_Tests()
@@ -85,9 +57,14 @@ public class AccountUITests(ITestOutputHelper output) : PageTest
         var user = await t.RegisterNewUser();
         await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
         await t.VerifyEmailAndGithubAsync(user);
+
         await t.Page!.ClickAsync("#Nav-Account");
         await t.Page!.ClickAsync("#Nav-ManageAccount");
         await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/account/details$", RegexOptions.IgnoreCase));
+        await t.Page!.FillAsync("#Settings_GPGKey_PublicKey", "This is not a GPG key at all!");
+        await t.Page!.ClickAsync("#Save");
+        await Expect(t.Page!.Locator(".alert-warning")).ToContainTextAsync("GPG Key is not valid");
+
         await t.Page!.FillAsync("#Settings_GPGKey_PublicKey", samplePublicKey);
         await t.Page!.ClickAsync("#Save");
         await t.AssertNoError();
@@ -128,8 +105,15 @@ public class AccountUITests(ITestOutputHelper output) : PageTest
         await Expect(check).ToBeCheckedAsync();
 
         await t.Page!.ClickAsync("#Nav-Versions a >> nth=0");
-        await Expect(t.Page!.Locator("button:text-is('Sign and Release')")).ToBeVisibleAsync();
         await Expect(t.Page!.Locator("button:text-is('Release')")).Not.ToBeVisibleAsync();
+        await t.Page.ClickAsync("button:text-is('Sign and Release')");
+
+        var invalidSigPath = Path.Combine(Path.GetTempPath(), $"invalid-{Guid.NewGuid():N}.asc");
+        await File.WriteAllTextAsync(invalidSigPath, "-----BEGIN PGP SIGNATURE-----\nnot a real signature\n-----END PGP SIGNATURE-----\n");
+        await t.Page.SetInputFilesAsync("input[name='signatureFile']", invalidSigPath);
+        await t.Page.ClickAsync("button:text-is('Verify & Release')");
+        await Expect(t.Page.Locator(".alert-danger, .alert-warning, .validation-summary-errors")).ToBeVisibleAsync();
+
         await t.Page.ClickAsync("button:text-is('Sign and Release')");
         var signedFile = CopyEmbeddedSignature();
         await t.Page.SetInputFilesAsync("input[name='signatureFile']", signedFile);
