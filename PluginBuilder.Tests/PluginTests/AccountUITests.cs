@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Playwright;
@@ -74,7 +76,6 @@ public class AccountUITests(ITestOutputHelper output) : PageTest
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
         await t.StartAsync();
-
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
         await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
         var verfCache = t.Server.GetService<UserVerifiedCache>();
@@ -84,7 +85,6 @@ public class AccountUITests(ITestOutputHelper output) : PageTest
         var user = await t.RegisterNewUser();
         await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
         await t.VerifyEmailAndGithubAsync(user);
-
         await t.Page!.ClickAsync("#Nav-Account");
         await t.Page!.ClickAsync("#Nav-ManageAccount");
         await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/account/details$", RegexOptions.IgnoreCase));
@@ -130,5 +130,20 @@ public class AccountUITests(ITestOutputHelper output) : PageTest
         await t.Page!.ClickAsync("#Nav-Versions a >> nth=0");
         await Expect(t.Page!.Locator("button:text-is('Sign and Release')")).ToBeVisibleAsync();
         await Expect(t.Page!.Locator("button:text-is('Release')")).Not.ToBeVisibleAsync();
+        await t.Page.ClickAsync("button:text-is('Sign and Release')");
+        var signedFile = CopyEmbeddedSignature();
+        await t.Page.SetInputFilesAsync("input[name='signatureFile']", signedFile);
+        await t.Page.ClickAsync("button:text-is('Verify & Release')");
+        await t.AssertNoError();
+    }
+
+    private static string CopyEmbeddedSignature()
+    {
+        var asm = typeof(AccountUITests).Assembly;
+        using var s = asm.GetManifestResourceStream("PluginBuilder.Tests.TestData.manifest.txt.asc");
+        var tmp = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".asc");
+        using var fs = File.Create(tmp);
+        s.CopyTo(fs);
+        return tmp;
     }
 }
