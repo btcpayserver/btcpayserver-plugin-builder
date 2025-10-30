@@ -260,7 +260,6 @@ public class PluginController(
                 await conn.UpdateVersionReleaseStatus(pluginSlug, command, version);
                 break;
         }
-
         TempData[TempDataConstant.SuccessMessage] = $"Version {version} {(command is "release" or "sign_release" ? "released" : "unreleased")}";
         return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
     }

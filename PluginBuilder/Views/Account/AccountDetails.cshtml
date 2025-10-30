@@ -2,6 +2,12 @@
 @{
     Layout = "_Layout";
     ViewData.SetActivePage("Account Settings");
+
+	var gpgKey = Model.Settings.GPGKey;
+	var hasKey = !string.IsNullOrEmpty(gpgKey?.Fingerprint);
+	DateTimeOffset? expiryDate = gpgKey?.ValidDays > 0 ? gpgKey.CreatedDate.AddDays(gpgKey.ValidDays) : null;
+	var isExpired = expiryDate.HasValue && expiryDate.Value <= DateTimeOffset.UtcNow;
+	var isExpiringSoon = expiryDate.HasValue && expiryDate.Value <= DateTimeOffset.UtcNow.AddMonths(1);
 }
 
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
@@ -59,42 +65,24 @@
 
 			<div class="form-group">
 				<label asp-for="Settings.GPGKey!.PublicKey" class="form-label">GPG Public Key</label>
-				@{
-					DateTimeOffset? expiryDate = null;
-					if (Model.Settings.GPGKey?.ValidDays > 0)
-					{
-						expiryDate = Model.Settings.GPGKey.CreatedDate.AddDays(Model.Settings.GPGKey.ValidDays);
-					}
-				}
-				@if (!string.IsNullOrEmpty(Model.Settings.GPGKey?.Fingerprint) && (!expiryDate.HasValue || expiryDate > DateTimeOffset.UtcNow))
+				@if (hasKey && (!expiryDate.HasValue || !isExpired))
 				{
 					<span class="badge bg-success ms-2">Confirmed</span>
 				}
-
-				@if (expiryDate.HasValue)
+				@if (isExpired)
 				{
-					if (expiryDate.Value < DateTimeOffset.UtcNow)
-					{
-						<div class="alert alert-danger mt-2">
-							Your GPG key expired on @expiryDate.Value.ToString("yyyy-MM-dd").
-						</div>
-					}
-					else if (expiryDate.Value <= DateTimeOffset.UtcNow.AddMonths(1))
-					{
-						<div class="alert alert-warning mt-2">
-							Your GPG key will expire on @expiryDate.Value.ToString("yyyy-MM-dd").
-						</div>
-					}
+					<div class="alert alert-danger mt-2">Your GPG key expired on @expiryDate?.ToString("yyyy-MM-dd")</div>
+				}
+				else if (isExpiringSoon)
+				{
+					<div class="alert alert-warning mt-2">Your GPG key will expire on @expiryDate?.ToString("yyyy-MM-dd")</div>
 				}
 				<div>
 					@if (!string.IsNullOrEmpty(Model.Settings.GPGKey?.Fingerprint))
 					{
 						<div id="existing-key-section" class="d-flex align-items-center">
-							<input class="form-control" readonly
-								   value="Fingerprint: @Model.Settings.GPGKey?.Fingerprint" />
-							<button type="button"
-									class="btn btn-sm btn-outline-danger ms-2"
-									onclick="showResetKeyForm();">
+							<input class="form-control" readonly value="Fingerprint: @Model.Settings.GPGKey?.Fingerprint" />
+							<button type="button" class="btn btn-outline-danger ms-2" onclick="showResetKeyForm();">
 								Replace
 							</button>
 						</div>
@@ -107,8 +95,7 @@
 					}
 					else
 					{
-						<textarea asp-for="Settings.GPGKey!.PublicKey" class="form-control" rows="8"
-								  placeholder="Paste your armored GPG public key here..."></textarea>
+						<textarea asp-for="Settings.GPGKey!.PublicKey" class="form-control" rows="8" placeholder="Paste your armored GPG public key here..."></textarea>
 						<span asp-validation-for="Settings.GPGKey!.PublicKey" class="text-danger"></span>
 					}
 				</div>
