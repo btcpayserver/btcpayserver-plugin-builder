@@ -8,6 +8,14 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <None Remove="TestData\manifest.txt.asc" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <EmbeddedResource Include="TestData\manifest.txt.asc" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
         <PackageReference Include="Microsoft.Playwright.Xunit" Version="1.53.0" />
         <PackageReference Include="xunit" Version="2.9.2" />

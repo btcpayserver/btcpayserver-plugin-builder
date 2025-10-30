@@ -2,6 +2,12 @@
 @{
     Layout = "_Layout";
     ViewData.SetActivePage("Account Settings");
+
+	var gpgKey = Model.Settings.GPGKey;
+	var hasKey = !string.IsNullOrEmpty(gpgKey?.Fingerprint);
+	DateTimeOffset? expiryDate = gpgKey?.ValidDays > 0 ? gpgKey.CreatedDate.AddDays(gpgKey.ValidDays) : null;
+	var isExpired = expiryDate.HasValue && expiryDate.Value <= DateTimeOffset.UtcNow;
+	var isExpiringSoon = expiryDate.HasValue && expiryDate.Value <= DateTimeOffset.UtcNow.AddMonths(1);
 }
 
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
@@ -16,11 +22,11 @@
                     <span class="badge bg-success ml-2">Confirmed</span>
                 }
                 <div class="input-group">
-                    <input asp-for="AccountEmail" class="form-control" placeholder="" readonly="readonly" />
+                    <input asp-for="AccountEmail" class="form-control" readonly="readonly" />
                     @if (Model.NeedToVerifyEmail)
                     {
                         <div class="input-group-append">
-                            <a asp-controller="Account" asp-action="VerifyEmail" class="btn btn-secondary">Verify Email</a>
+							<a asp-controller="Account" asp-action="VerifyEmail" class="btn btn-outline-success ms-2">Verify Email</a>
                         </div>
                     }
                 </div>
@@ -36,7 +42,7 @@
                     @if (!Model.GithubAccountVerified)
                     {
                         <div class="input-group-append">
-                            <a asp-controller="Account" asp-action="VerifyGithubAccount" class="btn btn-secondary">Verify GitHub</a>
+							<a asp-controller="Account" asp-action="VerifyGithubAccount" class="btn btn-outline-success ms-2">Verify GitHub</a>
                         </div>
                     }
                 </div>
@@ -56,9 +62,65 @@
                 <input asp-for="Settings.Email" class="form-control" type="email" placeholder="plugins@satoshi.com" />
                 <span asp-validation-for="Settings.Email" class="text-danger"></span>
             </div>
+
+			<div class="form-group">
+				<label asp-for="Settings.GPGKey!.PublicKey" class="form-label">GPG Public Key</label>
+				@if (hasKey && (!expiryDate.HasValue || !isExpired))
+				{
+					<span class="badge bg-success ms-2">Confirmed</span>
+				}
+				@if (isExpired)
+				{
+					<div class="alert alert-danger mt-2">Your GPG key expired on @expiryDate?.ToString("yyyy-MM-dd")</div>
+				}
+				else if (isExpiringSoon)
+				{
+					<div class="alert alert-warning mt-2">Your GPG key will expire on @expiryDate?.ToString("yyyy-MM-dd")</div>
+				}
+				<div>
+					@if (!string.IsNullOrEmpty(Model.Settings.GPGKey?.Fingerprint))
+					{
+						<div id="existing-key-section" class="d-flex align-items-center">
+							<input class="form-control" readonly value="Fingerprint: @Model.Settings.GPGKey?.Fingerprint" />
+							<button type="button" class="btn btn-outline-danger ms-2" onclick="showResetKeyForm();">
+								Replace
+							</button>
+						</div>
+
+						<div id="reset-key-section" class="mt-3" style="display:none;">
+							<textarea asp-for="Settings.GPGKey!.PublicKey" class="form-control" rows="8"
+									  placeholder="Paste your armored GPG public key here..."></textarea>
+							<span asp-validation-for="Settings.GPGKey!.PublicKey" class="text-danger"></span>
+						</div>
+					}
+					else
+					{
+						<textarea asp-for="Settings.GPGKey!.PublicKey" class="form-control" rows="8" placeholder="Paste your armored GPG public key here..."></textarea>
+						<span asp-validation-for="Settings.GPGKey!.PublicKey" class="text-danger"></span>
+					}
+				</div>
+			</div>
+
             <div class="form-group mt-4">
                 <input type="submit" class="btn btn-primary" id="Save" value="Save" />
             </div>
         </form>
     </div>
 </div>
+
+@section FooterScripts {
+	<script>
+		function showResetKeyForm() {
+			const existing = document.getElementById("existing-key-section");
+			const reset = document.getElementById("reset-key-section");
+
+			if (reset.style.display === "none" || reset.style.display === "") {
+				existing.style.display = "none";
+				reset.style.display = "block";
+			} else {
+				reset.style.display = "none";
+				existing.style.display = "flex";
+			}
+		}
+	</script>
+}

@@ -9,8 +9,4 @@ public class PluginOwnersPageViewModel
     public OwnerVm? PrimaryOwner => Owners.FirstOrDefault(o => o.IsPrimary);
 }
 
-public record OwnerVm(
-    string UserId,
-    string? Email,
-    bool IsPrimary
-);
+public record OwnerVm(string UserId, bool IsPrimary, string? Email, string? AccountDetail);
