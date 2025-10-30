@@ -67,17 +67,17 @@ public class PluginController(
             ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
             return View(settingViewModel);
         }
-        if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
-        {
-            ModelState.AddModelError(nameof(settingViewModel.PluginTitle), "Plugin title and description are required");
-            return View(settingViewModel);
-        }
         var userId = userManager.GetUserId(User);
         await using var conn = await connectionFactory.Open();
         var existingSetting = await conn.GetSettings(pluginSlug);
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
         settingViewModel.LogoUrl = existingSetting?.Logo;
         settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
+        if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
+        {
+            ModelState.AddModelError(nameof(settingViewModel.PluginTitle), "Plugin title and description are required");
+            return View(settingViewModel);
+        }
 
         if (settingViewModel.Logo != null)
         {
