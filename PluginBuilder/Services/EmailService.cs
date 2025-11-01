@@ -1,23 +1,19 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Text.RegularExpressions;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
 using Newtonsoft.Json;
 using Npgsql;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels.Admin;
 
 namespace PluginBuilder.Services;
 
-public class EmailService
+public class EmailService(DBConnectionFactory connectionFactory,
+    UserVerifiedCache userVerifiedCache)
 {
-    private readonly DBConnectionFactory _connectionFactory;
-
-    public EmailService(DBConnectionFactory connectionFactory)
-    {
-        _connectionFactory = connectionFactory;
-    }
-
     public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText)
     {
         List<InternetAddress> toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
@@ -49,6 +45,8 @@ public class EmailService
         await smtpClient.DisconnectAsync(true);
         return recipients;
     }
+
+    public bool IsValidEmailList(string to) => to.Split(',').Select(email => email.Trim()).All(email => !string.IsNullOrWhiteSpace(email) && Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
 
     public Task SendVerifyEmail(string toEmail, string verifyUrl)
     {
@@ -84,12 +82,20 @@ BTCPay Server Plugin Builder";
 
     public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb()
     {
-        await using var conn = await _connectionFactory.Open();
+        await using var conn = await connectionFactory.Open();
         var jsonEmail = await conn.SettingsGetAsync("EmailSettings");
         var emailSettings = string.IsNullOrEmpty(jsonEmail)
             ? null
             : JsonConvert.DeserializeObject<EmailSettingsViewModel>(jsonEmail);
         return emailSettings;
+    }
+
+    public async Task SaveEmailSettingsToDatabase(EmailSettingsViewModel model)
+    {
+        await using var conn = await connectionFactory.Open();
+        var emailSettingsJson = JsonConvert.SerializeObject(model);
+        await conn.SettingsSetAsync("EmailSettings", emailSettingsJson);
+        await userVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
     }
 
     public async Task<SmtpClient> CreateSmtpClient(EmailSettingsViewModel settings)

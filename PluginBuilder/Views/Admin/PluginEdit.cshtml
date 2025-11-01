@@ -7,7 +7,7 @@
 
 <div class="d-flex align-items-center justify-content-between mb-4">
 	<h2 class="mb-0">
-        @ViewData["Title"] – <span class="text-dark">@Model.Slug</span>
+        @ViewData["Title"] – <span class="text-dark">@Model.PluginSlug</span>
 	</h2>
 </div>
 
@@ -37,7 +37,7 @@
 						<form method="post"
 							  asp-controller="Admin"
 							  asp-action="ManagePluginOwnership"
-							  asp-route-pluginSlug="@Model.Slug"
+							  asp-route-pluginSlug="@Model.PluginSlug"
 							  asp-route-userId="@user.UserId"
 							  asp-route-command="@(user.IsPluginOwner ? "RevokeOwnership" : "AssignOwnership")"
 							  class="d-inline">

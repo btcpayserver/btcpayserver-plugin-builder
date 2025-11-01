@@ -76,7 +76,7 @@ public class AdminController(
         {
             AdminPluginViewModel plugin = new()
             {
-                ProjectSlug = row.slug,
+                PluginSlug = row.slug,
                 Visibility = row.visibility,
                 PrimaryOwnerEmail = row.email,
                 PluginTitle = row.title
@@ -108,20 +108,20 @@ public class AdminController(
     }
 
 
-    [HttpGet("plugins/edit/{slug}")]
-    public async Task<IActionResult> PluginEdit(string slug)
+    [HttpGet("plugins/edit/{pluginSlug}")]
+    public async Task<IActionResult> PluginEdit(string pluginSlug)
     {
         referrerNavigation.StoreReferrer();
         await using var conn = await connectionFactory.Open();
-        var pluginUsers = await GetPluginUsers(conn, slug);
+        var pluginUsers = await GetPluginUsers(conn, pluginSlug);
 
-        var plugin = await conn.GetPluginDetails(slug);
+        var plugin = await conn.GetPluginDetails(pluginSlug);
         if (plugin == null)
             return NotFound();
 
         return View(new PluginEditViewModel
         {
-            Slug = plugin.Slug,
+            PluginSlug = plugin.PluginSlug,
             Identifier = plugin.Identifier,
             Settings = plugin.Settings,
             Visibility = plugin.Visibility,
@@ -131,16 +131,16 @@ public class AdminController(
     }
 
 
-    [HttpPost("plugins/edit/{slug}")]
-    public async Task<IActionResult> PluginEdit(string slug, PluginEditViewModel model, [FromForm] bool removeLogoFile = false)
+    [HttpPost("plugins/edit/{pluginSlug}")]
+    public async Task<IActionResult> PluginEdit(string pluginSlug, PluginEditViewModel model, [FromForm] bool removeLogoFile = false)
     {
         await using var conn = await connectionFactory.Open();
         if (!ModelState.IsValid)
         {
-            model.PluginUsers = await GetPluginUsers(conn, slug);
+            model.PluginUsers = await GetPluginUsers(conn, pluginSlug);
             return View(model);
         }
-        var plugin = await conn.GetPluginDetails(slug);
+        var plugin = await conn.GetPluginDetails(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
         pluginSettings.PluginTitle = model.PluginSettings.PluginTitle;
         pluginSettings.Description = model.PluginSettings.Description;
@@ -154,18 +154,18 @@ public class AdminController(
             if (!model.LogoFile.ValidateUploadedImage(out string errorMessage))
             {
                 ModelState.AddModelError(nameof(model.LogoFile), $"Image upload validation failed: {errorMessage}");
-                model.PluginUsers = await GetPluginUsers(conn, slug);
+                model.PluginUsers = await GetPluginUsers(conn, pluginSlug);
                 return View(model);
             }
             try
             {
-                var uniqueBlobName = $"{slug}-{Guid.NewGuid()}{Path.GetExtension(model.LogoFile.FileName)}";
+                var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.LogoFile.FileName)}";
                 pluginSettings.Logo = await azureStorageClient.UploadImageFile(model.LogoFile, uniqueBlobName);
             }
             catch (Exception)
             {
                 ModelState.AddModelError(nameof(model.PluginSettings.Logo), "Could not complete settings upload. An error occurred while uploading logo");
-                model.PluginUsers = await GetPluginUsers(conn, slug);
+                model.PluginUsers = await GetPluginUsers(conn, pluginSlug);
                 return View(model);
             }
         }
@@ -175,7 +175,7 @@ public class AdminController(
             pluginSettings.Logo = null;
         }
 
-        var setPluginSettings = await conn.SetPluginSettingsAndVisibility(slug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
+        var setPluginSettings = await conn.SetPluginSettingsAndVisibility(pluginSlug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
         if (!setPluginSettings) return NotFound();
 
         TempData[TempDataConstant.SuccessMessage] = "Plugin settings updated successfully";
@@ -183,20 +183,20 @@ public class AdminController(
     }
 
 
-    [HttpGet("plugins/delete/{slug}")]
-    public async Task<IActionResult> PluginDelete(string slug)
+    [HttpGet("plugins/delete/{pluginSlug}")]
+    public async Task<IActionResult> PluginDelete(string pluginSlug)
     {
         referrerNavigation.StoreReferrer();
 
         await using var conn = await connectionFactory.Open();
-        var plugin = await conn.GetPluginDetails(slug);
+        var plugin = await conn.GetPluginDetails(pluginSlug);
         if (plugin == null) return NotFound();
 
         return View(plugin);
     }
 
-    [HttpPost("plugins/delete/{slug}")]
-    public async Task<IActionResult> PluginDeleteConfirmed(string slug)
+    [HttpPost("plugins/delete/{pluginSlug}")]
+    public async Task<IActionResult> PluginDeleteConfirmed(string pluginSlug)
     {
         await using var conn = await connectionFactory.Open();
         var affectedRows = await conn.ExecuteAsync("""
@@ -206,7 +206,7 @@ public class AdminController(
                                                    DELETE FROM users_plugins WHERE plugin_slug = @Slug;
                                                    DELETE FROM versions WHERE plugin_slug = @Slug;
                                                    DELETE FROM plugins WHERE slug = @Slug;
-                                                   """, new { Slug = slug });
+                                                   """, new { Slug = pluginSlug });
         if (affectedRows == 0) return NotFound();
 
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
@@ -221,7 +221,7 @@ public class AdminController(
         if (!userIds.Contains(userId))
         {
             TempData[TempDataConstant.WarningMessage] = "Invalid plugin user";
-            return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+            return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
         }
         switch (command)
         {
@@ -231,7 +231,7 @@ public class AdminController(
                     if (!ok)
                     {
                         TempData[TempDataConstant.WarningMessage] = "Error revoking primary ownership";
-                        return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+                        return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
                     }
                     TempData[TempDataConstant.SuccessMessage] = "Primary ownership revoked";
                     break;
@@ -242,13 +242,13 @@ public class AdminController(
                     if (!ok)
                     {
                         TempData[TempDataConstant.WarningMessage] = "Error assigning primary ownership";
-                        return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+                        return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
                     }
                     TempData[TempDataConstant.SuccessMessage] = "Primary owner assigned";
                     break;
                 }
         }
-        return RedirectToAction(nameof(PluginEdit), new { slug = pluginSlug });
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
     }
 
 
@@ -426,17 +426,16 @@ public class AdminController(
             if (command?.Equals("resetpassword", StringComparison.OrdinalIgnoreCase) == true)
             {
                 model.Password = null!;
-                await SaveEmailSettingsToDatabase(model);
+                await emailService.SaveEmailSettingsToDatabase(model);
                 TempData[TempDataConstant.SuccessMessage] = "SMTP password reset.";
                 return RedirectToAction(nameof(EmailSettings));
             }
         }
-
         if (!ModelState.IsValid) return View(model);
 
         if (!await ValidateSmtpConnection(model)) return View(model);
 
-        await SaveEmailSettingsToDatabase(model);
+        await emailService.SaveEmailSettingsToDatabase(model);
         TempData[TempDataConstant.SuccessMessage] = $"SMTP settings updated. Emails will be sent from {model.From}.";
         return RedirectToAction(nameof(EmailSettings));
     }
@@ -457,18 +456,10 @@ public class AdminController(
         return true;
     }
 
-    private async Task SaveEmailSettingsToDatabase(EmailSettingsViewModel model)
-    {
-        await using var conn = await connectionFactory.Open();
-        var emailSettingsJson = JsonConvert.SerializeObject(model);
-        await conn.SettingsSetAsync("EmailSettings", emailSettingsJson);
-        await userVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
-    }
-
     [HttpGet("emailsender")]
     public async Task<IActionResult> EmailSender(string to, string subject, string message)
     {
-        if (!string.IsNullOrEmpty(to) && !IsValidEmailList(to))
+        if (!string.IsNullOrEmpty(to) && !emailService.IsValidEmailList(to))
         {
             ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
             return View(new EmailSenderViewModel());
@@ -495,7 +486,7 @@ public class AdminController(
     public async Task<IActionResult> EmailSender(EmailSenderViewModel model)
     {
         if (!ModelState.IsValid) return View(model);
-        if (!IsValidEmailList(model.To))
+        if (!emailService.IsValidEmailList(model.To))
         {
             ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
             return View(model);
@@ -522,13 +513,6 @@ public class AdminController(
         return View(model);
     }
 
-    private bool IsValidEmailList(string to)
-    {
-        return to.Split(',')
-            .Select(email => email.Trim())
-            .All(email => !string.IsNullOrWhiteSpace(email) && Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
-    }
-
     [HttpGet("SettingsEditor")]
     public async Task<IActionResult> SettingsEditor()
     {
@@ -536,7 +520,6 @@ public class AdminController(
         var result = await conn.SettingsGetAllAsync();
         var list = result.ToList();
         list.RemoveAll(setting => setting.key == ProtectedKeys);
-
         return View(list);
     }
 
@@ -573,8 +556,7 @@ public class AdminController(
 
         if (string.IsNullOrEmpty(pbOptions.DebugLogFile))
         {
-            TempData[TempDataConstant.WarningMessage] =
-                "File Logging Option not specified. You need to set debuglog and optionally debugloglevel in the configuration or through runtime arguments";
+            TempData[TempDataConstant.WarningMessage] = "File Logging Option not specified. You need to set debuglog and optionally debugloglevel in the configuration or through runtime arguments";
             return View("Logs", vm);
         }
 
@@ -610,7 +592,6 @@ public class AdminController(
             {
                 return File(fileStream, "text/plain", file, enableRangeProcessing: true);
             }
-
             await using (fileStream)
             using (var reader = new StreamReader(fileStream))
             {
@@ -621,20 +602,18 @@ public class AdminController(
         {
             return NotFound();
         }
-
         return View("Logs", vm);
     }
 
-    private async Task<List<PluginUsersViewModel>> GetPluginUsers(NpgsqlConnection conn, string slug)
+    private async Task<List<PluginUsersViewModel>> GetPluginUsers(NpgsqlConnection conn, string pluginSlug)
     {
-        var ownerId = await conn.RetrievePluginPrimaryOwner(slug);
-        var userIds = (await conn.RetrievePluginUserIds(slug)).ToList();
+        var ownerId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+        var userIds = (await conn.RetrievePluginUserIds(pluginSlug)).ToList();
 
         if (userIds.Count == 0)
             return new List<PluginUsersViewModel>();
 
         var users = await userManager.FindUsersByIdsAsync(userIds);
-
         return users.Select(u => new PluginUsersViewModel
         {
             Email = u.Email ?? string.Empty,

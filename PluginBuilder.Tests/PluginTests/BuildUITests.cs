@@ -89,6 +89,6 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
 
         var warn2 = t.Page.Locator(".alert-warning");
         await Expect(warn2).ToBeVisibleAsync();
-        await Expect(warn2).ToContainTextAsync(new Regex("does not belong to project slug", RegexOptions.IgnoreCase));
+        await Expect(warn2).ToContainTextAsync(new Regex("does not belong to plugin slug", RegexOptions.IgnoreCase));
     }
 }
