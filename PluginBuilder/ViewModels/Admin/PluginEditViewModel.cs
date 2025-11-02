@@ -8,7 +8,7 @@ public class PluginViewModel
 {
     public string Slug { get; set; } = null!;
     [ValidateNever]
-    public string Identifier { get; set; } = null!;
+    public string? Identifier { get; set; }
 
     [ValidateNever]
     public string? Settings { get; set; }
