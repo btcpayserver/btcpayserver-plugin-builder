@@ -1,0 +1,43 @@
+@model VerifyNostrManualViewModel
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage("Nostr Account Verification");
+}
+
+<h2>Nostr Verification</h2>
+
+<div class="alert alert-info">
+    To verify your Nostr account, publish a <strong>public note</strong> on any Nostr client
+    (Damus, Primal, Amethyst, etc.) with the following content:
+    <div class="mt-2">
+        <code class="fs-5 d-block">@Model.Message</code>
+    </div>
+    <small class="d-block mt-2">
+        If you prefer, can post only the proof token:
+        <code>@Model.Token</code>. The server will validate the proof in the note content either way.
+    </small>
+    <div class="mt-2">
+        After publishing, copy the full link to your note (or its NIP-19 <code>note1…</code>/<code>nevent1…</code>) and click “Verify”.
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-xl-8 col-xxl-constrain">
+        <form asp-action="NostrVerifyManual" method="post">
+            @Html.AntiForgeryToken()
+
+            <div class="form-group">
+                <label asp-for="NoteRef" class="form-label">Note link (note/nevent URL)</label>
+                <input asp-for="NoteRef" class="form-control" placeholder="https://... or note1... / nevent1..." required />
+                <span asp-validation-for="NoteRef" class="text-danger"></span>
+            </div>
+
+            <input type="hidden" asp-for="Token" value="@Model.Token" />
+
+            <div class="form-group mt-3">
+                <input type="submit" class="btn btn-primary" value="Verify" />
+                <a asp-controller="Account" asp-action="AccountDetails" class="btn btn-link">Back</a>
+            </div>
+        </form>
+    </div>
+</div>

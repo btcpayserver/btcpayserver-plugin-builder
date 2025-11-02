@@ -41,6 +41,15 @@ public class UserVerifiedLogic(
         var user = await userManager.GetUserAsync(claimsPrincipal);
         return await conn.IsGithubAccountVerified(user!.Id);
     }
+
+    public async Task<bool> IsNostrVerified(ClaimsPrincipal claimsPrincipal, NpgsqlConnection conn)
+    {
+        if (!userVerifiedCache.IsGithubVerificationRequired)
+            return true;
+
+        var user = await userManager.GetUserAsync(claimsPrincipal);
+        return await conn.IsNostrAccountVerified(user!.Id);
+    }
 }
 
 public class UserVerifiedCache
@@ -48,7 +57,7 @@ public class UserVerifiedCache
     public bool IsEmailVerificationRequiredForPublish { get; private set; }
     public bool IsEmailVerificationRequiredForLogin { get; private set; }
     public bool IsGithubVerificationRequired { get; private set; }
-
+    public bool IsNostrVerificationRequired { get; private set; }
 
     public async Task RefreshIsVerifiedEmailRequiredForPublish(NpgsqlConnection conn)
     {
@@ -71,10 +80,16 @@ public class UserVerifiedCache
         await RefreshIsVerifiedEmailRequiredForPublish(conn);
         await RefreshIsVerifiedEmailRequiredForLogin(conn);
         await RefreshIsVerifiedGithubRequired(conn);
+        await RefreshNostrVerified(conn);
     }
 
     public async Task RefreshIsVerifiedGithubRequired(NpgsqlConnection conn)
     {
         IsGithubVerificationRequired = await conn.GetVerifiedGithubSetting();
+    }
+
+    public async Task RefreshNostrVerified(NpgsqlConnection conn)
+    {
+        IsNostrVerificationRequired = await conn.GetVerifiedNostrSetting();
     }
 }

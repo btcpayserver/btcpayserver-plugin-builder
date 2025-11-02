@@ -8,4 +8,5 @@ public static class SettingsKeys
     public const string VerifiedEmailForLogin = nameof(VerifiedEmailForLogin);
     public const string FirstPluginBuildReviewers = nameof(FirstPluginBuildReviewers);
     public const string VerifiedGithub = nameof(VerifiedGithub);
+    public const string VerifiedNostr = nameof(VerifiedNostr);
 }

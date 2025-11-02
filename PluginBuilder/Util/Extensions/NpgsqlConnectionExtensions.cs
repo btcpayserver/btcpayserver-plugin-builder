@@ -85,6 +85,20 @@ public static class NpgsqlConnectionExtensions
         return !string.IsNullOrEmpty(githubGistUrl);
     }
 
+    public static async Task<bool> IsNostrAccountVerified(this NpgsqlConnection conn, string userId)
+    {
+        const string sql = """
+                           SELECT EXISTS (
+                             SELECT 1
+                             FROM "AspNetUsers"
+                             WHERE "Id" = @userId
+                               AND jsonb_typeof("AccountDetail"->'nostr') = 'object'
+                               AND NULLIF("AccountDetail"->'nostr'->>'npub','')  IS NOT NULL
+                               AND NULLIF("AccountDetail"->'nostr'->>'proof','') IS NOT NULL
+                           );
+                           """;
+        return await conn.ExecuteScalarAsync<bool>(sql, new { userId });
+    }
     #endregion
 
 
@@ -386,6 +400,13 @@ public static class NpgsqlConnectionExtensions
             await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedGithub, value = "false" });
         }
+
+        if (result.All(r => r.key != SettingsKeys.VerifiedNostr))
+        {
+            await connection.ExecuteAsync(
+                "INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.VerifiedNostr, value = "false" });
+        }
     }
 
     public static Task UpsertPluginReview(
@@ -552,6 +573,12 @@ public static class NpgsqlConnectionExtensions
     public static async Task<bool> GetVerifiedGithubSetting(this NpgsqlConnection connection)
     {
         var v = await SettingsGetAsync(connection, SettingsKeys.VerifiedGithub);
+        return bool.TryParse(v, out var b) && b;
+    }
+
+    public static async Task<bool> GetVerifiedNostrSetting(this NpgsqlConnection connection)
+    {
+        var v = await SettingsGetAsync(connection, SettingsKeys.VerifiedNostr);
         return bool.TryParse(v, out var b) && b;
     }
 
