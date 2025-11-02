@@ -15,7 +15,8 @@ public static class PluginSettingExtensions
             GitRef = viewModel.GitRef,
             PluginDirectory = viewModel.PluginDirectory,
             BuildConfig = viewModel.BuildConfig,
-            Logo = viewModel.LogoUrl
+            Logo = viewModel.LogoUrl,
+            RequireGPGSignatureForRelease = viewModel.RequireGPGSignatureForRelease,
         };
     }
 
@@ -30,7 +31,8 @@ public static class PluginSettingExtensions
             GitRef = settings.GitRef,
             PluginDirectory = settings.PluginDirectory,
             BuildConfig = settings.BuildConfig,
-            LogoUrl = settings.Logo
+            LogoUrl = settings.Logo,
+            RequireGPGSignatureForRelease = settings.RequireGPGSignatureForRelease
         };
     }
 }

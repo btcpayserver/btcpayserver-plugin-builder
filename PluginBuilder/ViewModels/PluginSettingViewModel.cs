@@ -33,4 +33,7 @@ public class PluginSettingViewModel
     [Display(Name = "Plugin Title")]
     public string PluginTitle { get; set; }
     public string Description { get; set; }
+
+    [Display(Name = "Require GPG verification for plugin releases")]
+    public bool RequireGPGSignatureForRelease { get; set; }
 }

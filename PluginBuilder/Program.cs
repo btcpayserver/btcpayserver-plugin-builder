@@ -171,6 +171,7 @@ public class Program
         services.AddSingleton<DBConnectionFactory>();
         services.AddSingleton<BuildService>();
         services.AddSingleton<ProcessRunner>();
+        services.AddSingleton<GPGKeyService>();
         services.AddSingleton<AzureStorageClient>();
         services.AddSingleton<ServerEnvironment>();
         services.AddSingleton<EventAggregator>();

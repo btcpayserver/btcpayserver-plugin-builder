@@ -27,15 +27,5 @@ public class PluginSettings
     public string PluginTitle { get; set; }
     public string Description { get; set; }
     public string Logo { get; set; }
-    public PluginRequestListingRecord RequestListing { get; set; }
-}
-
-public class PluginRequestListingRecord
-{
-    public string ReleaseNote { get; set; }
-    public string TelegramVerificationMessage { get; set; }
-    public string UserReviews { get; set; }
-    public DateTimeOffset DateAdded { get; set; }
-    public DateTimeOffset LastReminderEmailSent { get; set; }
-    public DateTimeOffset? AnnouncementDate { get; set; }
+    public bool RequireGPGSignatureForRelease { get; set; }
 }

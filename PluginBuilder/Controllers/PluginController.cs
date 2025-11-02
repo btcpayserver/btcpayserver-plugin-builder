@@ -1,16 +1,12 @@
-using System.Data;
-using System.Threading.Tasks;
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using Npgsql;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Controllers.Logic;
-using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
@@ -27,9 +23,10 @@ public class PluginController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
     BuildService buildService,
+    GPGKeyService gpgKeyService,
     AzureStorageClient azureStorageClient,
     UserVerifiedLogic userVerifiedLogic,
-    EmailService emailService,
+    FirstBuildEvent firstBuildEvent,
     IUserClaimsPrincipalFactory<IdentityUser> principalFactory )
     : Controller
 {
@@ -60,19 +57,6 @@ public class PluginController(
         if (settingViewModel is null)
             return NotFound();
 
-        var userId = userManager.GetUserId(User);
-        await using var conn = await connectionFactory.Open();
-        var existingSetting = await conn.GetSettings(pluginSlug);
-        settingViewModel.LogoUrl = existingSetting?.Logo;
-        var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-        settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
-
-        if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
-        {
-            TempData[TempDataConstant.WarningMessage] = "Plugin title and description are required";
-            return RedirectToAction(nameof(Settings), "Plugin", new { pluginSlug });
-        }
-
         if (string.IsNullOrEmpty(settingViewModel.GitRepository) || !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
         {
             ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository is required and should be an absolute URL");
@@ -81,6 +65,17 @@ public class PluginController(
         if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
         {
             ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
+            return View(settingViewModel);
+        }
+        var userId = userManager.GetUserId(User);
+        await using var conn = await connectionFactory.Open();
+        var existingSetting = await conn.GetSettings(pluginSlug);
+        var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+        settingViewModel.LogoUrl = existingSetting?.Logo;
+        settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
+        if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
+        {
+            ModelState.AddModelError(nameof(settingViewModel.PluginTitle), "Plugin title and description are required");
             return View(settingViewModel);
         }
 
@@ -107,14 +102,14 @@ public class PluginController(
             settingViewModel.Logo = null;
             settingViewModel.LogoUrl = null;
         }
-        if (!settingViewModel.IsPluginPrimaryOwner)
+        if (!settingViewModel.IsPluginPrimaryOwner && existingSetting is not null)
         {
-            settingViewModel.PluginTitle = existingSetting?.PluginTitle;
-            settingViewModel.Description = existingSetting?.Description;
+            settingViewModel.RequireGPGSignatureForRelease = existingSetting.RequireGPGSignatureForRelease;
+            settingViewModel.PluginTitle = existingSetting.PluginTitle;
+            settingViewModel.Description = existingSetting.Description;
         }
-        var settings = settingViewModel.ToPluginSettings();
-        await conn.SetPluginSettings(pluginSlug, settings);
-        TempData[TempDataConstant.SuccessMessage] = "Settings updated";
+        await conn.SetPluginSettings(pluginSlug, settingViewModel.ToPluginSettings());
+        TempData[TempDataConstant.SuccessMessage] = "Settings updated successfully";
         return RedirectToAction(nameof(Settings), new { pluginSlug });
     }
 
@@ -126,15 +121,18 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your email address in order to create and publish plugins";
+            TempData[TempDataConstant.WarningMessage] =
+                "You need to verify your email address in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
 
         if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
         {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub account in order to create and publish plugins";
-            return RedirectToAction("AccountDetails", "Account");
+            TempData[TempDataConstant.WarningMessage] =
+                        "You need to verify your GitHub account in order to create and publish plugins";
+                    return RedirectToAction("AccountDetails", "Account");
         }
+
         var settings = await conn.GetSettings(pluginSlug);
         CreateBuildViewModel model = new()
         {
@@ -172,9 +170,11 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your email address in order to create and publish plugins";
-            return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
+            TempData[TempDataConstant.WarningMessage] =
+                "You need to verify your email address in order to create and publish plugins";
+            return RedirectToAction("AccountDetails", "Account");
         }
+
         try
         {
             var identifier = await buildService.FetchIdentifierFromGithubCsprojAsync(
@@ -198,151 +198,9 @@ public class PluginController(
             return View(model);
         }
 
-        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
-        if (buildId == 0)
-            await UpdatePluginSettingsAsync(conn, pluginSlug, model);
-
+        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter(), firstBuildEvent);
         _ = buildService.Build(new FullBuildId(pluginSlug, buildId));
         return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
-    }
-
-    private async Task UpdatePluginSettingsAsync(NpgsqlConnection conn, PluginSlug pluginSlug, CreateBuildViewModel model)
-    {
-        var existingSetting = await conn.GetSettings(pluginSlug) ?? new();
-        existingSetting.GitRepository = model.GitRepository;
-        existingSetting.GitRef = model.GitRef;
-        existingSetting.PluginDirectory = model.PluginDirectory;
-        existingSetting.BuildConfig = model.BuildConfig;
-        await conn.SetPluginSettings(pluginSlug, existingSetting);
-    }
-
-
-    [HttpGet("request-listing")]
-    public async Task<IActionResult> RequestListing(
-        [ModelBinder(typeof(PluginSlugModelBinder))]
-        PluginSlug pluginSlug)
-    {
-        var model = new RequestListingViewModel { PluginSlug = pluginSlug.ToString() };
-        await using var conn = await connectionFactory.Open();
-        var plugin = await conn.GetPluginDetails(pluginSlug);
-
-        if (plugin?.Visibility == PluginVisibilityEnum.Listed)
-            return RedirectToAction(nameof(Dashboard), new { pluginSlug });
-
-        if (plugin?.Visibility == PluginVisibilityEnum.Hidden)
-            return NotFound();
-
-        var pluginOwners = await conn.GetPluginOwners(pluginSlug);
-        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
-        var request = pluginSettings?.RequestListing;
-        model.ReleaseNote = pluginSettings?.Description;
-        if (request != null)
-        {
-            var now = DateTimeOffset.UtcNow;
-            model.CanSendEmailReminder = now >= request.LastReminderEmailSent.AddDays(1);
-            model.PendingListing = true;
-            model.TelegramVerificationMessage = request.TelegramVerificationMessage;
-            model.UserReviews = request.UserReviews;
-            model.ReleaseNote = request.ReleaseNote;
-            model.AnnouncementDate = request.AnnouncementDate;
-            TempData[TempDataConstant.WarningMessage] = "Your listing request has been sent and is pending validation";
-        }
-        model.ValidationRequirementMet = await ListingRequirementsMet(conn, pluginSettings, pluginOwners);
-        return View(model);
-    }
-
-    [HttpPost("request-listing")]
-    public async Task<IActionResult> RequestListing(
-        [ModelBinder(typeof(PluginSlugModelBinder))]
-        PluginSlug pluginSlug, RequestListingViewModel model)
-    {
-        await using var conn = await connectionFactory.Open();
-        var plugin = await conn.GetPluginDetails(pluginSlug);
-        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
-        if (plugin?.Visibility == PluginVisibilityEnum.Hidden)
-            return NotFound();
-
-        if (plugin?.Visibility == PluginVisibilityEnum.Listed)
-            return RedirectToAction(nameof(Dashboard), new { pluginSlug });
-
-        if (string.IsNullOrWhiteSpace(model.ReleaseNote))
-            ModelState.AddModelError(nameof(model.ReleaseNote), "Description is required.");
-
-        if (string.IsNullOrWhiteSpace(model.TelegramVerificationMessage))
-            ModelState.AddModelError(nameof(model.TelegramVerificationMessage), "Telegram verification message is required.");
-
-        if (string.IsNullOrWhiteSpace(model.UserReviews))
-            ModelState.AddModelError(nameof(model.UserReviews), "User-reviews link is required.");
-
-        if (!ModelState.IsValid)
-        {
-            var owners = await conn.GetPluginOwners(pluginSlug);
-            model.ValidationRequirementMet = await ListingRequirementsMet(conn, pluginSettings, owners);
-            model.PendingListing = pluginSettings?.RequestListing != null;
-            return View(model);
-        }
-        pluginSettings.RequestListing = new()
-        {
-            ReleaseNote = model.ReleaseNote.Trim(),
-            TelegramVerificationMessage = model.TelegramVerificationMessage.Trim(),
-            UserReviews = model.UserReviews.Trim(),
-            AnnouncementDate = model.AnnouncementDate,
-            DateAdded = DateTimeOffset.UtcNow,
-            LastReminderEmailSent = DateTimeOffset.UtcNow
-        };
-        await conn.SetPluginSettings(pluginSlug, pluginSettings);
-        await SendRequestListingEmail(conn, pluginSlug.ToString());
-        TempData[TempDataConstant.SuccessMessage] = "Your listing request has been sent and is pending validation";
-        return RedirectToAction(nameof(Dashboard), new { pluginSlug });
-    }
-
-    public async Task<IActionResult> SendReminder([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug)
-    {
-        await using var conn = await connectionFactory.Open();
-        var plugin = await conn.GetPluginDetails(pluginSlug);
-        if (plugin is null || plugin.Visibility != PluginVisibilityEnum.Unlisted)
-            return NotFound();
-
-        var settings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
-        var request = settings?.RequestListing;
-        if (request is null)
-        {
-            TempData[TempDataConstant.WarningMessage] = "No listing request exist";
-            return RedirectToAction(nameof(Dashboard), new { pluginSlug });
-        }
-        var now = DateTimeOffset.UtcNow;
-        if (now < request.LastReminderEmailSent.AddDays(1))
-        {
-            TempData[TempDataConstant.WarningMessage] = "Please wait 24 hours before sending another reminder";
-            return RedirectToAction(nameof(Dashboard), new { pluginSlug });
-        }
-        await SendRequestListingEmail(conn, pluginSlug.ToString());
-        request.LastReminderEmailSent = now;
-        await conn.SetPluginSettings(pluginSlug, settings);
-        TempData[TempDataConstant.SuccessMessage] = "Request listing reminders sent to admins";
-        return RedirectToAction(nameof(RequestListing), new { pluginSlug });
-    }
-
-    private static async Task<bool> ListingRequirementsMet(NpgsqlConnection conn, PluginSettings plugin, List<OwnerVm> owners)
-    {
-        if (plugin == null) return false;
-
-        bool hasRequiredFields = !string.IsNullOrWhiteSpace(plugin.GitRepository) && !string.IsNullOrWhiteSpace(plugin.Documentation) && !string.IsNullOrWhiteSpace(plugin.Logo);
-        if (!hasRequiredFields) return false;
-
-        foreach (var owner in owners)
-        {
-            if (!await conn.IsSocialAccountsVerified(owner.UserId))
-                return false;
-        }
-        return true;
-    }
-
-    private async Task SendRequestListingEmail(NpgsqlConnection conn, string pluginSlug)
-    {
-        var pluginPublicUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug }, Request.Scheme);
-        var listingReviewUrl = Url.Action(nameof(AdminController.PluginEdit), "Admin", new { slug = pluginSlug }, Request.Scheme);
-        await emailService.NotifyAdminOnNewRequestListing(conn, pluginSlug, pluginPublicUrl!, listingReviewUrl!);
     }
 
     [HttpPost("versions/{version}/release")]
@@ -350,32 +208,59 @@ public class PluginController(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
         [ModelBinder(typeof(PluginVersionModelBinder))]
-        PluginVersion version, string command)
+        PluginVersion version, string command, IFormFile? signatureFile)
     {
         await using var conn = await connectionFactory.Open();
 
-        if (command == "remove")
-        {
-            var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)>(
+        var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)>(
                 "SELECT v.build_id, p.identifier FROM versions v JOIN plugins p ON v.plugin_slug = p.slug WHERE plugin_slug=@pluginSlug AND ver=@version",
                 new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-            FullBuildId fullBuildId = new(pluginSlug, pluginBuild.buildId);
-            await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
-                new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-            await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
-            return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
-        }
-        // Email notifications are now handled on first build creation, not on release.
 
-        await conn.ExecuteAsync("UPDATE versions SET pre_release=@preRelease WHERE plugin_slug=@pluginSlug AND ver=@version",
-            new
-            {
-                pluginSlug = pluginSlug.ToString(),
-                version = version.VersionParts,
-                preRelease = command == "unrelease"
-            });
-        TempData[TempDataConstant.SuccessMessage] =
-            $"Version {version} {(command == "release" ? "released" : "unreleased")}";
+        var pluginSettings = await conn.GetSettings(pluginSlug);
+
+        switch (command)
+        {
+            case "remove":
+                FullBuildId fullBuildId = new(pluginSlug, pluginBuild.buildId);
+                await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
+                    new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
+                await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
+                return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
+
+            case "sign_release":
+                var manifest_info = await conn.QueryFirstOrDefaultAsync<string>("SELECT manifest_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
+                    new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
+
+                if (signatureFile is null)
+                {
+                    TempData[TempDataConstant.WarningMessage] = "Signature file is required";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+                var message = GetManifestHash(NiceJson(manifest_info), true);
+                if (string.IsNullOrEmpty(message))
+                {
+                    TempData[TempDataConstant.WarningMessage] = "manifest information for plugin not available";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+                var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User)!, Encoding.UTF8.GetBytes(message), signatureFile);
+                if (!signatureVerification.valid)
+                {
+                    TempData[TempDataConstant.WarningMessage] = signatureVerification.message;
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+                await conn.UpdateVersionReleaseStatus(pluginSlug, command, version, signatureVerification.proof);
+                break;
+
+            default:
+                if (pluginSettings?.RequireGPGSignatureForRelease == true && command == "release")
+                {
+                    TempData[TempDataConstant.WarningMessage] = "A verified GPG signature is required to release this version";
+                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+                }
+                await conn.UpdateVersionReleaseStatus(pluginSlug, command, version);
+                break;
+        }
+        TempData[TempDataConstant.SuccessMessage] = $"Version {version} {(command is "release" or "sign_release" ? "released" : "unreleased")}";
         return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
     }
 
@@ -401,8 +286,8 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         var row =
             await conn
-                .QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release)>(
-                    "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
+                .QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release, string signatureproof)>(
+                    "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release, v.signatureproof FROM builds b " +
                     "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                     "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
                     "LIMIT 1",
@@ -413,11 +298,14 @@ public class PluginController(
             "ORDER BY created_at;",
             new { pluginSlug = pluginSlug.ToString(), buildId });
         var logs = string.Join("\r\n", logLines);
+        var pluginSetting = await conn.GetSettings(pluginSlug);
+        var signatureProof = SafeJson.Deserialize<SignatureProof>(row.signatureproof);
+
         BuildViewModel vm = new();
         var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
         var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
         vm.FullBuildId = new FullBuildId(pluginSlug, buildId);
-        vm.ManifestInfo = NiceJson(row.manifest_info);
+        vm.ManifestInfo = NiceJson(row.manifest_info, signatureProof?.Fingerprint);
         vm.BuildInfo = buildInfo?.ToString(Formatting.Indented);
         vm.DownloadLink = buildInfo?.Url;
         vm.State = row.state;
@@ -429,6 +317,8 @@ public class PluginController(
         vm.RepositoryLink = GetUrl(buildInfo);
         vm.DownloadLink = buildInfo?.Url;
         //vm.Error = buildInfo?.Error;
+        vm.RequireGPGSignatureForRelease = pluginSetting?.RequireGPGSignatureForRelease ?? false;
+        vm.ManifestInfoSha256Hash = GetManifestHash(NiceJson(row.manifest_info), vm.RequireGPGSignatureForRelease);
         vm.Published = row.published;
         //var buildId = await conn.NewBuild(pluginSlug);
         //_ = buildService.Build(new FullBuildId(pluginSlug, buildId), model.ToBuildParameter());
@@ -437,12 +327,25 @@ public class PluginController(
         return View(vm);
     }
 
-    private string? NiceJson(string? json)
+
+    private string GetManifestHash(string? manifestInfo, bool requiresGPGSignature)
+    {
+        if (!requiresGPGSignature || string.IsNullOrEmpty(manifestInfo))
+            return string.Empty;
+
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(manifestInfo));
+        return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+    }
+
+    private string? NiceJson(string? json, string? fingerprint = null)
     {
         if (json is null)
             return null;
         var data = JObject.Parse(json);
         data = new JObject(data.Properties().OrderBy(p => p.Name));
+        if (!string.IsNullOrWhiteSpace(fingerprint))
+            data["SignatureFingerprint"] = fingerprint;
         return data.ToString(Formatting.Indented);
     }
 
@@ -479,8 +382,7 @@ public class PluginController(
             b.DownloadLink = buildInfo?.Url;
             b.Error = buildInfo?.Error;
         }
-        var pluginSettings = await conn.GetPluginDetails(pluginSlug);
-        vm.RequestListing = pluginSettings?.Visibility == PluginVisibilityEnum.Unlisted;
+
         return View(vm);
     }
 

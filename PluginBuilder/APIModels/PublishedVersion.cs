@@ -16,6 +16,7 @@ public class PublishedVersion
     public string Documentation { get; set; }
     public string PluginTitle { get; set; }
     public string Description { get; set; }
+    public string Fingerprint { get; set; }
 }
 
 public class PublishedPlugin : PublishedVersion

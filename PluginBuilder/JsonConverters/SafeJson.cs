@@ -4,13 +4,16 @@ namespace PluginBuilder.JsonConverters;
 
 public static class SafeJson
 {
-    public static T Deserialize<T>(string json) where T : new()
+    public static T Deserialize<T>(string? json) where T : new()
     {
+        if (string.IsNullOrWhiteSpace(json))
+            return new T();
+
         try
         {
             return JsonConvert.DeserializeObject<T>(json) ?? new T();
         }
-        catch (JsonException)
+        catch (Exception)
         {
             return new T();
         }

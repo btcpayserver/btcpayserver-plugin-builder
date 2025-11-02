@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json.Linq;
-using Newtonsoft.Json;
 using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Controllers.Logic;
@@ -15,6 +14,7 @@ using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Home;
 using PluginBuilder.ModelBinders;
+using PluginBuilder.JsonConverters;
 
 namespace PluginBuilder.Controllers;
 
@@ -251,7 +251,7 @@ public class HomeController(
         versions.AddRange(rows.Select(r =>
         {
             var manifestInfo = JObject.Parse(r.manifest_info);
-            PluginSettings? settings = string.IsNullOrWhiteSpace(r.settings) ? null : JsonConvert.DeserializeObject<PluginSettings>(r.settings);
+            PluginSettings? settings = SafeJson.Deserialize<PluginSettings>(r.settings);
             return new PublishedPlugin
             {
                 PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
@@ -276,15 +276,18 @@ public class HomeController(
     public async Task<IActionResult> GetPluginDetails(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        [FromQuery] PluginDetailsViewModel model)
+        [FromQuery] PluginDetailsViewModel? model)
     {
-        model.Sort = model.Sort.ToLowerInvariant() switch { "helpful" => "helpful", _ => "newest" };
+        model ??= new PluginDetailsViewModel();
+
+        var sort = string.Equals(model.Sort, "helpful", StringComparison.OrdinalIgnoreCase) ? "helpful" : "newest";
+
         if (model.RatingFilter is < 1 or > 5) model.RatingFilter = null;
 
         var userId = User.Identity?.IsAuthenticated == true ? userManager.GetUserId(User) : null;
         var isAdmin = User.Identity?.IsAuthenticated == true && User.IsInRole(Roles.ServerAdmin);
 
-        var orderBy = model.Sort == "helpful"
+        var orderBy = sort == "helpful"
             ? " (hv.up_count - hv.down_count) DESC, r.created_at DESC "
             : " r.created_at DESC ";
 
@@ -295,7 +298,7 @@ public class HomeController(
             isAdmin,
             skip = model.Skip,
             take = model.Count,
-            sort = model.Sort,
+            sort,
             rating = model.RatingFilter
         };
 
@@ -409,7 +412,7 @@ public class HomeController(
                 item.AuthorAvatarUrl = gh.AvatarUrl;
             }
         }
-        var settings = string.IsNullOrWhiteSpace((string?)pluginDetails.settings) ? null : JsonConvert.DeserializeObject<PluginSettings>((string)pluginDetails.settings);
+        var settings = SafeJson.Deserialize<PluginSettings>((string)pluginDetails.settings);
         var manifestInfo = JObject.Parse((string)pluginDetails.manifest_info);
         var plugin = new PublishedPlugin
         {
@@ -432,7 +435,7 @@ public class HomeController(
         var vm = new PluginDetailsViewModel
         {
             Plugin = plugin,
-            Sort = model.Sort,
+            Sort = sort,
             Skip = model.Skip,
             Reviews = items,
             IsAdmin = isAdmin,

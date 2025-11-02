@@ -4,6 +4,7 @@ using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
+using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
 
@@ -210,6 +211,22 @@ public static class NpgsqlConnectionExtensions
                 plugin_slug = fullBuildId.PluginSlug.ToString(),
                 buildId = fullBuildId.BuildId
             });
+    }
+
+    public static async Task<bool> UpdateVersionReleaseStatus(this NpgsqlConnection connection, PluginSlug pluginSlug, string command, PluginVersion version, SignatureProof? signatureProof = null)
+    {
+        var updated = await connection.ExecuteAsync(
+            "UPDATE versions SET pre_release = @preRelease, signatureproof = CASE WHEN @hasSignature THEN @signatureproof::JSONB WHEN @preRelease THEN NULL ELSE signatureproof END " +
+            "WHERE plugin_slug = @pluginSlug AND ver = @version",
+            new
+            {
+                signatureproof = signatureProof != null ? JsonConvert.SerializeObject(signatureProof, CamelCaseSerializerSettings.Instance) : null,
+                hasSignature = signatureProof != null,
+                pluginSlug = pluginSlug.ToString(),
+                version = version.VersionParts,
+                preRelease = command == "unrelease"
+            });
+        return updated == 1;
     }
 
     public static async Task<PluginSlug[]> GetPluginsByUserId(this NpgsqlConnection connection, string userId)
