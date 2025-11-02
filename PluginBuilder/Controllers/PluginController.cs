@@ -327,21 +327,22 @@ public class PluginController(
         return View(vm);
     }
 
-
     private string GetManifestHash(string? manifestInfo, bool requiresGPGSignature)
     {
-        if (!requiresGPGSignature || string.IsNullOrEmpty(manifestInfo))
-            return string.Empty;
+        if (!requiresGPGSignature || string.IsNullOrEmpty(manifestInfo)) return string.Empty;
+
+        var manifestData = PluginManifest.Parse(manifestInfo);
+        if (manifestData == null) return string.Empty;
 
         using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(manifestInfo));
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(manifestData.Identifier));
         return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
     }
 
     private string? NiceJson(string? json, string? fingerprint = null)
     {
-        if (json is null)
-            return null;
+        if (json is null) return null;
+
         var data = JObject.Parse(json);
         data = new JObject(data.Properties().OrderBy(p => p.Name));
         if (!string.IsNullOrWhiteSpace(fingerprint))
