@@ -44,7 +44,7 @@ public class UserVerifiedLogic(
 
     public async Task<bool> IsNostrVerified(ClaimsPrincipal claimsPrincipal, NpgsqlConnection conn)
     {
-        if (!userVerifiedCache.IsGithubVerificationRequired)
+        if (!userVerifiedCache.IsNostrVerificationRequired)
             return true;
 
         var user = await userManager.GetUserAsync(claimsPrincipal);

@@ -54,9 +54,11 @@ public class AccountController(
         var emailSettings = await emailService.GetEmailSettingsFromDb();
         var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user!);
 
-        var settings = await conn.GetAccountDetailSettings(user!.Id);
+        var settings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
+        settings.Nostr ??= new NostrSettings();
+
         var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
-        var isNostrVerified = !string.IsNullOrEmpty(settings?.Nostr?.Npub) && !string.IsNullOrEmpty(settings.Nostr?.Proof);
+        var isNostrVerified = !string.IsNullOrWhiteSpace(settings.Nostr.Npub) && !string.IsNullOrWhiteSpace(settings.Nostr.Proof);
 
         AccountDetailsViewModel model = new()
         {
@@ -64,7 +66,7 @@ public class AccountController(
             AccountEmailConfirmed = user.EmailConfirmed,
             NeedToVerifyEmail = needToVerifyEmail,
             GithubAccountVerified = isGithubVerified,
-            Settings = settings!,
+            Settings = settings,
             IsNostrVerified = isNostrVerified
         };
         return View(model);

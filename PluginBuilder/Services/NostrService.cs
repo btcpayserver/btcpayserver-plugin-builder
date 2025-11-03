@@ -279,21 +279,30 @@ public class NostrService(IMemoryCache cache)
 
     private static NostrProfileCache ParseKind0ToProfile(JObject kind0)
     {
-        var contentJson = kind0.Value<string>("content") ?? "{}";
-        using var doc = System.Text.Json.JsonDocument.Parse(contentJson);
-        var root = doc.RootElement;
+        const int maxContentLength = 64_000;
+        var contentJson = kind0.Value<string>("content");
+        string? picture = null;
+        string? display = null;
+        string? name = null;
 
-        var picture = root.TryGetProperty("picture", out var picEl) && picEl.ValueKind == System.Text.Json.JsonValueKind.String
-            ? picEl.GetString()
-            : null;
+        if (!string.IsNullOrWhiteSpace(contentJson) && contentJson.Length <= maxContentLength)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(contentJson);
+                var root = doc.RootElement;
 
-        var display = root.TryGetProperty("display_name", out var dnEl) && dnEl.ValueKind == System.Text.Json.JsonValueKind.String
-            ? dnEl.GetString()
-            : null;
+                if (root.TryGetProperty("picture", out var picEl) && picEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                    picture = picEl.GetString();
 
-        var name = root.TryGetProperty("name", out var nameEl) && nameEl.ValueKind == System.Text.Json.JsonValueKind.String
-            ? nameEl.GetString()
-            : null;
+                if (root.TryGetProperty("display_name", out var dnEl) && dnEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                    display = dnEl.GetString();
+
+                if (root.TryGetProperty("name", out var nameEl) && nameEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                    name = nameEl.GetString();
+            }
+            catch (System.Text.Json.JsonException) { }
+        }
 
         return new NostrProfileCache
         {
