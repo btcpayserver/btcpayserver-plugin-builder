@@ -179,9 +179,15 @@ public class AccountController(
             return BadRequest("invalid_signature");
 
         await using var conn = await connectionFactory.Open();
+
+        var npub =  NostrService.HexPubToNpub(req.Event.Pubkey);
+        var npubOwnerId = await conn.GetUserIdByNpubAsync(npub);
+        if (npubOwnerId is not null && !string.Equals(npubOwnerId, user.Id, StringComparison.Ordinal))
+            return BadRequest("npub_already_linked_to_other_account");
+
         var settings = await conn.GetAccountDetailSettings(user.Id) ?? new AccountSettings();
         settings.Nostr ??= new NostrSettings();
-        settings.Nostr.Npub = NostrService.HexPubToNpub(req.Event.Pubkey);
+        settings.Nostr.Npub = npub;
         settings.Nostr.Proof = req.Event.Id;
 
         var profile = await NostrService.GetNostrProfileByAuthorHexAsync(req.Event.Pubkey, timeoutPerRelayMs: 6000);
@@ -269,16 +275,25 @@ public class AccountController(
             return View(model);
         }
 
-        if (!ContentHasProof(ev.Content, model.Token))
+        if (!ContentHasProof(ev.Content, token))
         {
             TempData[TempDataConstant.WarningMessage] = "Challenge token not found in note content.";
             return View(model);
         }
 
         await using var conn = await connectionFactory.Open();
+
+        var npub =  NostrService.HexPubToNpub(ev.Pubkey);
+        var npubOwnerId = await conn.GetUserIdByNpubAsync(npub);
+        if (npubOwnerId is not null && !string.Equals(npubOwnerId, user.Id, StringComparison.Ordinal))
+        {
+            TempData[TempDataConstant.WarningMessage] = "This Nostr Npub is already linked to another account.";
+            return View(model);
+        }
+
         var settings = await conn.GetAccountDetailSettings(user.Id) ?? new AccountSettings();
         settings.Nostr ??= new NostrSettings();
-        settings.Nostr.Npub = NostrService.HexPubToNpub(ev.Pubkey);
+        settings.Nostr.Npub = npub;
         settings.Nostr.Proof = model.NoteRef;
 
         try
@@ -295,6 +310,5 @@ public class AccountController(
         return RedirectToAction(nameof(AccountDetails));
     }
 
-    private static bool ContentHasProof(string? content, string token) =>
-        !string.IsNullOrEmpty(content) && content.Contains(token);
+    private static bool ContentHasProof(string? content, string token) => !string.IsNullOrEmpty(content) && content.Contains(token);
 }

@@ -68,6 +68,17 @@ public static class NpgsqlConnectionExtensions
         return JsonConvert.DeserializeObject<AccountSettings>(accountDetail, CamelCaseSerializerSettings.Instance);
     }
 
+    public static async Task<string?> GetUserIdByNpubAsync(this NpgsqlConnection conn, string npub)
+    {
+        const string sql = """
+                           SELECT "Id"
+                           FROM "AspNetUsers"
+                           WHERE lower(trim("AccountDetail"->'nostr'->>'npub')) = lower(trim(@npub))
+                           LIMIT 1;
+                           """;
+        return await conn.ExecuteScalarAsync<string?>(sql, new { npub });
+    }
+
     public static async Task VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl)
     {
         await connection.ExecuteAsync(
