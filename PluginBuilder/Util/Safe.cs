@@ -10,10 +10,4 @@ public static class Safe
     {
         return new HtmlString(_htmlSanitizer.Sanitize(value ?? string.Empty));
     }
-
-    public static IHtmlContent RawEncode(string value)
-    {
-        var encoded = System.Net.WebUtility.HtmlEncode(_htmlSanitizer.Sanitize(value ?? string.Empty));
-        return new HtmlString(encoded);
-    }
 }

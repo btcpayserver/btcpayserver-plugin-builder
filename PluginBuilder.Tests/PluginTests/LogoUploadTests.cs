@@ -4,10 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Dapper;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
@@ -66,7 +63,8 @@ public class LogoUploadTests(ITestOutputHelper output) : PageTest
         {
             // Fill in required fields (PluginTitle, Description, GitRepository are all required)
             await t.Page.FillAsync("#PluginTitle", "Logo Test Plugin Updated");
-            await t.Page.FillAsync("#Description", "Testing logo upload with description");
+            await t.Page.WaitForSelectorAsync(".note-editable");
+            await t.Page.FillAsync(".note-editable", "Testing logo upload with description");
             await t.Page.FillAsync("#GitRepository", "https://github.com/test/repo");
 
             // Upload logo
