@@ -78,7 +78,7 @@
                     <div class="card">
                         <div class="card-body">
                             <h4>Description</h4>
-                            <p>@Html.Raw(Model.Plugin.Description)</p>
+                            <p>@Safe.Raw(Model.Plugin.Description)</p>
                         </div>
                     </div>
                     @if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())
@@ -303,7 +303,7 @@
                                         <div class="mt-1 d-flex">
 											@if (!string.IsNullOrWhiteSpace(review.Body))
 											{
-												<div class="flex-grow-1 pe-2">@Html.Raw(review.Body)</div>
+												<div class="flex-grow-1 pe-2">@Safe.Raw(review.Body)</div>
 											}
 
                                             @if (review.IsReviewOwner || Model.IsAdmin)

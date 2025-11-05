@@ -45,7 +45,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         var form = tester.Page.Locator("#review-form");
         await Expect(form).ToBeVisibleAsync();
         await tester.Page.ClickAsync("#ratingStars .star-btn[data-value='4']");
-        await tester.Page.FillAsync("textarea[name='Body']", "Amazing bro!.");
+        await Expect(tester.Page.Locator("div.note-editable")).ToBeVisibleAsync();
+        await tester.Page.FillAsync("div.note-editable", "Amazing bro!.");
         await form.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Submit" }).ClickAsync();
         await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
         var firstCard = tester.Page.Locator(".test-review-card").First;
@@ -103,7 +104,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         // add 1 more review with 1 star
         await Expect(tester.Page!.Locator("#review-form")).ToBeVisibleAsync();
         await tester.Page.ClickAsync("#ratingStars .star-btn[data-value='1']");
-        await tester.Page.FillAsync("textarea[name='Body']", "scam");
+        await Expect(tester.Page.Locator("div.note-editable")).ToBeVisibleAsync();
+        await tester.Page.FillAsync("div.note-editable", "scam");
         await tester.Page.Locator("#review-form").GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Submit" }).ClickAsync();
         await tester.Page.WaitForURLAsync(new Regex("public/plugins/.+?#reviews"));
 
