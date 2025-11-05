@@ -56,7 +56,7 @@
                                             <a asp-action="GetPluginDetails"
                                                asp-route-pluginSlug="@plugin.ProjectSlug">@plugin.PluginTitle</a>
                                         </h3>
-                                        <p style="margin-bottom: 5px;">@plugin.Description</p>
+										<p style="margin-bottom: 5px;">@Html.Raw(plugin.Description)</p>
                                         <div style="font-size: 0.875em; color: #6c757d;">
                                             <div style="margin-bottom: 3px;">
                                                 <span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>

@@ -5,7 +5,8 @@
 <html lang="en">
 <head>
 	<title>@ViewData["Title"]</title>
-    <partial name="_CommonHead"></partial>
+	<partial name="_CommonHead"></partial>
+	@RenderSection("HeaderScripts", false)
     @RenderSection("Meta", required: false)
     <style>
 		body, section, .content-wrapper {
@@ -32,6 +33,8 @@
     <vc:status-message></vc:status-message>
     @RenderBody()
 </section>
+<script src="~/vendor/jquery/jquery.min.js" asp-append-version="true"></script>
 <script src="~/vendor/bootstrap/bootstrap.bundle.min.js" asp-append-version="true"></script>
+@RenderSection("FooterScripts", false)
 </body>
 </html>

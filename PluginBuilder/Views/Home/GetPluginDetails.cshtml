@@ -78,7 +78,7 @@
                     <div class="card">
                         <div class="card-body">
                             <h4>Description</h4>
-                            <p>@Model.Plugin.Description</p>
+                            <p>@Html.Raw(Model.Plugin.Description)</p>
                         </div>
                     </div>
                     @if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())
@@ -301,12 +301,10 @@
                                       </div>
 
                                         <div class="mt-1 d-flex">
-                                            <div class="flex-grow-1 pe-2">
-                                                @if (!string.IsNullOrWhiteSpace(review.Body))
-                                                {
-                                                    @review.Body
-                                                }
-                                            </div>
+											@if (!string.IsNullOrWhiteSpace(review.Body))
+											{
+												<div class="flex-grow-1 pe-2">@Html.Raw(review.Body)</div>
+											}
 
                                             @if (review.IsReviewOwner || Model.IsAdmin)
                                             {
@@ -401,7 +399,7 @@
 
                                     <div class="mb-3">
                                         <label class="form-label">Review</label>
-                                        <textarea name="Body" rows="4" maxlength="2000" class="form-control"></textarea>
+                                        <textarea name="Body" rows="4" maxlength="2000" class="form-control richtext"></textarea>
                                     </div>
 
                                     <button class="btn btn-primary">Submit</button>
@@ -558,3 +556,15 @@
     .btn.vote-up.text-success:hover   { color: var(--btcpay-neutral-600, #6c757d) !important; }
     .btn.vote-down.text-danger:hover  { color: var(--btcpay-neutral-600, #6c757d) !important; }
 </style>
+
+
+			
+
+@section HeaderScripts {
+	<link href="~/vendor/summernote/summernote-bs5.css" rel="stylesheet" asp-append-version="true" />
+}
+
+@section FooterScripts {
+	<script src="~/vendor/summernote/summernote-bs5.js" asp-append-version="true"></script>
+	<script src="~/scripts/summernote-init.js" asp-append-version="true"></script>
+}
