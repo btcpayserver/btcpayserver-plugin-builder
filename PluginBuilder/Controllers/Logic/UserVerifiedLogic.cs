@@ -47,8 +47,8 @@ public class UserVerifiedLogic(
         if (!userVerifiedCache.IsNostrVerificationRequired)
             return true;
 
-        var user = await userManager.GetUserAsync(claimsPrincipal);
-        return await conn.IsNostrAccountVerified(user!.Id);
+        var user = await userManager.GetUserAsync(claimsPrincipal) ?? throw new Exception("User not found");
+        return await conn.IsNostrAccountVerified(user.Id);
     }
 }
 

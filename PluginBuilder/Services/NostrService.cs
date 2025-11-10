@@ -264,7 +264,7 @@ public class NostrService(IMemoryCache cache)
         return ret.ToArray();
     }
 
-    public static async Task<NostrProfileCache?> GetNostrProfileByAuthorHexAsync(string authorPubKeyHex, int timeoutPerRelayMs = 6000)
+    public async Task<NostrProfileCache?> GetNostrProfileByAuthorHexAsync(string authorPubKeyHex, int timeoutPerRelayMs = 6000)
     {
         var kind0 = await FetchKind0FromRelaysAsync(authorPubKeyHex, timeoutPerRelayMs);
         if (kind0 is null) return null;

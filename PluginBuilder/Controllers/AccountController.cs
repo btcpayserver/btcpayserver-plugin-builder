@@ -190,7 +190,7 @@ public class AccountController(
         settings.Nostr.Npub = npub;
         settings.Nostr.Proof = req.Event.Id;
 
-        var profile = await NostrService.GetNostrProfileByAuthorHexAsync(req.Event.Pubkey, timeoutPerRelayMs: 6000);
+        var profile = await nostrService.GetNostrProfileByAuthorHexAsync(req.Event.Pubkey, timeoutPerRelayMs: 6000);
         if (profile is not null)
             settings.Nostr.Profile = profile;
 
@@ -298,7 +298,7 @@ public class AccountController(
 
         try
         {
-            var profile = await NostrService.GetNostrProfileByAuthorHexAsync(ev.Pubkey, timeoutPerRelayMs: 6000);
+            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(ev.Pubkey, timeoutPerRelayMs: 6000);
             if (profile is not null)
                 settings.Nostr.Profile = profile;
         }

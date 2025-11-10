@@ -27,7 +27,8 @@ public class HomeController(
     HttpClient httpClient,
     UserVerifiedLogic userVerifiedLogic,
     ServerEnvironment env,
-    NostrService nostrService)
+    NostrService nostrService,
+    ILogger<HomeController> logger)
     : Controller
 {
     [AllowAnonymous]
@@ -530,7 +531,7 @@ public class HomeController(
                 if (!string.IsNullOrWhiteSpace(acc.Nostr?.Npub))
                 {
                     var pubKey = nostrService.NpubToHexPub(acc.Nostr.Npub);
-                    var profile = await NostrService.GetNostrProfileByAuthorHexAsync(pubKey, timeoutPerRelayMs: 6000);
+                    var profile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKey, timeoutPerRelayMs: 6000);
                     if (profile is not null)
                     {
                         acc.Nostr ??= new NostrSettings();
@@ -539,7 +540,10 @@ public class HomeController(
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error while updating nostr profile");
+            }
         }
 
         await conn.UpsertPluginReview(pluginSlug, userId, rating, body, pluginVersionParts);
