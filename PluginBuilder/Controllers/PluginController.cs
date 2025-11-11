@@ -3,10 +3,12 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Controllers.Logic;
+using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
@@ -27,7 +29,8 @@ public class PluginController(
     AzureStorageClient azureStorageClient,
     UserVerifiedLogic userVerifiedLogic,
     FirstBuildEvent firstBuildEvent,
-    IUserClaimsPrincipalFactory<IdentityUser> principalFactory )
+    IUserClaimsPrincipalFactory<IdentityUser> principalFactory,
+    IOutputCacheStore outputCacheStore)
     : Controller
 {
     [HttpGet("settings")]
@@ -109,6 +112,7 @@ public class PluginController(
             settingViewModel.Description = existingSetting.Description;
         }
         await conn.SetPluginSettings(pluginSlug, settingViewModel.ToPluginSettings());
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = "Settings updated successfully";
         return RedirectToAction(nameof(Settings), new { pluginSlug });
     }
@@ -225,6 +229,7 @@ public class PluginController(
                 await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
                     new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
                 await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
+                await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
                 return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
             case "sign_release":
@@ -249,6 +254,7 @@ public class PluginController(
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
                 await conn.UpdateVersionReleaseStatus(pluginSlug, command, version, signatureVerification.proof);
+                await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
                 break;
 
             default:
@@ -257,6 +263,7 @@ public class PluginController(
                     TempData[TempDataConstant.WarningMessage] = "A verified GPG signature is required to release this version";
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
+                await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
                 await conn.UpdateVersionReleaseStatus(pluginSlug, command, version);
                 break;
         }
