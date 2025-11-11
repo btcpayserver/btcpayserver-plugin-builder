@@ -186,8 +186,7 @@ public class PluginController(
             var owns = await conn.EnsureIdentifierOwnership(pluginSlug, identifier);
             if (!owns)
             {
-                TempData[TempDataConstant.WarningMessage] =
-                    $"The plugin identifier '{identifier}' does not belong to project slug '{pluginSlug}'.";
+                TempData[TempDataConstant.WarningMessage] = $"The plugin identifier '{identifier}' does not belong to plugin slug '{pluginSlug}'.";
                 return View(model);
             }
         }
@@ -382,7 +381,6 @@ public class PluginController(
             b.DownloadLink = buildInfo?.Url;
             b.Error = buildInfo?.Error;
         }
-
         return View(vm);
     }
 

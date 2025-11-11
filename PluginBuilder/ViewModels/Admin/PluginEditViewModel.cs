@@ -6,7 +6,7 @@ namespace PluginBuilder.ViewModels.Admin;
 
 public class PluginViewModel
 {
-    public string Slug { get; set; } = null!;
+    public string PluginSlug { get; set; } = null!;
     [ValidateNever]
     public string Identifier { get; set; } = null!;
 
