@@ -95,21 +95,6 @@ public static class NpgsqlConnectionExtensions
         );
         return !string.IsNullOrEmpty(githubGistUrl);
     }
-
-    public static async Task<bool> IsNostrAccountVerified(this NpgsqlConnection conn, string userId)
-    {
-        const string sql = """
-                           SELECT EXISTS (
-                             SELECT 1
-                             FROM "AspNetUsers"
-                             WHERE "Id" = @userId
-                               AND jsonb_typeof("AccountDetail"->'nostr') = 'object'
-                               AND NULLIF("AccountDetail"->'nostr'->>'npub','')  IS NOT NULL
-                               AND NULLIF("AccountDetail"->'nostr'->>'proof','') IS NOT NULL
-                           );
-                           """;
-        return await conn.ExecuteScalarAsync<bool>(sql, new { userId });
-    }
     #endregion
 
 

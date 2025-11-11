@@ -17,7 +17,8 @@ public class AccountController(
     UserManager<IdentityUser> userManager,
     ExternalAccountVerificationService externalAccountVerificationService,
     EmailService emailService,
-    NostrService nostrService)
+    NostrService nostrService,
+    ILogger<AccountController> logger)
     : Controller
 {
     [HttpGet("verifyemail")]
@@ -55,10 +56,8 @@ public class AccountController(
         var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user!);
 
         var settings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
-        settings.Nostr ??= new NostrSettings();
-
-        var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
-        var isNostrVerified = !string.IsNullOrWhiteSpace(settings.Nostr.Npub) && !string.IsNullOrWhiteSpace(settings.Nostr.Proof);
+        var isGithubVerified = await conn.IsGithubAccountVerified(user.Id);
+        var isNostrVerified = !string.IsNullOrWhiteSpace(settings.Nostr?.Npub) && !string.IsNullOrWhiteSpace(settings.Nostr.Proof);
 
         AccountDetailsViewModel model = new()
         {
@@ -156,10 +155,8 @@ public class AccountController(
     public async Task<IActionResult> GetNip07VerificationPayload()
     {
         var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
-        var domain = Request.Host.Host;
-        var expires = TimeSpan.FromMinutes(30);
-        var challengeToken = nostrService.GetOrCreateActiveChallenge(user.Id, expires);
-        var message = $"Verifying my https://{domain} account. Proof: {challengeToken}";
+        var challengeToken = nostrService.GetOrCreateActiveChallenge(user.Id);
+        var message = $"Verifying my https://{Request.Host.Host} account. Proof: {challengeToken}";
         return Json(new StartNip07Response(challengeToken, message));
     }
 
@@ -168,11 +165,10 @@ public class AccountController(
     {
         var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
 
-        var (ok, token, expiry) = nostrService.TryParseUserChallenge(user.Id, req.ChallengeToken);
-        if (!ok || expiry <= DateTimeOffset.UtcNow)
+        if (!nostrService.IsValidChallenge(user.Id, req.ChallengeToken))
             return BadRequest("invalid_or_expired_challenge");
 
-        if (!NostrService.HasTag(req.Event, "domain", Request.Host.Host) || !NostrService.HasTag(req.Event, "challenge", token))
+        if (!NostrService.HasTag(req.Event, "domain", Request.Host.Host) || !NostrService.HasTag(req.Event, "challenge", req.ChallengeToken))
             return BadRequest("missing_tags");
 
         if (!NostrService.VerifyEvent(req.Event))
@@ -200,27 +196,23 @@ public class AccountController(
         return Ok();
     }
 
-    [HttpGet("NostrVerifyManual")]
-    public async Task<IActionResult> NostrVerifyManual()
+    [HttpGet("nostr/verify-public-note")]
+    public async Task<IActionResult> NostrVerifyPublicNote()
     {
         var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
-        var token  = nostrService.GetOrCreateActiveChallenge(user.Id, TimeSpan.FromMinutes(30));
-        var message = $"Verifying my https://plugin-builder.btcpayserver.org account. Proof: {token}";
-        return View(new VerifyNostrManualViewModel {
-            Token = token,
-            Message = message
-        });
+        var token  = nostrService.GetOrCreateActiveChallenge(user.Id);
+        var message = $"Verifying my {Request.Host.Host} account. Proof: {token}";
+        return View(new VerifyNostrManualViewModel { ChallengeToken = token, Message = message });
     }
 
-    [HttpPost("NostrVerifyManual")]
-    public async Task<IActionResult> NostrVerifyManual(VerifyNostrManualViewModel model)
+    [HttpPost("nostr/verify-public-note")]
+    public async Task<IActionResult> NostrVerifyPublicNote(VerifyNostrManualViewModel model)
     {
         if (!ModelState.IsValid) return View(model);
 
         var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
 
-        var (ok, token, expiry) = nostrService.TryParseUserChallenge(user.Id, model.Token);
-        if (!ok || expiry <= DateTimeOffset.UtcNow)
+        if (!nostrService.IsValidChallenge(user.Id, model.ChallengeToken))
         {
             TempData[TempDataConstant.WarningMessage] = "Invalid or expired challenge. Please retry.";
             return View(model);
@@ -275,7 +267,7 @@ public class AccountController(
             return View(model);
         }
 
-        if (!ContentHasProof(ev.Content, token))
+        if (!ContentHasProof(ev.Content, model.ChallengeToken))
         {
             TempData[TempDataConstant.WarningMessage] = "Challenge token not found in note content.";
             return View(model);
@@ -302,7 +294,10 @@ public class AccountController(
             if (profile is not null)
                 settings.Nostr.Profile = profile;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to fetch nostr profile");
+        }
 
         await conn.SetAccountDetailSettings(settings, user.Id);
 

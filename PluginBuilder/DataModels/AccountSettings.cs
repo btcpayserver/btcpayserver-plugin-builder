@@ -31,5 +31,5 @@ public sealed class NostrProfileCache
 {
     public string? PictureUrl { get; set; }
     public string? Name { get; set; }
-    public long   LastUpdatedUnix { get; set; }
+    public long LastUpdatedUnix { get; set; }
 }

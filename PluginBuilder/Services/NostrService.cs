@@ -15,7 +15,7 @@ namespace PluginBuilder.Services;
 
 public class NostrService(IMemoryCache cache)
 {
-    private static readonly string[] _relays = new[] {
+    public static readonly string[] _relays = new[] {
         "wss://relay.damus.io",
         "wss://relay.primal.net",
         "wss://nos.lol",
@@ -27,7 +27,7 @@ public class NostrService(IMemoryCache cache)
     private const string HrpNevent = "nevent";
     private static string ChallengeCacheKey(string userId) => $"nostr:active:{userId}";
 
-    public string GetOrCreateActiveChallenge(string userId, TimeSpan ttl)
+    public string GetOrCreateActiveChallenge(string userId)
     {
         var now = DateTimeOffset.UtcNow;
         var key = ChallengeCacheKey(userId);
@@ -36,19 +36,17 @@ public class NostrService(IMemoryCache cache)
             return chal.Token;
 
         var token= WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(16));
-        var expiresAt = now.Add(ttl);
+        var expiresAt = now.Add(TimeSpan.FromMinutes(30));
         cache.Set(key, new NostrChallenge(token, userId, expiresAt), new MemoryCacheEntryOptions { AbsoluteExpiration = expiresAt });
         return token;
     }
 
-    public (bool ok, string token, DateTimeOffset expiresAt) TryParseUserChallenge(string userId, string providedToken)
+    public bool IsValidChallenge(string userId, string providedToken)
     {
-        var key = ChallengeCacheKey(userId);
-        if (!cache.TryGetValue<NostrChallenge>(key, out var chal))
-            return (false, "", DateTimeOffset.MinValue);
+        if (!cache.TryGetValue<NostrChallenge>(ChallengeCacheKey(userId), out var challenge))
+            return false;
 
-        return !string.Equals(chal!.Token, providedToken, StringComparison.Ordinal) ? (false, "", DateTimeOffset.MinValue) :
-            (chal.ExpiresAt > DateTimeOffset.UtcNow, chal.Token, chal.ExpiresAt);
+        return string.Equals(challenge?.Token, providedToken, StringComparison.Ordinal) && challenge?.ExpiresAt > DateTimeOffset.UtcNow;
     }
 
     public static bool HasTag(NostrEvent ev, string key, string value) => ev.Tags.Any(tag => tag.Length >= 2 && tag[0] == key && tag[1] == value);

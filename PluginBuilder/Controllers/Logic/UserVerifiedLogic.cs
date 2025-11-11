@@ -48,7 +48,8 @@ public class UserVerifiedLogic(
             return true;
 
         var user = await userManager.GetUserAsync(claimsPrincipal) ?? throw new Exception("User not found");
-        return await conn.IsNostrAccountVerified(user.Id);
+        var settings = await conn.GetAccountDetailSettings(user.Id);
+        return settings?.Nostr is { Npub: not null, Proof: not null };
     }
 }
 

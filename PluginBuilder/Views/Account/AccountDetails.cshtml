@@ -78,7 +78,7 @@
                                     <a class="dropdown-item"
                                        id="action-verify-manual"
                                        asp-controller="Account"
-                                       asp-action="NostrVerifyManual">
+                                       asp-action="NostrVerifyPublicNote">
                                         Manually (Public Note)
                                     </a>
                                 </li>
@@ -90,8 +90,7 @@
                 @if (!Model.IsNostrVerified)
                 {
                     <small class="text-muted d-block mt-1">
-                        Prove you control this Nostr key. Choose “With extension” (NIP-07) or
-                        “Manually” to post a public note and paste the link.
+                        Choose between verifying your Nostr account using an extension (NIP-07) or by publishing a public note (Manually)
                     </small>
                 }
                 <div id="nostr-verify-status" class="mt-2"></div>
