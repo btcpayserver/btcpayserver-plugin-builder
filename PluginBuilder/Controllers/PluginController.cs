@@ -254,7 +254,6 @@ public class PluginController(
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
                 await conn.UpdateVersionReleaseStatus(pluginSlug, command, version, signatureVerification.proof);
-                await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
                 break;
 
             default:
@@ -263,10 +262,11 @@ public class PluginController(
                     TempData[TempDataConstant.WarningMessage] = "A verified GPG signature is required to release this version";
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
-                await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
                 await conn.UpdateVersionReleaseStatus(pluginSlug, command, version);
                 break;
         }
+
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = $"Version {version} {(command is "release" or "sign_release" ? "released" : "unreleased")}";
         return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
     }
