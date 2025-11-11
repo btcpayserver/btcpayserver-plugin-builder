@@ -118,6 +118,7 @@ public class Program
         app.UseRouting();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseOutputCache();
         app.MapHub<PluginHub>("hub");
         app.MapHub<PluginHub>("/plugins/{pluginSlug}/hub");
         app.MapHub<PluginHub>("/plugins/{pluginSlug}/builds/{buildId}/hub");
@@ -189,6 +190,14 @@ public class Program
         services.AddScoped<IUrlHelper>(sp => {
             var actionContext = sp.GetRequiredService<IActionContextAccessor>().ActionContext;
             return new UrlHelper(actionContext);
+        });
+
+        services.AddOutputCache(options =>
+        {
+            options.AddPolicy("PluginsList", p => p
+                .Expire(TimeSpan.FromSeconds(60))
+                .SetVaryByQuery("btcpayVersion", "includePreRelease", "includeAllVersions", "searchPluginName")
+                .Tag(CacheTags.Plugins));
         });
 
         services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
