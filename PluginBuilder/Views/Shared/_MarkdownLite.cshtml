@@ -1,0 +1,14 @@
+@{
+	string src = (string)Model;
+	if (string.IsNullOrWhiteSpace(src)) { return; }
+
+	string h = System.Net.WebUtility.HtmlEncode(src);
+
+	h = System.Text.RegularExpressions.Regex.Replace(h, @"`([^`]+)`", "<code>$1</code>");
+	h = System.Text.RegularExpressions.Regex.Replace(h, @"\*\*([^*]+)\*\*", "<strong>$1</strong>");
+	h = System.Text.RegularExpressions.Regex.Replace(h, @"\*([^*]+)\*", "<em>$1</em>");
+	h = System.Text.RegularExpressions.Regex.Replace(h, @"\[([^\]]+)\]\((https?:\/\/[^)]+)\)", "<a href=\"$2\" target=\"_blank\" rel=\"noopener\">$1</a>");
+	h = System.Text.RegularExpressions.Regex.Replace(h, @"(?<!"")(?<!>)(https?:\/\/[^\s<""]+)(?!"")(?!<)", "<a href=\"$1\" target=\"_blank\" rel=\"noopener\">$1</a>");
+	h = h.Replace("\n", "<br />");
+}
+@Html.Raw(h)

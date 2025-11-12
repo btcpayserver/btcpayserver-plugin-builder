@@ -27,45 +27,35 @@
     }
 
     <span class="d-inline-flex align-items-center lh-1" aria-label="@aria">
-        @if (Model.SingleStar)
-        {
-            <span class="text-warning @iconSize align-middle lh-1 d-inline-flex">
-        <vc:icon symbol="star-fill" />
-    </span>
-        }
-        else
-        {
-            @for (var i = 1; i <= 5; i++)
-            {
-                if (i <= full)
-                {
-                    <span class="text-warning @iconSize align-middle lh-1 d-inline-flex">
-                        <vc:icon symbol="star-fill" />
-                    </span>
-                }
-                else if (i == full + 1 && hasFrac)
-                {
-                    <span class="position-relative d-inline-block align-middle" style="line-height:0; vertical-align:middle;">
-                        <span class="text-secondary @iconSize position-absolute" style="inset:0;">
-                            <vc:icon symbol="star-fill" />
-                        </span>
-                        <span class="text-warning @iconSize position-absolute overflow-hidden" style="inset:0; width:@halfStarWidth">
-                            <vc:icon symbol="star-fill" />
-                        </span>
-                        <span class="opacity-0 @iconSize d-inline-block">
-                            <vc:icon symbol="star-fill" />
-                        </span>
-                    </span>
-                }
-                else
-                {
-                    <span class="text-secondary @iconSize align-middle lh-1 d-inline-flex">
-                        <vc:icon symbol="star-fill" />
-                    </span>
-                }
-            }
-        }
-
+		@for (var i = 1; i <= 5; i++)
+		{
+			if (i <= full)
+			{
+				<span class="text-warning @iconSize align-middle lh-1 d-inline-flex">
+					<vc:icon symbol="star-fill" />
+				</span>
+			}
+			else if (i == full + 1 && hasFrac)
+			{
+				<span class="position-relative d-inline-block align-middle" style="line-height:0; vertical-align:middle;">
+					<span class="text-secondary @iconSize position-absolute" style="inset:0;">
+						<vc:icon symbol="star-fill" />
+					</span>
+					<span class="text-warning @iconSize position-absolute overflow-hidden" style="inset:0; width:@halfStarWidth">
+						<vc:icon symbol="star-fill" />
+					</span>
+					<span class="opacity-0 @iconSize d-inline-block">
+						<vc:icon symbol="star-fill" />
+					</span>
+				</span>
+			}
+			else
+			{
+				<span class="text-secondary @iconSize align-middle lh-1 d-inline-flex">
+					<vc:icon symbol="star-fill" />
+				</span>
+			}
+		}
         @if (Model.ShowTotalReviews)
         {
             <span class="ms-1 small text-muted align-middle d-inline-flex lh-1">(@total)</span>
