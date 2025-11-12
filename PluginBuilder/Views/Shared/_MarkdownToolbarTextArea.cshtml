@@ -1,0 +1,31 @@
+@model string 
+
+<div class="markdown-toolbar-area">
+	<div class="bg-light border border-bottom-0 rounded-top px-2 py-1 d-flex gap-2">
+		<button type="button" class="btn btn-sm btn-light px-2" onclick="insertMarkdown_@(Model)('**bold**')" title="bold">
+			<vc:icon symbol="bold" />
+		</button>
+		<button type="button" class="btn btn-sm btn-light px-2" onclick="insertMarkdown_@(Model)('*italic*')" title="italic">
+			<vc:icon symbol="italics" />
+		</button>
+		<button type="button" class="btn btn-sm btn-light px-2" onclick="insertMarkdown_@(Model)('`code`')" title="code">
+			<vc:icon symbol="code" />
+		</button>
+		<button type="button" class="btn btn-sm btn-light px-2" onclick="insertMarkdown_@(Model)('[text](url)')" title="link">
+			<vc:icon symbol="link" />
+		</button>
+	</div>
+	<textarea id="@Model" name="Body" rows="6" maxlength="2000" class="form-control" style="border-top-left-radius:0; border-top-right-radius:0;"></textarea>
+	<div class="form-text text-muted">Markdown Tip: <code>**bold**</code>, <code>*italic**</code>, <code>`code`</code>, <code>[text](URL)</code>.</div>
+</div>
+
+<script>
+	(function(){
+	  const tx = document.getElementById('@Model');
+	  window['insertMarkdown_@(Model)'] = function(text){
+		const [start,end] = [tx.selectionStart, tx.selectionEnd];
+		tx.setRangeText(text, start, end, 'end');
+		tx.focus();
+	  };
+	})();
+</script>

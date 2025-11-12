@@ -350,7 +350,6 @@
                                     @Html.AntiForgeryToken()
 
                                     <div class="row align-items-center g-2 mb-3">
-
                                         <div class="col">
                                             <div id="ratingStars"
                                                  class="d-inline-flex align-items-center gap-1 fs-4"
@@ -398,13 +397,8 @@
                                             </div>
                                         </div>
                                     </div>
-
-									<div class="mb-3">
-										<label class="form-label">Review</label>
-										<textarea name="Body" rows="4" maxlength="2000" class="form-control"></textarea>
-										<div class="form-text text-muted">Markdown Tip: <code>**bold**</code>, <code>*italic*</code>, <code>`code`</code>, <code>[text](URL)</code>.</div>
-									</div>
-                                    <button class="btn btn-primary">Submit</button>
+									<partial name="_MarkdownToolbarTextArea" model="@("reviewBody")" />
+                                    <button class="btn btn-primary mt-3">Submit</button>
                                 </form>
                                 }
                             }
