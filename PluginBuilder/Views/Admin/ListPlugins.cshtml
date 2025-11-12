@@ -84,7 +84,13 @@
                     <td>@plugin.PreRelease</td>
                     <td>@plugin.UpdatedAt</td>
                     <td>@plugin.PrimaryOwnerEmail</td>
-                    <td>@plugin.Visibility</td>
+                    <td>
+						@plugin.Visibility
+						@if (plugin.HasPendingListingRequest)
+						{
+							<span class="badge bg-warning ms-1" title="Listing request waiting for review"><vc:icon symbol="new-version" /></span>
+						}
+					</td>
                     <td>
                         <a asp-controller="Admin" asp-action="PluginEdit" asp-route-pluginSlug="@plugin.PluginSlug">Edit</a> |
                         <a asp-controller="Admin" asp-action="PluginDelete" asp-route-pluginSlug="@plugin.PluginSlug">Delete</a>
@@ -96,7 +102,8 @@
         <vc:pager view-model="Model" />
     </div>
 }
-else{
+else
+{
 	<p class="text-secondary mt-3">There are no plugins matching your criteria.</p>
 }
 
