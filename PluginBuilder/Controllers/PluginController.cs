@@ -328,7 +328,7 @@ public class PluginController(
     private async Task SendRequestListingEmail(NpgsqlConnection conn, string pluginSlug)
     {
         var pluginPublicUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug }, Request.Scheme);
-        var listingReviewUrl = Url.Action(nameof(AdminController.PluginEdit), "Admin", new { slug = pluginSlug }, Request.Scheme);
+        var listingReviewUrl = Url.Action(nameof(AdminController.PluginEdit), "Admin", new { pluginSlug }, Request.Scheme);
         await emailService.NotifyAdminOnNewRequestListing(conn, pluginSlug, pluginPublicUrl!, listingReviewUrl!);
     }
 
