@@ -497,7 +497,7 @@ public class HomeController(
         return Redirect((url ?? "/") + "#reviews");
     }
 
-    [HttpPost("public/plugins/{pluginSlug}/reviews/{id:long}/vote")]
+    [HttpPost("public/plugins/{pluginSlug}/reviews/{id}/vote")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> VoteReview(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
@@ -522,7 +522,7 @@ public class HomeController(
         return Redirect((url ?? "/") + "#reviews");
     }
 
-    [HttpPost("public/plugins/{pluginSlug}/reviews/{id:long}/delete")]
+    [HttpPost("public/plugins/{pluginSlug}/reviews/{id}/delete")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteReview(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,

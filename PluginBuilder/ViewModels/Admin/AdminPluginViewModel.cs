@@ -4,8 +4,7 @@ namespace PluginBuilder.ViewModels.Admin;
 
 public class AdminPluginViewModel
 {
-    public bool HasPendingListingRequest { get; set; }
-    public string ProjectSlug { get; set; } = null!;
+    public string PluginSlug { get; set; } = null!;
     public string? PluginTitle { get; set; }
     public string? Version { get; set; }
     public long? BuildId { get; set; }
