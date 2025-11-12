@@ -26,7 +26,7 @@ public class AdminController(
     DBConnectionFactory connectionFactory,
     AzureStorageClient azureStorageClient,
     EmailService emailService,
-    UserVerifiedCache userVerifiedCache,
+    AdminSettingsCache adminSettingsCache,
     ReferrerNavigationService referrerNavigation,
     PluginBuilderOptions pbOptions)
 
@@ -102,7 +102,7 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
-        await userVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
+        await adminSettingsCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
         TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
         return RedirectToAction("ListPlugins");
     }
@@ -531,7 +531,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsSetAsync(key, value);
-        await userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
+        await adminSettingsCache.RefreshAllAdminSettings(conn);
         return RedirectToAction(nameof(SettingsEditor));
     }
 
@@ -543,7 +543,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsDeleteAsync(key);
-        await userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
+        await adminSettingsCache.RefreshAllAdminSettings(conn);
         return Ok();
     }
 

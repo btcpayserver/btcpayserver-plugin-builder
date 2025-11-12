@@ -403,6 +403,15 @@ public static class NpgsqlConnectionExtensions
                 "INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedNostr, value = "false" });
         }
+
+        if (result.All(r => r.key != SettingsKeys.NostrRelays))
+        {
+
+            var json = JsonConvert.SerializeObject(NostrService.DefaultRelays);
+            await connection.ExecuteAsync(
+                "INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.NostrRelays, value = json });
+        }
     }
 
     public static Task UpsertPluginReview(
@@ -576,6 +585,16 @@ public static class NpgsqlConnectionExtensions
     {
         var v = await SettingsGetAsync(connection, SettingsKeys.VerifiedNostr);
         return bool.TryParse(v, out var b) && b;
+    }
+
+    public static async Task<string[]> GetNostrRelaysSetting(this NpgsqlConnection connection)
+    {
+        var raw = await connection.QueryFirstOrDefaultAsync<string>(
+            "SELECT value FROM settings WHERE key=@k LIMIT 1",
+            new { k = SettingsKeys.NostrRelays });
+
+        var relays = JsonConvert.DeserializeObject<string[]?>(raw ?? string.Empty);
+        return relays is { Length: > 0 } ? relays : NostrService.DefaultRelays.ToArray();
     }
 
     #endregion

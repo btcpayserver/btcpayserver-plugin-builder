@@ -8,23 +8,26 @@ using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using SHA256 = System.Security.Cryptography.SHA256;
 
 namespace PluginBuilder.Services;
 
-public class NostrService(IMemoryCache cache)
+public class NostrService(IMemoryCache cache, AdminSettingsCache adminSettingsCache)
 {
-    public static readonly string[] _relays = new[] {
+    public static IReadOnlyList<string> DefaultRelays { get; } = new[]
+    {
         "wss://relay.damus.io",
         "wss://relay.primal.net",
         "wss://nos.lol",
         "wss://nostr.wine"
     };
+
     private static readonly Regex _nip19Regex = new("(?:nevent1|note1)[02-9ac-hj-np-z]+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private const string HrpNpub = "npub";
-    private const string HrpNote = "note";
-    private const string HrpNevent = "nevent";
+    private const string PrefixNpub = "npub";
+    private const string PrefixNote = "note";
+    private const string PrefixNevent = "nevent";
     private static string ChallengeCacheKey(string userId) => $"nostr:active:{userId}";
 
     public string GetOrCreateActiveChallenge(string userId)
@@ -32,8 +35,8 @@ public class NostrService(IMemoryCache cache)
         var now = DateTimeOffset.UtcNow;
         var key = ChallengeCacheKey(userId);
 
-        if (cache.TryGetValue<NostrChallenge>(key, out var chal) && chal!.ExpiresAt > now)
-            return chal.Token;
+        if (cache.TryGetValue<NostrChallenge>(key, out var challenge) && challenge!.ExpiresAt > now)
+            return challenge.Token;
 
         var token= WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(16));
         var expiresAt = now.Add(TimeSpan.FromMinutes(30));
@@ -79,27 +82,27 @@ public class NostrService(IMemoryCache cache)
         var raw = Convert.FromHexString(hex32);
         if (raw.Length != 32) throw new ArgumentException("Nostr pubkey must be 32 bytes (x-only).", nameof(hex32));
         var data5 = ConvertBits(raw, 8, 5, true);
-        return Encoders.Bech32(HrpNpub).EncodeData(data5, Bech32EncodingType.BECH32);
+        return Encoders.Bech32(PrefixNpub).EncodeData(data5, Bech32EncodingType.BECH32);
     }
 
     public string NpubToHexPub(string npub)
     {
         if (string.IsNullOrWhiteSpace(npub)) throw new ArgumentNullException(nameof(npub));
-        var data5 = Encoders.Bech32(HrpNpub).DecodeDataRaw(npub.Trim(), out _);
+        var data5 = Encoders.Bech32(PrefixNpub).DecodeDataRaw(npub.Trim(), out _);
         var raw = ConvertBits(data5, fromBits:5, toBits:8, pad:false);
         if (raw.Length != 32) throw new FormatException("Invalid npub payload length");
         return Convert.ToHexString(raw).ToLowerInvariant();
     }
 
-    private static async Task<JObject?> FetchFirstFromRelaysAsync(IEnumerable<NostrFilter> filters, TimeSpan timeout, Func<JObject, bool>? validate = null)
+    private async Task<JObject?> FetchFirstFromRelaysAsync(IEnumerable<NostrFilter> filters, TimeSpan timeout, Func<JObject, bool>? validate = null)
     {
-        if (_relays.Length == 0) throw new ArgumentException("Provide at least one relay");
+        if (adminSettingsCache.NostrRelays.Length == 0) throw new ArgumentException("Provide at least one relay");
         var filterList = filters as IList<NostrFilter> ?? filters.ToList();
 
         using var cts = new CancellationTokenSource(timeout);
         var token = cts.Token;
 
-        var tasks = _relays.Select(async relay =>
+        var tasks = adminSettingsCache.NostrRelays.Select(async relay =>
         {
             try
             {
@@ -178,7 +181,7 @@ public class NostrService(IMemoryCache cache)
         return results;
     }
 
-    public static Task<JObject?> FetchEventFromRelaysAsync(string eventIdHex, int timeoutMs = 8000)
+    public Task<JObject?> FetchEventFromRelaysAsync(string eventIdHex, int timeoutMs = 8000)
     {
         if (string.IsNullOrWhiteSpace(eventIdHex)) throw new ArgumentNullException(nameof(eventIdHex));
         var filters = new[] { new NostrFilter { Ids = new[] { eventIdHex }, Limit = 1 } };
@@ -186,7 +189,7 @@ public class NostrService(IMemoryCache cache)
             validate: ev => string.Equals((string?)ev["id"], eventIdHex, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static Task<JObject?> FetchKind0FromRelaysAsync(string authorPubkeyHex, int timeoutMs = 6000)
+    private Task<JObject?> FetchKind0FromRelaysAsync(string authorPubkeyHex, int timeoutMs = 6000)
     {
         if (string.IsNullOrWhiteSpace(authorPubkeyHex)) throw new ArgumentNullException(nameof(authorPubkeyHex));
         var filters = new[] { new NostrFilter { Kinds = new[] { 0 }, Authors = new[] { authorPubkeyHex }, Limit = 1 } };
@@ -216,7 +219,7 @@ public class NostrService(IMemoryCache cache)
         eventIdHex = null;
         try
         {
-            var bytes = ConvertBits(Bech32DecodeTo5(HrpNote, note), 5, 8, false);
+            var bytes = ConvertBits(Bech32DecodeTo5(PrefixNote, note), 5, 8, false);
             if (bytes.Length != 32) return false;
             eventIdHex = Convert.ToHexString(bytes).ToLowerInvariant();
             return true;
@@ -228,12 +231,18 @@ public class NostrService(IMemoryCache cache)
         eventIdHex = null;
         try
         {
-            var tlv = ConvertBits(Bech32DecodeTo5(HrpNevent, nevent), 5, 8, false);
-            for (var i = 0; i + 2 <= tlv.Length;)
+            var tlvBytes = ConvertBits(Bech32DecodeTo5(PrefixNevent, nevent), 5, 8, false);
+            for (var i = 0; i + 2 <= tlvBytes.Length;)
             {
-                var t = tlv[i++]; var l = tlv[i++]; if (i + l > tlv.Length) break;
-                if (t == 0 && l == 32) { eventIdHex = Convert.ToHexString(tlv.AsSpan(i, l)).ToLowerInvariant(); return true; }
-                i += l;
+                var type = tlvBytes[i++];
+                var length = tlvBytes[i++];
+                if (i + length > tlvBytes.Length) break;
+                if (type == 0 && length == 32)
+                {
+                    eventIdHex = Convert.ToHexString(tlvBytes.AsSpan(i, length)).ToLowerInvariant();
+                    return true;
+                }
+                i += length;
             }
             return false;
         } catch { return false; }
@@ -266,13 +275,13 @@ public class NostrService(IMemoryCache cache)
     {
         var kind0 = await FetchKind0FromRelaysAsync(authorPubKeyHex, timeoutPerRelayMs);
         if (kind0 is null) return null;
-        var prof = ParseKind0ToProfile(kind0);
+        var profile = ParseKind0ToProfile(kind0);
 
-        if (!string.IsNullOrWhiteSpace(prof.PictureUrl) && Uri.TryCreate(prof.PictureUrl, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
-            return prof;
+        if (!string.IsNullOrWhiteSpace(profile.PictureUrl) && Uri.TryCreate(profile.PictureUrl, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            return profile;
 
-        prof.PictureUrl = null;
-        return prof;
+        profile.PictureUrl = null;
+        return profile;
     }
 
     private static NostrProfileCache ParseKind0ToProfile(JObject kind0)

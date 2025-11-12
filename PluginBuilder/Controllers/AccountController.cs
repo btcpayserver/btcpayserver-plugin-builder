@@ -165,11 +165,14 @@ public class AccountController(
     {
         var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
 
+        if (!ModelState.IsValid)
+            return BadRequest("invalid_payload");
+
         if (!nostrService.IsValidChallenge(user.Id, req.ChallengeToken))
             return BadRequest("invalid_or_expired_challenge");
 
-        if (!NostrService.HasTag(req.Event, "domain", Request.Host.Host) || !NostrService.HasTag(req.Event, "challenge", req.ChallengeToken))
-            return BadRequest("missing_tags");
+        if (!NostrService.HasTag(req.Event, "challenge", req.ChallengeToken))
+            return BadRequest("missing_challenge");
 
         if (!NostrService.VerifyEvent(req.Event))
             return BadRequest("invalid_signature");
@@ -252,7 +255,7 @@ public class AccountController(
             return View(model);
         }
 
-        var evJson = await NostrService.FetchEventFromRelaysAsync(eventIdHex!);
+        var evJson = await nostrService.FetchEventFromRelaysAsync(eventIdHex!);
         if (evJson is null)
         {
             TempData[TempDataConstant.WarningMessage] = "Event not found on relays.";
