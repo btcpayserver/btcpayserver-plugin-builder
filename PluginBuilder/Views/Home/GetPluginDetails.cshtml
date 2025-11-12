@@ -304,7 +304,7 @@
                                             <div class="flex-grow-1 pe-2">
 												@if (!string.IsNullOrWhiteSpace(review.Body))
 												{
-													<partial name="_MarkdownLite" model="review.Body" />
+													<partial name="_MarkdownRender" model="review.Body" />
 												}
                                             </div>
 
