@@ -4,6 +4,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json;
 using Npgsql;
 using PluginBuilder.Configuration;
@@ -28,7 +29,8 @@ public class AdminController(
     EmailService emailService,
     UserVerifiedCache userVerifiedCache,
     ReferrerNavigationService referrerNavigation,
-    PluginBuilderOptions pbOptions)
+    PluginBuilderOptions pbOptions,
+    IOutputCacheStore outputCacheStore)
 
     : Controller
 {
@@ -178,6 +180,7 @@ public class AdminController(
         var setPluginSettings = await conn.SetPluginSettingsAndVisibility(pluginSlug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
         if (!setPluginSettings) return NotFound();
 
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = "Plugin settings updated successfully";
         return referrerNavigation.RedirectToReferrerOr(this, "ListPlugins");
     }
@@ -208,6 +211,8 @@ public class AdminController(
                                                    DELETE FROM plugins WHERE slug = @Slug;
                                                    """, new { Slug = pluginSlug });
         if (affectedRows == 0) return NotFound();
+
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
 
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
     }

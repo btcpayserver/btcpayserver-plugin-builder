@@ -1,7 +1,10 @@
+using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
+using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json;
 using PluginBuilder.APIModels;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 using Xunit;
@@ -103,6 +106,8 @@ public class UnitTest1 : UnitTestBase
 
         // Let's see what happen if there is two versions of the same plugin
         await conn.ExecuteAsync("INSERT INTO versions VALUES('rockstar-stylist', ARRAY[1,0,2,1], 0, ARRAY[1,4,6,0], 'f', CURRENT_TIMESTAMP, NULL)");
+        var outputCacheStore = tester.GetService<IOutputCacheStore>();
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         versions = await client.GetPublishedVersions("1.4.6.0", true);
         version = Assert.Single(versions);
         Assert.Equal("1.0.2.1", version.Version);
@@ -112,11 +117,13 @@ public class UnitTest1 : UnitTestBase
 
         // listed - always render
         await conn.ExecuteAsync("UPDATE plugins SET visibility = 'listed' WHERE slug = 'rockstar-stylist'");
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         var res = await client.GetPublishedVersions("2.1.0.0", false);
         Assert.Contains(res, p => p.ProjectSlug == "rockstar-stylist");
 
         // unlisted - only render with compatible search term or legacy versions
         await conn.ExecuteAsync("UPDATE plugins SET visibility = 'unlisted' WHERE slug = 'rockstar-stylist'");
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         res = await client.GetPublishedVersions("2.1.0.0", false);
         Assert.DoesNotContain(res, p => p.ProjectSlug == "rockstar-stylist");
 
@@ -129,6 +136,7 @@ public class UnitTest1 : UnitTestBase
 
         // hidden - never render
         await conn.ExecuteAsync("UPDATE plugins SET visibility = 'hidden' WHERE slug = 'rockstar-stylist'");
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         res = await client.GetPublishedVersions("2.1.0.0", false);
         Assert.DoesNotContain(res, p => p.ProjectSlug == "rockstar-stylist");
 
