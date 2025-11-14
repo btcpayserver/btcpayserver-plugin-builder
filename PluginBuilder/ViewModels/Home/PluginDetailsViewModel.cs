@@ -27,6 +27,9 @@ public class Review
     public string? AuthorUrl { get; set; }
     public string AuthorDisplay { get; set; } = "Anonymous";
     public string? AuthorAvatarUrl { get; set; }
+    public string? Npub { get; set; }
+    public string? NostrName { get; set; }
+    public string? NostrAvatarUrl { get; set; }
     public int Rating { get; set; }
     public string? Body { get; set; }
     public string? PluginVersion { get; set; }

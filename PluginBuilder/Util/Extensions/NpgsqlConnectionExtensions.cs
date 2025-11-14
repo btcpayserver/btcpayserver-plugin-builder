@@ -66,6 +66,17 @@ public static class NpgsqlConnectionExtensions
         return JsonConvert.DeserializeObject<AccountSettings>(accountDetail, CamelCaseSerializerSettings.Instance);
     }
 
+    public static async Task<string?> GetUserIdByNpubAsync(this NpgsqlConnection conn, string npub)
+    {
+        const string sql = """
+                           SELECT "Id"
+                           FROM "AspNetUsers"
+                           WHERE lower(trim("AccountDetail"->'nostr'->>'npub')) = lower(trim(@npub))
+                           LIMIT 1;
+                           """;
+        return await conn.ExecuteScalarAsync<string?>(sql, new { npub });
+    }
+
     public static async Task VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl)
     {
         await connection.ExecuteAsync(
@@ -82,7 +93,6 @@ public static class NpgsqlConnectionExtensions
         );
         return !string.IsNullOrEmpty(githubGistUrl);
     }
-
     #endregion
 
 
@@ -384,6 +394,22 @@ public static class NpgsqlConnectionExtensions
             await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedGithub, value = "false" });
         }
+
+        if (result.All(r => r.key != SettingsKeys.VerifiedNostr))
+        {
+            await connection.ExecuteAsync(
+                "INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.VerifiedNostr, value = "false" });
+        }
+
+        if (result.All(r => r.key != SettingsKeys.NostrRelays))
+        {
+
+            var json = JsonConvert.SerializeObject(NostrService.DefaultRelays);
+            await connection.ExecuteAsync(
+                "INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.NostrRelays, value = json });
+        }
     }
 
     public static Task UpsertPluginReview(
@@ -551,6 +577,22 @@ public static class NpgsqlConnectionExtensions
     {
         var v = await SettingsGetAsync(connection, SettingsKeys.VerifiedGithub);
         return bool.TryParse(v, out var b) && b;
+    }
+
+    public static async Task<bool> GetVerifiedNostrSetting(this NpgsqlConnection connection)
+    {
+        var v = await SettingsGetAsync(connection, SettingsKeys.VerifiedNostr);
+        return bool.TryParse(v, out var b) && b;
+    }
+
+    public static async Task<string[]> GetNostrRelaysSetting(this NpgsqlConnection connection)
+    {
+        var raw = await connection.QueryFirstOrDefaultAsync<string>(
+            "SELECT value FROM settings WHERE key=@k LIMIT 1",
+            new { k = SettingsKeys.NostrRelays });
+
+        var relays = JsonConvert.DeserializeObject<string[]?>(raw ?? string.Empty);
+        return relays is { Length: > 0 } ? relays : NostrService.DefaultRelays.ToArray();
     }
 
     #endregion

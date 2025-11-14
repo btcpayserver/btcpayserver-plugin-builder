@@ -180,9 +180,10 @@ public class Program
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
         services.AddSingleton<FirstBuildEvent>();
+        services.AddSingleton<NostrService>();
 
         // shared controller logic
-        services.AddSingleton<UserVerifiedCache>();
+        services.AddSingleton<AdminSettingsCache>();
         services.AddTransient<UserVerifiedLogic>();
         services.AddScoped<ReferrerNavigationService>();
         services.AddHttpContextAccessor();

@@ -47,15 +47,59 @@
                     }
                 </div>
             </div>
+
+            <div class="form-group">
+                <label asp-for="Settings.Nostr!.Npub" class="form-label"></label>
+                @if (Model.IsNostrVerified)
+                {
+                    <span class="badge bg-success ms-2">Confirmed</span>
+                }
+                <div class="d-flex align-items-center">
+                    <input asp-for="Settings.Nostr!.Npub" class="form-control" placeholder="npub…" readonly="readonly"/>
+
+                    @if (!Model.IsNostrVerified)
+                    {
+                        <div class="btn-group ms-2">
+                            <button type="button"
+                                    id="btn-verify-dropdown"
+                                    class="btn btn-outline-success dropdown-toggle"
+                                    data-bs-toggle="dropdown"
+                                    aria-expanded="false"
+                                    aria-haspopup="true">
+                                Verify Nostr
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <button type="button" class="dropdown-item" id="action-verify-extension">
+                                        Extension (Nip07)
+                                    </button>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item"
+                                       id="action-verify-manual"
+                                       asp-controller="Account"
+                                       asp-action="NostrVerifyPublicNote">
+                                        Manually (Public Note)
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    }
+                </div>
+
+                @if (!Model.IsNostrVerified)
+                {
+                    <small class="text-muted d-block mt-1">
+                        Choose between verifying your Nostr account using an extension (NIP-07) or by publishing a public note (Manually)
+                    </small>
+                }
+                <div id="nostr-verify-status" class="mt-2"></div>
+            </div>
+
             <div class="form-group">
                 <label asp-for="Settings.Twitter" class="form-label"></label>
                 <input asp-for="Settings.Twitter" class="form-control" placeholder="https://twitter.com/satoshi" />
                 <span asp-validation-for="Settings.Twitter" class="text-danger"></span>
-            </div>
-            <div class="form-group">
-                <label asp-for="Settings.Nostr" class="form-label"></label>
-                <input asp-for="Settings.Nostr" class="form-control" placeholder="npub1h0dl0dkjp884wz3*********hlvp68v0lfngnscdjsuy8yqm" />
-                <span asp-validation-for="Settings.Nostr" class="text-danger"></span>
             </div>
             <div class="form-group">
                 <label asp-for="Settings.Email" class="form-label"></label>
@@ -109,18 +153,71 @@
 </div>
 
 @section FooterScripts {
-	<script>
-		function showResetKeyForm() {
-			const existing = document.getElementById("existing-key-section");
-			const reset = document.getElementById("reset-key-section");
+    <script>
+        function showResetKeyForm() {
+            const existing = document.getElementById("existing-key-section");
+            const reset = document.getElementById("reset-key-section");
 
-			if (reset.style.display === "none" || reset.style.display === "") {
-				existing.style.display = "none";
-				reset.style.display = "block";
-			} else {
-				reset.style.display = "none";
-				existing.style.display = "flex";
-			}
-		}
-	</script>
+            if (reset.style.display === "none" || reset.style.display === "") {
+                existing.style.display = "none";
+                reset.style.display = "block";
+            } else {
+                reset.style.display = "none";
+                existing.style.display = "flex";
+            }
+        }
+
+        const $btn = document.getElementById('action-verify-extension');
+        const $status = document.getElementById('nostr-verify-status');
+        const host = location.hostname;
+
+        function show(msg, cls) {
+            $status.innerHTML = `<div class="alert ${cls} py-2 my-2">${msg}</div>`;
+        }
+
+        async function getNip07Payload(){
+            const r = await fetch('/account/nostr/nip07-payload', { method: 'GET' });
+            if(!r.ok) throw new Error(await r.text());
+            return r.json();
+        }
+
+        async function verifyWithNip07(challengeToken, ev){
+            const r = await fetch('/account/nostr/verify-nip07', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ challengeToken, event: ev })
+            });
+            if(!r.ok) throw new Error(await r.text());
+        }
+
+        async function nip07Flow() {
+            if (!window.nostr) throw new Error('No NIP-07 extension detected');
+            const payload = await getNip07Payload();
+            const pubkey = await window.nostr.getPublicKey();
+            const unsigned = {
+              kind: 1,
+              created_at: Math.floor(Date.now()/1000),
+              content: payload.message,
+              tags: [
+                ["purpose","pluginbuilder-verification"],
+                ["challenge", payload.challengeToken]
+              ],
+              pubkey: pubkey
+            };
+            const signed = await window.nostr.signEvent(unsigned);
+            await verifyWithNip07(payload.challengeToken, signed);
+            location.reload();
+        }
+
+        $btn?.addEventListener('click', async () => {
+            $btn.disabled = true;
+            try {
+              await nip07Flow();
+            } catch (e) {
+              show('Verification failed: ' + (e?.message || e),'alert-danger');
+            } finally {
+              $btn.disabled = false;
+            }
+        });
+    </script>
 }

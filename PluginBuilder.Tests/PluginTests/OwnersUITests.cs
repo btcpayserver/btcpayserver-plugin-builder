@@ -25,8 +25,8 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
 
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
         await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<UserVerifiedCache>();
-        await verfCache.RefreshAllUserVerifiedSettings(conn);
+        var verfCache = t.Server.GetService<AdminSettingsCache>();
+        await verfCache.RefreshAllAdminSettings(conn);
 
         await t.GoToUrl("/register");
         var userA = await t.RegisterNewUser();
