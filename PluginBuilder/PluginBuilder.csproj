@@ -14,104 +14,104 @@
         </AssemblyAttribute>
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="Dapper" Version="2.1.35"/>
-        <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="8.0.10"/>
-        <PackageReference Include="MailKit" Version="4.8.0"/>
-        <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.10"/>
-        <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="8.0.10"/>
-        <PackageReference Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" Version="8.0.10"/>
+        <PackageReference Include="Dapper" Version="2.1.35" />
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="8.0.10" />
+        <PackageReference Include="MailKit" Version="4.8.0" />
+        <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.10" />
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="8.0.10" />
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" Version="8.0.10" />
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="NBitcoin" Version="9.0.1" />
         <PackageReference Include="NBitcoin.Secp256k1" Version="3.1.6" />
-        <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
-        <PackageReference Include="Npgsql" Version="8.0.4"/>
-        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.8"/>
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+        <PackageReference Include="Npgsql" Version="8.0.4" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.8" />
         <PackageReference Include="Serilog" Version="4.3.0" />
         <PackageReference Include="Serilog.Extensions.Logging" Version="9.0.2" />
         <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
         <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-        <PackageReference Include="WindowsAzure.Storage" Version="9.3.3"/>
+        <PackageReference Include="WindowsAzure.Storage" Version="9.3.3" />
     </ItemGroup>
     <PropertyGroup>
         <DisableScopedCssBundling>true</DisableScopedCssBundling>
     </PropertyGroup>
 
     <ItemGroup>
-        <EmbeddedResource Include="Data\Scripts\*.sql"/>
+        <EmbeddedResource Include="Data\Scripts\*.sql" />
     </ItemGroup>
 
     <ItemGroup>
-        <None Remove="Data\Scripts\01.migrations.sql"/>
-        <None Remove="Data\Scripts\02.AspNetIdentity.sql"/>
-        <None Remove="Data\Scripts\03.Init.sql"/>
-        <None Remove="Data\Scripts\04.FixGetLatestVersions.sql"/>
-        <None Remove="Data\Scripts\05.ProtectPluginIdentifier.sql"/>
-        <None Remove="Data\Scripts\06.Events.sql"/>
-        <None Remove="Data\Scripts\07.Settings.sql"/>
+        <None Remove="Data\Scripts\01.migrations.sql" />
+        <None Remove="Data\Scripts\02.AspNetIdentity.sql" />
+        <None Remove="Data\Scripts\03.Init.sql" />
+        <None Remove="Data\Scripts\04.FixGetLatestVersions.sql" />
+        <None Remove="Data\Scripts\05.ProtectPluginIdentifier.sql" />
+        <None Remove="Data\Scripts\06.Events.sql" />
+        <None Remove="Data\Scripts\07.Settings.sql" />
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="Components\Icon\Default.cshtml"/>
-        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-300.woff2"/>
-        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-300italic.woff2"/>
-        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-700.woff2"/>
-        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-700italic.woff2"/>
-        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-italic.woff2"/>
-        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-regular.woff2"/>
-        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-300.woff2"/>
-        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-300italic.woff2"/>
-        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-600.woff2"/>
-        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-600italic.woff2"/>
-        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-700.woff2"/>
-        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-700italic.woff2"/>
-        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-800.woff2"/>
-        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-800italic.woff2"/>
-        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-italic.woff2"/>
-        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-regular.woff2"/>
-        <None Include="wwwroot\fonts\roboto-mono-v12-vietnamese_latin-ext_latin_greek_cyrillic-ext_cyrillic-regular.woff2"/>
-        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-500.woff2"/>
-        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-500italic.woff2"/>
-        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-700.woff2"/>
-        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-700italic.woff2"/>
-        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-italic.woff2"/>
-        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-regular.woff2"/>
-        <None Include="wwwroot\vendor\bootstrap\bootstrap.bundle.min.js"/>
-        <None Include="wwwroot\vendor\bootstrap\bootstrap.bundle.min.js.map"/>
-        <None Include="wwwroot\vendor\font-awesome\fonts\fontawesome-webfont.svg"/>
-        <None Include="wwwroot\vendor\font-awesome\fonts\fontawesome-webfont.woff2"/>
-        <None Include="wwwroot\vendor\font-awesome\less\animated.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\bordered-pulled.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\core.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\fixed-width.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\font-awesome.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\icons.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\larger.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\list.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\mixins.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\path.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\rotated-flipped.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\screen-reader.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\stacked.less"/>
-        <None Include="wwwroot\vendor\font-awesome\less\variables.less"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\font-awesome.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_animated.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_bordered-pulled.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_core.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_fixed-width.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_icons.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_larger.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_list.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_mixins.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_path.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_rotated-flipped.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_screen-reader.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_stacked.scss"/>
-        <None Include="wwwroot\vendor\font-awesome\scss\_variables.scss"/>
-        <None Include="wwwroot\vendor\jquery\jquery.js"/>
-        <None Include="wwwroot\vendor\jquery\jquery.min.js"/>
+        <None Include="Components\Icon\Default.cshtml" />
+        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-300.woff2" />
+        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-300italic.woff2" />
+        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-700.woff2" />
+        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-700italic.woff2" />
+        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-italic.woff2" />
+        <None Include="wwwroot\fonts\montserrat-v14-latin-ext_latin-regular.woff2" />
+        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-300.woff2" />
+        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-300italic.woff2" />
+        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-600.woff2" />
+        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-600italic.woff2" />
+        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-700.woff2" />
+        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-700italic.woff2" />
+        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-800.woff2" />
+        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-800italic.woff2" />
+        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-italic.woff2" />
+        <None Include="wwwroot\fonts\open-sans-v17-latin-ext_latin-regular.woff2" />
+        <None Include="wwwroot\fonts\roboto-mono-v12-vietnamese_latin-ext_latin_greek_cyrillic-ext_cyrillic-regular.woff2" />
+        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-500.woff2" />
+        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-500italic.woff2" />
+        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-700.woff2" />
+        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-700italic.woff2" />
+        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-italic.woff2" />
+        <None Include="wwwroot\fonts\roboto-v20-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-regular.woff2" />
+        <None Include="wwwroot\vendor\bootstrap\bootstrap.bundle.min.js" />
+        <None Include="wwwroot\vendor\bootstrap\bootstrap.bundle.min.js.map" />
+        <None Include="wwwroot\vendor\font-awesome\fonts\fontawesome-webfont.svg" />
+        <None Include="wwwroot\vendor\font-awesome\fonts\fontawesome-webfont.woff2" />
+        <None Include="wwwroot\vendor\font-awesome\less\animated.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\bordered-pulled.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\core.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\fixed-width.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\font-awesome.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\icons.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\larger.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\list.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\mixins.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\path.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\rotated-flipped.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\screen-reader.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\stacked.less" />
+        <None Include="wwwroot\vendor\font-awesome\less\variables.less" />
+        <None Include="wwwroot\vendor\font-awesome\scss\font-awesome.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_animated.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_bordered-pulled.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_core.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_fixed-width.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_icons.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_larger.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_list.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_mixins.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_path.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_rotated-flipped.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_screen-reader.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_stacked.scss" />
+        <None Include="wwwroot\vendor\font-awesome\scss\_variables.scss" />
+        <None Include="wwwroot\vendor\jquery\jquery.js" />
+        <None Include="wwwroot\vendor\jquery\jquery.min.js" />
     </ItemGroup>
 
     <ItemGroup>
@@ -124,7 +124,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Folder Include="wwwroot\vendor\highlight.js\"/>
-        <Folder Include="wwwroot\vendor\signalr\"/>
+        <Folder Include="wwwroot\vendor\highlight.js\" />
+        <Folder Include="wwwroot\vendor\signalr\" />
     </ItemGroup>
 </Project>

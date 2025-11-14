@@ -1,11 +1,9 @@
 using System.Security.Claims;
-using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
-using Newtonsoft.Json;
 using Npgsql;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
@@ -215,6 +213,13 @@ public class AdminController(
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
 
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
+    }
+
+    [HttpGet("plugins/import-review/{pluginSlug}")]
+    public IActionResult ImportReview(string pluginSlug)
+    {
+        var vm = new ImportReviewViewModel { PluginSlug = pluginSlug };
+        return View(vm);
     }
 
     [HttpPost("plugins/{pluginSlug}/ownership")]
