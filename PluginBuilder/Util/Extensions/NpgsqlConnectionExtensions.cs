@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
+using PluginBuilder.JsonConverters;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
@@ -93,12 +94,18 @@ public static class NpgsqlConnectionExtensions
         );
         return !string.IsNullOrEmpty(githubGistUrl);
     }
+
     public static async Task<bool> IsSocialAccountsVerified(this NpgsqlConnection connection, string userId)
     {
-        var githubGistUrl = await connection.QuerySingleOrDefaultAsync<string>(
-            "SELECT \"GithubGistUrl\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId AND \"EmailConfirmed\" = true",
+        var result = await connection.QuerySingleOrDefaultAsync<(string GithubGistUrl, string AccountDetail)>(
+            "SELECT \"GithubGistUrl\", \"AccountDetail\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId AND \"EmailConfirmed\" = true",
             new { userId });
-        return !string.IsNullOrEmpty(githubGistUrl);
+
+        if (string.IsNullOrEmpty(result.AccountDetail) || string.IsNullOrEmpty(result.GithubGistUrl))
+            return false;
+
+        var accountSettings = SafeJson.Deserialize<AccountSettings>(result.AccountDetail);
+        return !string.IsNullOrWhiteSpace(accountSettings?.Nostr?.Npub);
     }
 
     #endregion

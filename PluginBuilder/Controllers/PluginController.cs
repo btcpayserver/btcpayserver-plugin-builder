@@ -313,11 +313,10 @@ public class PluginController(
 
     private static async Task<bool> ListingRequirementsMet(NpgsqlConnection conn, PluginSettings plugin, List<OwnerVm> owners)
     {
-        if (plugin == null)
+        if (plugin == null || owners == null || owners.Count == 0)
             return false;
 
-        bool hasRequiredFields = !string.IsNullOrWhiteSpace(plugin.GitRepository) && !string.IsNullOrWhiteSpace(plugin.Documentation) && !string.IsNullOrWhiteSpace(plugin.Logo);
-        if (!hasRequiredFields)
+        if (string.IsNullOrWhiteSpace(plugin.GitRepository) || string.IsNullOrWhiteSpace(plugin.Documentation) || string.IsNullOrWhiteSpace(plugin.Logo))
             return false;
 
         foreach (var owner in owners)
