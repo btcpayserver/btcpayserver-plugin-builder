@@ -43,6 +43,7 @@ public class PlaywrightTester : IAsyncDisposable
         });
         var context = await Browser.NewContextAsync();
         Page = await context.NewPageAsync();
+        Page.SetDefaultTimeout(10000); // Set default timeout to 10 seconds
         ServerUri = new Uri(Server.WebApp.Urls.FirstOrDefault() ?? throw new InvalidOperationException("No URLs found"));
         Logger.LogInformation($"Playwright: Using {Page.GetType()}");
         Logger.LogInformation($"Playwright: Browsing to {ServerUri}");
