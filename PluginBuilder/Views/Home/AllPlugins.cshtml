@@ -5,6 +5,10 @@
     var title = "BTCPay Server Plugin Directory";
     var desc = "Extend and customize your BTCPay Server with community and official plugins.";
     ViewData["Title"] = title;
+
+    var currentSort = Context.Request.Query["sort"].ToString().ToLowerInvariant();
+    if (string.IsNullOrEmpty(currentSort))
+        currentSort = "smart";
 }
 
 @section Meta {
@@ -31,9 +35,38 @@
     </div>
     <div class="row mb-4">
         <form method="get" asp-action="AllPlugins">
-            <div class="input-group">
-                <input type="text" name="searchPluginName" class="form-control" placeholder="Search plugins"
-                       value="@Context.Request.Query["searchPluginName"]" />
+            <div class="row g-2">
+                <div class="col-md-10">
+                    <div class="input-group">
+                        <input type="text"
+                               name="searchPluginName"
+                               class="form-control"
+                               placeholder="Search plugins"
+                               value="@Context.Request.Query["searchPluginName"]" />
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <select name="sort"
+                            class="form-select"
+                            onchange="this.form.submit()">
+                        <option value="smart"
+                                selected="@(currentSort == "smart" ? "selected" : null)">
+                            Relevance
+                        </option>
+                        <option value="rating"
+                                selected="@(currentSort == "rating" ? "selected" : null)">
+                            Highest rated
+                        </option>
+                        <option value="recent"
+                                selected="@(currentSort == "recent" ? "selected" : null)">
+                            Most recent
+                        </option>
+                        <option value="alpha"
+                                selected="@(currentSort == "alpha" ? "selected" : null)">
+                            Alphabetical
+                        </option>
+                    </select>
+                </div>
             </div>
         </form>
     </div>
@@ -42,7 +75,7 @@
         {
             @foreach (var plugin in Model)
             {
-                var owner = @plugin.GetGithubRepository()?.Owner;
+                var owner = plugin.GetGithubRepository()?.Owner;
                 <div class="col-md-6 mb-4">
                     <div class="card h-100 plugin-card" data-type="community">
                         <div class="card-body">
