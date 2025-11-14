@@ -222,6 +222,24 @@ public class AdminController(
         return View(vm);
     }
 
+    [HttpPost("plugins/import-review/{pluginSlug}")]
+    public async Task<IActionResult> ImportReview(ImportReviewViewModel model)
+    {
+        var userId = userManager.GetUserId(User);
+
+        if (model.Rating is < 1 or > 5 || string.IsNullOrEmpty(model.Review))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Invalid rating specified";
+            return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+        }
+        await using var conn = await connectionFactory.Open();
+        var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug });
+
+
+        var vm = new ImportReviewViewModel { PluginSlug = model.PluginSlug };
+        return View(vm);
+    }
+
     [HttpPost("plugins/{pluginSlug}/ownership")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ManagePluginOwnership(string pluginSlug, string userId, string command = "")

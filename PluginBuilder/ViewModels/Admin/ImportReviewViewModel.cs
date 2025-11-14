@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using PluginBuilder.Util.Enums;
 
 namespace PluginBuilder.ViewModels.Admin;
@@ -10,5 +11,6 @@ public class ImportReviewViewModel
     public string ProfileUrl { get; set; }
     public string SourceUrl { get; set; }
     public string Review { get; set; }
-    public int Stars { get; set; } = 5;
+    [Range(1, 5)]
+    public int Rating { get; set; } = 5;
 }

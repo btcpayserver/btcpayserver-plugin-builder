@@ -6,38 +6,40 @@
 }
 
 <div class="d-flex flex-column flex-md-row align-items-center justify-content-between mb-4">
-    <h2 class="mb-3 mb-md-0">@Model.PluginSlug - Import Review</h2>
+    <h2 class="mb-3 mb-md-0">Import Review for @Model.PluginSlug</h2>
 </div>
 
-<form asp-action="ImportReview" method="post">
-	<input asp-for="@Model.PluginSlug" type="hidden" />
+<div class="row">
+    <div class="col-xl-8 col-xxl-constrain">
+		<form asp-action="ImportReview" method="post">
+			<input asp-for="@Model.PluginSlug" type="hidden" />
+			<div class="mb-3">
+				<label asp-for="SourceUrl" class="form-label">Original URL</label>
+				<input asp-for="SourceUrl" class="form-control" />
+			</div>
+			<div class="mb-3">
+				<label asp-for="Source" class="form-label">Source icon</label>
+				<select asp-for="Source" asp-items="Html.GetEnumSelectList<ImportReviewSourceEnum>()" class="form-select"></select>
+			</div>
+			<div class="mb-3">
+				<label asp-for="Review" class="form-label"></label>
+				<textarea asp-for="Review" class="form-control" rows="4"></textarea>
+			</div>
+			<div class="mb-3">
+				<label asp-for="Rating" class="form-label">Rating</label>
+				<input asp-for="Rating" type="range" min="1" max="5" class="form-range" />
+				<div class="form-text">Selected: <span id="starLabel">5</span> ⭐</div>
+			</div>
+			<button type="submit" class="btn btn-primary">Log review (DB not wired)</button>
+		</form>
 
-	<h4>Review</h4>
-	<div class="mb-3">
-		<label asp-for="SourceUrl" class="form-label">Original URL</label>
-		<input asp-for="SourceUrl" class="form-control" />
-	</div>
-	<div class="mb-3">
-		<label asp-for="Source" class="form-label">Source icon</label>
-		<select asp-for="Source" asp-items="Html.GetEnumSelectList<ImportReviewSourceEnum>()" class="form-select"></select>
-	</div>
-	<div class="mb-3">
-		<label asp-for="Review" class="form-label"></label>
-		<textarea asp-for="Review" class="form-control" rows="4"></textarea>
-	</div>
-	<div class="mb-3">
-		<label asp-for="Stars" class="form-label">Stars</label>
-		<input asp-for="Stars" type="range" min="1" max="5" class="form-range" />
-		<div class="form-text">Selected: <span id="starLabel">5</span> ⭐</div>
-	</div>
+    </div>
+</div>
 
-	<button type="submit" class="btn btn-primary">Log review (DB not wired)</button>
-	<a asp-action="List" class="btn btn-secondary">Cancel</a>
-</form>
 
-@section Scripts {
+@section FooterScripts {
 	<script>
-		const rng = document.querySelector('input[name="Stars"]');
+		const rng = document.querySelector('input[name="Rating"]');
 		rng.addEventListener('input', e => document.getElementById('starLabel').textContent = e.target.value);
 	</script>
 }

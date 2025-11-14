@@ -10,7 +10,6 @@
         @ViewData["Title"] – <span class="text-dark">@Model.PluginSlug</span>
 	</h2>
 
-	<a asp-controller="Admin" asp-action="ImportReview" asp-route-pluginSlug="@Model.PluginSlug">Delete</a>
 	<a asp-action="ImportReview" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-primary">Import Reviews</a>
 </div>
 

@@ -494,9 +494,7 @@ public class HomeController(
         if (string.IsNullOrEmpty(userId)) return Forbid();
 
         await using var conn = await connectionFactory.Open();
-
         var isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
-
         if (isOwner)
         {
             TempData[TempDataConstant.WarningMessage] = "You cannot review your own plugin.";
@@ -549,8 +547,7 @@ public class HomeController(
         await conn.UpsertPluginReview(pluginSlug, userId, rating, body, pluginVersionParts);
 
         var sort = Request.Query["sort"].ToString();
-        var url = Url.Action(nameof(GetPluginDetails), "Home",
-            new { pluginSlug = pluginSlug.ToString(), sort = string.IsNullOrEmpty(sort) ? null : sort });
+        var url = Url.Action(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString(), sort = string.IsNullOrEmpty(sort) ? null : sort });
 
         return Redirect((url ?? "/") + "#reviews");
     }

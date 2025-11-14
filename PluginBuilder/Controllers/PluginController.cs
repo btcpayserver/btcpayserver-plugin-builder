@@ -178,15 +178,9 @@ public class PluginController(
                 "You need to verify your email address in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
-
         try
         {
-            var identifier = await buildService.FetchIdentifierFromGithubCsprojAsync(
-                model.GitRepository,
-                model.GitRef,
-                model.PluginDirectory
-            );
-
+            var identifier = await buildService.FetchIdentifierFromGithubCsprojAsync(model.GitRepository, model.GitRef, model.PluginDirectory);
             var owns = await conn.EnsureIdentifierOwnership(pluginSlug, identifier);
             if (!owns)
             {
