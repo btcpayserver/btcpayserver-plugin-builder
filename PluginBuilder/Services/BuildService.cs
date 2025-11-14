@@ -3,6 +3,7 @@ using System.Xml.Linq;
 using Dapper;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Events;
+using PluginBuilder.JsonConverters;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 
@@ -267,32 +268,24 @@ public class BuildService
             _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("btcpay-plugin-builder/1.0");
 
         var (owner, repo) = ExtractOwnerRepo(repoUrl);
-        var refName = string.IsNullOrWhiteSpace(gitRef) ? "HEAD" : gitRef;
+        var refName = string.IsNullOrWhiteSpace(gitRef) ? "HEAD" : gitRef.Trim();
         var dir = string.IsNullOrWhiteSpace(pluginDir) ? "" : pluginDir.Trim('/');
 
         var encodedRef = Uri.EscapeDataString(refName);
-        var encodedDir = string.IsNullOrWhiteSpace(dir)
-            ? ""
-            : string.Join('/',
-                dir.Split('/', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(Uri.EscapeDataString));
+        var encodedDir = string.Join('/', dir.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.EscapeDataString));
 
-        var apiUrl = string.IsNullOrEmpty(encodedDir)
-            ? $"https://api.github.com/repos/{owner}/{repo}/contents?ref={encodedRef}"
-            : $"https://api.github.com/repos/{owner}/{repo}/contents/{encodedDir}?ref={encodedRef}";
-
+        var apiUrl = $"https://api.github.com/repos/{owner}/{repo}/contents{(string.IsNullOrEmpty(encodedDir) ? "" : "/" + encodedDir)}?ref={encodedRef}";
         using var resp = await _httpClient.GetAsync(apiUrl);
         var body = await resp.Content.ReadAsStringAsync();
         if (!resp.IsSuccessStatusCode)
-            throw new BuildServiceException($"GitHub 403/err listing '{dir}': {apiUrl}\nBody: {body}");
+            throw new BuildServiceException($"GitHub error ({(int)resp.StatusCode}) listing '{(string.IsNullOrEmpty(dir) ? "/" : dir)}': {apiUrl}\nBody: {body}");
 
-        var items = System.Text.Json.JsonSerializer.Deserialize<List<GithubContentItem>>(body) ?? new List<GithubContentItem>();
+        var items = SafeJson.Deserialize<List<GithubContentItem>>(body);
         var csprojs = items
             .Where(i => string.Equals(i.type, "file", StringComparison.OrdinalIgnoreCase)
-                        && i.name.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+                        && i.name.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)).ToList();
 
-        if (csprojs.Count == 0)
+        if (csprojs == null || !csprojs.Any())
             throw new BuildServiceException($"No .csproj found in '{(string.IsNullOrEmpty(dir) ? "/" : dir)}' at {refName}.");
         if (csprojs.Count > 1)
             throw new BuildServiceException("Multiple .csproj found. Keep exactly one.");
@@ -309,8 +302,7 @@ public class BuildService
                 $"GitHub error downloading '{csprojs[0].name}' from {downloadUrl} (HTTP {(int)csprojResp.StatusCode}).\nBody: {csprojBody}");
 
         var doc = XDocument.Parse(csprojBody);
-        var assemblyName = doc.Descendants("AssemblyName").FirstOrDefault()?.Value
-                           ?? Path.GetFileNameWithoutExtension(csprojs[0].name);
+        var assemblyName = doc.Descendants("AssemblyName").FirstOrDefault()?.Value ?? Path.GetFileNameWithoutExtension(csprojs[0].name);
 
         return assemblyName;
     }
