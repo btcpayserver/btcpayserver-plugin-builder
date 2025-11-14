@@ -302,10 +302,10 @@
 
                                         <div class="mt-1 d-flex">
                                             <div class="flex-grow-1 pe-2">
-                                                @if (!string.IsNullOrWhiteSpace(review.Body))
-                                                {
-                                                    @review.Body
-                                                }
+												@if (!string.IsNullOrWhiteSpace(review.Body))
+												{
+													<partial name="_MarkdownRender" model="review.Body" />
+												}
                                             </div>
 
                                             @if (review.IsReviewOwner || Model.IsAdmin)
@@ -350,7 +350,6 @@
                                     @Html.AntiForgeryToken()
 
                                     <div class="row align-items-center g-2 mb-3">
-
                                         <div class="col">
                                             <div id="ratingStars"
                                                  class="d-inline-flex align-items-center gap-1 fs-4"
@@ -398,13 +397,8 @@
                                             </div>
                                         </div>
                                     </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label">Review</label>
-                                        <textarea name="Body" rows="4" maxlength="2000" class="form-control"></textarea>
-                                    </div>
-
-                                    <button class="btn btn-primary">Submit</button>
+									<partial name="_MarkdownToolbarTextArea" model="@("reviewBody")" />
+                                    <button class="btn btn-primary mt-3">Submit</button>
                                 </form>
                                 }
                             }
@@ -486,24 +480,22 @@
                                     @Model.Plugin.CreatedDate.ToString("MMM dd, yyyy")
                                 </div>
                             </div>
-
-                            <div class="row mb-3 align-items-center">
-                                <div class="col-6">
-                                    <strong class="align-middle">Rating</strong>
-                                </div>
-                                <div class="col-6 d-flex align-items-center justify-content-end">
-                                    <span class="d-inline-flex align-items-center lh-1 gap-2">
-                                        <partial name="_RatingInline" model="@(new RatingInlineViewModel {
-                                               Average        = Model.Plugin.RatingSummary?.Average ?? 0,
-                                               TotalReviews   = Model.Plugin.RatingSummary?.TotalReviews ?? 0,
-                                               ShowNumber     = true,
-                                               SingleStar     = true,
-                                               ShowTotalReviews = true,
-                                               IconSize       = "fs-5"
-                                           })" />
-                                    </span>
-                                </div>
-                            </div>
+							<div class="row mb-3">
+								<div class="col-6">
+									<strong>Rating</strong>
+								</div>
+								<div class="col-6 text-end">
+									<span class="d-inline-flex align-items-center gap-1 lh-1">
+										<span class="fw-semibold">
+											@((Model.Plugin.RatingSummary?.Average ?? 0m).ToString("0.0"))
+										</span>
+										<span class="text-warning">
+											<vc:icon symbol="star-fill" />
+										</span>
+										<span class="text-muted small">(@(Model.Plugin.RatingSummary?.TotalReviews ?? 0))</span>
+									</span>
+								</div>
+							</div>
                         </div>
                     </div>
                 </div>
