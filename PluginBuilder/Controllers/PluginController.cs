@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
@@ -29,7 +30,8 @@ public class PluginController(
     GPGKeyService gpgKeyService,
     AzureStorageClient azureStorageClient,
     UserVerifiedLogic userVerifiedLogic,
-    IUserClaimsPrincipalFactory<IdentityUser> principalFactory )
+    IUserClaimsPrincipalFactory<IdentityUser> principalFactory,
+    IOutputCacheStore outputCacheStore)
     : Controller
 {
     [HttpGet("settings")]
@@ -111,6 +113,7 @@ public class PluginController(
             settingViewModel.Description = existingSetting.Description;
         }
         await conn.SetPluginSettings(pluginSlug, settingViewModel.ToPluginSettings());
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = "Settings updated successfully";
         return RedirectToAction(nameof(Settings), new { pluginSlug });
     }
@@ -354,6 +357,7 @@ public class PluginController(
                 await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
                     new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
                 await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
+                await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
                 return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
 
             case "sign_release":
@@ -389,6 +393,8 @@ public class PluginController(
                 await conn.UpdateVersionReleaseStatus(pluginSlug, command, version);
                 break;
         }
+
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = $"Version {version} {(command is "release" or "sign_release" ? "released" : "unreleased")}";
         return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
     }

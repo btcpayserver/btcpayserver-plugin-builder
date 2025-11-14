@@ -9,14 +9,14 @@ namespace PluginBuilder.Controllers.Logic;
 public class UserVerifiedLogic(
     UserManager<IdentityUser> userManager,
     EmailService emailService,
-    UserVerifiedCache userVerifiedCache)
+    AdminSettingsCache adminSettingsCache)
 {
-    public bool IsEmailVerificationRequiredForLogin => userVerifiedCache.IsEmailVerificationRequiredForLogin;
+    public bool IsEmailVerificationRequiredForLogin => adminSettingsCache.IsEmailVerificationRequiredForLogin;
 
     public async Task<bool> IsUserEmailVerifiedForPublish(ClaimsPrincipal claimsPrincipal)
     {
         var emailSettings = await emailService.GetEmailSettingsFromDb();
-        if (!userVerifiedCache.IsEmailVerificationRequiredForPublish || emailSettings?.PasswordSet != true)
+        if (!adminSettingsCache.IsEmailVerificationRequiredForPublish || emailSettings?.PasswordSet != true)
             return true; // for now always return true in these cases if we don't have a verified email
 
         var user = await userManager.GetUserAsync(claimsPrincipal);
@@ -26,7 +26,7 @@ public class UserVerifiedLogic(
     public async Task<bool> IsUserEmailVerifiedForLogin(ClaimsPrincipal claimsPrincipal)
     {
         var emailSettings = await emailService.GetEmailSettingsFromDb();
-        if (!userVerifiedCache.IsEmailVerificationRequiredForLogin || emailSettings?.PasswordSet != true)
+        if (!adminSettingsCache.IsEmailVerificationRequiredForLogin || emailSettings?.PasswordSet != true)
             return true; // for now always return true in these cases if we don't have a verified email
 
         var user = await userManager.GetUserAsync(claimsPrincipal);
@@ -35,46 +35,20 @@ public class UserVerifiedLogic(
 
     public async Task<bool> IsUserGithubVerified(ClaimsPrincipal claimsPrincipal, NpgsqlConnection conn)
     {
-        if (!userVerifiedCache.IsGithubVerificationRequired)
+        if (!adminSettingsCache.IsGithubVerificationRequired)
             return true;
 
         var user = await userManager.GetUserAsync(claimsPrincipal);
         return await conn.IsGithubAccountVerified(user!.Id);
     }
-}
 
-public class UserVerifiedCache
-{
-    public bool IsEmailVerificationRequiredForPublish { get; private set; }
-    public bool IsEmailVerificationRequiredForLogin { get; private set; }
-    public bool IsGithubVerificationRequired { get; private set; }
-
-
-    public async Task RefreshIsVerifiedEmailRequiredForPublish(NpgsqlConnection conn)
+    public async Task<bool> IsNostrVerified(ClaimsPrincipal claimsPrincipal, NpgsqlConnection conn)
     {
-        IsEmailVerificationRequiredForPublish = await conn.GetVerifiedEmailForPluginPublishSetting();
-    }
+        if (!adminSettingsCache.IsNostrVerificationRequired)
+            return true;
 
-    public async Task RefreshIsVerifiedEmailRequiredForLogin(NpgsqlConnection conn)
-    {
-        IsEmailVerificationRequiredForLogin = await conn.GetVerifiedEmailForLoginSetting();
-    }
-
-    public async Task RefreshAllVerifiedEmailSettings(NpgsqlConnection conn)
-    {
-        await RefreshIsVerifiedEmailRequiredForPublish(conn);
-        await RefreshIsVerifiedEmailRequiredForLogin(conn);
-    }
-
-    public async Task RefreshAllUserVerifiedSettings(NpgsqlConnection conn)
-    {
-        await RefreshIsVerifiedEmailRequiredForPublish(conn);
-        await RefreshIsVerifiedEmailRequiredForLogin(conn);
-        await RefreshIsVerifiedGithubRequired(conn);
-    }
-
-    public async Task RefreshIsVerifiedGithubRequired(NpgsqlConnection conn)
-    {
-        IsGithubVerificationRequired = await conn.GetVerifiedGithubSetting();
+        var user = await userManager.GetUserAsync(claimsPrincipal) ?? throw new Exception("User not found");
+        var settings = await conn.GetAccountDetailSettings(user.Id);
+        return settings?.Nostr is { Npub: not null, Proof: not null };
     }
 }

@@ -1,0 +1,27 @@
+@{
+	string src = (string)Model;
+	if (string.IsNullOrWhiteSpace(src)) { return; }
+
+	string h = System.Net.WebUtility.HtmlEncode(src);
+
+	var codePlaceholders = new List<string>();
+	int codeIndex = 0;
+	h = System.Text.RegularExpressions.Regex.Replace(h, @"`([^`]+)`", match =>
+	{
+		string placeholder = $"__CODEPLACEHOLDER{codeIndex++}__";
+		codePlaceholders.Add($"<code>{match.Groups[1].Value}</code>");
+		return placeholder;
+	});
+
+	h = System.Text.RegularExpressions.Regex.Replace(h, @"\*\*([^*]+)\*\*", "<strong>$1</strong>");
+	h = System.Text.RegularExpressions.Regex.Replace(h, @"\*([^*]+)\*", "<em>$1</em>");
+	h = System.Text.RegularExpressions.Regex.Replace(h, @"\[([^\]]+)\]\((https?:\/\/[^)]+)\)", "<a href=\"$2\" target=\"_blank\" rel=\"noopener\">$1</a>");
+	h = System.Text.RegularExpressions.Regex.Replace(h, @"(?<!"")(?<!>)(https?:\/\/[^\s<""]+?)(?=[.,;:!?\)]*(?:\s|$|<|""))", "<a href=\"$1\" target=\"_blank\" rel=\"noopener\">$1</a>");
+	h = h.Replace("\r\n", "<br />").Replace("\n", "<br />");
+
+	for (int i = 0; i < codePlaceholders.Count; i++)
+	{
+		h = h.Replace($"__CODEPLACEHOLDER{i}__", codePlaceholders[i]);
+	}
+}
+@Html.Raw(h)

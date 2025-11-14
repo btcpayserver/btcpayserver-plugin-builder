@@ -124,4 +124,71 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
             Assert.True(rating == 4, $"Expected = 4, but was {rating}");
         }
     }
+
+    [Fact]
+    public async Task PluginDetails_Review_Markdown_Renders_Correctly()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        await tester.StartAsync();
+
+        // Setup: Create plugin and users
+        var ownerId = await tester.Server.CreateFakeUserAsync(email: "owner@x.com", confirmEmail: true, githubVerified: true);
+        const string slug = ServerTester.PluginSlug;
+        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug: slug);
+        await tester.Server.CreateFakeUserAsync(email: "reviewer@x.com", confirmEmail: true, githubVerified: true);
+
+        // Login as reviewer and create review with markdown
+        await tester.LogIn("reviewer@x.com");
+        await tester.GoToUrl($"/public/plugins/{slug}");
+
+        var form = tester.Page!.Locator("#review-form");
+        await Expect(form).ToBeVisibleAsync();
+        await tester.Page.ClickAsync("#ratingStars .star-btn[data-value='5']");
+
+        // Review text with various markdown elements
+        const string reviewText = "This is the **best** plugin *ever*! Read more on https://x.com/r0ckstardev. As well as [markdown Google link](https://google.com)";
+        await tester.Page.FillAsync("textarea[name='Body']", reviewText);
+        await form.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Submit" }).ClickAsync();
+        await tester.Page.WaitForURLAsync(new Regex("public/plugins/.+?#reviews"));
+
+        // Get the review card body
+        var reviewCard = tester.Page.Locator(".test-review-card").First;
+        await Expect(reviewCard).ToBeVisibleAsync();
+        var reviewBody = reviewCard.Locator(".flex-grow-1.pe-2");
+        await Expect(reviewBody).ToBeVisibleAsync();
+
+        // Test 1: Bold text renders as <strong>
+        var strongElement = reviewBody.Locator("strong");
+        await Expect(strongElement).ToHaveTextAsync("best");
+
+        // Test 2: Italic text renders as <em>
+        var emElement = reviewBody.Locator("em");
+        await Expect(emElement).ToHaveTextAsync("ever");
+
+        // Test 3: Plain URL is auto-linked WITHOUT trailing period
+        var plainUrlLink = reviewBody.Locator("a[href='https://x.com/r0ckstardev']");
+        await Expect(plainUrlLink).ToBeVisibleAsync();
+        await Expect(plainUrlLink).ToHaveTextAsync("https://x.com/r0ckstardev");
+        await Expect(plainUrlLink).ToHaveAttributeAsync("target", "_blank");
+        await Expect(plainUrlLink).ToHaveAttributeAsync("rel", "noopener");
+
+        // Test 4: Markdown link renders correctly
+        var markdownLink = reviewBody.Locator("a[href='https://google.com']");
+        await Expect(markdownLink).ToBeVisibleAsync();
+        await Expect(markdownLink).ToHaveTextAsync("markdown Google link");
+        await Expect(markdownLink).ToHaveAttributeAsync("target", "_blank");
+        await Expect(markdownLink).ToHaveAttributeAsync("rel", "noopener");
+
+        // Test 5: Verify the full HTML structure
+        var innerHTML = await reviewBody.InnerHTMLAsync();
+        Assert.Contains("<strong>best</strong>", innerHTML);
+        Assert.Contains("<em>ever</em>", innerHTML);
+        Assert.Contains("<a href=\"https://x.com/r0ckstardev\" target=\"_blank\" rel=\"noopener\">https://x.com/r0ckstardev</a>", innerHTML);
+        Assert.Contains("<a href=\"https://google.com\" target=\"_blank\" rel=\"noopener\">markdown Google link</a>", innerHTML);
+
+        // Test 6: Ensure trailing period is NOT part of the link
+        Assert.DoesNotContain("r0ckstardev.</a>", innerHTML);
+        Assert.Contains("r0ckstardev</a>.", innerHTML);
+    }
 }

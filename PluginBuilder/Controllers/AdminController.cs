@@ -4,6 +4,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json;
 using Npgsql;
 using PluginBuilder.Configuration;
@@ -26,9 +27,10 @@ public class AdminController(
     DBConnectionFactory connectionFactory,
     AzureStorageClient azureStorageClient,
     EmailService emailService,
-    UserVerifiedCache userVerifiedCache,
+    AdminSettingsCache adminSettingsCache,
     ReferrerNavigationService referrerNavigation,
-    PluginBuilderOptions pbOptions)
+    PluginBuilderOptions pbOptions,
+    IOutputCacheStore outputCacheStore)
 
     : Controller
 {
@@ -43,7 +45,7 @@ public class AdminController(
         var parameters = new DynamicParameters();
         if (!string.IsNullOrEmpty(model.SearchText))
         {
-            whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText OR p.settings->>'PluginTitle' ILIKE @searchText)");
+            whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText OR p.settings->>'pluginTitle' ILIKE @searchText)");
             parameters.Add("searchText", $"%{model.SearchText}%");
         }
         if (!string.IsNullOrEmpty(model.Status) && Enum.TryParse<PluginVisibilityEnum>(model.Status, true, out var statusEnum))
@@ -104,7 +106,7 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         await conn.UpdateVerifiedEmailForPluginPublishSetting(verifiedEmailForPluginPublish);
-        await userVerifiedCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
+        await adminSettingsCache.RefreshIsVerifiedEmailRequiredForPublish(conn);
         TempData[TempDataConstant.SuccessMessage] = "Email requirement setting for publishing plugin updated successfully";
         return RedirectToAction("ListPlugins");
     }
@@ -177,9 +179,10 @@ public class AdminController(
             pluginSettings.Logo = null;
         }
 
-        var setPluginSettings = await conn.SetPluginSettingsAndVisibility(pluginSlug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
+        var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility.ToString().ToLowerInvariant());
         if (!setPluginSettings) return NotFound();
 
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = "Plugin settings updated successfully";
         return referrerNavigation.RedirectToReferrerOr(this, "ListPlugins");
     }
@@ -210,6 +213,8 @@ public class AdminController(
                                                    DELETE FROM plugins WHERE slug = @Slug;
                                                    """, new { Slug = pluginSlug });
         if (affectedRows == 0) return NotFound();
+
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
 
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
     }
@@ -533,7 +538,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsSetAsync(key, value);
-        await userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
+        await adminSettingsCache.RefreshAllAdminSettings(conn);
         return RedirectToAction(nameof(SettingsEditor));
     }
 
@@ -545,7 +550,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsDeleteAsync(key);
-        await userVerifiedCache.RefreshAllUserVerifiedSettings(conn);
+        await adminSettingsCache.RefreshAllAdminSettings(conn);
         return Ok();
     }
 

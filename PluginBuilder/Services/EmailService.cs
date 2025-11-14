@@ -12,7 +12,7 @@ using PluginBuilder.ViewModels.Admin;
 namespace PluginBuilder.Services;
 
 public class EmailService(DBConnectionFactory connectionFactory,
-    UserVerifiedCache userVerifiedCache)
+    AdminSettingsCache adminSettingsCache)
 {
     public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText)
     {
@@ -28,7 +28,7 @@ public class EmailService(DBConnectionFactory connectionFactory,
         var emailSettings = await GetEmailSettingsFromDb();
         if (emailSettings == null)
             throw new InvalidOperationException("Email settings not configured. Please set up email settings in the admin panel.");
-        
+
         var smtpClient = await CreateSmtpClient(emailSettings);
         MimeMessage message = new();
         message.From.Add(MailboxAddress.Parse(emailSettings.From));
@@ -97,7 +97,7 @@ BTCPay Server Plugin Builder";
         await using var conn = await connectionFactory.Open();
         var emailSettingsJson = JsonConvert.SerializeObject(model);
         await conn.SettingsSetAsync("EmailSettings", emailSettingsJson);
-        await userVerifiedCache.RefreshAllVerifiedEmailSettings(conn);
+        await adminSettingsCache.RefreshAllVerifiedEmailSettings(conn);
     }
 
     public async Task<SmtpClient> CreateSmtpClient(EmailSettingsViewModel settings)

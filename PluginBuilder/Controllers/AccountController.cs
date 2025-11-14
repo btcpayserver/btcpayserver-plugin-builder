@@ -16,7 +16,9 @@ public class AccountController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
     ExternalAccountVerificationService externalAccountVerificationService,
-    EmailService emailService)
+    EmailService emailService,
+    NostrService nostrService,
+    ILogger<AccountController> logger)
     : Controller
 {
     [HttpGet("verifyemail")]
@@ -53,15 +55,18 @@ public class AccountController(
         var emailSettings = await emailService.GetEmailSettingsFromDb();
         var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user!);
 
-        var settings = await conn.GetAccountDetailSettings(user!.Id);
-        var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
+        var settings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
+        var isGithubVerified = await conn.IsGithubAccountVerified(user.Id);
+        var isNostrVerified = !string.IsNullOrWhiteSpace(settings.Nostr?.Npub) && !string.IsNullOrWhiteSpace(settings.Nostr.Proof);
+
         AccountDetailsViewModel model = new()
         {
             AccountEmail = user.Email!,
             AccountEmailConfirmed = user.EmailConfirmed,
             NeedToVerifyEmail = needToVerifyEmail,
             GithubAccountVerified = isGithubVerified,
-            Settings = settings!
+            Settings = settings,
+            IsNostrVerified = isNostrVerified
         };
         return View(model);
     }
@@ -76,7 +81,6 @@ public class AccountController(
         await using var conn = await connectionFactory.Open();
         var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
 
-        accountSettings.Nostr = model.Settings.Nostr;
         accountSettings.Twitter = model.Settings.Twitter;
         accountSettings.Email = model.Settings.Email;
         if (!string.IsNullOrEmpty(model.Settings.GPGKey?.PublicKey))
@@ -146,4 +150,163 @@ public class AccountController(
             return View(model);
         }
     }
+
+    [HttpGet("nostr/nip07-payload")]
+    public async Task<IActionResult> GetNip07VerificationPayload()
+    {
+        var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
+        var challengeToken = nostrService.GetOrCreateActiveChallenge(user.Id);
+        var message = $"Verifying my https://{Request.Host.Host} account. Proof: {challengeToken}";
+        return Json(new StartNip07Response(challengeToken, message));
+    }
+
+    [HttpPost("nostr/verify-nip07")]
+    public async Task<IActionResult> NostrVerifyNip07([FromBody] VerifyNip07Request req)
+    {
+        var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
+
+        if (!ModelState.IsValid)
+            return BadRequest("invalid_payload");
+
+        if (!nostrService.IsValidChallenge(user.Id, req.ChallengeToken))
+            return BadRequest("invalid_or_expired_challenge");
+
+        if (!NostrService.HasTag(req.Event, "challenge", req.ChallengeToken))
+            return BadRequest("missing_challenge");
+
+        if (!NostrService.VerifyEvent(req.Event))
+            return BadRequest("invalid_signature");
+
+        await using var conn = await connectionFactory.Open();
+
+        var npub =  NostrService.HexPubToNpub(req.Event.Pubkey);
+        var npubOwnerId = await conn.GetUserIdByNpubAsync(npub);
+        if (npubOwnerId is not null && !string.Equals(npubOwnerId, user.Id, StringComparison.Ordinal))
+            return BadRequest("npub_already_linked_to_other_account");
+
+        var settings = await conn.GetAccountDetailSettings(user.Id) ?? new AccountSettings();
+        settings.Nostr ??= new NostrSettings();
+        settings.Nostr.Npub = npub;
+        settings.Nostr.Proof = req.Event.Id;
+
+        var profile = await nostrService.GetNostrProfileByAuthorHexAsync(req.Event.Pubkey, timeoutPerRelayMs: 6000);
+        if (profile is not null)
+            settings.Nostr.Profile = profile;
+
+        await conn.SetAccountDetailSettings(settings, user.Id);
+
+        TempData[TempDataConstant.SuccessMessage] = "Nostr account verified successfully";
+        return Ok();
+    }
+
+    [HttpGet("nostr/verify-public-note")]
+    public async Task<IActionResult> NostrVerifyPublicNote()
+    {
+        var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
+        var token  = nostrService.GetOrCreateActiveChallenge(user.Id);
+        var message = $"Verifying my {Request.Host.Host} account. Proof: {token}";
+        return View(new VerifyNostrManualViewModel { ChallengeToken = token, Message = message });
+    }
+
+    [HttpPost("nostr/verify-public-note")]
+    public async Task<IActionResult> NostrVerifyPublicNote(VerifyNostrManualViewModel model)
+    {
+        if (!ModelState.IsValid) return View(model);
+
+        var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
+
+        if (!nostrService.IsValidChallenge(user.Id, model.ChallengeToken))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Invalid or expired challenge. Please retry.";
+            return View(model);
+        }
+
+        var refStr = NostrService.ExtractNip19(model.NoteRef);
+        if (refStr is null)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Please provide a note/nevent URL or a NIP-19 (note1…/nevent1…).";
+            return View(model);
+        }
+
+        string? eventIdHex;
+        if (refStr.StartsWith("note1", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!NostrService.TryDecodeNoteToEventIdHex(refStr, out eventIdHex))
+            {
+                TempData[TempDataConstant.WarningMessage] = "Invalid note reference.";
+                return View(model);
+            }
+        }
+        else if (refStr.StartsWith("nevent1", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!NostrService.TryDecodeNeventToEventIdHex(refStr, out eventIdHex))
+            {
+                TempData[TempDataConstant.WarningMessage] = "Invalid nevent reference.";
+                return View(model);
+            }
+        }
+        else if (NostrService.IsHex64(refStr))
+        {
+            eventIdHex = refStr.ToLowerInvariant();
+        }
+        else
+        {
+            TempData[TempDataConstant.WarningMessage] = "Unsupported reference format.";
+            return View(model);
+        }
+
+        var evJson = await nostrService.FetchEventFromRelaysAsync(eventIdHex!);
+        if (evJson is null)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Event not found on relays.";
+            return View(model);
+        }
+
+        var ev = evJson.ToObject<NostrEvent>()!;
+
+        if (!NostrService.VerifyEvent(ev))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Invalid Nostr signature.";
+            return View(model);
+        }
+
+        if (!ContentHasProof(ev.Content, model.ChallengeToken))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Challenge token not found in note content.";
+            return View(model);
+        }
+
+        await using var conn = await connectionFactory.Open();
+
+        var npub =  NostrService.HexPubToNpub(ev.Pubkey);
+        var npubOwnerId = await conn.GetUserIdByNpubAsync(npub);
+        if (npubOwnerId is not null && !string.Equals(npubOwnerId, user.Id, StringComparison.Ordinal))
+        {
+            TempData[TempDataConstant.WarningMessage] = "This Nostr Npub is already linked to another account.";
+            return View(model);
+        }
+
+        var settings = await conn.GetAccountDetailSettings(user.Id) ?? new AccountSettings();
+        settings.Nostr ??= new NostrSettings();
+        settings.Nostr.Npub = npub;
+        settings.Nostr.Proof = model.NoteRef;
+
+        try
+        {
+            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(ev.Pubkey, timeoutPerRelayMs: 6000);
+            if (profile is not null)
+                settings.Nostr.Profile = profile;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to fetch nostr profile");
+        }
+
+        await conn.SetAccountDetailSettings(settings, user.Id);
+
+        TempData[TempDataConstant.SuccessMessage] = "Nostr account verified successfully";
+        return RedirectToAction(nameof(AccountDetails));
+    }
+
+    private static bool ContentHasProof(string? content, string token) => !string.IsNullOrEmpty(content) && content.Contains(token);
 }

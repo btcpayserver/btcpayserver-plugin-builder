@@ -26,7 +26,9 @@ public class HomeController(
     EmailService emailService,
     HttpClient httpClient,
     UserVerifiedLogic userVerifiedLogic,
-    ServerEnvironment env)
+    ServerEnvironment env,
+    NostrService nostrService,
+    ILogger<HomeController> logger)
     : Controller
 {
     [AllowAnonymous]
@@ -357,6 +359,9 @@ public class HomeController(
                         SELECT
                           r.id AS Id,
                           (u.""AccountDetail""->>'github') AS ""AuthorUrl"",
+                          (u.""AccountDetail""->'nostr'->>'npub')                           AS ""Npub"",
+                          (u.""AccountDetail""->'nostr'->'profile'->>'name')                AS ""NostrName"",
+                          (u.""AccountDetail""->'nostr'->'profile'->>'pictureUrl')          AS ""NostrAvatarUrl"",
                           r.rating AS Rating,
                           r.body AS Body,
                           array_to_string(r.plugin_version, '.')::text AS ""PluginVersion"",
@@ -401,17 +406,42 @@ public class HomeController(
         foreach (var item in items)
         {
             var gh = GetGithubIdentity(item.AuthorUrl, size: 48);
-            if (gh is null)
+            if (gh is not null)
             {
-                item.AuthorDisplay   = "Anonymous";
-            }
-            else
-            {
-                item.AuthorDisplay   = gh.Login;
+                item.AuthorDisplay   = gh.Login ?? "GitHub User";
                 item.AuthorUrl       = gh.HtmlUrl;
                 item.AuthorAvatarUrl = gh.AvatarUrl;
+                continue;
             }
+
+            if (!string.IsNullOrWhiteSpace(item.Npub))
+            {
+                item.AuthorDisplay = string.IsNullOrWhiteSpace(item.NostrName)
+                    ? $"{item.Npub[..8]}…"
+                    : item.NostrName;
+
+                // choose primal instead of njump because works for any case
+                item.AuthorUrl = !string.IsNullOrWhiteSpace(item.Npub)
+                    ? $"https://primal.net/p/{item.Npub}"
+                    : null;
+
+                if (!string.IsNullOrWhiteSpace(item.NostrAvatarUrl) &&
+                    Uri.TryCreate(item.NostrAvatarUrl, UriKind.Absolute, out var u) &&
+                    (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
+                {
+                    item.AuthorAvatarUrl = item.NostrAvatarUrl;
+                }
+                else
+                {
+                    item.AuthorAvatarUrl = null;
+                }
+                continue;
+            }
+
+            item.AuthorDisplay   = "Anonymous";
+            item.AuthorAvatarUrl = null;
         }
+
         var settings = SafeJson.Deserialize<PluginSettings>((string)pluginDetails.settings);
         var manifestInfo = JObject.Parse((string)pluginDetails.manifest_info);
         var plugin = new PublishedPlugin
@@ -474,10 +504,13 @@ public class HomeController(
             return Redirect(backUrl ?? "/");
         }
 
-        if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
+        var hasGithub = await userVerifiedLogic.IsUserGithubVerified(User, conn);
+        var hasNostr  = await userVerifiedLogic.IsNostrVerified(User, conn);
+
+        if (!(hasGithub || hasNostr))
         {
             TempData[TempDataConstant.WarningMessage] =
-                "You need to verify your GitHub account in order to review plugins";
+                "You need to verify your GitHub or Nostr account in order to review plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
 
@@ -486,6 +519,30 @@ public class HomeController(
             PluginVersion.TryParse(pluginVersion, out var v))
         {
             pluginVersionParts = v.VersionParts;
+        }
+
+        if (!hasGithub && hasNostr)
+        {
+            try
+            {
+                var acc = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
+
+                if (!string.IsNullOrWhiteSpace(acc.Nostr?.Npub))
+                {
+                    var pubKey = nostrService.NpubToHexPub(acc.Nostr.Npub);
+                    var profile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKey, timeoutPerRelayMs: 6000);
+                    if (profile is not null)
+                    {
+                        acc.Nostr ??= new NostrSettings();
+                        acc.Nostr.Profile = profile;
+                        await conn.SetAccountDetailSettings(acc, userId);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error while updating nostr profile");
+            }
         }
 
         await conn.UpsertPluginReview(pluginSlug, userId, rating, body, pluginVersionParts);

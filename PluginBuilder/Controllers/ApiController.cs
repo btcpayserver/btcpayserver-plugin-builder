@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Authentication;
@@ -35,6 +36,7 @@ public class ApiController(
 
     [AllowAnonymous]
     [HttpGet("plugins")]
+    [OutputCache(PolicyName = "PluginsList")]
     public async Task<IActionResult> Plugins(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion? btcpayVersion = null,
