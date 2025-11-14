@@ -144,7 +144,7 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
 
             var signatureProof = new SignatureProof
             {
-                Armour = Encoding.ASCII.GetString(sigBytes),
+                Armour = Convert.ToBase64String(sigBytes),
                 KeyId = signature.KeyId.ToString("X"),
                 Fingerprint = BitConverter.ToString(signingKey.GetFingerprint()).Replace("-", ""),
                 SignedAt = signature.CreationTime,
