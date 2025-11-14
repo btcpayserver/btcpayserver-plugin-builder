@@ -45,7 +45,7 @@ public class AdminController(
         var parameters = new DynamicParameters();
         if (!string.IsNullOrEmpty(model.SearchText))
         {
-            whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText OR p.settings->>'PluginTitle' ILIKE @searchText)");
+            whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText OR p.settings->>'pluginTitle' ILIKE @searchText)");
             parameters.Add("searchText", $"%{model.SearchText}%");
         }
         if (!string.IsNullOrEmpty(model.Status) && Enum.TryParse<PluginVisibilityEnum>(model.Status, true, out var statusEnum))
@@ -59,7 +59,7 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var rows = await conn.QueryAsync($"""
-                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email, p.settings->>'PluginTitle' AS title
+                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email, p.settings->>'pluginTitle' AS title
                                          FROM plugins p
                                          LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
@@ -177,7 +177,7 @@ public class AdminController(
             pluginSettings.Logo = null;
         }
 
-        var setPluginSettings = await conn.SetPluginSettingsAndVisibility(pluginSlug, JsonConvert.SerializeObject(pluginSettings), model.Visibility.ToString().ToLowerInvariant());
+        var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility.ToString().ToLowerInvariant());
         if (!setPluginSettings) return NotFound();
 
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);

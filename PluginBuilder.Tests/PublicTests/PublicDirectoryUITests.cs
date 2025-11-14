@@ -37,7 +37,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
 
         // Listed should be visible
-        await conn.SetPluginSettingsAndVisibility(slug, "{}", "listed");
+        await conn.SetPluginSettings(slug, null, "listed");
         await tester.GoToUrl("/public/plugins");
         await tester.Page!.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']");
         Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
@@ -48,7 +48,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         Assert.Contains(slug, contentListed, StringComparison.OrdinalIgnoreCase);
 
         // Unlisted shouldn't be visible
-        await conn.SetPluginSettingsAndVisibility(slug, "{}", "unlisted");
+        await conn.SetPluginSettings(slug, null, "unlisted");
         await tester.GoToUrl("/public/plugins");
         await tester.Page.ReloadAsync();
         Assert.False(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
@@ -60,7 +60,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
 
         // Hidden shouldn't appear
-        await conn.SetPluginSettingsAndVisibility(slug, "{}", "hidden");
+        await conn.SetPluginSettings(slug, null, "hidden");
         await tester.GoToUrl("/public/plugins");
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync("rockstar");
         await tester.Page.Keyboard.PressAsync("Enter");

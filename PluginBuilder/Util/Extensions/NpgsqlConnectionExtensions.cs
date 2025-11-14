@@ -23,19 +23,17 @@ public static class NpgsqlConnectionExtensions
         return JsonConvert.DeserializeObject<PluginSettings>(r, CamelCaseSerializerSettings.Instance);
     }
 
-    public static async Task<bool> SetPluginSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings pluginSettings)
+    public static async Task<bool> SetPluginSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings? pluginSettings, string? visibility = null)
     {
-        var count = await connection.ExecuteAsync("UPDATE plugins SET settings = @settings::JSONB WHERE slug=@pluginSlug",
-            new { pluginSlug = pluginSlug.ToString(), settings = JsonConvert.SerializeObject(pluginSettings, CamelCaseSerializerSettings.Instance) });
-        return count == 1;
-    }
+        var settingsJson = "{}";
+        if (pluginSettings != null)
+            settingsJson = JsonConvert.SerializeObject(pluginSettings, CamelCaseSerializerSettings.Instance);
 
-    public static async Task<bool> SetPluginSettingsAndVisibility(this NpgsqlConnection connection, PluginSlug pluginSlug, string settings, string visibility)
-    {
-        var affectedRows = await connection.ExecuteAsync(
-            "UPDATE plugins SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum WHERE slug = @pluginSlug",
-            new { pluginSlug = pluginSlug.ToString(), settings, visibility });
+        var sql = "UPDATE plugins SET settings = @settings::JSONB WHERE slug = @pluginSlug";
+        if (visibility != null)
+            sql = "UPDATE plugins SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum WHERE slug = @pluginSlug";
 
+        var affectedRows = await connection.ExecuteAsync(sql, new { pluginSlug = pluginSlug.ToString(), settings = settingsJson, visibility });
         return affectedRows == 1;
     }
 
