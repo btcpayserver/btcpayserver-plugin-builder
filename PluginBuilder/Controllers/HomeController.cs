@@ -463,6 +463,40 @@ public class HomeController(
             if (userId != null)
                 isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
 
+        var primaryOwnerId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+
+        bool ownerGithubVerified = false;
+        bool ownerNostrVerified  = false;
+        bool ownerTwitterVerified = false;
+        string? ownerGithubUrl   = null;
+        string? ownerNostrUrl    = null;
+        string? ownerTwitterUrl  = null;
+
+        if (!string.IsNullOrEmpty(primaryOwnerId))
+        {
+            var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId) ?? new AccountSettings();
+
+            ownerGithubVerified = await conn.IsGithubAccountVerified(primaryOwnerId);
+            ownerNostrVerified  = ownerSettings.Nostr is { Npub: not null, Proof: not null };
+            ownerTwitterVerified = !string.IsNullOrWhiteSpace(ownerSettings.Twitter);
+
+            if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
+            {
+                var handle = ownerSettings.Github.Trim().TrimStart('@');
+                ownerGithubUrl = $"https://github.com/{handle}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub))
+            {
+                ownerNostrUrl = $"https://primal.net/p/{ownerSettings.Nostr.Npub}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerSettings.Twitter))
+            {
+                ownerTwitterUrl = ownerSettings.Twitter;
+            }
+        }
+
         var vm = new PluginDetailsViewModel
         {
             Plugin = plugin,
@@ -474,7 +508,13 @@ public class HomeController(
             PluginVersions = versions.ToList(),
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
             Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
-            RatingFilter = model.RatingFilter
+            RatingFilter = model.RatingFilter,
+            OwnerGithubVerified = ownerGithubVerified,
+            OwnerNostrVerified = ownerNostrVerified,
+            OwnerTwitterVerified = ownerTwitterVerified,
+            OwnerGithubUrl = ownerGithubUrl,
+            OwnerNostrUrl = ownerNostrUrl,
+            OwnerTwitterUrl = ownerTwitterUrl
         };
 
         return View(vm);
