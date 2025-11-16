@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.OutputCaching;
 using Npgsql;
 using PluginBuilder.Configuration;
@@ -218,26 +219,41 @@ public class AdminController(
     [HttpGet("plugins/import-review/{pluginSlug}")]
     public IActionResult ImportReview(string pluginSlug)
     {
-        var vm = new ImportReviewViewModel { PluginSlug = pluginSlug };
+        var vm = new ImportReviewViewModel
+        {
+            PluginSlug = pluginSlug.ToString(),
+            ExistingUsers = userManager.Users.Select(u => new SelectListItem
+            {
+                Value = u.Id, Text = u.Email
+            }).ToList()
+        };
         return View(vm);
     }
 
     [HttpPost("plugins/import-review/{pluginSlug}")]
     public async Task<IActionResult> ImportReview(ImportReviewViewModel model)
     {
-        var userId = userManager.GetUserId(User);
-
+        string userId = string.Empty;
         if (model.Rating is < 1 or > 5 || string.IsNullOrEmpty(model.Review))
         {
             TempData[TempDataConstant.WarningMessage] = "Invalid rating specified";
             return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
         }
+        if (!string.IsNullOrWhiteSpace(model.SourceUrl))
+        {
+            model.Review += $"\n\n[Click here to continue reading]({model.SourceUrl})";
+        }
+        if (model.LinkExistingUser && !string.IsNullOrEmpty(model.SelectedUserId))
+        {
+            var linkedUser = await userManager.FindByIdAsync(model.SelectedUserId);
+            userId = linkedUser?.Id;
+        }
         await using var conn = await connectionFactory.Open();
-        var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug });
+        await conn.UpsertPluginReview(model.PluginSlug, userId!, model.Rating, model.Review, null);
 
-
-        var vm = new ImportReviewViewModel { PluginSlug = model.PluginSlug };
-        return View(vm);
+        var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug }, Request.Scheme);
+        TempData[TempDataConstant.SuccessMessage] = $"Review submitted successfully. Follow the link to the plugin detail to view: {url}";
+        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
     }
 
     [HttpPost("plugins/{pluginSlug}/ownership")]

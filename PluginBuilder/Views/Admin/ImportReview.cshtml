@@ -5,41 +5,79 @@
     ViewData.SetActivePage(AdminNavPages.Plugins, "Plugins");
 }
 
-<div class="d-flex flex-column flex-md-row align-items-center justify-content-between mb-4">
-    <h2 class="mb-3 mb-md-0">Import Review for @Model.PluginSlug</h2>
+<div class="d-flex align-items-center justify-content-between mb-4">
+	<h2 class="mb-3 mb-md-0">Import Review for @Model.PluginSlug</h2>
+	<div class="d-flex gap-3 mt-3 mt-sm-0">
+		<button type="submit" form="import-review-form" class="btn btn-success">Submit Review</button>
+	</div>
 </div>
 
 <div class="row">
     <div class="col-xl-8 col-xxl-constrain">
-		<form asp-action="ImportReview" method="post">
+		<form id="import-review-form" asp-action="ImportReview" method="post">
 			<input asp-for="@Model.PluginSlug" type="hidden" />
-			<div class="mb-3">
+			<div class="form-group">
 				<label asp-for="SourceUrl" class="form-label">Original URL</label>
 				<input asp-for="SourceUrl" class="form-control" />
 			</div>
-			<div class="mb-3">
+			<div class="form-group">
 				<label asp-for="Source" class="form-label">Source icon</label>
 				<select asp-for="Source" asp-items="Html.GetEnumSelectList<ImportReviewSourceEnum>()" class="form-select"></select>
 			</div>
-			<div class="mb-3">
+			<div class="form-group d-flex align-items-center">
+				<input class="btcpay-toggle me-2" type="checkbox" asp-for="LinkExistingUser">
+				<label class="form-check-label">Review by an existing Plugin Builder user?</label>
+			</div>
+			<div id="existingUserSection" class="mb-3" style="display:none">
+				<label class="form-label">Select user</label>
+				<select asp-for="SelectedUserId" asp-items="Model.ExistingUsers" class="form-select"></select>
+			</div>
+			<div id="manualIdentitySection">
+				<div class="form-group">
+					<label class="form-label">Reviewer display name</label>
+					<input asp-for="ReviewerName" class="form-control" />
+				</div>
+				<div class="form-group">
+					<label class="form-label">Avatar URL</label>
+					<input asp-for="ReviewerAvatarUrl" class="form-control" />
+				</div>
+				<div class="form-group">
+					<label class="form-label">Profile URL</label>
+					<input asp-for="ReviewerProfileUrl" class="form-control" />
+				</div>
+			</div>
+
+			<div class="form-group">
 				<label asp-for="Review" class="form-label"></label>
 				<textarea asp-for="Review" class="form-control" rows="4"></textarea>
 			</div>
-			<div class="mb-3">
+			<div class="form-group">
 				<label asp-for="Rating" class="form-label">Rating</label>
 				<input asp-for="Rating" type="range" min="1" max="5" class="form-range" />
 				<div class="form-text">Selected: <span id="starLabel">5</span> ⭐</div>
 			</div>
-			<button type="submit" class="btn btn-primary">Log review (DB not wired)</button>
 		</form>
-
     </div>
 </div>
-
 
 @section FooterScripts {
 	<script>
 		const rng = document.querySelector('input[name="Rating"]');
 		rng.addEventListener('input', e => document.getElementById('starLabel').textContent = e.target.value);
+
+		const checkbox = document.querySelector('[name="LinkExistingUser"]');
+		const existingSection = document.getElementById('existingUserSection');
+		const manualSection = document.getElementById('manualIdentitySection');
+		function toggleSections() {
+			if (checkbox.checked) {
+				existingSection.style.display = 'block';
+				manualSection.style.display = 'none';
+			} else {
+				existingSection.style.display = 'none';
+				manualSection.style.display = 'block';
+			}
+		}
+		checkbox.addEventListener('change', toggleSections);
+		toggleSections();
 	</script>
 }

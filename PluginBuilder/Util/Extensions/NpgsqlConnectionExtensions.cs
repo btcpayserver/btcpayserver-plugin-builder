@@ -412,13 +412,8 @@ public static class NpgsqlConnectionExtensions
         }
     }
 
-    public static Task UpsertPluginReview(
-        this NpgsqlConnection connection,
-        PluginSlug pluginSlug,
-        string userId,
-        int rating,
-        string? body,
-        int[]? pluginVersion)
+    public static Task UpsertPluginReview(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId, int rating, string? body,
+        int[]? pluginVersion, ReviewerIdentity? reviewerIdentity = null)
     {
         const string sql = """
                                INSERT INTO plugin_reviews
