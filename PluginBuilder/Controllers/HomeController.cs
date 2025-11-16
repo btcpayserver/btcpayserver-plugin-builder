@@ -482,8 +482,12 @@ public class HomeController(
 
             if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
             {
-                var handle = ownerSettings.Github.Trim().TrimStart('@');
-                ownerGithubUrl = $"https://github.com/{handle}";
+                var handle = GetGithubHandle(ownerSettings.Github);
+                if (!string.IsNullOrWhiteSpace(handle))
+                {
+                    var safeHandle = Uri.EscapeDataString(handle);
+                    ownerGithubUrl = $"https://github.com/{safeHandle}";
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub))
@@ -493,7 +497,22 @@ public class HomeController(
 
             if (!string.IsNullOrWhiteSpace(ownerSettings.Twitter))
             {
-                ownerTwitterUrl = ownerSettings.Twitter;
+                var raw = ownerSettings.Twitter.Trim();
+
+                if (!raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                    !raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    var handle = raw.TrimStart('@', '/');
+                    if (!string.IsNullOrWhiteSpace(handle))
+                    {
+                        ownerTwitterUrl = $"https://x.com/{handle}";
+                    }
+                }
+                else if (Uri.TryCreate(raw, UriKind.Absolute, out var twitterUri) &&
+                         (twitterUri.Scheme == Uri.UriSchemeHttp || twitterUri.Scheme == Uri.UriSchemeHttps))
+                {
+                    ownerTwitterUrl = raw;
+                }
             }
         }
 
