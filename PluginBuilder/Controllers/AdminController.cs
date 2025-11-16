@@ -1,11 +1,9 @@
 using System.Security.Claims;
-using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
-using Newtonsoft.Json;
 using Npgsql;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;

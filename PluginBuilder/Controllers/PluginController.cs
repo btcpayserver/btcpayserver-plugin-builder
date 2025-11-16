@@ -17,6 +17,7 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Plugin;
+using static Dapper.SqlMapper;
 
 namespace PluginBuilder.Controllers;
 
@@ -222,20 +223,20 @@ public class PluginController(
 
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
-        var request = pluginSettings?.RequestListing;
+        var requestListing = pluginSettings?.RequestListing;
         model.ReleaseNote = pluginSettings?.Description;
-        if (request != null)
+        if (requestListing != null)
         {
             var now = DateTimeOffset.UtcNow;
-            model.CanSendEmailReminder = now >= request.LastReminderEmailSent.AddDays(1);
+            model.CanSendEmailReminder = now >= requestListing.LastReminderEmailSent.AddDays(1);
             model.PendingListing = true;
-            model.TelegramVerificationMessage = request.TelegramVerificationMessage;
-            model.UserReviews = request.UserReviews;
-            model.ReleaseNote = request.ReleaseNote;
-            model.AnnouncementDate = request.AnnouncementDate;
+            model.TelegramVerificationMessage = requestListing.TelegramVerificationMessage;
+            model.UserReviews = requestListing.UserReviews;
+            model.ReleaseNote = requestListing.ReleaseNote;
+            model.AnnouncementDate = requestListing.AnnouncementDate;
             TempData[TempDataConstant.WarningMessage] = "Your listing request has been sent and is pending validation";
         }
-        model.ValidationRequirementMet = await ListingRequirementsMet(conn, pluginSettings, pluginOwners);
+        model = await ListingRequirementsMet(conn, pluginSettings, pluginOwners, model);
         return View(model);
     }
 
@@ -265,8 +266,8 @@ public class PluginController(
         if (!ModelState.IsValid)
         {
             var owners = await conn.GetPluginOwners(pluginSlug);
-            model.ValidationRequirementMet = await ListingRequirementsMet(conn, pluginSettings, owners);
             model.PendingListing = pluginSettings?.RequestListing != null;
+            model = await ListingRequirementsMet(conn, pluginSettings, owners, model);
             return View(model);
         }
         pluginSettings.RequestListing = new()
@@ -282,6 +283,35 @@ public class PluginController(
         await SendRequestListingEmail(conn, pluginSlug.ToString());
         TempData[TempDataConstant.SuccessMessage] = "Your listing request has been sent and is pending validation";
         return RedirectToAction(nameof(Dashboard), new { pluginSlug });
+    }
+
+    private async Task<RequestListingViewModel> ListingRequirementsMet(NpgsqlConnection conn, PluginSettings pluginSettings, List<OwnerVm> owners, RequestListingViewModel model)
+    {
+        if (pluginSettings == null || owners == null || owners.Count == 0)
+        {
+            model.Step = RequestListingViewModel.State.Invalid;
+            return model;
+        }
+
+        var docsMissing = string.IsNullOrWhiteSpace(pluginSettings?.GitRepository) || string.IsNullOrWhiteSpace(pluginSettings?.Documentation)
+            || string.IsNullOrWhiteSpace(pluginSettings?.Logo);
+
+        var ownerNotVerified = false;
+        foreach (var owner in owners)
+        {
+            if (!await conn.IsSocialAccountsVerified(owner.UserId))
+            {
+                ownerNotVerified = true;
+                break;
+            }
+        }
+        model.Step = (docsMissing, ownerNotVerified) switch
+        {
+            (true, _) => RequestListingViewModel.State.UpdatePluginSettings,
+            (false, true) => RequestListingViewModel.State.UpdateOwnerAccountSettings,
+            (false, false) => RequestListingViewModel.State.Done
+        };
+        return model;
     }
 
     public async Task<IActionResult> SendReminder([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug)
@@ -309,22 +339,6 @@ public class PluginController(
         await conn.SetPluginSettings(pluginSlug, settings);
         TempData[TempDataConstant.SuccessMessage] = "Request listing reminders sent to admins";
         return RedirectToAction(nameof(RequestListing), new { pluginSlug });
-    }
-
-    private static async Task<bool> ListingRequirementsMet(NpgsqlConnection conn, PluginSettings plugin, List<OwnerVm> owners)
-    {
-        if (plugin == null || owners == null || owners.Count == 0)
-            return false;
-
-        if (string.IsNullOrWhiteSpace(plugin.GitRepository) || string.IsNullOrWhiteSpace(plugin.Documentation) || string.IsNullOrWhiteSpace(plugin.Logo))
-            return false;
-
-        foreach (var owner in owners)
-        {
-            if (!await conn.IsSocialAccountsVerified(owner.UserId))
-                return false;
-        }
-        return true;
     }
 
     private async Task SendRequestListingEmail(NpgsqlConnection conn, string pluginSlug)
