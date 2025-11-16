@@ -19,6 +19,13 @@ public sealed class PluginDetailsViewModel : BasePagingViewModel
     public bool ShowHiddenNotice { get; set; }
     public List<GitHubContributor> Contributors { get; init; } = new();
     public int? RatingFilter  { get; set; }
+    public bool OwnerGithubVerified { get; set; }
+    public bool OwnerNostrVerified  { get; set; }
+    public bool OwnerTwitterVerified { get; set; }
+
+    public string? OwnerGithubUrl   { get; set; }
+    public string? OwnerNostrUrl    { get; set; }
+    public string? OwnerTwitterUrl  { get; set; }
 }
 
 public class Review
