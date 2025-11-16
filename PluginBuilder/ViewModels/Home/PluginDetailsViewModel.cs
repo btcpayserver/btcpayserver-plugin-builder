@@ -21,7 +21,7 @@ public sealed class PluginDetailsViewModel : BasePagingViewModel
     public int? RatingFilter  { get; set; }
     public bool OwnerGithubVerified { get; set; }
     public bool OwnerNostrVerified  { get; set; }
-    public bool OwnerTwitterVerified { get; set; }
+    public bool OwnerTwitterLinked { get; set; }
 
     public string? OwnerGithubUrl   { get; set; }
     public string? OwnerNostrUrl    { get; set; }

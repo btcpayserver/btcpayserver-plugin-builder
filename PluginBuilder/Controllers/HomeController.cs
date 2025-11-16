@@ -467,7 +467,7 @@ public class HomeController(
 
         bool ownerGithubVerified = false;
         bool ownerNostrVerified  = false;
-        bool ownerTwitterVerified = false;
+        bool ownerTwitterLinked = false;
         string? ownerGithubUrl   = null;
         string? ownerNostrUrl    = null;
         string? ownerTwitterUrl  = null;
@@ -478,7 +478,7 @@ public class HomeController(
 
             ownerGithubVerified = await conn.IsGithubAccountVerified(primaryOwnerId);
             ownerNostrVerified  = ownerSettings.Nostr is { Npub: not null, Proof: not null };
-            ownerTwitterVerified = !string.IsNullOrWhiteSpace(ownerSettings.Twitter);
+            ownerTwitterLinked = !string.IsNullOrWhiteSpace(ownerSettings.Twitter);
 
             if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
             {
@@ -530,7 +530,7 @@ public class HomeController(
             RatingFilter = model.RatingFilter,
             OwnerGithubVerified = ownerGithubVerified,
             OwnerNostrVerified = ownerNostrVerified,
-            OwnerTwitterVerified = ownerTwitterVerified,
+            OwnerTwitterLinked = ownerTwitterLinked,
             OwnerGithubUrl = ownerGithubUrl,
             OwnerNostrUrl = ownerNostrUrl,
             OwnerTwitterUrl = ownerTwitterUrl

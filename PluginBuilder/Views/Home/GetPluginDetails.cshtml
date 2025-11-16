@@ -73,10 +73,10 @@
                                     </a>
                                 }
 
-                                @if (Model.OwnerTwitterVerified && !string.IsNullOrWhiteSpace(Model.OwnerTwitterUrl))
+                                @if (Model.OwnerTwitterLinked && !string.IsNullOrWhiteSpace(Model.OwnerTwitterUrl))
                                 {
                                     <a href="@Model.OwnerTwitterUrl" rel="noreferrer noopener" target="_blank">
-                                        <img src="~/img/twitter.svg" alt="Twitter Verified" title="Twitter Verified" class="verified-icon" />
+                                        <img src="~/img/twitter.svg" alt="Twitter" title="Twitter" class="verified-icon" />
                                     </a>
                                 }
                             </span>
