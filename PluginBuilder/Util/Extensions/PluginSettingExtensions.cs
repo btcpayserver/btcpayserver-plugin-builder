@@ -46,7 +46,7 @@ public static class PluginSettingExtensions
             var githubUserName = settings.Github.Trim().TrimStart('@').Trim('/');
             reviewModel.AuthorName = githubUserName;
             reviewModel.AuthorProfileUrl = $"https://github.com/{githubUserName}";
-            reviewModel.AuthorAvatarUrl = $"https://avatars.githubusercontent.com/{githubUserName}?s=48";
+            reviewModel.AuthorAvatarUrl = $"https://avatars.githubusercontent.com/{githubUserName}";
         }
         else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
         {

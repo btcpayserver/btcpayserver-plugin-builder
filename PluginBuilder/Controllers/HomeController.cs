@@ -513,7 +513,6 @@ public class HomeController(
             PluginVersion = pluginVersionParts
         };
         reviewViewModel = reviewViewModel.UpdatePluginReviewerData(reviewerAccountDetails);
-
         await conn.UpsertPluginReview(reviewViewModel);
         var sort = Request.Query["sort"].ToString();
         var url = Url.Action(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString(), sort = string.IsNullOrEmpty(sort) ? null : sort });

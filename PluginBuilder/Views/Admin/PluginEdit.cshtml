@@ -8,10 +8,12 @@
 <div class="d-flex flex-column flex-md-row align-items-center justify-content-between mb-4">
     <h2 class="mb-3 mb-md-0">@ViewData["Title"]</h2>
 
-	<a asp-action="ImportReview" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-primary">Import Reviews</a>
-	<form asp-controller="Admin" asp-action="PluginReviewRevamp" asp-route-routeSlug="@Model.PluginSlug" method="post" class="d-inline">
-		<button type="submit" class="btn btn-primary">Migrate Reviewer Data</button>
-	</form>
+	<div class="d-flex flex-column flex-sm-row align-items-center gap-3">
+		<a asp-action="ImportReview" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-primary">Import Reviews</a>
+		<form asp-controller="Admin" asp-action="PluginReviewRevamp" asp-route-routeSlug="@Model.PluginSlug" method="post" class="d-inline">
+			<button type="submit" class="btn btn-primary">Migrate Reviewer Data</button>
+		</form>
+	</div>
 </div>
 
 <div class="row">

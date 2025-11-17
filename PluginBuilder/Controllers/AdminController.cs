@@ -227,7 +227,6 @@ public class AdminController(
     public async Task<IActionResult> PluginReviewRevamp(string routeSlug)
     {
         await using var conn = await connectionFactory.Open();
-
         var pluginReviews = await conn.GetPluginReviews(routeSlug);
         if (pluginReviews.Any())
         {
@@ -246,9 +245,7 @@ public class AdminController(
                     UpdatedAt = pluginReview.UpdatedAt
                 };
                 var reviewerAccountDetails = await conn.GetAccountDetailSettings(pluginReview.UserId) ?? new();
-
                 vm = vm.UpdatePluginReviewerData(reviewerAccountDetails);
-
                 await conn.SetPluginReviewerDisplayInfo(vm);
             }
         }
@@ -272,7 +269,7 @@ public class AdminController(
     }
 
     [HttpPost("plugins/import-review/{pluginSlug}")]
-    public async Task<IActionResult> ImportReview(ImportReviewViewModel model)
+    public async Task<IActionResult> ImportReview(ImportReviewViewModel model, string pluginSlug)
     {
         string userId = string.Empty;
         if (model.Rating is < 1 or > 5 || string.IsNullOrEmpty(model.Review))
@@ -284,14 +281,47 @@ public class AdminController(
         {
             model.Review += $"\n\n[Click here to continue reading]({model.SourceUrl})";
         }
+        await using var conn = await connectionFactory.Open();
+        PluginReviewViewModel vm = new()
+        {
+            PluginSlug = pluginSlug,
+            Rating = model.Rating,
+            Body = model.Review,
+            CreatedAt = DateTime.Now
+        };
         if (model.LinkExistingUser && !string.IsNullOrEmpty(model.SelectedUserId))
         {
             var linkedUser = await userManager.FindByIdAsync(model.SelectedUserId);
-            userId = linkedUser?.Id;
+            vm.UserId = linkedUser?.Id;
+            var reviewerAccountDetails = await conn.GetAccountDetailSettings(vm.UserId) ?? new();
+            vm = vm.UpdatePluginReviewerData(reviewerAccountDetails);
         }
-        await using var conn = await connectionFactory.Open();
-        //await conn.UpsertPluginReview(model.PluginSlug, userId!, model.Rating, model.Review, null);
-
+        if (!model.LinkExistingUser)
+        {
+            if (string.IsNullOrEmpty(model.ReviewerName))
+            {
+                TempData[TempDataConstant.WarningMessage] = "Kindly provide the reviewer profile";
+                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+            }
+            vm.AuthorName = model.ReviewerName;
+            vm.AuthorAvatarUrl = model.ReviewerAvatarUrl;
+            switch (model.Source)
+            {
+                case ImportReviewViewModel.ImportReviewSourceEnum.Nostr:
+                    vm.AuthorProfileUrl = $"https://primal.net/p/{model.ReviewerName}";
+                    break;
+                case ImportReviewViewModel.ImportReviewSourceEnum.X:
+                    vm.AuthorProfileUrl = $"https://x.com/{model.ReviewerName}";
+                    break;
+                case ImportReviewViewModel.ImportReviewSourceEnum.WWW:
+                    vm.AuthorProfileUrl = $"https://{model.ReviewerName}";
+                    break;
+                default:
+                    TempData[TempDataConstant.WarningMessage] = "Invalid source selected";
+                    return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+            }
+        }
+        await conn.UpsertPluginReview(vm);
         var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug }, Request.Scheme);
         TempData[TempDataConstant.SuccessMessage] = $"Review submitted successfully. Follow the link to the plugin detail to view: {url}";
         return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });

@@ -14,12 +14,13 @@ public class ImportReviewViewModel
     public int Rating { get; set; } = 5;
     public string PluginSlug { get; set; }
     public ImportReviewSourceEnum Source { get; set; } = ImportReviewSourceEnum.Nostr;
+    [Required]
     public string SourceUrl { get; set; }
+    [Required]
     public string Review { get; set; }
     public bool LinkExistingUser { get; set; } = true;
     public string? SelectedUserId { get; set; }
     public string? ReviewerName { get; set; }
     public string? ReviewerAvatarUrl { get; set; }
-    public string? ReviewerProfileUrl { get; set; }
     public List<SelectListItem>? ExistingUsers { get; set; }
 }

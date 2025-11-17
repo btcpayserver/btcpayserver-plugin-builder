@@ -17,12 +17,8 @@
 		<form id="import-review-form" asp-action="ImportReview" method="post">
 			<input asp-for="@Model.PluginSlug" type="hidden" />
 			<div class="form-group">
-				<label asp-for="SourceUrl" class="form-label">Original URL</label>
-				<input asp-for="SourceUrl" class="form-control" />
-			</div>
-			<div class="form-group">
-				<label asp-for="Source" class="form-label">Source icon</label>
-				<select asp-for="Source" asp-items="Html.GetEnumSelectList<ImportReviewSourceEnum>()" class="form-select"></select>
+				<label asp-for="SourceUrl" class="form-label" data-required>Review Source URL</label>
+				<input asp-for="SourceUrl" class="form-control" required />
 			</div>
 			<div class="form-group d-flex align-items-center">
 				<input class="btcpay-toggle me-2" type="checkbox" asp-for="LinkExistingUser">
@@ -34,22 +30,24 @@
 			</div>
 			<div id="manualIdentitySection">
 				<div class="form-group">
-					<label class="form-label">Reviewer display name</label>
-					<input asp-for="ReviewerName" class="form-control" />
-				</div>
-				<div class="form-group">
-					<label class="form-label">Avatar URL</label>
-					<input asp-for="ReviewerAvatarUrl" class="form-control" />
+					<label asp-for="Source" class="form-label">Reviewer platform</label>
+					<select asp-for="Source" asp-items="Html.GetEnumSelectList<ImportReviewSourceEnum>()" class="form-select" id="platformSelect"></select>
 				</div>
 				<div class="form-group">
 					<label class="form-label">Profile URL</label>
-					<input asp-for="ReviewerProfileUrl" class="form-control" />
+					<div class="input-group">
+						<span class="input-group-text" id="handlePrefix">https://</span>
+						<input asp-for="ReviewerName" class="form-control" />
+					</div>
+				</div>
+				<div class="form-group">
+					<label asp-for="ReviewerAvatarUrl" class="form-label">Profile Photo URL</label>
+					<input asp-for="ReviewerAvatarUrl" class="form-control" />
 				</div>
 			</div>
-
 			<div class="form-group">
-				<label asp-for="Review" class="form-label"></label>
-				<textarea asp-for="Review" class="form-control" rows="4"></textarea>
+				<label asp-for="Review" class="form-label" data-required></label>
+				<textarea asp-for="Review" class="form-control" rows="4" required></textarea>
 			</div>
 			<div class="form-group">
 				<label asp-for="Rating" class="form-label">Rating</label>
@@ -62,8 +60,13 @@
 
 @section FooterScripts {
 	<script>
-		const rng = document.querySelector('input[name="Rating"]');
-		rng.addEventListener('input', e => document.getElementById('starLabel').textContent = e.target.value);
+		const prefixMap = {
+			1: 'https://primal.net/p/',
+			2: 'https://x.com/',
+			3: 'https://'
+		};
+		const rating = document.querySelector('input[name="Rating"]');
+		rating.addEventListener('input', e => document.getElementById('starLabel').textContent = e.target.value);
 		const checkbox = document.querySelector('[name="LinkExistingUser"]');
 		const existingSection = document.getElementById('existingUserSection');
 		const manualSection = document.getElementById('manualIdentitySection');
@@ -78,5 +81,13 @@
 		}
 		checkbox.addEventListener('change', toggleSections);
 		toggleSections();
+
+		const platformSelect = document.getElementById('platformSelect');
+		const handlePrefix   = document.getElementById('handlePrefix');
+		function syncPrefix() {
+			handlePrefix.textContent = prefixMap[platformSelect.value];
+		}
+		platformSelect.addEventListener('change', syncPrefix);
+		syncPrefix();
 	</script>
 }
