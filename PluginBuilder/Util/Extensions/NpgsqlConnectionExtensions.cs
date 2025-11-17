@@ -417,8 +417,8 @@ public static class NpgsqlConnectionExtensions
     {
         return await connection.QueryAsync<PluginReviewViewModel>(
             """
-            SELECT plugin_slug AS PluginSlug, user_id AS UserId, rating AS Rating, body AS Body, plugin_version AS PluginVersion,
-            created_at AS CreatedAt, updated_at AS UpdatedAt FROM plugin_reviews WHERE plugin_slug = @pluginSlug
+            SELECT plugin_slug AS PluginSlug, user_id AS UserId, rating AS Rating, body AS Body, plugin_version AS PluginVersion, helpful_voters AS HelpfulVoters, author_username AS AuthorName,
+            author_profile_url AS AuthorProfileUrl, author_avatar_url AS AuthorAvatarUrl, created_at AS CreatedAt, updated_at AS UpdatedAt FROM plugin_reviews WHERE plugin_slug = @pluginSlug
         """, new { pluginSlug });
     }
 

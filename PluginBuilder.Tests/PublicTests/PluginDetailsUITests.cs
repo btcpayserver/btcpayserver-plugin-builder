@@ -145,8 +145,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         // Login as reviewer and create review with markdown
         string reviewerEmail = "reviewer@x.com";
-        await tester.LogIn(reviewerEmail);
         await tester.VerifyEmailAndGithubAsync(reviewerEmail);
+        await tester.LogIn(reviewerEmail);
         await tester.GoToUrl($"/public/plugins/{slug}");
 
         var form = tester.Page!.Locator("#review-form");

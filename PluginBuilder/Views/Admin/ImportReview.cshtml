@@ -15,7 +15,7 @@
 <div class="row">
 	<div class="col-xl-8 col-xxl-constrain">
 		<form id="import-review-form" asp-action="ImportReview" method="post">
-			<input asp-for="@Model.PluginSlug" type="hidden" />
+			<input asp-for="PluginSlug" type="hidden" />
 			<div class="form-group">
 				<label asp-for="SourceUrl" class="form-label" data-required>Review Source URL</label>
 				<input asp-for="SourceUrl" class="form-control" required />
