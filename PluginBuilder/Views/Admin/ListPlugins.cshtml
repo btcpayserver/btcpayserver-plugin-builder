@@ -87,7 +87,7 @@
                     <td>@plugin.Visibility</td>
                     <td>
                         <a asp-controller="Admin" asp-action="PluginEdit" asp-route-pluginSlug="@plugin.PluginSlug">Edit</a> |
-                        <a asp-controller="Admin" asp-action="PluginDelete" asp-route-pluginSlug="@plugin.PluginSlug">Delete</a>
+                        <a asp-controller="Admin" asp-action="PluginDelete" asp-route-routeSlug="@plugin.PluginSlug">Delete</a>
                     </td>
               </tr>
             }
@@ -96,7 +96,8 @@
         <vc:pager view-model="Model" />
     </div>
 }
-else{
+else
+{
 	<p class="text-secondary mt-3">There are no plugins matching your criteria.</p>
 }
 

@@ -186,30 +186,30 @@ public class AdminController(
     }
 
 
-    [HttpGet("plugins/delete/{pluginSlug}")]
-    public async Task<IActionResult> PluginDelete(string pluginSlug)
+    [HttpGet("plugins/delete/{routeSlug}")]
+    public async Task<IActionResult> PluginDelete(string routeSlug)
     {
         referrerNavigation.StoreReferrer();
 
         await using var conn = await connectionFactory.Open();
-        var plugin = await conn.GetPluginDetails(pluginSlug);
+        var plugin = await conn.GetPluginDetails(routeSlug);
         if (plugin == null) return NotFound();
 
         return View(plugin);
     }
 
-    [HttpPost("plugins/delete/{pluginSlug}")]
-    public async Task<IActionResult> PluginDeleteConfirmed(string pluginSlug)
+    [HttpPost("plugins/delete/{routeSlug}")]
+    public async Task<IActionResult> PluginDeleteConfirmed(string routeSlug)
     {
         await using var conn = await connectionFactory.Open();
         var affectedRows = await conn.ExecuteAsync("""
-                                                   DELETE FROM builds WHERE plugin_slug = @Slug;
-                                                   DELETE FROM builds_ids WHERE plugin_slug = @Slug;
-                                                   DELETE FROM builds_logs WHERE plugin_slug = @Slug;
-                                                   DELETE FROM users_plugins WHERE plugin_slug = @Slug;
-                                                   DELETE FROM versions WHERE plugin_slug = @Slug;
-                                                   DELETE FROM plugins WHERE slug = @Slug;
-                                                   """, new { Slug = pluginSlug });
+                                                   DELETE FROM builds WHERE plugin_slug = @slug;
+                                                   DELETE FROM builds_ids WHERE plugin_slug = @slug;
+                                                   DELETE FROM builds_logs WHERE plugin_slug = @slug;
+                                                   DELETE FROM users_plugins WHERE plugin_slug = @slug;
+                                                   DELETE FROM versions WHERE plugin_slug = @slug;
+                                                   DELETE FROM plugins WHERE slug = @slug;
+                                                   """, new { slug = routeSlug });
         if (affectedRows == 0) return NotFound();
 
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
