@@ -5,6 +5,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json;
 using Npgsql;
@@ -255,27 +256,46 @@ public class AdminController(
         return RedirectToAction(nameof(PluginEdit), new { pluginSlug = routeSlug });
     }
 
-    static GitHubContributor? GetGithubDetails(string githubUserName, int size = 48)
+    [HttpGet("plugins/import-review/{pluginSlug}")]
+    public IActionResult ImportReview(string pluginSlug)
     {
-        if (string.IsNullOrWhiteSpace(githubUserName)) return null;
-
-        var v = githubUserName.Trim().TrimStart('@').Trim('/');
-        if (v.Length == 0) return null;
-
-        if (v.Equals("orgs", StringComparison.OrdinalIgnoreCase) || v.Equals("users", StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        return new GitHubContributor
+        var vm = new ImportReviewViewModel
         {
-            Login = githubUserName,
-            HtmlUrl = $"https://github.com/{githubUserName}",
-            AvatarUrl = $"https://avatars.githubusercontent.com/{githubUserName}?s={size}",
-            UserViewType = "user",
-            Contributions = 0
+            PluginSlug = pluginSlug.ToString(),
+            ExistingUsers = userManager.Users.Select(u => new SelectListItem
+            {
+                Value = u.Id,
+                Text = u.Email
+            }).ToList()
         };
+        return View(vm);
     }
 
+    [HttpPost("plugins/import-review/{pluginSlug}")]
+    public async Task<IActionResult> ImportReview(ImportReviewViewModel model)
+    {
+        string userId = string.Empty;
+        if (model.Rating is < 1 or > 5 || string.IsNullOrEmpty(model.Review))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Invalid rating specified";
+            return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+        }
+        if (!string.IsNullOrWhiteSpace(model.SourceUrl))
+        {
+            model.Review += $"\n\n[Click here to continue reading]({model.SourceUrl})";
+        }
+        if (model.LinkExistingUser && !string.IsNullOrEmpty(model.SelectedUserId))
+        {
+            var linkedUser = await userManager.FindByIdAsync(model.SelectedUserId);
+            userId = linkedUser?.Id;
+        }
+        await using var conn = await connectionFactory.Open();
+        //await conn.UpsertPluginReview(model.PluginSlug, userId!, model.Rating, model.Review, null);
 
+        var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug }, Request.Scheme);
+        TempData[TempDataConstant.SuccessMessage] = $"Review submitted successfully. Follow the link to the plugin detail to view: {url}";
+        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+    }
 
     [HttpPost("plugins/{pluginSlug}/ownership")]
     [ValidateAntiForgeryToken]

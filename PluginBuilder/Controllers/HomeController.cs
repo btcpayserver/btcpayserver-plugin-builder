@@ -417,17 +417,10 @@ public class HomeController(
 
             if (!string.IsNullOrWhiteSpace(item.Npub))
             {
-                item.AuthorDisplay = string.IsNullOrWhiteSpace(item.NostrName)
-                    ? $"{item.Npub[..8]}…"
-                    : item.NostrName;
+                item.AuthorDisplay = string.IsNullOrWhiteSpace(item.NostrName) ? $"{item.Npub[..8]}…" : item.NostrName;
+                item.AuthorUrl = $"https://primal.net/p/{item.Npub}";
 
-                // choose primal instead of njump because works for any case
-                item.AuthorUrl = !string.IsNullOrWhiteSpace(item.Npub)
-                    ? $"https://primal.net/p/{item.Npub}"
-                    : null;
-
-                if (!string.IsNullOrWhiteSpace(item.NostrAvatarUrl) &&
-                    Uri.TryCreate(item.NostrAvatarUrl, UriKind.Absolute, out var u) &&
+                if (!string.IsNullOrWhiteSpace(item.NostrAvatarUrl) && Uri.TryCreate(item.NostrAvatarUrl, UriKind.Absolute, out var u) &&
                     (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
                 {
                     item.AuthorAvatarUrl = item.NostrAvatarUrl;
