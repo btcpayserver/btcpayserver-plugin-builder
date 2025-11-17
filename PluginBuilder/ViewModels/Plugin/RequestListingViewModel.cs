@@ -11,14 +11,19 @@ public class RequestListingViewModel
         UpdatePluginSettings,
         Done
     }
-    public string PluginSlug { get; set; }
-    public string ReleaseNote { get; set; }
+    public string PluginSlug { get; set; } = string.Empty;
 
+    [MaxLength(200)]
+    [Required]
+    public string ReleaseNote { get; set; } = string.Empty;
+
+    [Required]
     [Display(Name = "Telegram Verification Message")]
-    public string TelegramVerificationMessage { get; set; }
+    public string TelegramVerificationMessage { get; set; } = string.Empty;
 
+    [Required]
     [Display(Name = "User Reviews")]
-    public string UserReviews { get; set; }
+    public string UserReviews { get; set; } = string.Empty;
     public bool PendingListing { get; set; }
     public bool CanSendEmailReminder { get; set; }
     public State Step { get; set; }
