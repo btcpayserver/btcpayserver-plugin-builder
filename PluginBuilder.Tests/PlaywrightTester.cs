@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -14,8 +13,6 @@ using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using Xunit;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
-using static NBitcoin.Scripting.OutputDescriptor.TapTree;
 
 namespace PluginBuilder.Tests;
 

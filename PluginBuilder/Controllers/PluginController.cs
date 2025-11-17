@@ -257,8 +257,12 @@ public class PluginController(
         if (string.IsNullOrWhiteSpace(model.ReleaseNote))
             ModelState.AddModelError(nameof(model.ReleaseNote), "Description is required.");
 
-        if (string.IsNullOrWhiteSpace(model.TelegramVerificationMessage))
-            ModelState.AddModelError(nameof(model.TelegramVerificationMessage), "Telegram verification message is required.");
+        if (string.IsNullOrWhiteSpace(model.TelegramVerificationMessage) || !Uri.TryCreate(model.TelegramVerificationMessage, UriKind.Absolute, out var telegramUri) ||
+            telegramUri.Scheme != Uri.UriSchemeHttps ||
+            !telegramUri.Host.Equals("t.me", StringComparison.OrdinalIgnoreCase) || !telegramUri.AbsolutePath.Trim('/').StartsWith("btcpayserver", StringComparison.OrdinalIgnoreCase))
+        {
+            ModelState.AddModelError(nameof(model.TelegramVerificationMessage), "Telegram verification message on BTCPay Server telegram (https://t.me/btcpayserver/... ) channel is required.");
+        }
 
         if (string.IsNullOrWhiteSpace(model.UserReviews))
             ModelState.AddModelError(nameof(model.UserReviews), "User-reviews link is required.");
