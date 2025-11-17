@@ -85,7 +85,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await Expect(t.Page.Locator("#collapsePluginSettings")).Not.ToBeVisibleAsync();
         await Expect(t.Page.Locator("#collapseOwnerSettings")).Not.ToBeVisibleAsync();
         await t.Page.FillAsync("textarea[name='ReleaseNote']", "Testing release note entry");
-        await t.Page.FillAsync("input[name='TelegramVerificationMessage']", "https://t.me/example/1234");
+        await t.Page.FillAsync("input[name='TelegramVerificationMessage']", "https://t.me/btcpayserver/1234");
         await t.Page.FillAsync("textarea[name='UserReviews']", "Great plugin, works as expected!");
         await t.Page.ClickAsync("button[type='submit']:text('Submit')");
         await t.AssertNoError();
