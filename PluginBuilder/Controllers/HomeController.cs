@@ -205,7 +205,7 @@ public class HomeController(
         await using var conn = await connectionFactory.Open();
 
         sort = sort.ToLowerInvariant();
-        const string pluginNameExpr = "COALESCE(p.settings->>'PluginTitle', b.manifest_info->>'Name')";
+        const string pluginNameExpr = "COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')";
 
         var orderByClause = sort switch
         {
@@ -218,14 +218,8 @@ public class HomeController(
             _ => $"""
                   (
                       (COALESCE(rs.avg_rating, 0.0) * 10)
-                      + GREATEST(
-                          0,
-                          30 - COALESCE(
-                              DATE_PART('day', NOW() - COALESCE((b.build_info->>'buildDate')::timestamptz, NOW())),
-                              0
-                          )
-                      )
-                      + LEAST(COALESCE(rs.total_reviews, 0), 20)
+                      + GREATEST(0, 30 - COALESCE(DATE_PART('day', NOW() - COALESCE((b.build_info->>'buildDate')::timestamptz, NOW())), 0))
+                      + LEAST(LN(1 + COALESCE(rs.total_reviews, 0)) * 5, 40)
                   ) DESC,
                   {pluginNameExpr}
                   """
@@ -261,8 +255,11 @@ public class HomeController(
                         )
                         AND (
                             @hasSearchTerm = false
-                            OR (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)
-                        )
+                            OR (
+                                p.slug ILIKE @searchPattern
+                                OR b.manifest_info->>'Name' ILIKE @searchPattern
+                                OR p.settings->>'pluginTitle' ILIKE @searchPattern
+                            ))
                       ORDER BY {orderByClause}
                       """;
 
