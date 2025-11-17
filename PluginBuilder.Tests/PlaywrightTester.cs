@@ -1,12 +1,14 @@
 using System;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using Xunit;
 
@@ -141,15 +143,17 @@ public class PlaywrightTester : IAsyncDisposable
     {
         await using var scope = Server.WebApp.Services.CreateAsyncScope();
         var factory = scope.ServiceProvider.GetRequiredService<DBConnectionFactory>();
+        var settings = new AccountSettings { Nostr = new NostrSettings { Npub = "nostrNpub", Proof = "nostrProof" }, Github = "Test" };
         await using var conn = await factory.Open();
 
         await conn.ExecuteAsync(
             """
             UPDATE "AspNetUsers"
                   SET "EmailConfirmed" = TRUE,
-                      "GithubGistUrl" = 'https://gist.github.com/test-eligibility'
+                      "GithubGistUrl" = 'https://gist.github.com/test-eligibility',
+                      "AccountDetail" = @AccountDetail::jsonb
                   WHERE "Email" = @Email;
             """,
-            new { Email = email });
+            new { Email = email, AccountDetail = JsonSerializer.Serialize(settings) });
     }
 }

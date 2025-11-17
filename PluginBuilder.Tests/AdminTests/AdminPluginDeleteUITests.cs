@@ -41,8 +41,8 @@ public class AdminPluginDeleteUITests(ITestOutputHelper output) : PageTest
         await Expect(tester.Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex($"/admin/plugins/edit/{slug}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
         
         // Verify edit page displays plugin slug and identifier
-        var pageHeading = tester.Page.Locator("h2 span.text-dark");
-        await Expect(pageHeading).ToHaveTextAsync(slug);
+        var pageHeading = tester.Page.Locator("h2");
+        await Expect(pageHeading).ToContainTextAsync(slug);
         var identifierCode = tester.Page.Locator("code");
         await Expect(identifierCode.First).ToBeVisibleAsync();
         

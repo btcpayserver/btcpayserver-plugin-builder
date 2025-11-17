@@ -303,22 +303,20 @@ public class AdminController(
                 TempData[TempDataConstant.WarningMessage] = "Kindly provide the reviewer profile";
                 return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
             }
-            vm.AuthorName = model.ReviewerName;
+            vm.AuthorName = model.ReviewerName.Trim();
             vm.AuthorAvatarUrl = model.ReviewerAvatarUrl;
-            switch (model.Source)
+            model.ReviewerName = model.ReviewerName.TrimStart('/').TrimEnd();
+            vm.AuthorProfileUrl = model.Source switch
             {
-                case ImportReviewViewModel.ImportReviewSourceEnum.Nostr:
-                    vm.AuthorProfileUrl = $"https://primal.net/p/{model.ReviewerName}";
-                    break;
-                case ImportReviewViewModel.ImportReviewSourceEnum.X:
-                    vm.AuthorProfileUrl = $"https://x.com/{model.ReviewerName}";
-                    break;
-                case ImportReviewViewModel.ImportReviewSourceEnum.WWW:
-                    vm.AuthorProfileUrl = $"https://{model.ReviewerName}";
-                    break;
-                default:
-                    TempData[TempDataConstant.WarningMessage] = "Invalid source selected";
-                    return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+                ImportReviewViewModel.ImportReviewSourceEnum.Nostr => $"https://primal.net/p/{model.ReviewerName}",
+                ImportReviewViewModel.ImportReviewSourceEnum.X => $"https://x.com/{model.ReviewerName}",
+                ImportReviewViewModel.ImportReviewSourceEnum.WWW => $"https://{model.ReviewerName}",
+                _ => null
+            };
+            if (vm.AuthorProfileUrl == null)
+            {
+                TempData[TempDataConstant.WarningMessage] = "Invalid source selected";
+                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
             }
         }
         await conn.UpsertPluginReview(vm);

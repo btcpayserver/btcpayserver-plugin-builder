@@ -2,7 +2,7 @@
 @model PluginEditViewModel
 @{
 	Layout = "_Layout";
-	ViewData.SetActivePage(AdminNavPages.Plugins, "Edit Plugin");
+	ViewData.SetActivePage(AdminNavPages.Plugins, $"Edit Plugin - {Model.PluginSlug}");
 }
 
 <div class="d-flex flex-column flex-md-row align-items-center justify-content-between mb-4">
