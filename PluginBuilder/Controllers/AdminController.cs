@@ -1,3 +1,4 @@
+using System;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Dapper;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json;
 using Npgsql;
+using PluginBuilder.APIModels;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
@@ -16,6 +18,8 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
+using PluginBuilder.ViewModels.Plugin;
+using static NBitcoin.WalletPolicies.MiniscriptNode;
 
 namespace PluginBuilder.Controllers;
 
@@ -216,6 +220,62 @@ public class AdminController(
 
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
     }
+
+    // SHould delete once ran successfully in prod for existing plugins with reviews    
+    [HttpPost("plugins/reviews/{routeSlug}")]
+    public async Task<IActionResult> PluginReviewRevamp(string routeSlug)
+    {
+        await using var conn = await connectionFactory.Open();
+
+        var pluginReviews = await conn.GetPluginReviews(routeSlug);
+        if (pluginReviews.Any())
+        {
+            foreach (var pluginReview in pluginReviews)
+            {
+                PluginReviewViewModel vm = new()
+                {
+                    Id = pluginReview.Id,
+                    PluginSlug = routeSlug,
+                    UserId = pluginReview.UserId,
+                    Rating = pluginReview.Rating,
+                    Body = pluginReview.Body,
+                    PluginVersion = pluginReview.PluginVersion,
+                    HelpfulVoters = pluginReview.HelpfulVoters,
+                    CreatedAt = pluginReview.CreatedAt,
+                    UpdatedAt = pluginReview.UpdatedAt
+                };
+                var reviewerAccountDetails = await conn.GetAccountDetailSettings(pluginReview.UserId) ?? new();
+
+                vm = vm.UpdatePluginReviewerData(reviewerAccountDetails);
+
+                await conn.SetPluginReviewerDisplayInfo(vm);
+            }
+        }
+        TempData[TempDataConstant.SuccessMessage] = "Data migrated successfully";
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug = routeSlug });
+    }
+
+    static GitHubContributor? GetGithubDetails(string githubUserName, int size = 48)
+    {
+        if (string.IsNullOrWhiteSpace(githubUserName)) return null;
+
+        var v = githubUserName.Trim().TrimStart('@').Trim('/');
+        if (v.Length == 0) return null;
+
+        if (v.Equals("orgs", StringComparison.OrdinalIgnoreCase) || v.Equals("users", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return new GitHubContributor
+        {
+            Login = githubUserName,
+            HtmlUrl = $"https://github.com/{githubUserName}",
+            AvatarUrl = $"https://avatars.githubusercontent.com/{githubUserName}?s={size}",
+            UserViewType = "user",
+            Contributions = 0
+        };
+    }
+
+
 
     [HttpPost("plugins/{pluginSlug}/ownership")]
     [ValidateAntiForgeryToken]

@@ -60,12 +60,8 @@
                             <span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
                         }
                     </div>
-                    <a asp-action="Download" asp-controller="Api"
-                       asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                       asp-route-version="@Model.Plugin.Version"
-                       class="btn btn-primary ms-auto"
-                       target="_blank"
-                       rel="noopener noreferrer">Download</a>
+                    <a asp-action="Download" asp-controller="Api" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-version="@Model.Plugin.Version"
+                       class="btn btn-primary ms-auto" target="_blank" rel="noopener noreferrer">Download</a>
                 </div>
             </div>
         </div>
@@ -266,16 +262,10 @@
                                             else
                                             {
                                                 <!-- Upvote -->
-                                                <form method="post"
-                                                      asp-action="VoteReview"
-                                                      asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                                                      asp-route-id="@review.Id"
-                                                      asp-route-isHelpful="true"
-                                                      class="test-upvote-form d-inline">
+                                                <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                                                      asp-route-id="@review.Id" asp-route-isHelpful="true" class="test-upvote-form d-inline">
                                                     @Html.AntiForgeryToken()
-                                                    <button type="submit"
-                                                            class="@upClass"
-                                                            aria-label="Mark this review as helpful">
+                                                    <button type="submit" class="@upClass" aria-label="Mark this review as helpful">
                                                         <vc:icon symbol="thumb-up" />
                                                         <span class="small ms-1">@review.UpCount</span>
                                                     </button>

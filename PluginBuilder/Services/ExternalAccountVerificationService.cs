@@ -36,7 +36,6 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
             if (fileContent != null && fileContent.Contains(token))
                 return gistUsername;
         }
-
         return null;
     }
 }

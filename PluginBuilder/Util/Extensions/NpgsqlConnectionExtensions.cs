@@ -413,26 +413,22 @@ public static class NpgsqlConnectionExtensions
         }
     }
 
-    public static Task UpsertPluginReview(
-        this NpgsqlConnection connection,
-        PluginSlug pluginSlug,
-        string userId,
-        int rating,
-        string? body,
-        int[]? pluginVersion)
+    public static async Task<IEnumerable<PluginReviewViewModel>> GetPluginReviews(this NpgsqlConnection connection, string pluginSlug)
+    {
+        return await connection.QueryAsync<PluginReviewViewModel>(
+            """
+            SELECT plugin_slug AS PluginSlug, user_id AS UserId, rating AS Rating, body AS Body, plugin_version AS PluginVersion,
+            created_at AS CreatedAt, updated_at AS UpdatedAt FROM plugin_reviews WHERE plugin_slug = @pluginSlug
+        """, new { pluginSlug });
+    }
+
+    public static Task UpsertPluginReview(this NpgsqlConnection connection, PluginReviewViewModel model)
     {
         const string sql = """
                                INSERT INTO plugin_reviews
-                                   (plugin_slug, user_id, rating, body, plugin_version, created_at, updated_at)
+                                   (plugin_slug, user_id, rating, body, plugin_version, author_username, author_profile_url, author_avatar_url, created_at, updated_at)
                                VALUES
-                                   (
-                                     @plugin_slug,
-                                     @user_id,
-                                     @rating,
-                                     NULLIF(@body,''),
-                                     @plugin_version,
-                                     NOW(), NOW()
-                                   )
+                                   (@plugin_slug, @user_id, @rating, NULLIF(@body,''), @plugin_version, @author_username, @author_profile_url, @author_avatar_url, NOW(), NOW())
                                ON CONFLICT (plugin_slug, user_id)
                                DO UPDATE SET
                                    rating         = EXCLUDED.rating,
@@ -446,14 +442,32 @@ public static class NpgsqlConnectionExtensions
                                    ELSE plugin_reviews.helpful_voters
                                    END;
                            """;
-
         return connection.ExecuteAsync(sql, new
         {
-            plugin_slug    = pluginSlug.ToString(),
-            user_id        = userId,
-            rating,
-            body,
-            plugin_version = pluginVersion
+            plugin_slug = model.PluginSlug,
+            user_id = model.UserId,
+            rating = model.Rating,
+            body = model.Body,
+            author_avatar_url = model.AuthorAvatarUrl,
+            author_profile_url = model.AuthorProfileUrl,
+            author_username = model.AuthorName,
+            plugin_version = model.PluginVersion
+        });
+    }
+
+    public static Task SetPluginReviewerDisplayInfo(this NpgsqlConnection connection, PluginReviewViewModel model)
+    {
+        const string sql = """
+        UPDATE plugin_reviews
+           SET author_username = @author_username, author_profile_url = @author_profile_url, author_avatar_url = @author_avatar_url WHERE plugin_slug = @plugin_slug AND user_id = @user_id;
+        """;
+        return connection.ExecuteAsync(sql, new
+        {
+            plugin_slug = model.PluginSlug,
+            user_id = model.UserId,
+            author_username = model.AuthorName,
+            author_profile_url = model.AuthorProfileUrl,
+            author_avatar_url = model.AuthorAvatarUrl
         });
     }
 

@@ -1,4 +1,6 @@
+using PluginBuilder.DataModels;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Util.Extensions;
 
@@ -34,5 +36,26 @@ public static class PluginSettingExtensions
             LogoUrl = settings.Logo,
             RequireGPGSignatureForRelease = settings.RequireGPGSignatureForRelease
         };
+    }
+
+
+    public static PluginReviewViewModel UpdatePluginReviewerData(this PluginReviewViewModel reviewModel, AccountSettings settings)
+    {
+        if (!string.IsNullOrEmpty(settings.Github))
+        {
+            var githubUserName = settings.Github.Trim().TrimStart('@').Trim('/');
+            reviewModel.AuthorName = githubUserName;
+            reviewModel.AuthorProfileUrl = $"https://github.com/{githubUserName}";
+            reviewModel.AuthorAvatarUrl = $"https://avatars.githubusercontent.com/{githubUserName}?s=48";
+        }
+        else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
+        {
+            var nostr = settings.Nostr;
+            reviewModel.AuthorName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
+            reviewModel.AuthorProfileUrl = $"https://primal.net/p/{nostr.Npub}";
+            reviewModel.AuthorAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
+                                    (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
+        }
+        return reviewModel;
     }
 }
