@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
+using PluginBuilder.JsonConverters;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
@@ -39,7 +40,7 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task<PluginViewModel?> GetPluginDetails(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
-        return await connection.QueryFirstOrDefaultAsync<PluginViewModel>("SELECT slug AS \"PluginSlug\", identifier, settings, visibility FROM plugins WHERE slug=@pluginSlug", new { pluginSlug = pluginSlug.ToString() });
+        return await connection.QueryFirstOrDefaultAsync<PluginViewModel>("SELECT slug AS \"PluginSlug\", identifier, settings::text AS settings, visibility FROM plugins WHERE slug=@pluginSlug", new { pluginSlug = pluginSlug.ToString() });
     }
 
     #endregion
@@ -93,6 +94,20 @@ public static class NpgsqlConnectionExtensions
         );
         return !string.IsNullOrEmpty(githubGistUrl);
     }
+
+    public static async Task<bool> IsSocialAccountsVerified(this NpgsqlConnection connection, string userId)
+    {
+        var result = await connection.QuerySingleOrDefaultAsync<(string GithubGistUrl, string AccountDetail)>(
+            "SELECT \"GithubGistUrl\", \"AccountDetail\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId AND \"EmailConfirmed\" = true",
+            new { userId });
+
+        if (string.IsNullOrEmpty(result.AccountDetail) || string.IsNullOrEmpty(result.GithubGistUrl))
+            return false;
+
+        var accountSettings = SafeJson.Deserialize<AccountSettings>(result.AccountDetail);
+        return !string.IsNullOrWhiteSpace(accountSettings?.Nostr?.Npub);
+    }
+
     #endregion
 
 
@@ -294,8 +309,7 @@ public static class NpgsqlConnectionExtensions
             }) == 1;
     }
 
-    public static async Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters,
-        FirstBuildEvent? firstBuildEvent = null)
+    public static async Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters)
     {
         BuildInfo bi = new()
         {
@@ -318,17 +332,7 @@ public static class NpgsqlConnectionExtensions
                 state = BuildStates.Queued.ToEventName(),
                 buildInfo = bi.ToString()
             });
-
-        var currId = await connection.GetLatestPluginBuildNumber(pluginSlug);
-        if (currId == 0 && firstBuildEvent is not null)
-            await firstBuildEvent.OnFirstBuildCreated(connection, pluginSlug);
-
         return buildId;
-    }
-
-    public static async Task<long> GetLatestPluginBuildNumber(this NpgsqlConnection connection, PluginSlug pluginSlug)
-    {
-        return await connection.ExecuteScalarAsync<long>("SELECT curr_id FROM builds_ids WHERE plugin_slug = @plugin_slug", new { plugin_slug = pluginSlug.ToString() });
     }
 
     #endregion

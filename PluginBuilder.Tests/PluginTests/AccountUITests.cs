@@ -56,7 +56,7 @@ public class AccountUITests(ITestOutputHelper output) : PageTest
         await t.GoToUrl("/register");
         var user = await t.RegisterNewUser();
         await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
-        await t.VerifyEmailAndGithubAsync(user);
+        await t.VerifyUserAccounts(user);
 
         await t.Page!.ClickAsync("#Nav-Account");
         await t.Page!.ClickAsync("#Nav-ManageAccount");
