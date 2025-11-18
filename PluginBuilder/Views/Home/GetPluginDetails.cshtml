@@ -8,6 +8,7 @@
 @{
 	Layout = "_LayoutPublicModal";
 	var desc = string.IsNullOrWhiteSpace(Model.Plugin.Description) ? "Plugin for BTCPay Server" : Model.Plugin.Description;
+    ViewData["Title"] = Model.Plugin.PluginTitle + " - " + desc;
 	var owner = Model.Plugin.GetGithubRepository()?.Owner;
 	var dependencies = Model.Plugin.ManifestInfo?["Dependencies"] as JArray;
 
@@ -76,7 +77,7 @@
                                 @if (!string.IsNullOrWhiteSpace(Model.OwnerTwitterUrl))
                                 {
                                     <a href="@Model.OwnerTwitterUrl" rel="noreferrer noopener" target="_blank">
-                                        <img src="~/img/twitter.svg" alt="X Verified" title="X Verified" class="verified-icon" />
+                                        <img src="~/img/x.svg" alt="X Verified" title="X Verified" class="verified-icon" />
                                     </a>
                                 }
                             </span>
