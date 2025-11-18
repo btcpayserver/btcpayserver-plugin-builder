@@ -56,7 +56,7 @@ jobs:
         run: docker compose -f PluginBuilder.Tests/docker-compose.yml up -d --build
 
       - name: Run tests
-        run: dotnet test PluginBuilder.Tests --verbosity minimal --logger "console;verbosity=minimal"
+        run: dotnet test PluginBuilder.Tests --verbosity normal
 
       - name: Cleanup Docker
         if: always()

@@ -76,7 +76,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.Page.ClickAsync("#ratingStars .star-btn[data-value='4']");
         await tester.Page.FillAsync("textarea[name='Body']", "Amazing bro!.");
         await form.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Submit" }).ClickAsync();
-        await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+        await tester.Page.WaitForURLAsync(new Regex("public/plugins/.+?#reviews"));
         var firstCard = tester.Page.Locator(".test-review-card").First;
         await Expect(firstCard).ToBeVisibleAsync();
         var ratingElement = firstCard.Locator(".test-review-rating");
