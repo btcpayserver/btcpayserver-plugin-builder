@@ -59,21 +59,21 @@
                         {
                             <span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a>
 
-                               @if (Model.OwnerGithubVerified && !string.IsNullOrWhiteSpace(Model.OwnerGithubUrl))
+                               @if (!string.IsNullOrWhiteSpace(Model.OwnerGithubUrl))
                                 {
                                     <a href="@Model.OwnerGithubUrl" rel="noreferrer noopener" target="_blank">
                                         <img src="~/img/github.svg" alt="GitHub Verified" title="GitHub Verified" class="verified-icon" />
                                     </a>
                                 }
 
-                                @if (Model.OwnerNostrVerified && !string.IsNullOrWhiteSpace(Model.OwnerNostrUrl))
+                                @if (!string.IsNullOrWhiteSpace(Model.OwnerNostrUrl))
                                 {
                                     <a href="@Model.OwnerNostrUrl" rel="noreferrer noopener" target="_blank">
                                         <img src="~/img/nostr.svg" alt="Nostr Verified" title="Nostr Verified" class="verified-icon" />
                                     </a>
                                 }
 
-                                @if (Model.OwnerTwitterLinked && !string.IsNullOrWhiteSpace(Model.OwnerTwitterUrl))
+                                @if (!string.IsNullOrWhiteSpace(Model.OwnerTwitterUrl))
                                 {
                                     <a href="@Model.OwnerTwitterUrl" rel="noreferrer noopener" target="_blank">
                                         <img src="~/img/twitter.svg" alt="Twitter" title="Twitter" class="verified-icon" />
@@ -573,7 +573,7 @@
     .btn.vote-down.text-danger:hover  { color: var(--btcpay-neutral-600, #6c757d) !important; }
 
     .verified-icon {
-        height: var(--btcpay-font-size-l); 
+        height: var(--btcpay-font-size-l);
         vertical-align: middle;
         margin-left: var(--btcpay-space-s);
     }

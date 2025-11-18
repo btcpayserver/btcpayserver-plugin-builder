@@ -465,9 +465,6 @@ public class HomeController(
 
         var primaryOwnerId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
 
-        bool ownerGithubVerified = false;
-        bool ownerNostrVerified  = false;
-        bool ownerTwitterLinked = false;
         string? ownerGithubUrl   = null;
         string? ownerNostrUrl    = null;
         string? ownerTwitterUrl  = null;
@@ -475,11 +472,6 @@ public class HomeController(
         if (!string.IsNullOrEmpty(primaryOwnerId))
         {
             var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId) ?? new AccountSettings();
-
-            ownerGithubVerified = await conn.IsGithubAccountVerified(primaryOwnerId);
-            ownerNostrVerified  = ownerSettings.Nostr is { Npub: not null, Proof: not null };
-            ownerTwitterLinked = !string.IsNullOrWhiteSpace(ownerSettings.Twitter);
-
             if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
             {
                 var safeHandle = Uri.EscapeDataString(ownerSettings.Github);
@@ -524,9 +516,6 @@ public class HomeController(
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
             Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
             RatingFilter = model.RatingFilter,
-            OwnerGithubVerified = ownerGithubVerified,
-            OwnerNostrVerified = ownerNostrVerified,
-            OwnerTwitterLinked = ownerTwitterLinked,
             OwnerGithubUrl = ownerGithubUrl,
             OwnerNostrUrl = ownerNostrUrl,
             OwnerTwitterUrl = ownerTwitterUrl
