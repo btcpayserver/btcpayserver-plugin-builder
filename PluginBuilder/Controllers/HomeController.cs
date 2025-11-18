@@ -472,34 +472,26 @@ public class HomeController(
         if (!string.IsNullOrEmpty(primaryOwnerId))
         {
             var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId) ?? new AccountSettings();
+            
             if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
             {
-                var safeHandle = Uri.EscapeDataString(ownerSettings.Github);
+                var safeHandle = Uri.EscapeDataString(ownerSettings.Github.Trim());
                 ownerGithubUrl = $"https://github.com/{safeHandle}";
             }
 
             if (!string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub))
             {
-                ownerNostrUrl = $"https://primal.net/p/{ownerSettings.Nostr.Npub}";
+                var safeNpub = Uri.EscapeDataString(ownerSettings.Nostr.Npub.Trim());
+                ownerNostrUrl = $"https://primal.net/p/{safeNpub}";
             }
 
             if (!string.IsNullOrWhiteSpace(ownerSettings.Twitter))
             {
-                var raw = ownerSettings.Twitter.Trim();
-
-                if (!raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-                    !raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                var handle = ownerSettings.Twitter.Trim().TrimStart('@', '/', ' ');
+                if (!string.IsNullOrWhiteSpace(handle))
                 {
-                    var handle = raw.TrimStart('@', '/');
-                    if (!string.IsNullOrWhiteSpace(handle))
-                    {
-                        ownerTwitterUrl = $"https://x.com/{handle}";
-                    }
-                }
-                else if (Uri.TryCreate(raw, UriKind.Absolute, out var twitterUri) &&
-                         (twitterUri.Scheme == Uri.UriSchemeHttp || twitterUri.Scheme == Uri.UriSchemeHttps))
-                {
-                    ownerTwitterUrl = raw;
+                    var safeHandle = Uri.EscapeDataString(handle);
+                    ownerTwitterUrl = $"https://x.com/{safeHandle}";
                 }
             }
         }
