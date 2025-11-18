@@ -463,6 +463,39 @@ public class HomeController(
             if (userId != null)
                 isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
 
+        var primaryOwnerId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+
+        string? ownerGithubUrl   = null;
+        string? ownerNostrUrl    = null;
+        string? ownerTwitterUrl  = null;
+
+        if (!string.IsNullOrEmpty(primaryOwnerId))
+        {
+            var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId) ?? new AccountSettings();
+            
+            if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
+            {
+                var safeHandle = Uri.EscapeDataString(ownerSettings.Github.Trim());
+                ownerGithubUrl = $"https://github.com/{safeHandle}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub))
+            {
+                var safeNpub = Uri.EscapeDataString(ownerSettings.Nostr.Npub.Trim());
+                ownerNostrUrl = $"https://primal.net/p/{safeNpub}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerSettings.Twitter))
+            {
+                var handle = ownerSettings.Twitter.Trim().TrimStart('@', '/', ' ');
+                if (!string.IsNullOrWhiteSpace(handle))
+                {
+                    var safeHandle = Uri.EscapeDataString(handle);
+                    ownerTwitterUrl = $"https://x.com/{safeHandle}";
+                }
+            }
+        }
+
         var vm = new PluginDetailsViewModel
         {
             Plugin = plugin,
@@ -474,7 +507,10 @@ public class HomeController(
             PluginVersions = versions.ToList(),
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
             Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
-            RatingFilter = model.RatingFilter
+            RatingFilter = model.RatingFilter,
+            OwnerGithubUrl = ownerGithubUrl,
+            OwnerNostrUrl = ownerNostrUrl,
+            OwnerTwitterUrl = ownerTwitterUrl
         };
 
         return View(vm);
