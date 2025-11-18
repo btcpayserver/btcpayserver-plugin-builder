@@ -62,7 +62,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await Expect(nostrIcon).ToBeVisibleAsync();
         await Expect(nostrIcon).ToHaveAttributeAsync("alt", "Nostr Verified");
 
-        var xIcon = tester.Page.Locator("a[href*='x.com/r0ckstardev'] img[src*='twitter.svg']");
+        var xIcon = tester.Page.Locator("a[href*='x.com/r0ckstardev'] img[src*='x.svg']");
         await Expect(xIcon).ToBeVisibleAsync();
         await Expect(xIcon).ToHaveAttributeAsync("alt", "X Verified");
 
