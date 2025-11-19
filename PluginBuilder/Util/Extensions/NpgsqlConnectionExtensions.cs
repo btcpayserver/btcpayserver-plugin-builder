@@ -23,7 +23,7 @@ public static class NpgsqlConnectionExtensions
         return JsonConvert.DeserializeObject<PluginSettings>(r, CamelCaseSerializerSettings.Instance);
     }
 
-    public static async Task<bool> SetPluginSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings? pluginSettings, string? visibility = null)
+    public static async Task<bool> SetPluginSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings? pluginSettings, PluginVisibilityEnum? visibility = null)
     {
         var settingsJson = "{}";
         if (pluginSettings != null)
@@ -33,7 +33,7 @@ public static class NpgsqlConnectionExtensions
         if (visibility != null)
             sql = "UPDATE plugins SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum WHERE slug = @pluginSlug";
 
-        var affectedRows = await connection.ExecuteAsync(sql, new { pluginSlug = pluginSlug.ToString(), settings = settingsJson, visibility });
+        var affectedRows = await connection.ExecuteAsync(sql, new { pluginSlug = pluginSlug.ToString(), settings = settingsJson, visibility = visibility?.ToString().ToLowerInvariant() });
         return affectedRows == 1;
     }
 

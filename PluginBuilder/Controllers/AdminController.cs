@@ -177,7 +177,7 @@ public class AdminController(
             pluginSettings.Logo = null;
         }
 
-        var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility.ToString().ToLowerInvariant());
+        var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
         if (!setPluginSettings) return NotFound();
 
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
