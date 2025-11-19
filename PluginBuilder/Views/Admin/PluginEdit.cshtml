@@ -2,13 +2,19 @@
 @model PluginEditViewModel
 @{
 	Layout = "_Layout";
-	ViewData.SetActivePage(AdminNavPages.Plugins, "Edit Plugin");
+	ViewData.SetActivePage(AdminNavPages.Plugins, $"Edit Plugin - {Model.PluginSlug}");
 }
 
-<div class="d-flex align-items-center justify-content-between mb-4">
-	<h2 class="mb-0">
-        @ViewData["Title"] – <span class="text-dark">@Model.PluginSlug</span>
-	</h2>
+<div class="d-flex flex-column flex-md-row align-items-center justify-content-between mb-4">
+    <h2 class="mb-3 mb-md-0">@ViewData["Title"]</h2>
+
+	<div class="d-flex flex-column flex-sm-row align-items-center gap-3">
+		<a asp-action="ImportReview" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-primary">Import Reviews</a>
+		<form asp-controller="Admin" asp-action="PluginReviewRevamp" asp-route-routeSlug="@Model.PluginSlug" method="post" class="d-inline">
+			@Html.AntiForgeryToken()
+			<button type="submit" class="btn btn-primary">Migrate Reviewer Data</button>
+		</form>
+	</div>
 </div>
 
 <div class="row">
@@ -35,12 +41,8 @@
 							}
 						</div>
 						<form method="post"
-							  asp-controller="Admin"
-							  asp-action="ManagePluginOwnership"
-							  asp-route-pluginSlug="@Model.PluginSlug"
-							  asp-route-userId="@user.UserId"
-							  asp-route-command="@(user.IsPluginOwner ? "RevokeOwnership" : "AssignOwnership")"
-							  class="d-inline">
+							  asp-controller="Admin" asp-action="ManagePluginOwnership" asp-route-pluginSlug="@Model.PluginSlug"
+							  asp-route-userId="@user.UserId" asp-route-command="@(user.IsPluginOwner ? "RevokeOwnership" : "AssignOwnership")" class="d-inline">
 							@Html.AntiForgeryToken()
 							<button type="submit"
 									class="btn btn-sm @(user.IsPluginOwner ? "btn-outline-danger" : "btn-outline-primary")">

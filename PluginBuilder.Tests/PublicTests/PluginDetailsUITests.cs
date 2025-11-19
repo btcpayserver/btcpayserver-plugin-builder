@@ -21,6 +21,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         tester.Server.ReuseDatabase = false;
         await tester.StartAsync();
 
+        string reviewerEmail = "reviewer@x.com";
+        string voterEmail = "voter@x.com";
         // plugin + 3 users (owner, reviewer, voter)
         var ownerId = await tester.Server.CreateFakeUserAsync(email: "owner@x.com", confirmEmail: true, githubVerified: true);
         const string slug = ServerTester.PluginSlug;
@@ -49,6 +51,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         //Plugin owners can't create review
         await tester.LogIn("owner@x.com");
 
+
         await tester.GoToUrl(url);
         Assert.NotNull(tester.Page);
         await Expect(tester.Page.Locator("#owner-cannot-review")).ToBeVisibleAsync();
@@ -68,7 +71,9 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         // Reviewer creates review
         await tester.Logout();
-        await tester.LogIn("reviewer@x.com");
+        await tester.VerifyEmailAndGithubAsync(reviewerEmail);
+        await tester.VerifyEmailAndGithubAsync(voterEmail);
+        await tester.LogIn(reviewerEmail);
         await tester.GoToUrl(url);
         await Expect(tester.Page.Locator("#reviews")).ToBeVisibleAsync();
         var form = tester.Page.Locator("#review-form");
@@ -93,7 +98,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         // Regular user can vote
         await tester.Logout();
-        await tester.LogIn("voter@x.com");
+        await tester.LogIn(voterEmail);
         await tester.GoToUrl(url);
 
         var votableCard = tester.Page
@@ -126,7 +131,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         //filter rating
         await tester.Logout();
-        await tester.LogIn("voter@x.com");
+        await tester.LogIn(voterEmail);
         await tester.GoToUrl(url);
 
         // add 1 more review with 1 star
@@ -168,7 +173,9 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.Server.CreateFakeUserAsync(email: "reviewer@x.com", confirmEmail: true, githubVerified: true);
 
         // Login as reviewer and create review with markdown
-        await tester.LogIn("reviewer@x.com");
+        string reviewerEmail = "reviewer@x.com";
+        await tester.VerifyEmailAndGithubAsync(reviewerEmail);
+        await tester.LogIn(reviewerEmail);
         await tester.GoToUrl($"/public/plugins/{slug}");
 
         var form = tester.Page!.Locator("#review-form");

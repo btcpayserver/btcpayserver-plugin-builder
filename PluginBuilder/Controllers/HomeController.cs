@@ -8,13 +8,14 @@ using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
+using PluginBuilder.JsonConverters;
+using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Home;
-using PluginBuilder.ModelBinders;
-using PluginBuilder.JsonConverters;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Controllers;
 
@@ -424,8 +425,7 @@ public class HomeController(
         var versions = pluginDetails.versions as IEnumerable<string> ?? Enumerable.Empty<string>();
 
         //second
-        var summary = await multi.ReadFirstOrDefaultAsync<PluginRatingSummary>()
-                      ?? new PluginRatingSummary();
+        var summary = await multi.ReadFirstOrDefaultAsync<PluginRatingSummary>() ?? new PluginRatingSummary();
 
         // third
         var items = (await multi.ReadAsync<Review>()).ToList();
@@ -443,17 +443,10 @@ public class HomeController(
 
             if (!string.IsNullOrWhiteSpace(item.Npub))
             {
-                item.AuthorDisplay = string.IsNullOrWhiteSpace(item.NostrName)
-                    ? $"{item.Npub[..8]}…"
-                    : item.NostrName;
+                item.AuthorDisplay = string.IsNullOrWhiteSpace(item.NostrName) ? $"{item.Npub[..8]}…" : item.NostrName;
+                item.AuthorUrl = $"https://primal.net/p/{item.Npub}";
 
-                // choose primal instead of njump because works for any case
-                item.AuthorUrl = !string.IsNullOrWhiteSpace(item.Npub)
-                    ? $"https://primal.net/p/{item.Npub}"
-                    : null;
-
-                if (!string.IsNullOrWhiteSpace(item.NostrAvatarUrl) &&
-                    Uri.TryCreate(item.NostrAvatarUrl, UriKind.Absolute, out var u) &&
+                if (!string.IsNullOrWhiteSpace(item.NostrAvatarUrl) && Uri.TryCreate(item.NostrAvatarUrl, UriKind.Absolute, out var u) &&
                     (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
                 {
                     item.AuthorAvatarUrl = item.NostrAvatarUrl;
@@ -545,10 +538,7 @@ public class HomeController(
     [HttpPost("public/plugins/{pluginSlug}/reviews/upsert")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpsertReview(
-        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
-        int rating,
-        string? body,
-        string? pluginVersion)
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, int rating, string? body, string? pluginVersion)
     {
         if (rating is < 1 or > 5) return BadRequest("Invalid rating.");
 
@@ -557,65 +547,40 @@ public class HomeController(
 
         await using var conn = await connectionFactory.Open();
 
-        var isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
+        var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId) ?? new();
+        if (string.IsNullOrEmpty(reviewerAccountDetails.Github) && (reviewerAccountDetails.Nostr == null || string.IsNullOrEmpty(reviewerAccountDetails.Nostr?.Npub)))
+        {
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub or Nostr account in order to review plugins";
+            return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
+        }
 
+        var isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
         if (isOwner)
         {
             TempData[TempDataConstant.WarningMessage] = "You cannot review your own plugin.";
-            var backUrl = Url.Action(nameof(GetPluginDetails), "Home",
-                new { pluginSlug = pluginSlug.ToString() });
-            return Redirect(backUrl ?? "/");
-        }
-
-        var hasGithub = await userVerifiedLogic.IsUserGithubVerified(User, conn);
-        var hasNostr  = await userVerifiedLogic.IsNostrVerified(User, conn);
-
-        if (!(hasGithub || hasNostr))
-        {
-            TempData[TempDataConstant.WarningMessage] =
-                "You need to verify your GitHub or Nostr account in order to review plugins";
-            return RedirectToAction("AccountDetails", "Account");
+            return RedirectToAction(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString() });
         }
 
         int[]? pluginVersionParts = null;
-        if (!string.IsNullOrWhiteSpace(pluginVersion) &&
-            PluginVersion.TryParse(pluginVersion, out var v))
+        if (!string.IsNullOrWhiteSpace(pluginVersion) && PluginVersion.TryParse(pluginVersion, out var v))
         {
             pluginVersionParts = v.VersionParts;
         }
-
-        if (!hasGithub && hasNostr)
+        PluginReviewViewModel reviewViewModel = new()
         {
-            try
-            {
-                var acc = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
-
-                if (!string.IsNullOrWhiteSpace(acc.Nostr?.Npub))
-                {
-                    var pubKey = nostrService.NpubToHexPub(acc.Nostr.Npub);
-                    var profile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKey, timeoutPerRelayMs: 6000);
-                    if (profile is not null)
-                    {
-                        acc.Nostr ??= new NostrSettings();
-                        acc.Nostr.Profile = profile;
-                        await conn.SetAccountDetailSettings(acc, userId);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error while updating nostr profile");
-            }
-        }
-
-        await conn.UpsertPluginReview(pluginSlug, userId, rating, body, pluginVersionParts);
-
+            PluginSlug = pluginSlug.ToString(),
+            UserId = userId,
+            Rating = rating,
+            Body = body,
+            PluginVersion = pluginVersionParts
+        };
+        reviewViewModel = reviewViewModel.UpdatePluginReviewerData(reviewerAccountDetails);
+        await conn.UpsertPluginReview(reviewViewModel);
         var sort = Request.Query["sort"].ToString();
-        var url = Url.Action(nameof(GetPluginDetails), "Home",
-            new { pluginSlug = pluginSlug.ToString(), sort = string.IsNullOrEmpty(sort) ? null : sort });
-
+        var url = Url.Action(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString(), sort = string.IsNullOrEmpty(sort) ? null : sort });
         return Redirect((url ?? "/") + "#reviews");
     }
+
 
     [HttpPost("public/plugins/{pluginSlug}/reviews/{id}/vote")]
     [ValidateAntiForgeryToken]
