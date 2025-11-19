@@ -34,7 +34,8 @@ public class HomeController(
     [AllowAnonymous]
     [HttpGet("/")]
     public IActionResult HomePage(
-        [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion? btcpayVersion = null,
         string? searchPluginName = null)
     {
         return RedirectToAction(
@@ -201,77 +202,78 @@ public class HomeController(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion? btcpayVersion = null, string? searchPluginName = null, string sort = "smart")
     {
-        const string getVersions = "get_latest_versions";
         await using var conn = await connectionFactory.Open();
 
-        sort = sort.ToLowerInvariant();
-        const string pluginNameExpr = "COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')";
-
-        var orderByClause = sort switch
-        {
-            "rating" => $"rs.avg_rating DESC NULLS LAST, {pluginNameExpr}",
-
-            "recent" => $"COALESCE((b.build_info->>'buildDate')::timestamptz, to_timestamp(0)) DESC, {pluginNameExpr}",
-
-            "alpha" => pluginNameExpr,
-
-            _ => $"""
-                  (
-                      (COALESCE(rs.avg_rating, 0.0) * 10)
-                      + GREATEST(0, 30 - COALESCE(DATE_PART('day', NOW() - COALESCE((b.build_info->>'buildDate')::timestamptz, NOW())), 0))
-                      + LEAST(LN(1 + COALESCE(rs.total_reviews, 0)) * 5, 40)
-                  ) DESC,
-                  {pluginNameExpr}
-                  """
-        };
-
         var query = $"""
-                      WITH review_stats AS (
-                        SELECT
-                          plugin_slug,
-                          AVG(rating) AS avg_rating,
-                          COUNT(*)    AS total_reviews
-                        FROM plugin_reviews
-                        GROUP BY plugin_slug
-                      )
-                      SELECT
-                        lv.plugin_slug,
-                        lv.ver,
-                        p.settings,
-                        b.id,
-                        b.manifest_info,
-                        b.build_info,
-                        COALESCE(rs.avg_rating, 0.0) AS avg_rating,
-                        COALESCE(rs.total_reviews, 0) AS total_reviews
-                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
-                      JOIN builds  b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
-                      JOIN plugins p ON b.plugin_slug = p.slug
-                      LEFT JOIN review_stats rs ON rs.plugin_slug = lv.plugin_slug
-                      WHERE b.manifest_info IS NOT NULL
-                        AND b.build_info IS NOT NULL
-                        AND (
-                            p.visibility = 'listed'
-                            OR (p.visibility = 'unlisted' AND @hasSearchTerm = true)
-                        )
-                        AND (
-                            @hasSearchTerm = false
-                            OR (
-                                p.slug ILIKE @searchPattern
-                                OR b.manifest_info->>'Name' ILIKE @searchPattern
-                                OR p.settings->>'pluginTitle' ILIKE @searchPattern
-                            ))
-                      ORDER BY {orderByClause}
-                      """;
+                     WITH review_stats AS (
+                       SELECT
+                         plugin_slug,
+                         AVG(rating) AS avg_rating,
+                         COUNT(*)    AS total_reviews
+                       FROM plugin_reviews
+                       GROUP BY plugin_slug
+                     )
+                     SELECT
+                       lv.plugin_slug,
+                       lv.ver,
+                       p.settings,
+                       b.id,
+                       b.manifest_info,
+                       b.build_info,
+                       COALESCE(rs.avg_rating, 0.0) AS avg_rating,
+                       COALESCE(rs.total_reviews, 0) AS total_reviews
+                     FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv
+                     JOIN builds  b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
+                     JOIN plugins p ON b.plugin_slug = p.slug
+                     LEFT JOIN review_stats rs ON rs.plugin_slug = lv.plugin_slug
+                     WHERE b.manifest_info IS NOT NULL
+                       AND b.build_info IS NOT NULL
+                       AND (
+                           p.visibility = 'listed'
+                           OR (p.visibility = 'unlisted' AND @hasSearchTerm = true)
+                       )
+                       AND (
+                           @hasSearchTerm = false
+                           OR (
+                               p.slug ILIKE @searchPattern
+                               OR b.manifest_info->>'Name' ILIKE @searchPattern
+                               OR p.settings->>'pluginTitle' ILIKE @searchPattern
+                           ))
+                     ORDER BY {OrderByClause()}
+                     """;
 
-        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, decimal avg_rating, int total_reviews)>(
-            query,
-            new
+        // be careful not to introduce sql injection here
+        string OrderByClause()
+        {
+            const string pluginNameExpr = "COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')";
+            var orderByClause = sort.ToLowerInvariant() switch
             {
-                btcpayVersion = btcpayVersion?.VersionParts,
-                includePreRelease = false,
-                searchPattern = $"%{searchPluginName}%",
-                hasSearchTerm = !string.IsNullOrWhiteSpace(searchPluginName)
-            });
+                "rating" => $"rs.avg_rating DESC NULLS LAST, {pluginNameExpr}",
+                "recent" => $"COALESCE((b.build_info->>'buildDate')::timestamptz, to_timestamp(0)) DESC, {pluginNameExpr}",
+                "alpha" => pluginNameExpr,
+                _ => $"""
+                      (
+                          (COALESCE(rs.avg_rating, 0.0) * 10)
+                          + GREATEST(0, 30 - COALESCE(DATE_PART('day', NOW() - COALESCE((b.build_info->>'buildDate')::timestamptz, NOW())), 0))
+                          + LEAST(LN(1 + COALESCE(rs.total_reviews, 0)) * 5, 40)
+                      ) DESC,
+                      {pluginNameExpr}
+                      """
+            };
+            return orderByClause;
+        }
+
+        var rows = await conn
+            .QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, decimal avg_rating, int total_reviews
+                )>(
+                query,
+                new
+                {
+                    btcpayVersion = btcpayVersion?.VersionParts,
+                    includePreRelease = false,
+                    searchPattern = $"%{searchPluginName}%",
+                    hasSearchTerm = !string.IsNullOrWhiteSpace(searchPluginName)
+                });
 
         rows.TryGetNonEnumeratedCount(out var count);
         List<PublishedPlugin> versions = new(count);
