@@ -119,7 +119,7 @@ public class ServerTester : IAsyncDisposable
         });
 
         webappBuilder.Services.AddHttpClient();
-        webappBuilder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
+        webappBuilder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Error);
         webappBuilder.Logging.AddProvider(Logs);
         ConfigureServices?.Invoke(webappBuilder.Services);
 

@@ -8,6 +8,7 @@
 @{
 	Layout = "_LayoutPublicModal";
 	var desc = string.IsNullOrWhiteSpace(Model.Plugin.Description) ? "Plugin for BTCPay Server" : Model.Plugin.Description;
+    ViewData["Title"] = Model.Plugin.PluginTitle + " - " + desc;
 	var owner = Model.Plugin.GetGithubRepository()?.Owner;
 	var dependencies = Model.Plugin.ManifestInfo?["Dependencies"] as JArray;
 
@@ -57,7 +58,29 @@
                         <h1 class="display-6 mb-1">@Model.Plugin.PluginTitle</h1>
                         @if (!string.IsNullOrWhiteSpace(owner))
                         {
-                            <span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
+                            <span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a>
+
+                               @if (!string.IsNullOrWhiteSpace(Model.OwnerGithubUrl))
+                                {
+                                    <a href="@Model.OwnerGithubUrl" rel="noreferrer noopener" target="_blank">
+                                        <img src="~/img/github.svg" alt="GitHub Verified" title="GitHub Verified" class="verified-icon" />
+                                    </a>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(Model.OwnerNostrUrl))
+                                {
+                                    <a href="@Model.OwnerNostrUrl" rel="noreferrer noopener" target="_blank">
+                                        <img src="~/img/nostr.svg" alt="Nostr Verified" title="Nostr Verified" class="verified-icon" />
+                                    </a>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(Model.OwnerTwitterUrl))
+                                {
+                                    <a href="@Model.OwnerTwitterUrl" rel="noreferrer noopener" target="_blank">
+                                        <img src="~/img/x.svg" alt="X Verified" title="X Verified" class="verified-icon" />
+                                    </a>
+                                }
+                            </span>
                         }
                     </div>
                     <a asp-action="Download" asp-controller="Api" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-version="@Model.Plugin.Version"
@@ -539,4 +562,10 @@
 
     .btn.vote-up.text-success:hover   { color: var(--btcpay-neutral-600, #6c757d) !important; }
     .btn.vote-down.text-danger:hover  { color: var(--btcpay-neutral-600, #6c757d) !important; }
+
+    .verified-icon {
+        height: var(--btcpay-font-size-l);
+        vertical-align: middle;
+        margin-left: var(--btcpay-space-s);
+    }
 </style>

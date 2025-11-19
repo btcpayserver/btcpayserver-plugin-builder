@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
+using PluginBuilder.Util.Extensions;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -27,8 +28,23 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         const string slug = ServerTester.PluginSlug;
         await tester.Server.CreateAndBuildPluginAsync(ownerId, slug: slug);
 
-        await tester.Server.CreateFakeUserAsync(email: reviewerEmail, confirmEmail: true, githubVerified: true);
-        await tester.Server.CreateFakeUserAsync(email: voterEmail, confirmEmail: true, githubVerified: true);
+        // Set up owner's social accounts
+        await using (var conn = await tester.Server.GetService<Services.DBConnectionFactory>().Open())
+        {
+            await conn.SetAccountDetailSettings(new DataModels.AccountSettings
+            {
+                Github = "rockstardev",
+                Twitter = "@r0ckstardev",
+                Nostr = new DataModels.NostrSettings
+                {
+                    Npub = "npub1rockstar123",
+                    Proof = "proof123"
+                }
+            }, ownerId);
+        }
+
+        await tester.Server.CreateFakeUserAsync(email: "reviewer@x.com", confirmEmail: true, githubVerified: true);
+        await tester.Server.CreateFakeUserAsync(email: "voter@x.com",    confirmEmail: true, githubVerified: true);
 
         const string url = $"/public/plugins/{slug}";
 
@@ -39,6 +55,19 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.GoToUrl(url);
         Assert.NotNull(tester.Page);
         await Expect(tester.Page.Locator("#owner-cannot-review")).ToBeVisibleAsync();
+
+        // Verify social verification icons are displayed
+        var githubIcon = tester.Page.Locator("a[href*='github.com/rockstardev'] img[src*='github.svg']");
+        await Expect(githubIcon).ToBeVisibleAsync();
+        await Expect(githubIcon).ToHaveAttributeAsync("alt", "GitHub Verified");
+
+        var nostrIcon = tester.Page.Locator("a[href*='primal.net/p/npub1rockstar123'] img[src*='nostr.svg']");
+        await Expect(nostrIcon).ToBeVisibleAsync();
+        await Expect(nostrIcon).ToHaveAttributeAsync("alt", "Nostr Verified");
+
+        var xIcon = tester.Page.Locator("a[href*='x.com/r0ckstardev'] img[src*='x.svg']");
+        await Expect(xIcon).ToBeVisibleAsync();
+        await Expect(xIcon).ToHaveAttributeAsync("alt", "X Verified");
 
         // Reviewer creates review
         await tester.Logout();
@@ -52,7 +81,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.Page.ClickAsync("#ratingStars .star-btn[data-value='4']");
         await tester.Page.FillAsync("textarea[name='Body']", "Amazing bro!.");
         await form.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Submit" }).ClickAsync();
-        await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+        await tester.Page.WaitForURLAsync(new Regex("public/plugins/.+?#reviews"));
         var firstCard = tester.Page.Locator(".test-review-card").First;
         await Expect(firstCard).ToBeVisibleAsync();
         var ratingElement = firstCard.Locator(".test-review-rating");
