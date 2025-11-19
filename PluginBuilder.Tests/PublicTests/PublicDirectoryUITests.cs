@@ -138,7 +138,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 
         const string setBuildDateSql = """
                                        UPDATE builds
-                                       SET build_info = jsonb_set(build_info, '{buildDate}', to_jsonb(@date::timestamptz))
+                                       SET created_at = @date
                                        WHERE plugin_slug = @slug AND id = @buildId
                                        """;
         var oldDate = DateTimeOffset.UtcNow.AddDays(-60);

@@ -249,12 +249,12 @@ public class HomeController(
             var orderByClause = sort.ToLowerInvariant() switch
             {
                 "rating" => $"rs.avg_rating DESC NULLS LAST, {pluginNameExpr}",
-                "recent" => $"COALESCE((b.build_info->>'buildDate')::timestamptz, to_timestamp(0)) DESC, {pluginNameExpr}",
+                "recent" => $"b.created_at DESC, {pluginNameExpr}",
                 "alpha" => pluginNameExpr,
                 _ => $"""
                       (
                           (COALESCE(rs.avg_rating, 0.0) * 10)
-                          + GREATEST(0, 30 - COALESCE(DATE_PART('day', NOW() - COALESCE((b.build_info->>'buildDate')::timestamptz, NOW())), 0))
+                          + GREATEST(0, 30 - DATE_PART('day', NOW() - b.created_at))
                           + LEAST(LN(1 + COALESCE(rs.total_reviews, 0)) * 5, 40)
                       ) DESC,
                       {pluginNameExpr}
