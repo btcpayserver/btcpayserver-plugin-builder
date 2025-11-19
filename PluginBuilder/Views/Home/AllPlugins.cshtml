@@ -42,52 +42,54 @@
         </div>
     </div>
     <div class="row mb-4">
-        <form asp-action="AllPlugins" method="get" class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8">
-            <input type="hidden" name="sort" value="@currentSort" />
+        <div>
+            <form asp-action="AllPlugins" method="get" class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3">
+                <input type="hidden" name="sort" value="@currentSort" />
 
-            <input type="text"
-                   name="searchPluginName"
-                   class="form-control"
-                   placeholder="Search plugins"
-                   value="@currentSearch" />
+                <input type="text"
+                       name="searchPluginName"
+                       class="form-control flex-grow-1"
+                       placeholder="Search plugins"
+                       value="@currentSearch" />
 
-            <div class="dropdown">
-                <button class="btn btn-secondary dropdown-toggle"
-                        type="button"
-                        id="SortOptionsToggle"
-                        data-bs-toggle="dropdown"
-                        aria-expanded="false">
-                    @sortLabel
-                </button>
+                <div class="dropdown flex-shrink-0">
+                    <button class="btn btn-secondary dropdown-toggle text-nowrap"
+                            type="button"
+                            id="SortOptionsToggle"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                        @sortLabel
+                    </button>
 
-                <div class="dropdown-menu dropdown-menu-end" aria-labelledby="SortOptionsToggle">
-                    <a class="dropdown-item @(currentSort == "smart" ? "active" : "")"
-                       asp-action="AllPlugins"
-                       asp-route-searchPluginName="@currentSearch"
-                       asp-route-sort="smart">
-                        Relevance
-                    </a>
-                    <a class="dropdown-item @(currentSort == "rating" ? "active" : "")"
-                       asp-action="AllPlugins"
-                       asp-route-searchPluginName="@currentSearch"
-                       asp-route-sort="rating">
-                        Highest rated
-                    </a>
-                    <a class="dropdown-item @(currentSort == "recent" ? "active" : "")"
-                       asp-action="AllPlugins"
-                       asp-route-searchPluginName="@currentSearch"
-                       asp-route-sort="recent">
-                        Most recent
-                    </a>
-                    <a class="dropdown-item @(currentSort == "alpha" ? "active" : "")"
-                       asp-action="AllPlugins"
-                       asp-route-searchPluginName="@currentSearch"
-                       asp-route-sort="alpha">
-                        Alphabetical
-                    </a>
+                    <div class="dropdown-menu dropdown-menu-end" aria-labelledby="SortOptionsToggle">
+                        <a class="dropdown-item @(currentSort == "smart" ? "active" : "")"
+                           asp-action="AllPlugins"
+                           asp-route-searchPluginName="@currentSearch"
+                           asp-route-sort="smart">
+                            Relevance
+                        </a>
+                        <a class="dropdown-item @(currentSort == "rating" ? "active" : "")"
+                           asp-action="AllPlugins"
+                           asp-route-searchPluginName="@currentSearch"
+                           asp-route-sort="rating">
+                            Highest rated
+                        </a>
+                        <a class="dropdown-item @(currentSort == "recent" ? "active" : "")"
+                           asp-action="AllPlugins"
+                           asp-route-searchPluginName="@currentSearch"
+                           asp-route-sort="recent">
+                            Most recent
+                        </a>
+                        <a class="dropdown-item @(currentSort == "alpha" ? "active" : "")"
+                           asp-action="AllPlugins"
+                           asp-route-searchPluginName="@currentSearch"
+                           asp-route-sort="alpha">
+                            Alphabetical
+                        </a>
+                    </div>
                 </div>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
     <div class="row">
         @if (Model != null && Model.Any())
