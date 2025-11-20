@@ -173,7 +173,8 @@ public static class NpgsqlConnectionExtensions
                                u."Id"               AS "UserId",
                                up.is_primary_owner  AS "IsPrimary",
                                u."Email",
-                               u."AccountDetail"
+                               u."AccountDetail",
+                               u."EmailConfirmed"
                            FROM users_plugins up
                            JOIN "AspNetUsers" u ON u."Id" = up.user_id
                            WHERE up.plugin_slug = @slug
@@ -604,6 +605,105 @@ public static class NpgsqlConnectionExtensions
 
         var relays = JsonConvert.DeserializeObject<string[]?>(raw ?? string.Empty);
         return relays is { Length: > 0 } ? relays : NostrService.DefaultRelays.ToArray();
+    }
+
+    #endregion
+
+    #region Methods relating to plugin listing requests
+
+    public static async Task<int> CreateListingRequest(this NpgsqlConnection connection, PluginSlug pluginSlug, string releaseNote, string telegramMessage, string userReviews, DateTimeOffset? announcementDate)
+    {
+        const string sql = """
+            INSERT INTO plugin_listing_requests (plugin_slug, release_note, telegram_verification_message, user_reviews, announcement_date, status, submitted_at)
+            VALUES (@pluginSlug, @releaseNote, @telegramMessage, @userReviews, @announcementDate, 'pending', CURRENT_TIMESTAMP)
+            RETURNING id
+            """;
+        
+        return await connection.ExecuteScalarAsync<int>(sql, new
+        {
+            pluginSlug = pluginSlug.ToString(),
+            releaseNote,
+            telegramMessage,
+            userReviews,
+            announcementDate
+        });
+    }
+
+    public static async Task<PluginListingRequest?> GetListingRequest(this NpgsqlConnection connection, int requestId)
+    {
+        const string sql = """
+            SELECT id AS "Id", 
+                   plugin_slug AS "PluginSlug", 
+                   release_note AS "ReleaseNote", 
+                   telegram_verification_message AS "TelegramVerificationMessage", 
+                   user_reviews AS "UserReviews", 
+                   announcement_date AS "AnnouncementDate", 
+                   status AS "Status", 
+                   submitted_at AS "SubmittedAt", 
+                   reviewed_at AS "ReviewedAt", 
+                   reviewed_by AS "ReviewedBy", 
+                   rejection_reason AS "RejectionReason"
+            FROM plugin_listing_requests
+            WHERE id = @requestId
+            """;
+        
+        return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { requestId });
+    }
+
+    public static async Task<PluginListingRequest?> GetPendingListingRequestForPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        const string sql = """
+            SELECT id AS "Id", 
+                   plugin_slug AS "PluginSlug", 
+                   release_note AS "ReleaseNote", 
+                   telegram_verification_message AS "TelegramVerificationMessage", 
+                   user_reviews AS "UserReviews", 
+                   announcement_date AS "AnnouncementDate", 
+                   status AS "Status", 
+                   submitted_at AS "SubmittedAt", 
+                   reviewed_at AS "ReviewedAt", 
+                   reviewed_by AS "ReviewedBy", 
+                   rejection_reason AS "RejectionReason"
+            FROM plugin_listing_requests
+            WHERE plugin_slug = @pluginSlug AND status = 'pending'
+            ORDER BY submitted_at DESC
+            LIMIT 1
+            """;
+        
+        return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
+    }
+
+    public static async Task<bool> ApproveListingRequest(this NpgsqlConnection connection, int requestId, string reviewedBy)
+    {
+        const string sql = """
+            UPDATE plugin_listing_requests
+            SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy
+            WHERE id = @requestId AND status = 'pending'
+            """;
+        
+        var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy });
+        return affected == 1;
+    }
+
+    public static async Task<bool> RejectListingRequest(this NpgsqlConnection connection, int requestId, string reviewedBy, string rejectionReason)
+    {
+        const string sql = """
+            UPDATE plugin_listing_requests
+            SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy, rejection_reason = @rejectionReason
+            WHERE id = @requestId AND status = 'pending'
+            """;
+        
+        var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy, rejectionReason });
+        return affected == 1;
+    }
+
+    public static async Task<bool> HasPendingListingRequest(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        const string sql = """
+            SELECT EXISTS(SELECT 1 FROM plugin_listing_requests WHERE plugin_slug = @pluginSlug AND status = 'pending')
+            """;
+        
+        return await connection.ExecuteScalarAsync<bool>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
 
     #endregion

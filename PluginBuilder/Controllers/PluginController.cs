@@ -223,17 +223,17 @@ public class PluginController(
 
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
-        var requestListing = pluginSettings?.RequestListing;
+        var pendingRequest = await conn.GetPendingListingRequestForPlugin(pluginSlug);
         model.ReleaseNote = pluginSettings?.Description;
-        if (requestListing != null)
+        if (pendingRequest != null)
         {
-            var now = DateTimeOffset.UtcNow;
-            model.CanSendEmailReminder = now >= requestListing.LastReminderEmailSent.AddDays(1);
             model.PendingListing = true;
-            model.TelegramVerificationMessage = requestListing.TelegramVerificationMessage;
-            model.UserReviews = requestListing.UserReviews;
-            model.ReleaseNote = requestListing.ReleaseNote;
-            model.AnnouncementDate = requestListing.AnnouncementDate;
+            model.TelegramVerificationMessage = pendingRequest.TelegramVerificationMessage;
+            model.UserReviews = pendingRequest.UserReviews;
+            model.ReleaseNote = pendingRequest.ReleaseNote;
+            model.AnnouncementDate = pendingRequest.AnnouncementDate;
+            var now = DateTimeOffset.UtcNow;
+            model.CanSendEmailReminder = now >= pendingRequest.SubmittedAt.AddDays(1);
             TempData[TempDataConstant.WarningMessage] = "Your listing request has been sent and is pending validation";
         }
         model = await ListingRequirementsMet(conn, pluginSettings, pluginOwners, model);
@@ -270,20 +270,20 @@ public class PluginController(
         if (!ModelState.IsValid)
         {
             var owners = await conn.GetPluginOwners(pluginSlug);
-            model.PendingListing = pluginSettings?.RequestListing != null;
+            model.PendingListing = await conn.HasPendingListingRequest(pluginSlug);
             model = await ListingRequirementsMet(conn, pluginSettings, owners, model);
             return View(model);
         }
-        pluginSettings.RequestListing = new()
-        {
-            ReleaseNote = model.ReleaseNote.Trim(),
-            TelegramVerificationMessage = model.TelegramVerificationMessage.Trim(),
-            UserReviews = model.UserReviews.Trim(),
-            AnnouncementDate = model.AnnouncementDate,
-            DateAdded = DateTimeOffset.UtcNow,
-            LastReminderEmailSent = DateTimeOffset.UtcNow
-        };
-        await conn.SetPluginSettings(pluginSlug, pluginSettings);
+        
+        // Create listing request in database
+        await conn.CreateListingRequest(
+            pluginSlug,
+            model.ReleaseNote.Trim(),
+            model.TelegramVerificationMessage.Trim(),
+            model.UserReviews.Trim(),
+            model.AnnouncementDate
+        );
+        
         await SendRequestListingEmail(conn, pluginSlug.ToString());
         TempData[TempDataConstant.SuccessMessage] = "Your listing request has been sent and is pending validation";
         return RedirectToAction(nameof(Dashboard), new { pluginSlug });
@@ -325,22 +325,19 @@ public class PluginController(
         if (plugin is null || plugin.Visibility != PluginVisibilityEnum.Unlisted)
             return NotFound();
 
-        var settings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
-        var request = settings?.RequestListing;
+        var request = await conn.GetPendingListingRequestForPlugin(pluginSlug);
         if (request is null)
         {
             TempData[TempDataConstant.WarningMessage] = "No listing request exist";
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
         }
         var now = DateTimeOffset.UtcNow;
-        if (now < request.LastReminderEmailSent.AddDays(1))
+        if (now < request.SubmittedAt.AddDays(1))
         {
             TempData[TempDataConstant.WarningMessage] = "Please wait 24 hours before sending another reminder";
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
         }
         await SendRequestListingEmail(conn, pluginSlug.ToString());
-        request.LastReminderEmailSent = now;
-        await conn.SetPluginSettings(pluginSlug, settings);
         TempData[TempDataConstant.SuccessMessage] = "Request listing reminders sent to admins";
         return RedirectToAction(nameof(RequestListing), new { pluginSlug });
     }
@@ -348,7 +345,7 @@ public class PluginController(
     private async Task SendRequestListingEmail(NpgsqlConnection conn, string pluginSlug)
     {
         var pluginPublicUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug }, Request.Scheme);
-        var listingReviewUrl = Url.Action(nameof(AdminController.PluginEdit), "Admin", new { pluginSlug }, Request.Scheme);
+        var listingReviewUrl = Url.Action("ListingRequests", "Admin", null, Request.Scheme);
         await emailService.NotifyAdminOnNewRequestListing(conn, pluginSlug, pluginPublicUrl!, listingReviewUrl!);
     }
 

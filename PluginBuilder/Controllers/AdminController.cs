@@ -57,7 +57,8 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var rows = await conn.QueryAsync($"""
-                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email, p.settings
+                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email, p.settings,
+                                                EXISTS(SELECT 1 FROM plugin_listing_requests lr WHERE lr.plugin_slug = p.slug AND lr.status = 'pending') as has_pending_request
                                          FROM plugins p
                                          LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
@@ -80,7 +81,7 @@ public class AdminController(
                 PluginSlug = row.slug,
                 Visibility = row.visibility,
                 PrimaryOwnerEmail = row.email,
-                HasPendingListingRequest = pluginSettings?.RequestListing != null && row.visibility == PluginVisibilityEnum.Unlisted,
+                HasPendingListingRequest = row.has_pending_request,
                 PluginTitle = pluginSettings?.PluginTitle
             };
             if (row.ver != null)
@@ -626,4 +627,162 @@ public class AdminController(
             IsPluginOwner = u.Id == ownerId
         }).ToList();
     }
+
+    #region Listing Requests Management
+
+    [HttpGet("listing-requests")]
+    public async Task<IActionResult> ListingRequests(string? status = null)
+    {
+        await using var conn = await connectionFactory.Open();
+        
+        var statusFilter = status?.ToLowerInvariant() ?? "pending";
+        var sql = """
+            SELECT 
+                lr.id AS "Id",
+                lr.plugin_slug AS "PluginSlug",
+                lr.status AS "Status",
+                lr.submitted_at AS "SubmittedAt",
+                lr.announcement_date AS "AnnouncementDate",
+                p.settings->>'pluginTitle' AS "PluginTitle",
+                u."Email" AS "PrimaryOwnerEmail"
+            FROM plugin_listing_requests lr
+            JOIN plugins p ON lr.plugin_slug = p.slug
+            LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner = true
+            LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
+            WHERE (@status = 'all' OR lr.status = @status)
+            ORDER BY 
+                CASE WHEN lr.status = 'pending' THEN 0 ELSE 1 END,
+                lr.submitted_at DESC
+            """;
+
+        var requests = await conn.QueryAsync<ListingRequestItemViewModel>(sql, new { status = statusFilter });
+        
+        var vm = new ListingRequestsViewModel
+        {
+            Requests = requests.ToList(),
+            StatusFilter = statusFilter
+        };
+
+        return View(vm);
+    }
+
+    [HttpGet("listing-requests/{requestId}")]
+    public async Task<IActionResult> ListingRequestDetail(int requestId)
+    {
+        await using var conn = await connectionFactory.Open();
+        
+        var request = await conn.GetListingRequest(requestId);
+        if (request == null)
+            return NotFound();
+
+        var plugin = await conn.GetPluginDetails(new PluginSlug(request.PluginSlug));
+        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
+        var owners = await conn.GetPluginOwners(new PluginSlug(request.PluginSlug));
+        
+        var ownerVerifications = new List<OwnerVerificationViewModel>();
+        foreach (var owner in owners)
+        {
+            var accountSettings = await conn.GetAccountDetailSettings(owner.UserId);
+            ownerVerifications.Add(new OwnerVerificationViewModel
+            {
+                Email = owner.Email ?? string.Empty,
+                IsPrimary = owner.IsPrimary,
+                EmailVerified = owner.EmailConfirmed,
+                GithubVerified = accountSettings?.Github != null,
+                NostrVerified = accountSettings?.Nostr?.Npub != null
+            });
+        }
+
+        var reviewedByEmail = request.ReviewedBy != null 
+            ? (await userManager.FindByIdAsync(request.ReviewedBy))?.Email 
+            : null;
+
+        var vm = new ListingRequestDetailViewModel
+        {
+            Id = request.Id,
+            PluginSlug = request.PluginSlug,
+            PluginTitle = pluginSettings?.PluginTitle,
+            PluginDescription = pluginSettings?.Description,
+            Logo = pluginSettings?.Logo,
+            GitRepository = pluginSettings?.GitRepository,
+            Documentation = pluginSettings?.Documentation,
+            ReleaseNote = request.ReleaseNote,
+            TelegramVerificationMessage = request.TelegramVerificationMessage,
+            UserReviews = request.UserReviews,
+            AnnouncementDate = request.AnnouncementDate,
+            Status = request.Status,
+            SubmittedAt = request.SubmittedAt,
+            ReviewedAt = request.ReviewedAt,
+            ReviewedByEmail = reviewedByEmail,
+            RejectionReason = request.RejectionReason,
+            Owners = ownerVerifications,
+            PrimaryOwnerEmail = owners.FirstOrDefault(o => o.IsPrimary)?.Email ?? "Unknown"
+        };
+
+        return View(vm);
+    }
+
+    [HttpPost("listing-requests/{requestId}/approve")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ApproveListingRequest(int requestId)
+    {
+        await using var conn = await connectionFactory.Open();
+        
+        var request = await conn.GetListingRequest(requestId);
+        if (request == null)
+            return NotFound();
+
+        if (request.Status != PluginListingRequestStatus.Pending)
+        {
+            TempData[TempDataConstant.WarningMessage] = "This request has already been processed";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
+
+        var userId = userManager.GetUserId(User)!;
+        
+        // Approve the request
+        await conn.ApproveListingRequest(requestId, userId);
+        
+        // Set plugin visibility to listed
+        await conn.SetPluginSettings(new PluginSlug(request.PluginSlug), null, "listed");
+        
+        // Clear cache
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+        
+        TempData[TempDataConstant.SuccessMessage] = $"Plugin '{request.PluginSlug}' has been approved and is now listed";
+        return RedirectToAction(nameof(ListingRequests));
+    }
+
+    [HttpPost("listing-requests/{requestId}/reject")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RejectListingRequest(int requestId, string rejectionReason)
+    {
+        await using var conn = await connectionFactory.Open();
+        
+        var request = await conn.GetListingRequest(requestId);
+        if (request == null)
+            return NotFound();
+
+        if (request.Status != PluginListingRequestStatus.Pending)
+        {
+            TempData[TempDataConstant.WarningMessage] = "This request has already been processed";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
+
+        if (string.IsNullOrWhiteSpace(rejectionReason))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Rejection reason is required";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
+
+        var userId = userManager.GetUserId(User)!;
+        
+        // Reject the request
+        await conn.RejectListingRequest(requestId, userId, rejectionReason.Trim());
+        
+        TempData[TempDataConstant.SuccessMessage] = $"Plugin listing request for '{request.PluginSlug}' has been rejected";
+        return RedirectToAction(nameof(ListingRequests));
+    }
+
+    #endregion
 }
