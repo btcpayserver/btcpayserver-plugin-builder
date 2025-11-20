@@ -739,12 +739,26 @@ public class AdminController(
         }
 
         var userId = userManager.GetUserId(User)!;
+        var pluginSlug = new PluginSlug(request.PluginSlug);
 
         // Approve the request
-        await conn.ApproveListingRequest(requestId, userId);
+        var approved = await conn.ApproveListingRequest(requestId, userId);
+        if (!approved)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Failed to approve the listing request";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
 
-        // Set plugin visibility to listed
-        await conn.SetPluginSettings(new PluginSlug(request.PluginSlug), null, PluginVisibilityEnum.Listed);
+        // Load existing settings to preserve them
+        var existingSettings = await conn.GetSettings(pluginSlug);
+
+        // Set plugin visibility to listed while preserving existing settings
+        var updated = await conn.SetPluginSettings(pluginSlug, existingSettings, PluginVisibilityEnum.Listed);
+        if (!updated)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Failed to update plugin visibility";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
 
         // Clear cache
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
@@ -778,7 +792,12 @@ public class AdminController(
         var userId = userManager.GetUserId(User)!;
 
         // Reject the request
-        await conn.RejectListingRequest(requestId, userId, rejectionReason.Trim());
+        var rejected = await conn.RejectListingRequest(requestId, userId, rejectionReason.Trim());
+        if (!rejected)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Failed to reject the listing request";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
 
         TempData[TempDataConstant.SuccessMessage] = $"Plugin listing request for '{request.PluginSlug}' has been rejected";
         return RedirectToAction(nameof(ListingRequests));
