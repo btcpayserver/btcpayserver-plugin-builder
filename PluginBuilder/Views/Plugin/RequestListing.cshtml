@@ -117,22 +117,35 @@
 						<div class="form-group">
 							<label asp-for="ReleaseNote" class="form-label" data-required>Release Note <span class="text-muted">(max 200 characters)</span></label>
 							<textarea asp-for="ReleaseNote" rows="2" maxlength="200" class="form-control" required></textarea>
-							<span asp-validation-for="ReleaseNote" class="text-danger"></span>
+                            <span asp-validation-for="ReleaseNote" class="text-danger"></span>
+                            <div class="text-muted">We will use this in BTCPay Server's social post. Refine it as an elevator pitch.
+                                <a href="https://x.com/BtcpayServer/status/1981029395818025195" target="_blank">Example</a>
+                            </div>
 						</div>
 						<div class="form-group">
 							<label asp-for="TelegramVerificationMessage" class="form-label" data-required></label>
 							<input asp-for="TelegramVerificationMessage" class="form-control" required />
-							<span asp-validation-for="TelegramVerificationMessage" class="text-danger"></span>
+                            <span asp-validation-for="TelegramVerificationMessage" class="text-danger"></span>
+                            <div class="text-muted">Join our Telegram channel so we can be in touch and post a bit about your plugin.
+                                <a href="https://t.me/btcpayserver/91512" target="_blank">Example</a>
+                            </div>
 						</div>
 						<div class="form-group">
 							<label asp-for="UserReviews" class="form-label" data-required></label>
 							<textarea asp-for="UserReviews" class="form-control" rows="4" required></textarea>
-							<span asp-validation-for="UserReviews" class="text-danger"></span>
+                            <span asp-validation-for="UserReviews" class="text-danger"></span>
+                            <div class="text-muted">Link at least one publicly posted review (Nostr, X, or user websites) from a reputable Bitcoiner who tested the plugin.
+                                <a href="https://primal.net/e/nevent1qqsqkw7c5qmlue0qvyz784ywrpkvnz2v33js4ajkj2dj0xdjdn6n2qqem7auc" target="_blank">Example</a>
+                            </div>
 						</div>
 						<div class="form-group">
 							<label asp-for="AnnouncementDate" class="form-label">Announcement Date & Time (optional)</label>
 							<input asp-for="AnnouncementDate" type="datetime-local" class="form-control" />
-							<span asp-validation-for="AnnouncementDate" class="text-danger"></span>
+                            <span asp-validation-for="AnnouncementDate" class="text-danger"></span>
+                            <div class="text-muted">
+                                You may specify when this announcement should go live (include date, time)<br />
+                                <strong>Note:</strong> It should ideally be scheduled at least 3 days in advance
+                            </div>
 						</div>
 					</form>
 				</div>
@@ -140,3 +153,26 @@
 		</div>
 	</div>
 </div>
+
+@section HeaderScripts {
+	<style>
+		/* Prevent rotation on status icons (checkmark/cross) inside accordion buttons */
+		.accordion-button h5 svg {
+			transition: none !important;
+			transform: none !important;
+		}
+
+		/* Color the status icons */
+		.accordion-button h5 svg.icon-checkmark {
+			color: var(--btcpay-success, #28a745);
+		}
+
+		.accordion-button h5 svg.icon-cross {
+			color: var(--btcpay-danger, #dc3545);
+		}
+	</style>
+}
+
+@section FooterScripts {
+	<partial name="_ValidationScriptsPartial" />
+}
