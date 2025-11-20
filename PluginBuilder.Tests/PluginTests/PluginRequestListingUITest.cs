@@ -146,9 +146,10 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await t.GoToUrl("/admin/listing-requests");
         await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/admin/listing-requests", RegexOptions.IgnoreCase));
 
-        // Verify the request is visible in the list
-        await Expect(t.Page.Locator($"text={pluginSlug}")).ToBeVisibleAsync();
-        await Expect(t.Page.Locator(".badge.bg-warning:text('Pending')")).ToBeVisibleAsync();
+        // Verify the request is visible in the list - use table row to avoid ambiguity
+        var row = t.Page.Locator($"tbody tr:has-text('{pluginSlug}')");
+        await Expect(row).ToBeVisibleAsync();
+        await Expect(row.Locator(".badge.bg-warning:text('Pending')")).ToBeVisibleAsync();
 
         // Click to view details
         await t.Page.ClickAsync("a.btn.btn-sm.btn-primary:text('View Details')");
