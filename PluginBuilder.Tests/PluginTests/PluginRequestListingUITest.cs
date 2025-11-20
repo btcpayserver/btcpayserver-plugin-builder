@@ -1,10 +1,15 @@
+using System;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright.Xunit;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
+using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using Xunit;
 using Xunit.Abstractions;
@@ -64,7 +69,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await t.Page.ClickAsync("a.btn.btn-primary:text('Request Listing')");
         await Expect(t.Page.Locator("#collapsePluginSettings")).ToBeVisibleAsync();
         await Expect(t.Page.Locator("#pluginSettingsHeader")).ToContainTextAsync("Update Plugin Settings");
-        await Expect(t.Page.Locator("#collapseOwnerSettings")).Not.ToBeVisibleAsync(); 
+        await Expect(t.Page.Locator("#collapseOwnerSettings")).Not.ToBeVisibleAsync();
         await Expect(t.Page.Locator("#collapseRequestForm")).Not.ToBeVisibleAsync();
         await t.Page!.ClickAsync("#StoreNav-Settings");
 
@@ -96,11 +101,161 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await Expect(t.Page.Locator("#collapseRequestForm")).Not.ToBeVisibleAsync();
         await Expect(t.Page.Locator(".alert-warning")).ToContainTextAsync("Your listing request has been sent and is pending validation");
 
-        var pluginSettings = await conn.GetSettings(pluginSlug);
-        await conn.SetPluginSettings(pluginSlug, pluginSettings, "listed");
+        // Verify the listing request was created in the database
+        var pendingRequest = await conn.GetPendingListingRequestForPlugin(pluginSlug);
+        Assert.NotNull(pendingRequest);
+        Assert.Equal("Testing release note entry", pendingRequest.ReleaseNote);
+        Assert.Equal("https://t.me/btcpayserver/1234", pendingRequest.TelegramVerificationMessage);
+        Assert.Equal("Great plugin, works as expected!", pendingRequest.UserReviews);
+        Assert.Equal(PluginListingRequestStatus.Pending, pendingRequest.Status);
+
+        // Simulate admin approval by setting plugin to listed
+        await conn.SetPluginSettings(pluginSlug, null, "listed");
         await t.Page!.ClickAsync("#StoreNav-Dashboard");
         var buttonCount = await t.Page.Locator("a.btn.btn-primary:has-text('Request Listing')").CountAsync();
         Assert.Equal(0, buttonCount);
+    }
+
+    [Fact]
+    public async Task Admin_Can_View_And_Approve_ListingRequest()
+    {
+        await using var t = new PlaywrightTester(_log);
+        t.Server.ReuseDatabase = false;
+        await t.StartAsync();
+        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
+
+        // Create a plugin with a pending listing request
+        var pluginSlug = "test-plugin-" + PlaywrightTester.GetRandomUInt256()[..8];
+        var userId = await t.Server.CreateFakeUserAsync();
+        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+
+        // Create a listing request
+        var requestId = await conn.CreateListingRequest(
+            pluginSlug,
+            "This is a test plugin for approval",
+            "https://t.me/btcpayserver/12345",
+            "https://example.com/review",
+            null
+        );
+
+        // Create admin user and login
+        var adminEmail = await CreateServerAdminAsync(t);
+        await t.LogIn(adminEmail);
+
+        // Navigate to listing requests page
+        await t.GoToUrl("/admin/listing-requests");
+        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/admin/listing-requests", RegexOptions.IgnoreCase));
+
+        // Verify the request is visible in the list
+        await Expect(t.Page.Locator($"text={pluginSlug}")).ToBeVisibleAsync();
+        await Expect(t.Page.Locator(".badge.bg-warning:text('Pending')")).ToBeVisibleAsync();
+
+        // Click to view details
+        await t.Page.ClickAsync("a.btn.btn-sm.btn-primary:text('View Details')");
+        await Expect(t.Page).ToHaveURLAsync(new Regex($".*/admin/listing-requests/{requestId}", RegexOptions.IgnoreCase));
+
+        // Verify request details are displayed
+        await Expect(t.Page.Locator("text=This is a test plugin for approval")).ToBeVisibleAsync();
+        await Expect(t.Page.Locator("text=https://t.me/btcpayserver/12345")).ToBeVisibleAsync();
+        await Expect(t.Page.Locator("text=https://example.com/review")).ToBeVisibleAsync();
+
+        // Approve the request
+        await t.Page.ClickAsync("button.btn.btn-success:text('Approve')");
+        await t.Page.ClickAsync("button[type='submit'].btn.btn-success:text('Approve')"); // Confirm in modal
+
+        // Should redirect back to listing requests page
+        await Expect(t.Page).ToHaveURLAsync(new Regex(".*/admin/listing-requests$", RegexOptions.IgnoreCase));
+
+        // Verify the request is no longer pending
+        var approvedRequest = await conn.GetListingRequest(requestId);
+        Assert.NotNull(approvedRequest);
+        Assert.Equal(PluginListingRequestStatus.Approved, approvedRequest.Status);
+        Assert.NotNull(approvedRequest.ReviewedAt);
+        Assert.NotNull(approvedRequest.ReviewedBy);
+
+        // Verify plugin visibility was updated to listed
+        var plugin = await conn.GetPluginDetails(pluginSlug);
+        Assert.Equal(PluginVisibilityEnum.Listed, plugin!.Visibility);
+    }
+
+    [Fact]
+    public async Task Admin_Can_Reject_ListingRequest()
+    {
+        await using var t = new PlaywrightTester(_log);
+        t.Server.ReuseDatabase = false;
+        await t.StartAsync();
+        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
+
+        // Create a plugin with a pending listing request
+        var pluginSlug = "test-plugin-reject-" + PlaywrightTester.GetRandomUInt256()[..8];
+        var userId = await t.Server.CreateFakeUserAsync();
+        await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+
+        var requestId = await conn.CreateListingRequest(
+            pluginSlug,
+            "Test plugin for rejection",
+            "https://t.me/btcpayserver/99999",
+            "https://example.com/bad-review",
+            null
+        );
+
+        // Create admin user and login
+        var adminEmail = await CreateServerAdminAsync(t);
+        await t.LogIn(adminEmail);
+
+        // Navigate to request detail
+        await t.GoToUrl($"/admin/listing-requests/{requestId}");
+
+        // Reject the request
+        await t.Page.ClickAsync("button.btn.btn-danger:text('Reject')");
+        await t.Page.FillAsync("textarea#rejectionReason", "Plugin does not meet quality standards");
+        await t.Page.ClickAsync("button[type='submit'].btn.btn-danger:text('Reject')");
+
+        // Should redirect back to listing requests page
+        await Expect(t.Page).ToHaveURLAsync(new Regex(".*/admin/listing-requests$", RegexOptions.IgnoreCase));
+
+        // Verify the request was rejected
+        var rejectedRequest = await conn.GetListingRequest(requestId);
+        Assert.NotNull(rejectedRequest);
+        Assert.Equal(PluginListingRequestStatus.Rejected, rejectedRequest.Status);
+        Assert.Equal("Plugin does not meet quality standards", rejectedRequest.RejectionReason);
+        Assert.NotNull(rejectedRequest.ReviewedAt);
+        Assert.NotNull(rejectedRequest.ReviewedBy);
+
+        // Verify plugin visibility was NOT changed
+        var plugin = await conn.GetPluginDetails(pluginSlug);
+        Assert.Equal(PluginVisibilityEnum.Unlisted, plugin!.Visibility);
+    }
+
+    private static async Task<string> CreateServerAdminAsync(PlaywrightTester tester)
+    {
+        using var scope = tester.Server.WebApp.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+
+        if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
+        {
+            await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
+        }
+
+        var email = $"admin-{Guid.NewGuid():N}@test.com";
+        const string password = "123456";
+        var user = new IdentityUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true
+        };
+
+        var result = await userManager.CreateAsync(user, password);
+        if (!result.Succeeded)
+        {
+            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+            throw new InvalidOperationException($"Failed to create admin user: {errors}");
+        }
+
+        await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
+        return email;
     }
 }
 
