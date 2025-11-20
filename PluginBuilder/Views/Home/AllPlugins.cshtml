@@ -2,9 +2,21 @@
 @model List<PublishedPlugin>?
 @{
     Layout = "_LayoutPublicModal";
-    var title = "BTCPay Server Plugin Directory";
-    var desc = "Extend and customize your BTCPay Server with community and official plugins.";
+    const string title = "BTCPay Server Plugin Directory";
+    const string desc = "Extend and customize your BTCPay Server with community and official plugins.";
     ViewData["Title"] = title;
+
+    var currentSearch = Context.Request.Query["searchPluginName"].ToString();
+    var currentSort = (string?)Context.Request.Query["sort"] ?? "smart";
+    if (string.IsNullOrEmpty(currentSort)) currentSort = "smart";
+
+    var sortLabel = currentSort switch
+    {
+        "rating" => "Highest rated",
+        "recent" => "Most recent",
+        "alpha"  => "Alphabetical",
+        _        => "Relevance"
+    };
 }
 
 @section Meta {
@@ -30,19 +42,61 @@
         </div>
     </div>
     <div class="row mb-4">
-        <form method="get" asp-action="AllPlugins">
-            <div class="input-group">
-                <input type="text" name="searchPluginName" class="form-control" placeholder="Search plugins"
-                       value="@Context.Request.Query["searchPluginName"]" />
-            </div>
-        </form>
+        <div>
+            <form asp-action="AllPlugins" method="get" class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3">
+                <input type="hidden" name="sort" value="@currentSort" />
+
+                <input type="text"
+                       name="searchPluginName"
+                       class="form-control flex-grow-1"
+                       placeholder="Search plugins"
+                       value="@currentSearch" />
+
+                <div class="dropdown flex-shrink-0">
+                    <button class="btn btn-secondary dropdown-toggle text-nowrap"
+                            type="button"
+                            id="SortOptionsToggle"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                        @sortLabel
+                    </button>
+
+                    <div class="dropdown-menu dropdown-menu-end" aria-labelledby="SortOptionsToggle">
+                        <a class="dropdown-item @(currentSort == "smart" ? "active" : "")"
+                           asp-action="AllPlugins"
+                           asp-route-searchPluginName="@currentSearch"
+                           asp-route-sort="smart">
+                            Relevance
+                        </a>
+                        <a class="dropdown-item @(currentSort == "rating" ? "active" : "")"
+                           asp-action="AllPlugins"
+                           asp-route-searchPluginName="@currentSearch"
+                           asp-route-sort="rating">
+                            Highest rated
+                        </a>
+                        <a class="dropdown-item @(currentSort == "recent" ? "active" : "")"
+                           asp-action="AllPlugins"
+                           asp-route-searchPluginName="@currentSearch"
+                           asp-route-sort="recent">
+                            Most recent
+                        </a>
+                        <a class="dropdown-item @(currentSort == "alpha" ? "active" : "")"
+                           asp-action="AllPlugins"
+                           asp-route-searchPluginName="@currentSearch"
+                           asp-route-sort="alpha">
+                            Alphabetical
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
     </div>
     <div class="row">
         @if (Model != null && Model.Any())
         {
             @foreach (var plugin in Model)
             {
-                var owner = @plugin.GetGithubRepository()?.Owner;
+                var owner = plugin.GetGithubRepository()?.Owner;
                 <div class="col-md-6 mb-4">
                     <div class="card h-100 plugin-card" data-type="community">
                         <div class="card-body">

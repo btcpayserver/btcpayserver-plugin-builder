@@ -34,7 +34,8 @@ public class HomeController(
     [AllowAnonymous]
     [HttpGet("/")]
     public IActionResult HomePage(
-        [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion? btcpayVersion = null,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion? btcpayVersion = null,
         string? searchPluginName = null)
     {
         return RedirectToAction(
@@ -198,9 +199,8 @@ public class HomeController(
     [HttpGet("public/plugins")]
     public async Task<IActionResult> AllPlugins(
         [ModelBinder(typeof(PluginVersionModelBinder))]
-        PluginVersion? btcpayVersion = null, string? searchPluginName = null)
+        PluginVersion? btcpayVersion = null, string? searchPluginName = null, string sort = "smart")
     {
-        var getVersions = "get_latest_versions";
         await using var conn = await connectionFactory.Open();
 
         var query = $"""
@@ -221,7 +221,7 @@ public class HomeController(
                        b.build_info,
                        COALESCE(rs.avg_rating, 0.0) AS avg_rating,
                        COALESCE(rs.total_reviews, 0) AS total_reviews
-                     FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
+                     FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv
                      JOIN builds  b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
                      JOIN plugins p ON b.plugin_slug = p.slug
                      LEFT JOIN review_stats rs ON rs.plugin_slug = lv.plugin_slug
@@ -233,20 +233,46 @@ public class HomeController(
                        )
                        AND (
                            @hasSearchTerm = false
-                           OR (p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)
-                       )
-                     ORDER BY b.manifest_info->>'Name'
+                           OR (
+                               p.slug ILIKE @searchPattern
+                               OR b.manifest_info->>'Name' ILIKE @searchPattern
+                               OR p.settings->>'pluginTitle' ILIKE @searchPattern
+                           ))
+                     ORDER BY {OrderByClause()}
                      """;
 
-        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, decimal avg_rating, int total_reviews)>(
-            query,
-            new
+        // be careful not to introduce sql injection here
+        string OrderByClause()
+        {
+            const string pluginNameExpr = "COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')";
+            var orderByClause = sort.ToLowerInvariant() switch
             {
-                btcpayVersion = btcpayVersion?.VersionParts,
-                includePreRelease = false,
-                searchPattern = $"%{searchPluginName}%",
-                hasSearchTerm = !string.IsNullOrWhiteSpace(searchPluginName)
-            });
+                "rating" => $"rs.avg_rating DESC NULLS LAST, {pluginNameExpr}",
+                "recent" => $"b.created_at DESC, {pluginNameExpr}",
+                "alpha" => pluginNameExpr,
+                _ => $"""
+                      (
+                          (COALESCE(rs.avg_rating, 0.0) * 10)
+                          + GREATEST(0, 30 - DATE_PART('day', NOW() - b.created_at))
+                          + LEAST(LN(1 + COALESCE(rs.total_reviews, 0)) * 5, 40)
+                      ) DESC,
+                      {pluginNameExpr}
+                      """
+            };
+            return orderByClause;
+        }
+
+        var rows = await conn
+            .QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, decimal avg_rating, int total_reviews
+                )>(
+                query,
+                new
+                {
+                    btcpayVersion = btcpayVersion?.VersionParts,
+                    includePreRelease = false,
+                    searchPattern = $"%{searchPluginName}%",
+                    hasSearchTerm = !string.IsNullOrWhiteSpace(searchPluginName)
+                });
 
         rows.TryGetNonEnumeratedCount(out var count);
         List<PublishedPlugin> versions = new(count);
@@ -462,6 +488,39 @@ public class HomeController(
             if (userId != null)
                 isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
 
+        var primaryOwnerId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+
+        string? ownerGithubUrl   = null;
+        string? ownerNostrUrl    = null;
+        string? ownerTwitterUrl  = null;
+
+        if (!string.IsNullOrEmpty(primaryOwnerId))
+        {
+            var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId) ?? new AccountSettings();
+            
+            if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
+            {
+                var safeHandle = Uri.EscapeDataString(ownerSettings.Github.Trim());
+                ownerGithubUrl = $"https://github.com/{safeHandle}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub))
+            {
+                var safeNpub = Uri.EscapeDataString(ownerSettings.Nostr.Npub.Trim());
+                ownerNostrUrl = $"https://primal.net/p/{safeNpub}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerSettings.Twitter))
+            {
+                var handle = ownerSettings.Twitter.Trim().TrimStart('@', '/', ' ');
+                if (!string.IsNullOrWhiteSpace(handle))
+                {
+                    var safeHandle = Uri.EscapeDataString(handle);
+                    ownerTwitterUrl = $"https://x.com/{safeHandle}";
+                }
+            }
+        }
+
         var vm = new PluginDetailsViewModel
         {
             Plugin = plugin,
@@ -473,7 +532,10 @@ public class HomeController(
             PluginVersions = versions.ToList(),
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
             Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
-            RatingFilter = model.RatingFilter
+            RatingFilter = model.RatingFilter,
+            OwnerGithubUrl = ownerGithubUrl,
+            OwnerNostrUrl = ownerNostrUrl,
+            OwnerTwitterUrl = ownerTwitterUrl
         };
 
         return View(vm);

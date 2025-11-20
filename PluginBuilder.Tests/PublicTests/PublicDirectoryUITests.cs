@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 using Xunit;
@@ -24,31 +25,33 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 
         var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
 
-        const string slug = "rockstar-stylist";
+        var slug = new PluginSlug("rockstar-stylist");
+        var slugString = slug.ToString();
+
         var ownerId = await tester.Server.CreateFakeUserAsync();
         var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId);
 
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
-            new { PluginSlug = slug, BuildId = fullBuildId.BuildId });
+            new { PluginSlug = slugString, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
 
         // Remove pre-release
         await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
 
         // Listed should be visible
-        await conn.SetPluginSettings(slug, null, "listed");
+        await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Listed);
         await tester.GoToUrl("/public/plugins");
         await tester.Page!.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']");
         Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
 
         // Plugin public page should be visible
-        await tester.GoToUrl($"/public/plugins/{slug}");
+        await tester.GoToUrl($"/public/plugins/{slugString}");
         var contentListed = await tester.Page.ContentAsync();
-        Assert.Contains(slug, contentListed, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(slugString, contentListed, StringComparison.OrdinalIgnoreCase);
 
         // Unlisted shouldn't be visible
-        await conn.SetPluginSettings(slug, null, "unlisted");
+        await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Unlisted);
         await tester.GoToUrl("/public/plugins");
         await tester.Page.ReloadAsync();
         Assert.False(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
@@ -60,7 +63,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
 
         // Hidden shouldn't appear
-        await conn.SetPluginSettings(slug, null, "hidden");
+        await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Hidden);
         await tester.GoToUrl("/public/plugins");
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync("rockstar");
         await tester.Page.Keyboard.PressAsync("Enter");
@@ -79,8 +82,93 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
             "SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"Email\" = @Email", new { Email = email });
         await conn.AddUserPlugin(slug, userId);
 
-        await tester.GoToUrl($"/public/plugins/{slug}");
+        await tester.GoToUrl($"/public/plugins/{slugString}");
         var hiddenAlert = tester.Page.Locator("#hidden-plugin-alert");
         Assert.True(await hiddenAlert.IsVisibleAsync());
+
+        //sort tests
+        await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Listed);
+        var reviewer1 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer1@x.com");
+        var reviewer2 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer2@x.com");
+        var reviewer3 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer3@x.com");
+        var reviewer4 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer4@x.com");
+        var reviewer5 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer5@x.com");
+        var reviewer6 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer6@x.com");
+
+        var popularSlug = new PluginSlug("public-directory-popular");
+        var popularSlugString = popularSlug.ToString();
+        var popularBuild = await tester.Server.CreateAndBuildPluginAsync(ownerId, popularSlugString);
+        var popularManifestJson = await conn.QuerySingleAsync<string>("SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
+            new { PluginSlug = popularSlugString, popularBuild.BuildId });
+        var popularManifest = PluginManifest.Parse(popularManifestJson);
+        await conn.SetVersionBuild(popularBuild, popularManifest.Version, popularManifest.BTCPayMinVersion, false);
+        await conn.SetPluginSettings(popularSlug, null, PluginVisibilityEnum.Listed);
+
+        // 2) sort=alpha
+        const string updateTitleSql = """
+            UPDATE plugins
+            SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('pluginTitle', @title)
+            WHERE slug = @slug
+            """;
+        await conn.ExecuteAsync(updateTitleSql, new { slug = slugString, title = "Bob Plugin" });
+        await conn.ExecuteAsync(updateTitleSql, new { slug = popularSlugString, title = "Alice Plugin" });
+        var (rockstarAlpha, popularAlpha) = await GetIndexesAsync("?sort=alpha");
+        Assert.True(popularAlpha < rockstarAlpha, "Expected 'Alice Plugin' to appear before 'Bob Plugin' in alpha sort.");
+
+        // 3) sort=rating
+        const string insertReviewSql = "INSERT INTO plugin_reviews (plugin_slug, user_id, rating) VALUES (@slug, @userId, @rating)";
+        await conn.ExecuteAsync(insertReviewSql, new { slug = slugString, userId = reviewer1, rating = 5 });
+        var (rockstarRating, popularRating) = await GetIndexesAsync("?sort=rating");
+        Assert.True(rockstarRating < popularRating, "Expected plugin with rating to appear before plugin without rating in rating sort.");
+
+        // 4) sort=recent
+        var (rockstarRecent, popularRecent) = await GetIndexesAsync("?sort=recent");
+        Assert.True(popularRecent < rockstarRecent, "Expected newer plugin to appear first in recent sort.");
+
+        // 5) sort=smart
+        await conn.ExecuteAsync(insertReviewSql, new { slug = slugString, userId = reviewer2, rating = 5 });
+        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer1, rating = 5 });
+        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer2, rating = 5 });
+        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer3, rating = 5 });
+        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer4, rating = 5 });
+        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer5, rating = 5 });
+        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer6, rating = 5 });
+        var (rockstarSmart, popularSmart) = await GetIndexesAsync("?sort=smart");
+        Assert.True(popularSmart < rockstarSmart, "Expected plugin with many reviews to appear first in smart sort.");
+
+        const string setBuildDateSql = """
+                                       UPDATE builds
+                                       SET created_at = @date
+                                       WHERE plugin_slug = @slug AND id = @buildId
+                                       """;
+        var oldDate = DateTimeOffset.UtcNow.AddDays(-60);
+        await conn.ExecuteAsync(setBuildDateSql, new { slug = popularSlugString, buildId = popularBuild.BuildId, date = oldDate });
+        var (rockstarSmart2, popularSmart2) = await GetIndexesAsync("?sort=smart");
+        Assert.True(rockstarSmart2 < popularSmart2, "Expected the newer to appear first in smart sort.");
+
+        return;
+
+        async Task<(int rockstarIndex, int popularIndex)> GetIndexesAsync(string query)
+        {
+            await tester.GoToUrl("/public/plugins" + query);
+
+            var links = tester.Page.Locator(".plugin-card a[href^='/public/plugins/']");
+            var count = await links.CountAsync();
+            Assert.True(count >= 2, "Expected at least 2 plugins in directory.");
+
+            var rockstarIndex = -1;
+            var popularIndex = -1;
+
+            for (var i = 0; i < count; i++)
+            {
+                var href = await links.Nth(i).GetAttributeAsync("href");
+                if (href == $"/public/plugins/{slugString}") rockstarIndex = i;
+                else if (href == $"/public/plugins/{popularSlugString}") popularIndex = i;
+            }
+            Assert.True(rockstarIndex >= 0, $"{slugString} not found.");
+            Assert.True(popularIndex >= 0, $"{popularSlugString} not found.");
+
+            return (rockstarIndex, popularIndex);
+        }
     }
 }
