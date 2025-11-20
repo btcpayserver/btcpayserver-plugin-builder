@@ -634,10 +634,10 @@ public class AdminController(
     public async Task<IActionResult> ListingRequests(string? status = null)
     {
         await using var conn = await connectionFactory.Open();
-        
+
         var statusFilter = status?.ToLowerInvariant() ?? "pending";
         var sql = """
-            SELECT 
+            SELECT
                 lr.id AS "Id",
                 lr.plugin_slug AS "PluginSlug",
                 lr.status AS "Status",
@@ -650,13 +650,13 @@ public class AdminController(
             LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner = true
             LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
             WHERE (@status = 'all' OR lr.status = @status)
-            ORDER BY 
+            ORDER BY
                 CASE WHEN lr.status = 'pending' THEN 0 ELSE 1 END,
                 lr.submitted_at DESC
             """;
 
         var requests = await conn.QueryAsync<ListingRequestItemViewModel>(sql, new { status = statusFilter });
-        
+
         var vm = new ListingRequestsViewModel
         {
             Requests = requests.ToList(),
@@ -670,7 +670,7 @@ public class AdminController(
     public async Task<IActionResult> ListingRequestDetail(int requestId)
     {
         await using var conn = await connectionFactory.Open();
-        
+
         var request = await conn.GetListingRequest(requestId);
         if (request == null)
             return NotFound();
@@ -678,7 +678,7 @@ public class AdminController(
         var plugin = await conn.GetPluginDetails(new PluginSlug(request.PluginSlug));
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
         var owners = await conn.GetPluginOwners(new PluginSlug(request.PluginSlug));
-        
+
         var ownerVerifications = new List<OwnerVerificationViewModel>();
         foreach (var owner in owners)
         {
@@ -693,8 +693,8 @@ public class AdminController(
             });
         }
 
-        var reviewedByEmail = request.ReviewedBy != null 
-            ? (await userManager.FindByIdAsync(request.ReviewedBy))?.Email 
+        var reviewedByEmail = request.ReviewedBy != null
+            ? (await userManager.FindByIdAsync(request.ReviewedBy))?.Email
             : null;
 
         var vm = new ListingRequestDetailViewModel
@@ -727,7 +727,7 @@ public class AdminController(
     public async Task<IActionResult> ApproveListingRequest(int requestId)
     {
         await using var conn = await connectionFactory.Open();
-        
+
         var request = await conn.GetListingRequest(requestId);
         if (request == null)
             return NotFound();
@@ -739,16 +739,16 @@ public class AdminController(
         }
 
         var userId = userManager.GetUserId(User)!;
-        
+
         // Approve the request
         await conn.ApproveListingRequest(requestId, userId);
-        
+
         // Set plugin visibility to listed
-        await conn.SetPluginSettings(new PluginSlug(request.PluginSlug), null, "listed");
-        
+        await conn.SetPluginSettings(new PluginSlug(request.PluginSlug), null, PluginVisibilityEnum.Listed);
+
         // Clear cache
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
-        
+
         TempData[TempDataConstant.SuccessMessage] = $"Plugin '{request.PluginSlug}' has been approved and is now listed";
         return RedirectToAction(nameof(ListingRequests));
     }
@@ -758,7 +758,7 @@ public class AdminController(
     public async Task<IActionResult> RejectListingRequest(int requestId, string rejectionReason)
     {
         await using var conn = await connectionFactory.Open();
-        
+
         var request = await conn.GetListingRequest(requestId);
         if (request == null)
             return NotFound();
@@ -776,10 +776,10 @@ public class AdminController(
         }
 
         var userId = userManager.GetUserId(User)!;
-        
+
         // Reject the request
         await conn.RejectListingRequest(requestId, userId, rejectionReason.Trim());
-        
+
         TempData[TempDataConstant.SuccessMessage] = $"Plugin listing request for '{request.PluginSlug}' has been rejected";
         return RedirectToAction(nameof(ListingRequests));
     }

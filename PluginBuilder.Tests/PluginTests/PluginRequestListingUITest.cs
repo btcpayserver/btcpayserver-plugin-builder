@@ -110,7 +110,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         Assert.Equal(PluginListingRequestStatus.Pending, pendingRequest.Status);
 
         // Simulate admin approval by setting plugin to listed
-        await conn.SetPluginSettings(pluginSlug, null, "listed");
+        await conn.SetPluginSettings(pluginSlug, null, PluginVisibilityEnum.Listed);
         await t.Page!.ClickAsync("#StoreNav-Dashboard");
         var buttonCount = await t.Page.Locator("a.btn.btn-primary:has-text('Request Listing')").CountAsync();
         Assert.Equal(0, buttonCount);
