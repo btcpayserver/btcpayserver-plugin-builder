@@ -12,8 +12,8 @@
 
 <div class="mb-3">
     <div class="btn-group" role="group">
-        <a asp-action="ListingRequests" asp-route-status="pending" 
-           class="btn btn-@(Model.StatusFilter == "pending" ? "primary" : "outline-secondary")">
+		<a asp-action="ListingRequests" asp-route-status="pending"
+		   class="btn btn-@(Model.StatusFilter == "pending" ? "primary" : "outline-secondary")">
             Pending
         </a>
         <a asp-action="ListingRequests" asp-route-status="approved" 
@@ -23,7 +23,11 @@
         <a asp-action="ListingRequests" asp-route-status="rejected" 
            class="btn btn-@(Model.StatusFilter == "rejected" ? "primary" : "outline-secondary")">
             Rejected
-        </a>
+		</a>
+		<a asp-action="ListingRequests" asp-route-status="resubmitted"
+		   class="btn btn-@(Model.StatusFilter == "resubmitted" ? "primary" : "outline-secondary")">
+			Resubmitted
+		</a>
         <a asp-action="ListingRequests" asp-route-status="all" 
            class="btn btn-@(Model.StatusFilter == "all" ? "primary" : "outline-secondary")">
             All
@@ -71,8 +75,12 @@ else
                                     <span class="badge bg-success">Approved</span>
                                     break;
                                 case PluginListingRequestStatus.Rejected:
-                                    <span class="badge bg-danger">Rejected</span>
-                                    break;
+									<span class="badge bg-danger">Rejected</span>
+									break;
+								case PluginListingRequestStatus.Resubmitted:
+									<span class="badge bg-info text-dark">Resubmitted</span>
+									break;
+
                             }
                         </td>
                         <td>

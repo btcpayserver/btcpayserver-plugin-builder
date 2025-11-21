@@ -223,11 +223,12 @@ public class PluginController(
 
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
-        var pendingRequest = await conn.GetPendingListingRequestForPlugin(pluginSlug);
+        var pendingRequest = await conn.GetPendingOrRejectedListingRequestForPlugin(pluginSlug);
         model.ReleaseNote = pluginSettings?.Description;
         if (pendingRequest != null)
         {
-            model.PendingListing = true;
+            model.RejectedListing = pendingRequest.Status == PluginListingRequestStatus.Rejected;
+            model.PendingListing = pendingRequest.Status == PluginListingRequestStatus.Pending;
             model.TelegramVerificationMessage = pendingRequest.TelegramVerificationMessage;
             model.UserReviews = pendingRequest.UserReviews;
             model.ReleaseNote = pendingRequest.ReleaseNote;
@@ -263,7 +264,6 @@ public class PluginController(
         {
             ModelState.AddModelError(nameof(model.TelegramVerificationMessage), "Telegram verification message on BTCPay Server telegram (https://t.me/btcpayserver/... ) channel is required.");
         }
-
         if (string.IsNullOrWhiteSpace(model.UserReviews))
             ModelState.AddModelError(nameof(model.UserReviews), "User-reviews link is required.");
 
@@ -274,16 +274,7 @@ public class PluginController(
             model = await ListingRequirementsMet(conn, pluginSettings, owners, model);
             return View(model);
         }
-        
-        // Create listing request in database
-        await conn.CreateListingRequest(
-            pluginSlug,
-            model.ReleaseNote.Trim(),
-            model.TelegramVerificationMessage.Trim(),
-            model.UserReviews.Trim(),
-            model.AnnouncementDate
-        );
-        
+        await conn.CreateListingRequest(pluginSlug, model.ReleaseNote.Trim(), model.TelegramVerificationMessage.Trim(), model.UserReviews.Trim(), model.AnnouncementDate);
         await SendRequestListingEmail(conn, pluginSlug.ToString());
         TempData[TempDataConstant.SuccessMessage] = "Your listing request has been sent and is pending validation";
         return RedirectToAction(nameof(Dashboard), new { pluginSlug });
@@ -325,7 +316,7 @@ public class PluginController(
         if (plugin is null || plugin.Visibility != PluginVisibilityEnum.Unlisted)
             return NotFound();
 
-        var request = await conn.GetPendingListingRequestForPlugin(pluginSlug);
+        var request = await conn.GetPendingOrRejectedListingRequestForPlugin(pluginSlug);
         if (request is null)
         {
             TempData[TempDataConstant.WarningMessage] = "No listing request exist";
@@ -345,7 +336,7 @@ public class PluginController(
     private async Task SendRequestListingEmail(NpgsqlConnection conn, string pluginSlug)
     {
         var pluginPublicUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug }, Request.Scheme);
-        var listingReviewUrl = Url.Action("ListingRequests", "Admin", null, Request.Scheme);
+        var listingReviewUrl = Url.Action(nameof(AdminController.ListingRequests), "Admin", new { }, Request.Scheme);
         await emailService.NotifyAdminOnNewRequestListing(conn, pluginSlug, pluginPublicUrl!, listingReviewUrl!);
     }
 

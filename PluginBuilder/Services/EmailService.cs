@@ -5,6 +5,7 @@ using MailKit.Security;
 using MimeKit;
 using Newtonsoft.Json;
 using Npgsql;
+using Org.BouncyCastle.Asn1.X509;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels.Admin;
@@ -14,6 +15,35 @@ namespace PluginBuilder.Services;
 public class EmailService(DBConnectionFactory connectionFactory,
     AdminSettingsCache adminSettingsCache)
 {
+
+    public const string PluginApprovedTemplate = @"
+Hello Plugin Owner,
+
+Your plugin ""{0}"" has been approved and is now listed publicly.
+
+You can view it here:
+{1}
+
+Thank you for contributing to the BTCPay Server ecosystem!
+BTCPay Server Plugin Builder Team
+";
+
+    public const string PluginRejectedTemplate = @"
+Hello Plugin Owner,
+
+Your plugin ""{0}"" was reviewed, but unfortunately it has not been approved.
+
+Reason:
+{1}
+
+You may update your submission and request a another review at any time.
+
+Thank you,
+BTCPay Server Plugin Builder Team
+";
+
+
+
     public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText)
     {
         List<InternetAddress> toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
@@ -81,6 +111,30 @@ BTCPay Server Plugin Builder";
         }
         catch (Exception) { }
     }
+
+
+    public async Task NotifyPluginOwnerForRequestListingStatus(string email, string pluginTitle, bool isApproved, string reviewUrlOrReason)
+    {
+        string subject;
+        string body;
+
+        if (isApproved)
+        {
+            subject = $"{pluginTitle} Approved!";
+            body = string.Format(PluginApprovedTemplate, pluginTitle, reviewUrlOrReason);
+        }
+        else
+        {
+            subject = $"{pluginTitle} Not Approved";
+            body = string.Format(PluginRejectedTemplate, pluginTitle, reviewUrlOrReason);
+        }
+        try
+        {
+            await DeliverEmail(new[] { new MailboxAddress(email, email) }, subject, body);
+        }
+        catch (Exception) { }
+    }
+
 
     public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb()
     {
