@@ -83,7 +83,6 @@ public class HomeController(
             b.PluginSlug = row.slug;
             b.PluginIdentifier = row.identifier ?? row.slug;
         }
-
         return View("Views/Plugin/Dashboard", vm);
     }
 

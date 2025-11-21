@@ -45,22 +45,18 @@ public class DashboardController(
             ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
             return View(model);
         }
-
         await using var conn = await connectionFactory.Open();
         if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] = "You need to verify your email address in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
-
         var userId = userManager.GetUserId(User)!;
-
         if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
         {
             TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub Account in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
-
         if (!await conn.NewPlugin(pluginSlug, userId))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");

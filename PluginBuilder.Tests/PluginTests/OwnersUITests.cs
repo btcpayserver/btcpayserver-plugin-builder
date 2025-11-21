@@ -37,7 +37,7 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await Expect(t.Page!).ToHaveURLAsync(new Regex("/account/details$", RegexOptions.IgnoreCase));
         await Expect(t.Page!.Locator(".alert-warning")).ToBeVisibleAsync();
 
-        await t.VerifyEmailAndGithubAsync(userA);
+        await t.VerifyUserAccounts(userA);
         await t.GoToUrl("/plugins/create");
         await t.Page!.FillAsync("#PluginSlug", slug);
         await t.Page!.FillAsync("#PluginTitle", slug);
@@ -64,7 +64,7 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await t.Page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Add" }).ClickAsync();
         await Expect(t.Page.Locator(".alert-warning")).ToBeVisibleAsync();
 
-        await t.VerifyEmailAndGithubAsync(userB);
+        await t.VerifyUserAccounts(userB);
         await addForm.FillAsync(userB);
         await t.Page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Add" }).ClickAsync();
 

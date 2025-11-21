@@ -109,6 +109,13 @@
                                     </a>
                                 </li>
                                 <li class="nav-item">
+                                    <a asp-area="" asp-controller="Admin" asp-action="ListingRequests"
+                                       class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.ListingRequests)" id="AdminNav-ListingRequests">
+                                        <vc:icon symbol="notification" />
+                                        <span text-translate="true">Listing Requests</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
                                     <a asp-area="" asp-controller="Admin" asp-action="EmailSettings"
                                        class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.EmailSettings)" id="AdminNav-EmailSettings">
                                         <vc:icon symbol="email-settings" />
