@@ -71,8 +71,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         // Reviewer creates review
         await tester.Logout();
-        await tester.VerifyEmailAndGithubAsync(reviewerEmail);
-        await tester.VerifyEmailAndGithubAsync(voterEmail);
+        await tester.VerifyUserAccounts(reviewerEmail);
+        await tester.VerifyUserAccounts(voterEmail);
         await tester.LogIn(reviewerEmail);
         await tester.GoToUrl(url);
         await Expect(tester.Page.Locator("#reviews")).ToBeVisibleAsync();
@@ -174,7 +174,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         // Login as reviewer and create review with markdown
         string reviewerEmail = "reviewer@x.com";
-        await tester.VerifyEmailAndGithubAsync(reviewerEmail);
+        await tester.VerifyUserAccounts(reviewerEmail);
         await tester.LogIn(reviewerEmail);
         await tester.GoToUrl($"/public/plugins/{slug}");
 

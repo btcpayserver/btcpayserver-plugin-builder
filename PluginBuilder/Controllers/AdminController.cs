@@ -18,6 +18,7 @@ using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
+using static Dapper.SqlMapper;
 using static NBitcoin.WalletPolicies.MiniscriptNode;
 
 namespace PluginBuilder.Controllers;
@@ -223,37 +224,6 @@ public class AdminController(
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
     }
 
-    // SHould delete once ran successfully in prod for existing plugins with reviews    
-    [HttpPost("plugins/reviews/{routeSlug}")]
-    public async Task<IActionResult> PluginReviewRevamp(string routeSlug)
-    {
-        await using var conn = await connectionFactory.Open();
-        var pluginReviews = await conn.GetPluginReviews(routeSlug);
-        if (pluginReviews.Any())
-        {
-            foreach (var pluginReview in pluginReviews)
-            {
-                PluginReviewViewModel vm = new()
-                {
-                    Id = pluginReview.Id,
-                    PluginSlug = routeSlug,
-                    UserId = pluginReview.UserId,
-                    Rating = pluginReview.Rating,
-                    Body = pluginReview.Body,
-                    PluginVersion = pluginReview.PluginVersion,
-                    HelpfulVoters = pluginReview.HelpfulVoters,
-                    CreatedAt = pluginReview.CreatedAt,
-                    UpdatedAt = pluginReview.UpdatedAt
-                };
-                var reviewerAccountDetails = await conn.GetAccountDetailSettings(pluginReview.UserId) ?? new();
-                vm = vm.UpdatePluginReviewerData(reviewerAccountDetails);
-                await conn.SetPluginReviewerDisplayInfo(vm);
-            }
-        }
-        TempData[TempDataConstant.SuccessMessage] = "Data migrated successfully";
-        return RedirectToAction(nameof(PluginEdit), new { pluginSlug = routeSlug });
-    }
-
     [HttpGet("plugins/import-review/{pluginSlug}")]
     public IActionResult ImportReview(string pluginSlug)
     {
@@ -269,10 +239,10 @@ public class AdminController(
         return View(vm);
     }
 
+
     [HttpPost("plugins/import-review/{pluginSlug}")]
     public async Task<IActionResult> ImportReview(ImportReviewViewModel model, string pluginSlug)
     {
-        string userId = string.Empty;
         if (model.Rating is < 1 or > 5 || string.IsNullOrEmpty(model.Review))
         {
             TempData[TempDataConstant.WarningMessage] = "Invalid rating specified";
@@ -293,9 +263,8 @@ public class AdminController(
         if (model.LinkExistingUser && !string.IsNullOrEmpty(model.SelectedUserId))
         {
             var linkedUser = await userManager.FindByIdAsync(model.SelectedUserId);
-            vm.UserId = linkedUser?.Id;
-            var reviewerAccountDetails = await conn.GetAccountDetailSettings(vm.UserId) ?? new();
-            vm = vm.UpdatePluginReviewerData(reviewerAccountDetails);
+            var reviewerAccountDetails = await conn.GetAccountDetailSettings(linkedUser!.Id) ?? new();
+            model = model.UpdatePluginReviewerData(reviewerAccountDetails);
         }
         if (!model.LinkExistingUser)
         {
@@ -304,21 +273,29 @@ public class AdminController(
                 TempData[TempDataConstant.WarningMessage] = "Kindly provide the reviewer profile";
                 return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
             }
-            vm.AuthorName = model.ReviewerName.Trim();
-            vm.AuthorAvatarUrl = model.ReviewerAvatarUrl;
             model.ReviewerName = model.ReviewerName.TrimStart('/').TrimEnd();
-            vm.AuthorProfileUrl = model.Source switch
+            model.SelectedUserId = null;
+            model.ReviewerProfileUrl = model.Source switch
             {
                 ImportReviewViewModel.ImportReviewSourceEnum.Nostr => $"https://primal.net/p/{model.ReviewerName}",
                 ImportReviewViewModel.ImportReviewSourceEnum.X => $"https://x.com/{model.ReviewerName}",
                 ImportReviewViewModel.ImportReviewSourceEnum.WWW => $"https://{model.ReviewerName}",
                 _ => null
             };
-            if (vm.AuthorProfileUrl == null)
+            if (model.ReviewerProfileUrl == null)
             {
                 TempData[TempDataConstant.WarningMessage] = "Invalid source selected";
                 return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
             }
+        }
+        var pluiginReviewer = await conn.GetPluginReviewer(model.SelectedUserId, model.ReviewerName);
+        if (pluiginReviewer == null)
+        {
+            vm.ReviewerId = await conn.CreatePluginReviewer(model);
+        }
+        else
+        {
+            vm.ReviewerId = pluiginReviewer.id;
         }
         await conn.UpsertPluginReview(vm);
         var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug }, Request.Scheme);

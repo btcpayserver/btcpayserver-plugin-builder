@@ -29,7 +29,7 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
         await t.GoToUrl("/register");
         var user = await t.RegisterNewUser();
         await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
-        await t.VerifyEmailAndGithubAsync(user);
+        await t.VerifyUserAccounts(user);
 
         var pluginSlug = "cb-a-" + PlaywrightTester.GetRandomUInt256()[..8];
         await t.GoToUrl("/plugins/create");
@@ -91,7 +91,7 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
         await t.GoToUrl("/register");
         var user = await t.RegisterNewUser();
         await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
-        await t.VerifyEmailAndGithubAsync(user);
+        await t.VerifyUserAccounts(user);
 
         var pluginSlug = "cb-a-" + PlaywrightTester.GetRandomUInt256()[..8];
         await t.GoToUrl("/plugins/create");

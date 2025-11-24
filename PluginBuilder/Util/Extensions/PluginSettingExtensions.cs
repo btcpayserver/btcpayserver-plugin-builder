@@ -1,5 +1,6 @@
 using PluginBuilder.DataModels;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Util.Extensions;
@@ -38,24 +39,23 @@ public static class PluginSettingExtensions
         };
     }
 
-
-    public static PluginReviewViewModel UpdatePluginReviewerData(this PluginReviewViewModel reviewModel, AccountSettings settings)
+    public static ImportReviewViewModel UpdatePluginReviewerData(this ImportReviewViewModel model, AccountSettings settings)
     {
         if (!string.IsNullOrEmpty(settings.Github))
         {
             var githubUserName = settings.Github.Trim().TrimStart('@').Trim('/');
-            reviewModel.AuthorName = githubUserName;
-            reviewModel.AuthorProfileUrl = $"https://github.com/{githubUserName}";
-            reviewModel.AuthorAvatarUrl = $"https://avatars.githubusercontent.com/{githubUserName}";
+            model.ReviewerName = githubUserName;
+            model.ReviewerProfileUrl = $"https://github.com/{githubUserName}";
+            model.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{githubUserName}";
         }
         else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
         {
             var nostr = settings.Nostr;
-            reviewModel.AuthorName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
-            reviewModel.AuthorProfileUrl = $"https://primal.net/p/{nostr.Npub}";
-            reviewModel.AuthorAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
+            model.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
+            model.ReviewerProfileUrl = $"https://primal.net/p/{nostr.Npub}";
+            model.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
                                     (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
         }
-        return reviewModel;
+        return model;
     }
 }

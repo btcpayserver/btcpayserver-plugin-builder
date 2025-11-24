@@ -20,5 +20,6 @@ public class ImportReviewViewModel
     public string? SelectedUserId { get; set; }
     public string? ReviewerName { get; set; }
     public string? ReviewerAvatarUrl { get; set; }
+    public string? ReviewerProfileUrl { get; set; }
     public List<SelectListItem>? ExistingUsers { get; set; }
 }
