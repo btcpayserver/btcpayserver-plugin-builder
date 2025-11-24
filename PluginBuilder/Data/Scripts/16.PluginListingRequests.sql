@@ -7,7 +7,7 @@ CREATE TABLE plugin_listing_requests
     telegram_verification_message TEXT       NOT NULL,
     user_reviews                 TEXT        NOT NULL,
     announcement_date            TIMESTAMPTZ,
-    status                       TEXT        NOT NULL DEFAULT 'pending', -- pending, approved, rejected, resubmitted
+    status                       TEXT        NOT NULL DEFAULT 'pending', -- pending, approved, rejected
     submitted_at                 TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     reviewed_at                  TIMESTAMPTZ,
     reviewed_by                  TEXT, -- admin user id

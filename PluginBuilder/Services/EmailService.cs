@@ -13,7 +13,8 @@ using PluginBuilder.ViewModels.Admin;
 namespace PluginBuilder.Services;
 
 public class EmailService(DBConnectionFactory connectionFactory,
-    AdminSettingsCache adminSettingsCache)
+    AdminSettingsCache adminSettingsCache,
+    ILogger<EmailService> logger)
 {
 
     public const string PluginApprovedTemplate = @"
@@ -132,7 +133,15 @@ BTCPay Server Plugin Builder";
         {
             await DeliverEmail(new[] { new MailboxAddress(email, email) }, subject, body);
         }
-        catch (Exception) { }
+        catch (InvalidOperationException)
+        {
+            logger.LogInformation("Email settings not configured. Plugin owner {Email} will not receive {EmailSubject} email", email, subject);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "ERROR prevent us sending email notification to {Email} for {EmailSubject} email. Exception: {ex}",
+                email, pluginTitle, ex);
+        }
     }
 
 

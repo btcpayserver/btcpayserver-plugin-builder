@@ -19,6 +19,5 @@ public enum PluginListingRequestStatus
 {
     Pending,
     Approved,
-    Rejected,
-    Resubmitted
+    Rejected
 }

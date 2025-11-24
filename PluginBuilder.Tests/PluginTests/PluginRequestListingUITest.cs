@@ -102,7 +102,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await Expect(t.Page.Locator(".alert-warning")).ToContainTextAsync("Your listing request has been sent and is pending validation");
 
         // Verify the listing request was created in the database
-        var pendingRequest = await conn.GetPendingOrRejectedListingRequestForPlugin(pluginSlug);
+        var pendingRequest = await conn.GetPendingListingRequestForPlugin(pluginSlug);
         Assert.NotNull(pendingRequest);
         Assert.Equal("Testing release note entry", pendingRequest.ReleaseNote);
         Assert.Equal("https://t.me/btcpayserver/1234", pendingRequest.TelegramVerificationMessage);

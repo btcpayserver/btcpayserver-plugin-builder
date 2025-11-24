@@ -229,24 +229,30 @@ public class PluginController(
 
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
-        var pendingRequest = await conn.GetPendingOrRejectedListingRequestForPlugin(pluginSlug);
+        var pendingRequest = await conn.GetPendingListingRequestForPlugin(pluginSlug);
+        var rejectedRequest = await conn.GetLatestRejectedListingRequestForPlugin(pluginSlug);
+        
         model.ReleaseNote = pluginSettings?.Description;
+        model.HasPreviousRejection = rejectedRequest != null;
+        
         if (pendingRequest != null)
         {
-            model.RejectedListing = pendingRequest.Status == PluginListingRequestStatus.Rejected;
-            model.PendingListing = pendingRequest.Status == PluginListingRequestStatus.Pending;
+            model.PendingListing = true;
             model.TelegramVerificationMessage = pendingRequest.TelegramVerificationMessage;
             model.UserReviews = pendingRequest.UserReviews;
             model.ReleaseNote = pendingRequest.ReleaseNote;
             model.AnnouncementDate = pendingRequest.AnnouncementDate;
             var now = DateTimeOffset.UtcNow;
             model.CanSendEmailReminder = now >= pendingRequest.SubmittedAt.AddDays(1);
-            TempData[TempDataConstant.WarningMessage] = pendingRequest.Status switch
-            {
-                PluginListingRequestStatus.Pending => "Your listing request has been sent and is pending validation",
-                PluginListingRequestStatus.Rejected => "Your listing request was not approved. Please review the feedback and resubmit when ready.",
-                _ => "Your listing request is under review"
-            };
+            TempData[TempDataConstant.WarningMessage] = "Your listing request has been sent and is pending validation";
+        }
+        else if (rejectedRequest != null)
+        {
+            // Pre-fill form with data from the latest rejected request
+            model.TelegramVerificationMessage = rejectedRequest.TelegramVerificationMessage;
+            model.UserReviews = rejectedRequest.UserReviews;
+            model.ReleaseNote = rejectedRequest.ReleaseNote;
+            model.AnnouncementDate = rejectedRequest.AnnouncementDate;
         }
         model = await ListingRequirementsMet(conn, pluginSettings, pluginOwners, model);
         return View(model);
@@ -332,7 +338,7 @@ public class PluginController(
         if (plugin is null || plugin.Visibility != PluginVisibilityEnum.Unlisted)
             return NotFound();
 
-        var request = await conn.GetPendingOrRejectedListingRequestForPlugin(pluginSlug);
+        var request = await conn.GetPendingListingRequestForPlugin(pluginSlug);
         if (request is null)
         {
             TempData[TempDataConstant.WarningMessage] = "No listing request exist";

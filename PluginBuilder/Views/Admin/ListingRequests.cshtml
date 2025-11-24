@@ -24,10 +24,6 @@
            class="btn btn-@(Model.StatusFilter == "rejected" ? "primary" : "outline-secondary")">
             Rejected
 		</a>
-		<a asp-action="ListingRequests" asp-route-status="resubmitted"
-		   class="btn btn-@(Model.StatusFilter == "resubmitted" ? "primary" : "outline-secondary")">
-			Resubmitted
-		</a>
         <a asp-action="ListingRequests" asp-route-status="all" 
            class="btn btn-@(Model.StatusFilter == "all" ? "primary" : "outline-secondary")">
             All
@@ -77,10 +73,6 @@ else
                                 case PluginListingRequestStatus.Rejected:
 									<span class="badge bg-danger">Rejected</span>
 									break;
-								case PluginListingRequestStatus.Resubmitted:
-									<span class="badge bg-info text-dark">Resubmitted</span>
-									break;
-
                             }
                         </td>
                         <td>

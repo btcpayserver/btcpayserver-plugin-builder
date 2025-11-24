@@ -723,7 +723,7 @@ public class AdminController(
         var request = await conn.GetListingRequest(requestId);
         if (request == null) return NotFound();
 
-        if (request.Status is not PluginListingRequestStatus.Pending and not PluginListingRequestStatus.Resubmitted)
+        if (request.Status != PluginListingRequestStatus.Pending)
         {
             TempData[TempDataConstant.WarningMessage] = "This request has already been processed";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
@@ -745,10 +745,13 @@ public class AdminController(
         }
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
-        if (primaryOwner != null)
+        if (primaryOwner != null && !string.IsNullOrEmpty(primaryOwner.Email))
         {
             var pluginPublicUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug }, Request.Scheme);
-            await emailService.NotifyPluginOwnerForRequestListingStatus(primaryOwner.Email, existingSettings.PluginTitle, true, pluginPublicUrl);
+            if (pluginPublicUrl != null)
+            {
+                await emailService.NotifyPluginOwnerForRequestListingStatus(primaryOwner.Email, existingSettings?.PluginTitle ?? pluginSlug.ToString(), true, pluginPublicUrl);
+            }
         }
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = $"Plugin '{request.PluginSlug}' has been approved and is now listed";
@@ -763,7 +766,7 @@ public class AdminController(
         var request = await conn.GetListingRequest(requestId);
         if (request == null) return NotFound();
 
-        if (request.Status is not PluginListingRequestStatus.Pending and not PluginListingRequestStatus.Resubmitted)
+        if (request.Status != PluginListingRequestStatus.Pending)
         {
             TempData[TempDataConstant.WarningMessage] = "This request has already been processed";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
@@ -784,9 +787,9 @@ public class AdminController(
         var existingSettings = await conn.GetSettings(pluginSlug);
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
-        if (primaryOwner != null)
+        if (primaryOwner != null && !string.IsNullOrEmpty(primaryOwner.Email))
         {
-            await emailService.NotifyPluginOwnerForRequestListingStatus(primaryOwner.Email, existingSettings.PluginTitle, false, rejectionReason);
+            await emailService.NotifyPluginOwnerForRequestListingStatus(primaryOwner.Email, existingSettings?.PluginTitle ?? pluginSlug.ToString(), false, rejectionReason);
         }
         TempData[TempDataConstant.SuccessMessage] = $"Plugin listing request for '{request.PluginSlug}' has been rejected";
         return RedirectToAction(nameof(ListingRequests));

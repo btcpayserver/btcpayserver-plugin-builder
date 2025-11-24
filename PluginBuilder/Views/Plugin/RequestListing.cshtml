@@ -3,12 +3,12 @@
 @{
 	Layout = "_Layout";
 	ViewData.SetActivePage(PluginNavPages.Dashboard, "Plugin Listing Request");
-	bool step3Completed = Model.PendingListing && !Model.RejectedListing;
+	bool step3Completed = Model.PendingListing;
 	bool step1Completed = Model.Step != RequestListingViewModel.State.UpdatePluginSettings;
 	bool step2Completed = Model.Step != RequestListingViewModel.State.UpdateOwnerAccountSettings && Model.Step != RequestListingViewModel.State.UpdatePluginSettings;
 	bool step1Expanded = !step1Completed;
 	bool step2Expanded = step1Completed && !step2Completed;
-	bool step3Expanded = (step1Completed && step2Completed && !step3Completed) || Model.RejectedListing;
+	bool step3Expanded = step1Completed && step2Completed && !step3Completed;
 }
 
 <div class="d-flex align-items-center justify-content-between mb-4">
@@ -18,8 +18,8 @@
     @if (!Model.PendingListing)
     {
         <div class="d-flex gap-3 mt-3 mt-sm-0">
-			<button type="submit" form="request-listing-form" class="btn btn-success" @(Model.Step == RequestListingViewModel.State.Done || Model.RejectedListing ? "" : "disabled")>
-				@(Model.RejectedListing ? "Re-submit" : "Submit")
+			<button type="submit" form="request-listing-form" class="btn btn-success" @(Model.Step == RequestListingViewModel.State.Done ? "" : "disabled")>
+				@(Model.HasPreviousRejection ? "Re-submit" : "Submit")
 			</button>
         </div>
     }
