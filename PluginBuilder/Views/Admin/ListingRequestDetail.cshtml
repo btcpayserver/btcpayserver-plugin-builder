@@ -48,13 +48,13 @@
                 </div>
                 <div class="row mb-3">
                     <div class="col-sm-4 fw-semibold">Submitted:</div>
-                    <div class="col-sm-8">@Model.SubmittedAt.ToString("yyyy-MM-dd HH:mm:ss UTC")</div>
+                    <div class="col-sm-8">@Model.SubmittedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss UTC")</div>
                 </div>
                 @if (Model.ReviewedAt.HasValue)
                 {
                     <div class="row mb-3">
                         <div class="col-sm-4 fw-semibold">Reviewed:</div>
-                        <div class="col-sm-8">@Model.ReviewedAt.Value.ToString("yyyy-MM-dd HH:mm:ss UTC")</div>
+                        <div class="col-sm-8">@Model.ReviewedAt.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss UTC")</div>
                     </div>
                     <div class="row mb-3">
                         <div class="col-sm-4 fw-semibold">Reviewed By:</div>
@@ -74,7 +74,7 @@
                 {
                     <div class="row">
                         <div class="col-sm-4 fw-semibold">Announcement Date:</div>
-                        <div class="col-sm-8">@Model.AnnouncementDate.Value.ToString("yyyy-MM-dd HH:mm UTC")</div>
+                        <div class="col-sm-8">@Model.AnnouncementDate.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm UTC")</div>
                     </div>
                 }
             </div>
