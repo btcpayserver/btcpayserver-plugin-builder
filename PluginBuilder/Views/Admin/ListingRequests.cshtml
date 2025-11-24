@@ -1,0 +1,103 @@
+@using PluginBuilder.DataModels
+@model ListingRequestsViewModel
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage(AdminNavPages.ListingRequests);
+    ViewData["Title"] = "Plugin Listing Requests";
+}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <h2 class="mb-0">@ViewData["Title"]</h2>
+</div>
+
+<div class="mb-3">
+    <div class="btn-group" role="group">
+		<a asp-action="ListingRequests" asp-route-status="pending"
+		   class="btn btn-@(Model.StatusFilter == "pending" ? "primary" : "outline-secondary")">
+            Pending
+        </a>
+        <a asp-action="ListingRequests" asp-route-status="approved" 
+           class="btn btn-@(Model.StatusFilter == "approved" ? "primary" : "outline-secondary")">
+            Approved
+        </a>
+        <a asp-action="ListingRequests" asp-route-status="rejected" 
+           class="btn btn-@(Model.StatusFilter == "rejected" ? "primary" : "outline-secondary")">
+            Rejected
+		</a>
+        <a asp-action="ListingRequests" asp-route-status="all" 
+           class="btn btn-@(Model.StatusFilter == "all" ? "primary" : "outline-secondary")">
+            All
+        </a>
+    </div>
+</div>
+
+@if (!Model.Requests.Any())
+{
+    <div class="alert alert-info">
+        No @(Model.StatusFilter == "all" ? "" : Model.StatusFilter) listing requests found.
+    </div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Plugin</th>
+                    <th>Owner</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th>Announcement Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var request in Model.Requests)
+                {
+                    <tr>
+                        <td>
+                            <strong>@(request.PluginTitle ?? request.PluginSlug)</strong>
+                            <br />
+                            <small class="text-muted">@request.PluginSlug</small>
+                        </td>
+                        <td>@request.PrimaryOwnerEmail</td>
+                        <td>
+                            @switch (request.Status)
+                            {
+                                case PluginListingRequestStatus.Pending:
+                                    <span class="badge bg-warning">Pending</span>
+                                    break;
+                                case PluginListingRequestStatus.Approved:
+                                    <span class="badge bg-success">Approved</span>
+                                    break;
+                                case PluginListingRequestStatus.Rejected:
+									<span class="badge bg-danger">Rejected</span>
+									break;
+                            }
+                        </td>
+                        <td>
+                            <span title="@request.SubmittedAt.ToString("yyyy-MM-dd HH:mm:ss")">
+                                @((DateTimeOffset.UtcNow - request.SubmittedAt).ToTimeAgo())
+                            </span>
+                        </td>
+                        <td>
+                            @if (request.AnnouncementDate.HasValue)
+                            {
+                                @request.AnnouncementDate.Value.ToString("yyyy-MM-dd HH:mm")
+                            }
+                            else
+                            {
+                                <span class="text-muted">None</span>
+                            }
+                        </td>
+                        <td>
+                            <a asp-action="ListingRequestDetail" asp-route-requestId="@request.Id" class="btn btn-sm btn-primary">
+                                View Details
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

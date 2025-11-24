@@ -33,7 +33,7 @@ public class AccountController(
         if (needToVerifyEmail)
         {
             var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
-            var link = Url.Action("ConfirmEmail", "Home", new { uid = user.Id, token },
+            var link = Url.Action(nameof(HomeController.ConfirmEmail), "Home", new { uid = user.Id, token },
                 Request.Scheme, Request.Host.ToString())!;
 
             await emailService.SendVerifyEmail(user.Email!, link);

@@ -5,6 +5,7 @@ using MailKit.Security;
 using MimeKit;
 using Newtonsoft.Json;
 using Npgsql;
+using Org.BouncyCastle.Asn1.X509;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels.Admin;
@@ -12,8 +13,38 @@ using PluginBuilder.ViewModels.Admin;
 namespace PluginBuilder.Services;
 
 public class EmailService(DBConnectionFactory connectionFactory,
-    AdminSettingsCache adminSettingsCache)
+    AdminSettingsCache adminSettingsCache,
+    ILogger<EmailService> logger)
 {
+
+    public const string PluginApprovedTemplate = @"
+Hello Plugin Owner,
+
+Your plugin ""{0}"" has been approved and is now listed publicly.
+
+You can view it here:
+{1}
+
+Thank you for contributing to the BTCPay Server ecosystem!
+BTCPay Server Plugin Builder Team
+";
+
+    public const string PluginRejectedTemplate = @"
+Hello Plugin Owner,
+
+Your plugin ""{0}"" was reviewed, but unfortunately it has not been approved.
+
+Reason:
+{1}
+
+You may update your submission and request a another review at any time.
+
+Thank you,
+BTCPay Server Plugin Builder Team
+";
+
+
+
     public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText)
     {
         List<InternetAddress> toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
@@ -55,30 +86,64 @@ public class EmailService(DBConnectionFactory connectionFactory,
         return SendEmail(toEmail, "Verify your account on BTCPay Server Plugin Builder", body);
     }
 
-    public async Task NotifyAdminOnNewPluginBuild(NpgsqlConnection conn, PluginSlug pluginSlug, string pluginPluginUrl)
+    public async Task NotifyAdminOnNewRequestListing(NpgsqlConnection conn, PluginSlug pluginSlug, string pluginPublicUrl, string listingPageUrl)
     {
         var notificationSettingEmails = await conn.GetFirstPluginBuildReviewersSetting();
-        var currId = await conn.GetLatestPluginBuildNumber(pluginSlug);
-        if (string.IsNullOrEmpty(notificationSettingEmails) || currId != 0) return;
+        if (string.IsNullOrEmpty(notificationSettingEmails))
+            return;
 
         var toList = notificationSettingEmails.Split(",", StringSplitOptions.RemoveEmptyEntries).Select(MailboxAddressValidator.Parse);
         var body = $@"
 Hello Admin,
 
-A new plugin has just been published on the BTCPay Server Plugin Builder.
+A new plugin has just been published on the BTCPay Server Plugin Builder and is requesting lisitng to public page.
 
-Plugin URL: {pluginPluginUrl}
+Plugin URL: {pluginPublicUrl}
 
-Please review and verify the plugin details as soon as possible.
+Listing Page: {listingPageUrl}
+
+Please review and list the plugin details as soon as possible.
 
 Thank you,
 BTCPay Server Plugin Builder";
         try
         {
-            await DeliverEmail(toList, "New Plugin Published on BTCPay Server Plugin Builder", body);
+            await DeliverEmail(toList, "New Plugin Request Listing on BTCPay Server Plugin Builder", body);
         }
-        catch (Exception) {}
+        catch (Exception) { }
     }
+
+
+    public async Task NotifyPluginOwnerForRequestListingStatus(string email, string pluginTitle, bool isApproved, string reviewUrlOrReason)
+    {
+        string subject;
+        string body;
+
+        if (isApproved)
+        {
+            subject = $"{pluginTitle} Approved!";
+            body = string.Format(PluginApprovedTemplate, pluginTitle, reviewUrlOrReason);
+        }
+        else
+        {
+            subject = $"{pluginTitle} Not Approved";
+            body = string.Format(PluginRejectedTemplate, pluginTitle, reviewUrlOrReason);
+        }
+        try
+        {
+            await DeliverEmail(new[] { new MailboxAddress(email, email) }, subject, body);
+        }
+        catch (InvalidOperationException)
+        {
+            logger.LogInformation("Email settings not configured. Plugin owner {Email} will not receive {EmailSubject} email", email, subject);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "ERROR prevent us sending email notification to {Email} for {EmailSubject} email. Exception: {ex}",
+                email, pluginTitle, ex);
+        }
+    }
+
 
     public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb()
     {

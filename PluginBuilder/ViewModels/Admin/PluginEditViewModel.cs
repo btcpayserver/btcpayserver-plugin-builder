@@ -8,10 +8,10 @@ public class PluginViewModel
 {
     public string PluginSlug { get; set; } = null!;
     [ValidateNever]
-    public string Identifier { get; set; } = null!;
+    public string? Identifier { get; set; }
 
     [ValidateNever]
-    public string Settings { get; set; } = null!;
+    public string? Settings { get; set; }
     public PluginVisibilityEnum Visibility { get; set; }
 }
 
