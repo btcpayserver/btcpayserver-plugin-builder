@@ -729,5 +729,14 @@ public static class NpgsqlConnectionExtensions
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
 
+    public static async Task<int> GetPendingListingRequestsCount(this NpgsqlConnection connection)
+    {
+        const string sql = """
+            SELECT COUNT(*) FROM plugin_listing_requests WHERE status = 'pending'
+            """;
+        
+        return await connection.ExecuteScalarAsync<int>(sql);
+    }
+
     #endregion
 }
