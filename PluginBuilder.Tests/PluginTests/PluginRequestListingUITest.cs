@@ -151,8 +151,8 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await Expect(row).ToBeVisibleAsync();
         await Expect(row.Locator(".badge.bg-warning:text('Pending')")).ToBeVisibleAsync();
 
-        // Click to view details
-        await t.Page.ClickAsync("a.btn.btn-sm.btn-primary:text('View Details')");
+        // Click to view details - scoped to the specific row
+        await row.Locator("a.btn.btn-sm.btn-primary:text('View Details')").ClickAsync();
         await Expect(t.Page).ToHaveURLAsync(new Regex($".*/admin/listing-requests/{requestId}", RegexOptions.IgnoreCase));
 
         // Verify request details are displayed

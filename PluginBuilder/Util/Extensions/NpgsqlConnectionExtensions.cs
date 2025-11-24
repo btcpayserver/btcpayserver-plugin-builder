@@ -678,7 +678,7 @@ public static class NpgsqlConnectionExtensions
     {
         const string sql = """
             UPDATE plugin_listing_requests SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy
-            WHERE id = @requestId AND status = 'pending'
+            WHERE id = @requestId AND status IN ('pending', 'resubmitted')
             """;
         
         var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy });
@@ -690,7 +690,7 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
             UPDATE plugin_listing_requests
             SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy, rejection_reason = @rejectionReason
-            WHERE id = @requestId AND status = 'pending'
+            WHERE id = @requestId AND status IN ('pending', 'resubmitted')
             """;
         
         var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy, rejectionReason });
@@ -700,7 +700,7 @@ public static class NpgsqlConnectionExtensions
     public static async Task<bool> HasPendingListingRequest(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         const string sql = """
-            SELECT EXISTS(SELECT 1 FROM plugin_listing_requests WHERE plugin_slug = @pluginSlug AND status = 'pending')
+            SELECT EXISTS(SELECT 1 FROM plugin_listing_requests WHERE plugin_slug = @pluginSlug AND status IN ('pending', 'resubmitted'))
             """;
         
         return await connection.ExecuteScalarAsync<bool>(sql, new { pluginSlug = pluginSlug.ToString() });

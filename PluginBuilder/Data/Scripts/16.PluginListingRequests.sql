@@ -7,7 +7,7 @@ CREATE TABLE plugin_listing_requests
     telegram_verification_message TEXT       NOT NULL,
     user_reviews                 TEXT        NOT NULL,
     announcement_date            TIMESTAMPTZ,
-    status                       TEXT        NOT NULL DEFAULT 'pending', -- pending, approved, rejected
+    status                       TEXT        NOT NULL DEFAULT 'pending', -- pending, approved, rejected, resubmitted
     submitted_at                 TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     reviewed_at                  TIMESTAMPTZ,
     reviewed_by                  TEXT, -- admin user id
@@ -27,8 +27,19 @@ SELECT
     settings->'requestListing'->>'releaseNote',
     settings->'requestListing'->>'telegramVerificationMessage',
     settings->'requestListing'->>'userReviews',
-    (settings->'requestListing'->>'announcementDate')::timestamptz,
-    (settings->'requestListing'->>'dateAdded')::timestamptz,
+    CASE 
+        WHEN settings->'requestListing'->>'announcementDate' IS NOT NULL 
+        THEN (settings->'requestListing'->>'announcementDate')::timestamptz 
+        ELSE NULL 
+    END,
+    COALESCE(
+        CASE 
+            WHEN settings->'requestListing'->>'dateAdded' IS NOT NULL 
+            THEN (settings->'requestListing'->>'dateAdded')::timestamptz 
+            ELSE NULL 
+        END,
+        CURRENT_TIMESTAMP
+    ),
     'pending'
 FROM plugins
 WHERE settings->'requestListing' IS NOT NULL

@@ -10,7 +10,7 @@
     <h2 class="mb-0">@ViewData["Title"]</h2>
     <div class="d-flex gap-2">
         <a asp-action="ListingRequests" class="btn btn-secondary">Back to List</a>
-        @if (Model.Status == PluginListingRequestStatus.Pending)
+        @if (Model.Status == PluginListingRequestStatus.Pending || Model.Status == PluginListingRequestStatus.Resubmitted)
         {
             <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveModal">
                 Approve
@@ -42,6 +42,9 @@
                                 break;
                             case PluginListingRequestStatus.Rejected:
                                 <span class="badge bg-danger">Rejected</span>
+                                break;
+                            case PluginListingRequestStatus.Resubmitted:
+                                <span class="badge bg-info">Resubmitted</span>
                                 break;
                         }
                     </div>

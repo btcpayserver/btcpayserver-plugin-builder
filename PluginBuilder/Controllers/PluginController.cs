@@ -214,15 +214,17 @@ public class PluginController(
         var model = new RequestListingViewModel { PluginSlug = pluginSlug.ToString() };
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.GetPluginDetails(pluginSlug);
+        if (plugin is null)
+            return NotFound();
 
-        if (plugin?.Visibility == PluginVisibilityEnum.Listed)
+        if (plugin.Visibility == PluginVisibilityEnum.Listed)
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
 
-        if (plugin?.Visibility == PluginVisibilityEnum.Hidden)
+        if (plugin.Visibility == PluginVisibilityEnum.Hidden)
             return NotFound();
 
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
-        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
+        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
         var pendingRequest = await conn.GetPendingOrRejectedListingRequestForPlugin(pluginSlug);
         model.ReleaseNote = pluginSettings?.Description;
         if (pendingRequest != null)
@@ -235,7 +237,12 @@ public class PluginController(
             model.AnnouncementDate = pendingRequest.AnnouncementDate;
             var now = DateTimeOffset.UtcNow;
             model.CanSendEmailReminder = now >= pendingRequest.SubmittedAt.AddDays(1);
-            TempData[TempDataConstant.WarningMessage] = "Your listing request has been sent and is pending validation";
+            TempData[TempDataConstant.WarningMessage] = pendingRequest.Status switch
+            {
+                PluginListingRequestStatus.Pending => "Your listing request has been sent and is pending validation",
+                PluginListingRequestStatus.Rejected => "Your listing request was not approved. Please review the feedback and resubmit when ready.",
+                _ => "Your listing request is under review"
+            };
         }
         model = await ListingRequirementsMet(conn, pluginSettings, pluginOwners, model);
         return View(model);
@@ -248,11 +255,14 @@ public class PluginController(
     {
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.GetPluginDetails(pluginSlug);
-        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
-        if (plugin?.Visibility == PluginVisibilityEnum.Hidden)
+        if (plugin is null)
+            return NotFound();
+            
+        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
+        if (plugin.Visibility == PluginVisibilityEnum.Hidden)
             return NotFound();
 
-        if (plugin?.Visibility == PluginVisibilityEnum.Listed)
+        if (plugin.Visibility == PluginVisibilityEnum.Listed)
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
 
         if (string.IsNullOrWhiteSpace(model.ReleaseNote))
