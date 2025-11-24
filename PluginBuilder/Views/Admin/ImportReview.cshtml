@@ -17,8 +17,17 @@
 		<form id="import-review-form" asp-action="ImportReview" method="post">
 			<input asp-for="PluginSlug" type="hidden" />
 			<div class="form-group">
-				<label asp-for="SourceUrl" class="form-label" data-required>Review Source URL</label>
-				<input asp-for="SourceUrl" class="form-control" required />
+				<label asp-for="Review" class="form-label" data-required></label>
+				<textarea asp-for="Review" class="form-control" rows="4" required></textarea>
+			</div>
+			<div class="form-group">
+				<label asp-for="Rating" class="form-label">Rating</label>
+				<input asp-for="Rating" type="range" min="1" max="5" class="form-range" />
+				<div class="form-text">Selected: <span id="starLabel">5</span> ⭐</div>
+			</div>
+			<div class="form-group">
+				<label asp-for="SourceUrl" class="form-label">Review Source URL</label>
+				<input asp-for="SourceUrl" class="form-control" />
 			</div>
 			<div class="form-group d-flex align-items-center">
 				<input class="btcpay-toggle me-2" type="checkbox" asp-for="LinkExistingUser">
@@ -44,15 +53,6 @@
 					<label asp-for="ReviewerAvatarUrl" class="form-label">Profile Photo URL</label>
 					<input asp-for="ReviewerAvatarUrl" class="form-control" />
 				</div>
-			</div>
-			<div class="form-group">
-				<label asp-for="Review" class="form-label" data-required></label>
-				<textarea asp-for="Review" class="form-control" rows="4" required></textarea>
-			</div>
-			<div class="form-group">
-				<label asp-for="Rating" class="form-label">Rating</label>
-				<input asp-for="Rating" type="range" min="1" max="5" class="form-range" />
-				<div class="form-text">Selected: <span id="starLabel">5</span> ⭐</div>
 			</div>
 		</form>
 	</div>

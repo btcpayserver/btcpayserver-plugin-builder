@@ -288,16 +288,9 @@ public class AdminController(
                 return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
             }
         }
-        var pluiginReviewer = await conn.GetPluginReviewer(model.SelectedUserId, model.ReviewerName);
-        if (pluiginReviewer == null)
-        {
-            vm.ReviewerId = await conn.CreatePluginReviewer(model);
-        }
-        else
-        {
-            vm.ReviewerId = pluiginReviewer.id;
-        }
+        vm.ReviewerId = await conn.CreateOrUpdatePluginReviewer(model);
         await conn.UpsertPluginReview(vm);
+
         var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug }, Request.Scheme);
         TempData[TempDataConstant.SuccessMessage] = $"Review submitted successfully. Follow the link to the plugin detail to view: {url}";
         return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });

@@ -628,15 +628,52 @@ public static class NpgsqlConnectionExtensions
         });
     }
 
+    public static async Task<long> CreateOrUpdatePluginReviewer(this NpgsqlConnection connection, ImportReviewViewModel reviewModel)
+    {
+        const string sql = """
+            WITH existing AS (
+                SELECT id FROM plugin_reviewers
+                WHERE (user_id = @user_id AND @user_id IS NOT NULL)
+                   OR (source = @source AND username = @username AND @username IS NOT NULL)
+                LIMIT 1
+            ),
+            inserted AS (
+                INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
+                SELECT @user_id, @username, @source, @profile_url, @avatar_url, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                WHERE NOT EXISTS (SELECT 1 FROM existing)
+                RETURNING id
+            ),
+            updated AS (
+                UPDATE plugin_reviewers p
+                SET username = @username, source = @source, profile_url = @profile_url, avatar_url = @avatar_url, updated_at = CURRENT_TIMESTAMP
+                FROM existing WHERE p.id = existing.id
+                RETURNING p.id
+            )
+            SELECT id FROM inserted
+            UNION ALL
+            SELECT id FROM updated
+            LIMIT 1;
+            """;
+
+        return await connection.ExecuteScalarAsync<long>(sql, new
+        {
+            user_id = reviewModel.SelectedUserId,
+            username = reviewModel.ReviewerName,
+            source = reviewModel.LinkExistingUser ? "system" : reviewModel.Source.ToString().ToLower(),
+            profile_url = reviewModel.ReviewerProfileUrl,
+            avatar_url = reviewModel.ReviewerAvatarUrl
+        });
+    }
+
     public static async Task<PluginReviewerViewModel?> GetPluginReviewer(this NpgsqlConnection connection, string? userId, string? username)
     {
         const string sql = """
-        SELECT id, user_id, username, source, profile_url, avatar_url
-        FROM   plugin_reviewers
-        WHERE  (user_id = @userId OR @userId IS NULL) AND (username = @username OR @username IS NULL)
-        ORDER  BY user_id NULLS LAST
-        LIMIT  1
-        """;
+            SELECT id, user_id, username, source, profile_url, avatar_url
+            FROM   plugin_reviewers
+            WHERE  (user_id = @userId OR @userId IS NULL) AND (username = @username OR @username IS NULL)
+            ORDER  BY user_id NULLS LAST
+            LIMIT  1
+            """;
         return await connection.QueryFirstOrDefaultAsync<PluginReviewerViewModel?>(sql, new { userId, username });
     }
 

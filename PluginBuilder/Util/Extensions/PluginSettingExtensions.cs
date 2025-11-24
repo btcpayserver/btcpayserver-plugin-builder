@@ -45,17 +45,42 @@ public static class PluginSettingExtensions
         {
             var githubUserName = settings.Github.Trim().TrimStart('@').Trim('/');
             model.ReviewerName = githubUserName;
-            model.ReviewerProfileUrl = $"https://github.com/{githubUserName}";
-            model.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{githubUserName}";
+            model.ReviewerProfileUrl = $"https://github.com/{Uri.EscapeDataString(githubUserName)}";
+            model.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{Uri.EscapeDataString(githubUserName)}?s=48";
         }
         else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
         {
             var nostr = settings.Nostr;
             model.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
-            model.ReviewerProfileUrl = $"https://primal.net/p/{nostr.Npub}";
+            model.ReviewerProfileUrl = $"https://primal.net/p/{Uri.EscapeDataString(nostr.Npub)}";
             model.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
                                     (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
         }
         return model;
+    }
+
+    public static ImportReviewViewModel UpdatePluginReviewerData(this PluginReviewViewModel model, AccountSettings settings, string userId)
+    {
+        ImportReviewViewModel importReviewModel = new()
+        {
+            SelectedUserId = userId,
+            LinkExistingUser = true,
+        };
+        if (!string.IsNullOrEmpty(settings.Github))
+        {
+            var githubUserName = settings.Github.Trim().TrimStart('@').Trim('/');
+            importReviewModel.ReviewerName = githubUserName;
+            importReviewModel.ReviewerProfileUrl = $"https://github.com/{Uri.EscapeDataString(githubUserName)}";
+            importReviewModel.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{Uri.EscapeDataString(githubUserName)}?s=48";
+        }
+        else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
+        {
+            var nostr = settings.Nostr;
+            importReviewModel.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
+            importReviewModel.ReviewerProfileUrl = $"https://primal.net/p/{Uri.EscapeDataString(nostr.Npub)}";
+            importReviewModel.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
+                                    (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
+        }
+        return importReviewModel;
     }
 }
