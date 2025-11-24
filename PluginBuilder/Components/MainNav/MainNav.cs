@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Services;
+using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Components.MainNav;
@@ -22,9 +23,11 @@ public class MainNav : ViewComponent
     {
         var pluginSlug = ViewContext.HttpContext.GetPluginSlug();
         MainNavViewModel vm = new() { PluginSlug = pluginSlug?.ToString() };
+
+        using var conn = await ConnectionFactory.Open();
+
         if (pluginSlug != null)
         {
-            using var conn = await ConnectionFactory.Open();
             var rows = await conn.QueryAsync<(int[] ver, bool pre_release)>(
                 "SELECT ver, pre_release FROM users_plugins up " +
                 "JOIN versions v USING (plugin_slug) " +
@@ -39,6 +42,12 @@ public class MainNav : ViewComponent
                     Published = true,
                     HidePublishBadge = true
                 });
+        }
+
+        // Only load pending count for admins to avoid burdening database
+        if (UserClaimsPrincipal.IsInRole(Roles.ServerAdmin))
+        {
+            vm.PendingListingRequestsCount = await conn.GetPendingListingRequestsCount();
         }
 
         return View(vm);

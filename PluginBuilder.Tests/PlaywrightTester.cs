@@ -1,15 +1,17 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
+using Newtonsoft.Json;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
+using PluginBuilder.Util;
 using Xunit;
 
 namespace PluginBuilder.Tests;
@@ -139,13 +141,13 @@ public class PlaywrightTester : IAsyncDisposable
         await Page.ClickAsync("#LoginButton");
     }
 
-    public async Task VerifyEmailAndGithubAsync(string email)
+    public async Task VerifyUserAccounts(string email)
     {
         await using var scope = Server.WebApp.Services.CreateAsyncScope();
         var factory = scope.ServiceProvider.GetRequiredService<DBConnectionFactory>();
-        var settings = new AccountSettings { Nostr = new NostrSettings { Npub = "nostrNpub", Proof = "nostrProof" }, Github = "Test" };
         await using var conn = await factory.Open();
 
+        var settings = new AccountSettings { Nostr = new NostrSettings { Npub = "nostrNpub", Proof = "nostrProof" } };
         await conn.ExecuteAsync(
             """
             UPDATE "AspNetUsers"
@@ -154,6 +156,23 @@ public class PlaywrightTester : IAsyncDisposable
                       "AccountDetail" = @AccountDetail::jsonb
                   WHERE "Email" = @Email;
             """,
-            new { Email = email, AccountDetail = JsonSerializer.Serialize(settings) });
+            new { Email = email, AccountDetail = JsonConvert.SerializeObject(settings, CamelCaseSerializerSettings.Instance) });
+    }
+
+    public void CreateTestImage(string path)
+    {
+        byte[] pngData = new byte[]
+        {
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 
+            0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+            0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 
+            0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+            0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+            0x42, 0x60, 0x82
+        };
+        File.WriteAllBytes(path, pngData);
     }
 }
