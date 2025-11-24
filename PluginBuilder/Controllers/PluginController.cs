@@ -62,14 +62,18 @@ public class PluginController(
         if (settingViewModel is null)
             return NotFound();
 
-        if (string.IsNullOrEmpty(settingViewModel.GitRepository) || !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out _))
+        if (string.IsNullOrEmpty(settingViewModel.GitRepository) ||
+            !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out var gitRepoUri) ||
+            gitRepoUri.Scheme != Uri.UriSchemeHttps)
         {
-            ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository is required and should be an absolute URL");
+            ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository is required and must be an HTTPS URL");
             return View(settingViewModel);
         }
-        if (!string.IsNullOrEmpty(settingViewModel.Documentation) && !Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out _))
+        if (!string.IsNullOrEmpty(settingViewModel.Documentation) &&
+            (!Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out var docUri) ||
+             docUri.Scheme != Uri.UriSchemeHttps))
         {
-            ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation should be an absolute URL");
+            ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation must be an HTTPS URL");
             return View(settingViewModel);
         }
         var userId = userManager.GetUserId(User);
@@ -257,7 +261,7 @@ public class PluginController(
         var plugin = await conn.GetPluginDetails(pluginSlug);
         if (plugin is null)
             return NotFound();
-            
+
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
         if (plugin.Visibility == PluginVisibilityEnum.Hidden)
             return NotFound();
@@ -275,7 +279,9 @@ public class PluginController(
             ModelState.AddModelError(nameof(model.TelegramVerificationMessage), "Telegram verification message on BTCPay Server telegram (https://t.me/btcpayserver/... ) channel is required.");
         }
         if (string.IsNullOrWhiteSpace(model.UserReviews))
-            ModelState.AddModelError(nameof(model.UserReviews), "User-reviews link is required.");
+        {
+            ModelState.AddModelError(nameof(model.UserReviews), "User-reviews link is required and must be an HTTPS URL.");
+        }
 
         if (!ModelState.IsValid)
         {
