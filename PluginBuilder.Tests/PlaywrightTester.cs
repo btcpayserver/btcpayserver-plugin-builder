@@ -141,13 +141,13 @@ public class PlaywrightTester : IAsyncDisposable
         await Page.ClickAsync("#LoginButton");
     }
 
-    public async Task VerifyUserAccounts(string email)
+    public async Task VerifyUserAccounts(string email, string npub = "nostrNpub")
     {
         await using var scope = Server.WebApp.Services.CreateAsyncScope();
         var factory = scope.ServiceProvider.GetRequiredService<DBConnectionFactory>();
         await using var conn = await factory.Open();
 
-        var settings = new AccountSettings { Nostr = new NostrSettings { Npub = "nostrNpub", Proof = "nostrProof" } };
+        var settings = new AccountSettings { Nostr = new NostrSettings { Npub = npub, Proof = "nostrProof" } };
         await conn.ExecuteAsync(
             """
             UPDATE "AspNetUsers"

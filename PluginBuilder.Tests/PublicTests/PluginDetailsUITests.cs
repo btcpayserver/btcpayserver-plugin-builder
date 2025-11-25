@@ -23,8 +23,9 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         string reviewerEmail = "reviewer@x.com";
         string voterEmail = "voter@x.com";
+        string ownerEmail = "owner@x.com";
         // plugin + 3 users (owner, reviewer, voter)
-        var ownerId = await tester.Server.CreateFakeUserAsync(email: "owner@x.com", confirmEmail: true, githubVerified: true);
+        var ownerId = await tester.Server.CreateFakeUserAsync(email: ownerEmail, confirmEmail: true, githubVerified: true);
         const string slug = ServerTester.PluginSlug;
         await tester.Server.CreateAndBuildPluginAsync(ownerId, slug: slug);
 
@@ -43,15 +44,15 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
             }, ownerId);
         }
 
-        await tester.Server.CreateFakeUserAsync(email: "reviewer@x.com", confirmEmail: true, githubVerified: true);
-        await tester.Server.CreateFakeUserAsync(email: "voter@x.com",    confirmEmail: true, githubVerified: true);
+        await tester.Server.CreateFakeUserAsync(email: reviewerEmail, confirmEmail: true, githubVerified: true);
+        await tester.Server.CreateFakeUserAsync(email: voterEmail, confirmEmail: true, githubVerified: true);
+        await tester.VerifyUserAccounts(reviewerEmail, "reviewerNpub");
+        await tester.VerifyUserAccounts(voterEmail, "voterNpub");
 
         const string url = $"/public/plugins/{slug}";
 
         //Plugin owners can't create review
-        await tester.LogIn("owner@x.com");
-
-
+        await tester.LogIn(ownerEmail);
         await tester.GoToUrl(url);
         Assert.NotNull(tester.Page);
         await Expect(tester.Page.Locator("#owner-cannot-review")).ToBeVisibleAsync();
@@ -71,8 +72,6 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         // Reviewer creates review
         await tester.Logout();
-        await tester.VerifyUserAccounts(reviewerEmail);
-        await tester.VerifyUserAccounts(voterEmail);
         await tester.LogIn(reviewerEmail);
         await tester.GoToUrl(url);
         await Expect(tester.Page.Locator("#reviews")).ToBeVisibleAsync();
@@ -140,6 +139,9 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.Page.FillAsync("textarea[name='Body']", "scam");
         await tester.Page.Locator("#review-form").GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Submit" }).ClickAsync();
         await tester.Page.WaitForURLAsync(new Regex("public/plugins/.+?#reviews"));
+
+
+        await tester.GoToUrl(url);
 
         //check if filter works
         await tester.Page.ClickAsync("a[href*='RatingFilter=4'][href*='#reviews']");

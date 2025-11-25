@@ -114,19 +114,6 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         Assert.True(popularAlpha < rockstarAlpha, "Expected 'Alice Plugin' to appear before 'Bob Plugin' in alpha sort.");
 
         // 3) sort=rating
-
-        var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId);
-        PluginReviewViewModel reviewViewModel = new()
-        {
-            PluginSlug = slugString,
-            UserId = userId,
-            Rating = 5,
-            Body = "A good one"
-        };
-        reviewViewModel.ReviewerId = await conn.CreateOrUpdatePluginReviewer(reviewViewModel.UpdatePluginReviewerData(reviewerAccountDetails, userId));
-        await conn.UpsertPluginReview(reviewViewModel);
-
-
         await SaveReviewData(conn, slugString, reviewer1);
         var (rockstarRating, popularRating) = await GetIndexesAsync("?sort=rating");
         Assert.True(rockstarRating < popularRating, "Expected plugin with rating to appear before plugin without rating in rating sort.");
@@ -137,10 +124,12 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 
         // 5) sort=smart
         await SaveReviewData(conn, slugString, reviewer2);
-        await SaveReviewData(conn, slugString, reviewer3);
-        await SaveReviewData(conn, slugString, reviewer4);
-        await SaveReviewData(conn, slugString, reviewer5);
-        await SaveReviewData(conn, slugString, reviewer6);
+        await SaveReviewData(conn, popularSlugString, reviewer1);
+        await SaveReviewData(conn, popularSlugString, reviewer2);
+        await SaveReviewData(conn, popularSlugString, reviewer3);
+        await SaveReviewData(conn, popularSlugString, reviewer4);
+        await SaveReviewData(conn, popularSlugString, reviewer5);
+        await SaveReviewData(conn, popularSlugString, reviewer6);
         var (rockstarSmart, popularSmart) = await GetIndexesAsync("?sort=smart");
         Assert.True(popularSmart < rockstarSmart, "Expected plugin with many reviews to appear first in smart sort.");
 
