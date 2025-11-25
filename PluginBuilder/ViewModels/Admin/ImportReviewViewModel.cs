@@ -15,7 +15,7 @@ public class ImportReviewViewModel
     public string? PluginSlug { get; set; }
     public ImportReviewSourceEnum Source { get; set; } = ImportReviewSourceEnum.Nostr;
     public string? SourceUrl { get; set; }
-    public string? Review { get; set; }
+    public string? Body { get; set; }
     public bool LinkExistingUser { get; set; } = true;
     public string? SelectedUserId { get; set; }
     public string? ReviewerName { get; set; }

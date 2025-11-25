@@ -61,7 +61,7 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
         await t.Page.ClickAsync("table tbody tr:first-child a:text-is('Edit')");
         await t.Page.ClickAsync("a.btn.btn-primary:has-text('Import Reviews')");
         await t.Page.FillAsync("#SourceUrl", "https://primal.net/e/nevent1qqswdrazgv99sp5tdrqre9ez3h6xf62u82mctp042tv8s0shaswx5kqx2trp3");
-        await t.Page.FillAsync("#Review", pluginReview);
+        await t.Page.FillAsync("#Body", pluginReview);
         await t.Page.Locator("#Rating").FillAsync("4");
         await t.Page.ClickAsync("button[type='submit'][form='import-review-form']");
         await t.AssertNoError();
@@ -123,7 +123,7 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
         await t.Page.ClickAsync("table tbody tr:first-child a:text-is('Edit')");
         await t.Page.ClickAsync("a.btn.btn-primary:has-text('Import Reviews')");
         await t.Page.FillAsync("#SourceUrl", "https://primal.net/e/nevent1qqswdrazgv99sp5tdrqre9ez3h6xf62u82mctp042tv8s0shaswx5kqx2trp3");
-        await t.Page.FillAsync("#Review", pluginReview);
+        await t.Page.FillAsync("#Body", pluginReview);
         await t.Page.Locator("#LinkExistingUser").UncheckAsync();
         await t.Page.Locator("#platformSelect").SelectOptionAsync("2");
         await t.Page.FillAsync("#ReviewerAvatarUrl", "https://avatars.githubusercontent.com/NicolasDorier");

@@ -243,21 +243,21 @@ public class AdminController(
     [HttpPost("plugins/import-review/{pluginSlug}")]
     public async Task<IActionResult> ImportReview(ImportReviewViewModel model, string pluginSlug)
     {
-        if (model.Rating is < 1 or > 5 || string.IsNullOrEmpty(model.Review))
+        if (model.Rating is < 1 or > 5 || string.IsNullOrEmpty(model.Body))
         {
-            TempData[TempDataConstant.WarningMessage] = "Invalid rating specified";
+            TempData[TempDataConstant.WarningMessage] = "Invalid rating or body specified";
             return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
         }
         if (!string.IsNullOrWhiteSpace(model.SourceUrl))
         {
-            model.Review += $"\n\n[Click here to continue reading]({model.SourceUrl})";
+            model.Body += $"\n\n[Click here to continue reading]({model.SourceUrl})";
         }
         await using var conn = await connectionFactory.Open();
         PluginReviewViewModel vm = new()
         {
             PluginSlug = pluginSlug,
             Rating = model.Rating,
-            Body = model.Review,
+            Body = model.Body,
             CreatedAt = DateTime.Now
         };
         if (model.LinkExistingUser && !string.IsNullOrEmpty(model.SelectedUserId))
