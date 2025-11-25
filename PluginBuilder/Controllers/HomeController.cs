@@ -497,10 +497,10 @@ public class HomeController(
         if (!string.IsNullOrEmpty(primaryOwnerId))
         {
             var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId) ?? new AccountSettings();
-            
+
             if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
             {
-                var safeHandle = Uri.EscapeDataString(ownerSettings.Github.Trim());
+                var safeHandle = GetGithubHandle(ownerSettings.Github);
                 ownerGithubUrl = $"https://github.com/{safeHandle}";
             }
 
