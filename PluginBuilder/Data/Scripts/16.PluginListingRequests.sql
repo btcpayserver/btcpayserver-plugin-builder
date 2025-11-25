@@ -28,13 +28,13 @@ SELECT
     settings->'requestListing'->>'telegramVerificationMessage',
     settings->'requestListing'->>'userReviews',
     CASE 
-        WHEN NULLIF(settings->'requestListing'->>'announcementDate', '') IS NOT NULL 
+        WHEN NULLIF(TRIM(settings->'requestListing'->>'announcementDate'), '') IS NOT NULL
         THEN (settings->'requestListing'->>'announcementDate')::timestamptz 
         ELSE NULL 
     END,
     COALESCE(
         CASE 
-            WHEN NULLIF(settings->'requestListing'->>'dateAdded', '') IS NOT NULL 
+            WHEN NULLIF(TRIM(settings->'requestListing'->>'dateAdded'), '') IS NOT NULL
             THEN (settings->'requestListing'->>'dateAdded')::timestamptz 
             ELSE NULL 
         END,
