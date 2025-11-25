@@ -501,7 +501,8 @@ public class HomeController(
             if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
             {
                 var safeHandle = GetGithubHandle(ownerSettings.Github);
-                ownerGithubUrl = $"https://github.com/{safeHandle}";
+                if (!string.IsNullOrWhiteSpace(safeHandle))
+                    ownerGithubUrl = $"https://github.com/{safeHandle}";
             }
 
             if (!string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub))
