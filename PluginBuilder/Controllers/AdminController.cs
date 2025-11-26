@@ -256,7 +256,7 @@ public class AdminController(
             PluginSlug = pluginSlug,
             Rating = model.Rating,
             Body = model.Body,
-            CreatedAt = DateTime.Now
+            CreatedAt = DateTime.UtcNow
         };
         if (model.LinkExistingUser && !string.IsNullOrEmpty(model.SelectedUserId))
         {

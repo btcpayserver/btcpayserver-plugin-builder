@@ -126,7 +126,6 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
         await t.Page.FillAsync("#Body", pluginReview);
         await t.Page.Locator("#LinkExistingUser").UncheckAsync();
         await t.Page.Locator("#platformSelect").SelectOptionAsync("2");
-        await t.Page.FillAsync("#ReviewerAvatarUrl", "https://avatars.githubusercontent.com/NicolasDorier");
         await t.Page.FillAsync("#ReviewerName", "NicolasDorier");
         await t.Page.ClickAsync("button[type='submit'][form='import-review-form']");
         await t.AssertNoError();
