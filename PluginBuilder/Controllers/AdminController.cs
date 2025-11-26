@@ -1,4 +1,3 @@
-using System;
 using System.Security.Claims;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
@@ -7,7 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.OutputCaching;
 using Npgsql;
-using PluginBuilder.APIModels;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
@@ -19,7 +17,6 @@ using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
 using static Dapper.SqlMapper;
-using static NBitcoin.WalletPolicies.MiniscriptNode;
 
 namespace PluginBuilder.Controllers;
 
@@ -31,6 +28,7 @@ public class AdminController(
     DBConnectionFactory connectionFactory,
     AzureStorageClient azureStorageClient,
     EmailService emailService,
+    NostrService nostrService,
     AdminSettingsCache adminSettingsCache,
     ReferrerNavigationService referrerNavigation,
     PluginBuilderOptions pbOptions,
@@ -266,6 +264,7 @@ public class AdminController(
             var reviewerAccountDetails = await conn.GetAccountDetailSettings(linkedUser!.Id) ?? new();
             model = model.UpdatePluginReviewerData(reviewerAccountDetails);
         }
+
         if (!model.LinkExistingUser)
         {
             if (string.IsNullOrEmpty(model.ReviewerName))
@@ -275,13 +274,33 @@ public class AdminController(
             }
             model.ReviewerName = model.ReviewerName.TrimStart('/').TrimEnd();
             model.SelectedUserId = null;
-            model.ReviewerProfileUrl = model.Source switch
+            switch (model.Source)
             {
-                ImportReviewViewModel.ImportReviewSourceEnum.Nostr => $"https://primal.net/p/{model.ReviewerName}",
-                ImportReviewViewModel.ImportReviewSourceEnum.X => $"https://x.com/{model.ReviewerName}",
-                ImportReviewViewModel.ImportReviewSourceEnum.WWW => $"https://{model.ReviewerName}",
-                _ => null
-            };
+                case ImportReviewViewModel.ImportReviewSourceEnum.Nostr:
+                    model.ReviewerProfileUrl = $"https://primal.net/p/{model.ReviewerName}";
+                    model.ReviewerAvatarUrl = await GetNostrProfilePictureUsingNpub(model.ReviewerName);
+                    break;
+
+                case ImportReviewViewModel.ImportReviewSourceEnum.X:
+                    model.ReviewerProfileUrl = $"https://x.com/{model.ReviewerName}";
+                    model.ReviewerAvatarUrl = $"https://unavatar.io/x/{model.ReviewerName}";
+                    break;
+
+                case ImportReviewViewModel.ImportReviewSourceEnum.WWW:
+                    model.ReviewerProfileUrl = $"https://{model.ReviewerName}";
+                    model.ReviewerAvatarUrl = null;
+                    break;
+
+                case ImportReviewViewModel.ImportReviewSourceEnum.Github:
+                    model.ReviewerProfileUrl = $"https://github.com/{model.ReviewerName}";
+                    model.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{model.ReviewerName}";
+                    break;
+
+                default:
+                    model.ReviewerProfileUrl = null;
+                    model.ReviewerAvatarUrl = null;
+                    break;
+            }
             if (model.ReviewerProfileUrl == null)
             {
                 TempData[TempDataConstant.WarningMessage] = "Invalid source selected";
@@ -294,6 +313,12 @@ public class AdminController(
         var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug }, Request.Scheme);
         TempData[TempDataConstant.SuccessMessage] = $"Review submitted successfully. Follow the link to the plugin detail to view: {url}";
         return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+    }
+
+    private async Task<string> GetNostrProfilePictureUsingNpub(string npub)
+    {
+        var profile = await nostrService.GetNostrProfileByAuthorHexAsync(nostrService.NpubToHexPub(npub), timeoutPerRelayMs: 6000);
+        return profile?.PictureUrl ?? string.Empty;
     }
 
     [HttpPost("plugins/{pluginSlug}/ownership")]
