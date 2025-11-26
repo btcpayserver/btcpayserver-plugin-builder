@@ -317,8 +317,15 @@ public class AdminController(
 
     private async Task<string> GetNostrProfilePictureUsingNpub(string npub)
     {
-        var profile = await nostrService.GetNostrProfileByAuthorHexAsync(nostrService.NpubToHexPub(npub), timeoutPerRelayMs: 6000);
-        return profile?.PictureUrl ?? string.Empty;
+        try
+        {
+            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(nostrService.NpubToHexPub(npub), timeoutPerRelayMs: 6000);
+            return profile?.PictureUrl ?? string.Empty;
+        }
+        catch (Exception)
+        {
+            return string.Empty;
+        }
     }
 
     [HttpPost("plugins/{pluginSlug}/ownership")]
