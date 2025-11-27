@@ -131,7 +131,7 @@ BTCPay Server Plugin Builder";
         }
         try
         {
-            await DeliverEmail(new[] { new MailboxAddress(email, email) }, subject, body);
+            await DeliverEmail(new[] { MailboxAddressValidator.Parse(email) }, subject, body);
         }
         catch (InvalidOperationException)
         {
@@ -139,8 +139,7 @@ BTCPay Server Plugin Builder";
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "ERROR prevent us sending email notification to {Email} for {EmailSubject} email. Exception: {ex}",
-                email, pluginTitle, ex);
+            logger.LogError(ex, "ERROR prevent us sending email notification to {Email} for {EmailSubject} email", email, subject);
         }
     }
 

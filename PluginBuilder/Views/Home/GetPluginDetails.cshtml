@@ -1,7 +1,5 @@
-@using Microsoft.AspNetCore.Mvc.TagHelpers
 @using Newtonsoft.Json.Linq
 @using PluginBuilder.APIModels
-@using PluginBuilder.Components.Icon
 @using PluginBuilder.Controllers
 @using PluginBuilder.DataModels
 @model PluginDetailsViewModel
@@ -58,25 +56,49 @@
                         <h1 class="display-6 mb-1">@Model.Plugin.PluginTitle</h1>
                         @if (!string.IsNullOrWhiteSpace(owner))
                         {
-                            <span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a>
+                            <span class="d-inline-flex align-items-center flex-wrap">
+                                by<a href="@Model.OwnerGithubUrl"
+                                     rel="noreferrer noopener"
+                                     target="_blank"
+                                     class="ms-1">@owner</a>
 
-                               @if (!string.IsNullOrWhiteSpace(Model.OwnerGithubUrl))
-                                {
-                                    <a href="@Model.OwnerGithubUrl" rel="noreferrer noopener" target="_blank">
-                                        <img src="~/img/github.svg" alt="GitHub Verified" title="GitHub Verified" class="verified-icon" />
-                                    </a>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(Model.OwnerNostrUrl))
-                                {
-                                    <a href="@Model.OwnerNostrUrl" rel="noreferrer noopener" target="_blank">
-                                        <img src="~/img/nostr.svg" alt="Nostr Verified" title="Nostr Verified" class="verified-icon" />
-                                    </a>
-                                }
+                                <span class="d-inline-flex align-items-center gap-2 ms-2 mb-1">
+                                    @if (!string.IsNullOrWhiteSpace(Model.OwnerGithubUrl))
+                                    {
+                                        <a id="github-verified-icon" href="@Model.OwnerGithubUrl"
+                                           rel="noreferrer noopener"
+                                           target="_blank"
+                                           class="d-inline-flex align-items-center text-reset"
+                                           aria-label="Github profile">
+                                            <span class="icon">
+                                                <vc:icon symbol="github" />
+                                            </span>
+                                        </a>
+                                    }
+
+
+                                    @if (!string.IsNullOrWhiteSpace(Model.OwnerNostrUrl))
+                                    {
+                                        <a id="nostr-verified-icon" href="@Model.OwnerNostrUrl"
+                                           rel="noreferrer noopener"
+                                           target="_blank"
+                                           class="d-inline-flex align-items-center text-reset"
+                                           aria-label="Nostr profile">
+                                            <span class="icon">
+                                                <vc:icon symbol="nostr" />
+                                            </span>
+                                        </a>
+                                    }
+                                </span>
                             </span>
                         }
                     </div>
-                    <a asp-action="Download" asp-controller="Api" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-version="@Model.Plugin.Version"
-                       class="btn btn-primary ms-auto" target="_blank" rel="noopener noreferrer">Download</a>
+                    <a asp-action="Download" asp-controller="Api"
+                       asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                       asp-route-version="@Model.Plugin.Version"
+                       class="btn btn-primary ms-auto"
+                       target="_blank"
+                       rel="noopener noreferrer">Download</a>
                 </div>
             </div>
         </div>
@@ -277,10 +299,16 @@
                                             else
                                             {
                                                 <!-- Upvote -->
-                                                <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                                                      asp-route-id="@review.Id" asp-route-isHelpful="true" class="test-upvote-form d-inline">
+                                                <form method="post"
+                                                      asp-action="VoteReview"
+                                                      asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                                                      asp-route-id="@review.Id"
+                                                      asp-route-isHelpful="true"
+                                                      class="test-upvote-form d-inline">
                                                     @Html.AntiForgeryToken()
-                                                    <button type="submit" class="@upClass" aria-label="Mark this review as helpful">
+                                                    <button type="submit"
+                                                            class="@upClass"
+                                                            aria-label="Mark this review as helpful">
                                                         <vc:icon symbol="thumb-up" />
                                                         <span class="small ms-1">@review.UpCount</span>
                                                     </button>
@@ -402,7 +430,7 @@
                                             </div>
                                         </div>
                                     </div>
-									<partial name="_MarkdownToolbarTextArea" model="@("Body")" />
+									<partial name="_MarkdownToolbarTextArea" model="@("reviewBody")" />
                                     <button class="btn btn-primary mt-3">Submit</button>
                                 </form>
                                 }
@@ -554,10 +582,4 @@
 
     .btn.vote-up.text-success:hover   { color: var(--btcpay-neutral-600, #6c757d) !important; }
     .btn.vote-down.text-danger:hover  { color: var(--btcpay-neutral-600, #6c757d) !important; }
-
-    .verified-icon {
-        height: var(--btcpay-font-size-l);
-        vertical-align: middle;
-        margin-left: var(--btcpay-space-s);
-    }
 </style>
