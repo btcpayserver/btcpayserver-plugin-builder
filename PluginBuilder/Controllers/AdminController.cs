@@ -282,6 +282,11 @@ public class AdminController(
                     model.ReviewerAvatarUrl = nostrProfile.ProfilePhotoUrl;
                     break;
 
+                case ImportReviewViewModel.ImportReviewSourceEnum.WWW:
+                    model.ReviewerProfileUrl = $"https://{model.ReviewerName}";
+                    model.ReviewerAvatarUrl = null;
+                    break;
+
                 case ImportReviewViewModel.ImportReviewSourceEnum.X:
                     model.ReviewerProfileUrl = $"https://x.com/{model.ReviewerName}";
                     model.ReviewerAvatarUrl = $"https://unavatar.io/x/{model.ReviewerName}";
