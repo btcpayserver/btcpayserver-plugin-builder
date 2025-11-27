@@ -497,11 +497,12 @@ public class HomeController(
         if (!string.IsNullOrEmpty(primaryOwnerId))
         {
             var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId) ?? new AccountSettings();
-            
+
             if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
             {
-                var safeHandle = Uri.EscapeDataString(ownerSettings.Github.Trim());
-                ownerGithubUrl = $"https://github.com/{safeHandle}";
+                var safeHandle = GetGithubHandle(ownerSettings.Github);
+                if (!string.IsNullOrWhiteSpace(safeHandle))
+                    ownerGithubUrl = $"https://github.com/{safeHandle}";
             }
 
             if (!string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub))

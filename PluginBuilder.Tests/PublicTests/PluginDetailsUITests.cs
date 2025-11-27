@@ -54,17 +54,15 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await Expect(tester.Page.Locator("#owner-cannot-review")).ToBeVisibleAsync();
 
         // Verify social verification icons are displayed
-        var githubIcon = tester.Page.Locator("a[href*='github.com/rockstardev'] img[src*='github.svg']");
+        var githubVerified = tester.Page.Locator("#github-verified-icon");
+        await Expect(githubVerified).ToHaveAttributeAsync("href", new Regex("github.com/rockstardev", RegexOptions.IgnoreCase));
+        var githubIcon = githubVerified.Locator("svg.icon-github");
         await Expect(githubIcon).ToBeVisibleAsync();
-        await Expect(githubIcon).ToHaveAttributeAsync("alt", "GitHub Verified");
 
-        var nostrIcon = tester.Page.Locator("a[href*='primal.net/p/npub1rockstar123'] img[src*='nostr.svg']");
+        var nostrVerified = tester.Page.Locator("#nostr-verified-icon");
+        await Expect(nostrVerified).ToHaveAttributeAsync("href", new Regex("primal.net/p/npub1rockstar123", RegexOptions.IgnoreCase));
+        var nostrIcon = nostrVerified.Locator("svg.icon-nostr");
         await Expect(nostrIcon).ToBeVisibleAsync();
-        await Expect(nostrIcon).ToHaveAttributeAsync("alt", "Nostr Verified");
-
-        var xIcon = tester.Page.Locator("a[href*='x.com/r0ckstardev'] img[src*='x.svg']");
-        await Expect(xIcon).ToBeVisibleAsync();
-        await Expect(xIcon).ToHaveAttributeAsync("alt", "X Verified");
 
         // Reviewer creates review
         await tester.Logout();
