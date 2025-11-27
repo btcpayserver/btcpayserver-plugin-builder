@@ -278,10 +278,8 @@ public class AdminController(
             {
                 case ImportReviewViewModel.ImportReviewSourceEnum.Nostr:
                     var nostrProfile = await GetNostrProfileUsingNpub(model.ReviewerName);
-                    /*model.ReviewerProfileUrl = $"https://primal.net/p/{model.ReviewerName}";
-                    model.ReviewerAvatarUrl = await GetNostrProfilePictureUsingNpub(model.ReviewerName);*/
+                    model.ReviewerProfileUrl = $"https://primal.net/p/{model.ReviewerName}";
                     model.ReviewerAvatarUrl = nostrProfile.ProfilePhotoUrl;
-                    model.ReviewerProfileUrl = !string.IsNullOrEmpty(nostrProfile.ProfileName) ? $"https://primal.net/p/{model.ReviewerName}" : null;
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.X:
