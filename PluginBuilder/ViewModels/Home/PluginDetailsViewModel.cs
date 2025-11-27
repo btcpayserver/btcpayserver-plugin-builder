@@ -22,7 +22,6 @@ public sealed class PluginDetailsViewModel : BasePagingViewModel
 
     public string? OwnerGithubUrl   { get; set; }
     public string? OwnerNostrUrl    { get; set; }
-    public string? OwnerTwitterUrl  { get; set; }
 }
 
 public class Review

@@ -177,12 +177,7 @@ public class PluginController(
         }
         try
         {
-            var identifier = await buildService.FetchIdentifierFromGithubCsprojAsync(
-                model.GitRepository,
-                model.GitRef,
-                model.PluginDirectory
-            );
-
+            var identifier = await buildService.FetchIdentifierFromGithubCsprojAsync(model.GitRepository, model.GitRef, model.PluginDirectory);
             var owns = await conn.EnsureIdentifierOwnership(pluginSlug, identifier);
             if (!owns)
             {

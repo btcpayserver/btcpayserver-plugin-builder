@@ -425,143 +425,6 @@ public static class NpgsqlConnectionExtensions
         }
     }
 
-    public static Task UpsertPluginReview(
-        this NpgsqlConnection connection,
-        PluginSlug pluginSlug,
-        string userId,
-        int rating,
-        string? body,
-        int[]? pluginVersion)
-    {
-        const string sql = """
-                               INSERT INTO plugin_reviews
-                                   (plugin_slug, user_id, rating, body, plugin_version, created_at, updated_at)
-                               VALUES
-                                   (
-                                     @plugin_slug,
-                                     @user_id,
-                                     @rating,
-                                     NULLIF(@body,''),
-                                     @plugin_version,
-                                     NOW(), NOW()
-                                   )
-                               ON CONFLICT (plugin_slug, user_id)
-                               DO UPDATE SET
-                                   rating         = EXCLUDED.rating,
-                                   body           = EXCLUDED.body,
-                                   plugin_version = EXCLUDED.plugin_version,
-                                   updated_at     = NOW(),
-                                   helpful_voters = CASE
-                                   WHEN (plugin_reviews.rating IS DISTINCT FROM EXCLUDED.rating)
-                                     OR (COALESCE(plugin_reviews.body,'') IS DISTINCT FROM COALESCE(EXCLUDED.body,''))
-                                   THEN '{}'::jsonb
-                                   ELSE plugin_reviews.helpful_voters
-                                   END;
-                           """;
-
-        return connection.ExecuteAsync(sql, new
-        {
-            plugin_slug    = pluginSlug.ToString(),
-            user_id        = userId,
-            rating,
-            body,
-            plugin_version = pluginVersion
-        });
-    }
-
-    public static async Task<bool> DeleteReviewAsync(
-        this NpgsqlConnection conn,
-        PluginSlug pluginSlug,
-        long reviewId,
-        string userId,
-        bool isAdmin)
-    {
-        const string sql = """
-                           DELETE FROM plugin_reviews
-                           WHERE id = @id
-                             AND plugin_slug = @slug
-                             AND ( @isAdmin OR user_id = @userId )
-                           """;
-
-        var rows = await conn.ExecuteAsync(sql, new
-        {
-            id   = reviewId,
-            slug = pluginSlug.ToString(),
-            userId,
-            isAdmin
-        });
-
-        return rows > 0;
-    }
-
-    public static Task<bool?> GetReviewHelpfulVoteAsync(
-            this NpgsqlConnection conn,
-            PluginSlug pluginSlug,
-            long reviewId,
-            string userId)
-        {
-            const string sql = """
-                               SELECT (helpful_voters ->> @userId)::boolean
-                               FROM plugin_reviews
-                               WHERE id = @id AND plugin_slug = @slug
-                               """;
-            return conn.ExecuteScalarAsync<bool?>(sql, new
-            {
-                id   = reviewId,
-                slug = pluginSlug.ToString(),
-                userId
-            });
-        }
-
-        public static async Task<bool> RemoveReviewHelpfulVoteAsync(
-            this NpgsqlConnection conn,
-            PluginSlug pluginSlug,
-            long reviewId,
-            string userId)
-        {
-            const string sql = """
-                               UPDATE plugin_reviews
-                               SET helpful_voters = helpful_voters - @userId
-                               WHERE id = @id
-                                 AND plugin_slug = @slug
-                                 AND user_id <> @userId;
-                               """;
-            var rows = await conn.ExecuteAsync(sql, new
-            {
-                id   = reviewId,
-                slug = pluginSlug.ToString(),
-                userId
-            });
-            return rows > 0;
-        }
-
-        public static async Task<bool> UpsertReviewHelpfulVoteAsync(
-            this NpgsqlConnection conn,
-            PluginSlug pluginSlug,
-            long reviewId,
-            string userId,
-            bool isHelpful)
-        {
-            const string sql = """
-                               UPDATE plugin_reviews
-                               SET helpful_voters = jsonb_set((helpful_voters),
-                                   ARRAY[@userId],
-                                   to_jsonb(@isHelpful),
-                                   true)
-                               WHERE id = @id
-                                 AND plugin_slug = @slug
-                                 AND user_id <> @userId;
-                               """;
-            var rows = await conn.ExecuteAsync(sql, new
-            {
-                id   = reviewId,
-                slug = pluginSlug.ToString(),
-                userId,
-                isHelpful
-            });
-            return rows > 0;
-        }
-
     public static async Task<bool> GetVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection)
     {
         var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedEmailForPluginPublish);
@@ -609,6 +472,213 @@ public static class NpgsqlConnectionExtensions
     }
 
     #endregion
+
+
+    #region Plugin Reviewers and reviews
+
+    public static async Task<IEnumerable<PluginReviewViewModel>> GetPluginReviews(this NpgsqlConnection connection, string pluginSlug)
+    {
+        return await connection.QueryAsync<PluginReviewViewModel>(
+            """
+            SELECT plugin_slug AS PluginSlug, user_id AS UserId, rating AS Rating, body AS Body, plugin_version AS PluginVersion, helpful_voters AS HelpfulVoters, author_username AS AuthorName,
+            author_profile_url AS AuthorProfileUrl, author_avatar_url AS AuthorAvatarUrl, created_at AS CreatedAt, updated_at AS UpdatedAt FROM plugin_reviews WHERE plugin_slug = @pluginSlug
+        """, new { pluginSlug });
+    }
+
+    public static Task UpsertPluginReview(this NpgsqlConnection connection, PluginReviewViewModel model)
+    {
+        const string sql = """
+                               INSERT INTO plugin_reviews
+                                   (plugin_slug, user_id, rating, body, plugin_version, reviewer_id, created_at, updated_at)
+                               VALUES
+                                   (@plugin_slug, @user_id, @rating, NULLIF(@body,''), @plugin_version, @reviewer_id, NOW(), NOW())
+                               ON CONFLICT (plugin_slug, reviewer_id)
+                               DO UPDATE SET
+                                   rating         = EXCLUDED.rating,
+                                   body           = EXCLUDED.body,
+                                   plugin_version = EXCLUDED.plugin_version,
+                                   updated_at     = NOW(),
+                                   helpful_voters = CASE
+                                   WHEN (plugin_reviews.rating IS DISTINCT FROM EXCLUDED.rating)
+                                     OR (COALESCE(plugin_reviews.body,'') IS DISTINCT FROM COALESCE(EXCLUDED.body,''))
+                                   THEN '{}'::jsonb
+                                   ELSE plugin_reviews.helpful_voters
+                                   END;
+                           """;
+
+        return connection.ExecuteAsync(sql, new
+        {
+            plugin_slug = model.PluginSlug,
+            user_id = model.UserId,
+            rating = model.Rating,
+            body = model.Body,
+            reviewer_id = model.ReviewerId,
+            plugin_version = model.PluginVersion
+        });
+    }
+
+    public static async Task<bool> DeleteReviewAsync(
+        this NpgsqlConnection conn,
+        PluginSlug pluginSlug,
+        long reviewId,
+        string userId,
+        bool isAdmin)
+    {
+        const string sql = """
+                           DELETE FROM plugin_reviews
+                           WHERE id = @id
+                             AND plugin_slug = @slug
+                             AND ( @isAdmin OR user_id = @userId )
+                           """;
+
+        var rows = await conn.ExecuteAsync(sql, new
+        {
+            id = reviewId,
+            slug = pluginSlug.ToString(),
+            userId,
+            isAdmin
+        });
+
+        return rows > 0;
+    }
+
+    public static Task<bool?> GetReviewHelpfulVoteAsync(
+            this NpgsqlConnection conn,
+            PluginSlug pluginSlug,
+            long reviewId,
+            string userId)
+    {
+        const string sql = """
+                               SELECT (helpful_voters ->> @userId)::boolean
+                               FROM plugin_reviews
+                               WHERE id = @id AND plugin_slug = @slug
+                               """;
+        return conn.ExecuteScalarAsync<bool?>(sql, new
+        {
+            id = reviewId,
+            slug = pluginSlug.ToString(),
+            userId
+        });
+    }
+
+    public static async Task<bool> RemoveReviewHelpfulVoteAsync(
+        this NpgsqlConnection conn,
+        PluginSlug pluginSlug,
+        long reviewId,
+        string userId)
+    {
+        const string sql = """
+                               UPDATE plugin_reviews
+                               SET helpful_voters = helpful_voters - @userId
+                               WHERE id = @id
+                                 AND plugin_slug = @slug
+                                 AND user_id <> @userId;
+                               """;
+        var rows = await conn.ExecuteAsync(sql, new
+        {
+            id = reviewId,
+            slug = pluginSlug.ToString(),
+            userId
+        });
+        return rows > 0;
+    }
+
+    public static async Task<bool> UpsertReviewHelpfulVoteAsync(
+        this NpgsqlConnection conn,
+        PluginSlug pluginSlug,
+        long reviewId,
+        string userId,
+        bool isHelpful)
+    {
+        const string sql = """
+                               UPDATE plugin_reviews
+                               SET helpful_voters = jsonb_set((helpful_voters),
+                                   ARRAY[@userId],
+                                   to_jsonb(@isHelpful),
+                                   true)
+                               WHERE id = @id
+                                 AND plugin_slug = @slug
+                                 AND user_id <> @userId;
+                               """;
+        var rows = await conn.ExecuteAsync(sql, new
+        {
+            id = reviewId,
+            slug = pluginSlug.ToString(),
+            userId,
+            isHelpful
+        });
+        return rows > 0;
+    }
+
+    public static async Task<long> CreatePluginReviewer(this NpgsqlConnection connection, ImportReviewViewModel reviewModel)
+    {
+        const string sql = """
+            INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
+            VALUES (@user_id, @username, @source, @profile_url, @avatar_url, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id
+            """;
+
+        return await connection.ExecuteScalarAsync<long>(sql, new
+        {
+            user_id = reviewModel.SelectedUserId,
+            username = reviewModel.ReviewerName,
+            source = reviewModel.LinkExistingUser ? "system" : reviewModel.Source.ToString().ToLower(),
+            profile_url = reviewModel.ReviewerProfileUrl,
+            avatar_url = reviewModel.ReviewerAvatarUrl
+        });
+    }
+
+    public static async Task<long> CreateOrUpdatePluginReviewer(this NpgsqlConnection connection, ImportReviewViewModel reviewModel)
+    {
+        const string sql = """
+            WITH existing AS (
+                SELECT id FROM plugin_reviewers
+                WHERE (user_id = @user_id AND @user_id IS NOT NULL)
+                   OR (source = @source AND username = @username AND @username IS NOT NULL)
+                LIMIT 1
+            ),
+            inserted AS (
+                INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
+                SELECT @user_id, @username, @source, @profile_url, @avatar_url, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                WHERE NOT EXISTS (SELECT 1 FROM existing)
+                RETURNING id
+            ),
+            updated AS (
+                UPDATE plugin_reviewers p
+                SET username = @username, source = @source, profile_url = @profile_url, avatar_url = @avatar_url, updated_at = CURRENT_TIMESTAMP
+                FROM existing WHERE p.id = existing.id
+                RETURNING p.id
+            )
+            SELECT id FROM inserted
+            UNION ALL
+            SELECT id FROM updated
+            LIMIT 1;
+            """;
+
+        return await connection.ExecuteScalarAsync<long>(sql, new
+        {
+            user_id = reviewModel.SelectedUserId,
+            username = reviewModel.ReviewerName,
+            source = reviewModel.LinkExistingUser ? "system" : reviewModel.Source.ToString().ToLower(),
+            profile_url = reviewModel.ReviewerProfileUrl,
+            avatar_url = reviewModel.ReviewerAvatarUrl
+        });
+    }
+
+    public static async Task<PluginReviewerViewModel?> GetPluginReviewer(this NpgsqlConnection connection, string? userId, string? username)
+    {
+        const string sql = """
+            SELECT id, user_id, username, source, profile_url, avatar_url
+            FROM   plugin_reviewers
+            WHERE  (user_id = @userId OR @userId IS NULL) AND (username = @username OR @username IS NULL)
+            ORDER  BY user_id NULLS LAST
+            LIMIT  1
+            """;
+        return await connection.QueryFirstOrDefaultAsync<PluginReviewerViewModel?>(sql, new { userId, username });
+    }
+
+    #endregion
+
 
     #region Methods relating to plugin listing requests
 

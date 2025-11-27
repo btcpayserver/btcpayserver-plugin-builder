@@ -127,17 +127,15 @@ public class AccountController(
         try
         {
             var user = await userManager.GetUserAsync(User);
-            var githubGistAccount = await externalAccountVerificationService.VerifyGistToken(
-                model.GistUrl, user!.Id);
-            if (string.IsNullOrEmpty(githubGistAccount))
+            var githubUsername = await externalAccountVerificationService.VerifyGistToken(model.GistUrl, user!.Id);
+            if (string.IsNullOrEmpty(githubUsername))
             {
                 TempData[TempDataConstant.WarningMessage] = "Unable to verify Github profile. Kindly ensure all data is correct and try again";
                 return View(model);
             }
-
             await using var conn = await connectionFactory.Open();
             var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
-            accountSettings.Github = githubGistAccount;
+            accountSettings.Github = githubUsername;
             await conn.SetAccountDetailSettings(accountSettings, user!.Id);
 
             await conn.VerifyGithubAccount(user!.Id, model.GistUrl);

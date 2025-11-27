@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.OutputCaching;
 using Npgsql;
 using PluginBuilder.Configuration;
@@ -14,6 +15,8 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
+using PluginBuilder.ViewModels.Plugin;
+using static Dapper.SqlMapper;
 
 namespace PluginBuilder.Controllers;
 
@@ -25,6 +28,7 @@ public class AdminController(
     DBConnectionFactory connectionFactory,
     AzureStorageClient azureStorageClient,
     EmailService emailService,
+    NostrService nostrService,
     AdminSettingsCache adminSettingsCache,
     ReferrerNavigationService referrerNavigation,
     PluginBuilderOptions pbOptions,
@@ -217,6 +221,130 @@ public class AdminController(
 
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
     }
+
+    [HttpGet("plugins/import-review/{pluginSlug}")]
+    public IActionResult ImportReview(string pluginSlug)
+    {
+        var vm = new ImportReviewViewModel
+        {
+            PluginSlug = pluginSlug.ToString(),
+            ExistingUsers = userManager.Users.Select(u => new SelectListItem
+            {
+                Value = u.Id,
+                Text = u.Email
+            }).ToList()
+        };
+        return View(vm);
+    }
+
+
+    [HttpPost("plugins/import-review/{pluginSlug}")]
+    public async Task<IActionResult> ImportReview(ImportReviewViewModel model, string pluginSlug)
+    {
+        if (model.Rating is < 1 or > 5 || string.IsNullOrEmpty(model.Body))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Invalid rating or body specified";
+            return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+        }
+        if (!string.IsNullOrWhiteSpace(model.SourceUrl))
+        {
+            model.Body += $"\n\n[Click here to continue reading]({model.SourceUrl})";
+        }
+        await using var conn = await connectionFactory.Open();
+        PluginReviewViewModel vm = new()
+        {
+            PluginSlug = pluginSlug,
+            Rating = model.Rating,
+            Body = model.Body,
+            CreatedAt = DateTime.UtcNow
+        };
+        if (model.LinkExistingUser && !string.IsNullOrEmpty(model.SelectedUserId))
+        {
+            var linkedUser = await userManager.FindByIdAsync(model.SelectedUserId);
+            if (linkedUser == null)
+            {
+                TempData[TempDataConstant.WarningMessage] = "Invalid system user";
+                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+            }
+            var reviewerAccountDetails = await conn.GetAccountDetailSettings(linkedUser!.Id) ?? new();
+            model = model.UpdatePluginReviewerData(reviewerAccountDetails);
+        }
+
+        if (!model.LinkExistingUser)
+        {
+            if (string.IsNullOrEmpty(model.ReviewerName))
+            {
+                TempData[TempDataConstant.WarningMessage] = "Kindly provide the reviewer profile";
+                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+            }
+            model.ReviewerName = model.ReviewerName.TrimStart('/').TrimEnd();
+            model.SelectedUserId = null;
+            switch (model.Source)
+            {
+                case ImportReviewViewModel.ImportReviewSourceEnum.Nostr:
+                    var nostrProfile = await GetNostrProfileUsingNpub(model.ReviewerName);
+                    model.ReviewerProfileUrl = $"https://primal.net/p/{model.ReviewerName}";
+                    model.ReviewerAvatarUrl = nostrProfile.ProfilePhotoUrl;
+                    break;
+
+                case ImportReviewViewModel.ImportReviewSourceEnum.WWW:
+                    var wwwUrl = model.ReviewerName;
+                    if (!wwwUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !wwwUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        wwwUrl = $"https://{wwwUrl}";
+                    }
+                    model.ReviewerProfileUrl = wwwUrl;
+                    model.ReviewerAvatarUrl = null;
+                    break;
+
+                case ImportReviewViewModel.ImportReviewSourceEnum.X:
+                    model.ReviewerProfileUrl = $"https://x.com/{model.ReviewerName}";
+                    model.ReviewerAvatarUrl = $"https://unavatar.io/twitter/{model.ReviewerName}";
+                    break;
+
+                case ImportReviewViewModel.ImportReviewSourceEnum.Github:
+                    model.ReviewerProfileUrl = $"https://github.com/{model.ReviewerName}";
+                    model.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{model.ReviewerName}";
+                    break;
+
+                default:
+                    model.ReviewerProfileUrl = null;
+                    model.ReviewerAvatarUrl = null;
+                    break;
+            }
+            if (model.ReviewerProfileUrl == null)
+            {
+                TempData[TempDataConstant.WarningMessage] = "Invalid source selected";
+                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+            }
+        }
+        vm.ReviewerId = await conn.CreateOrUpdatePluginReviewer(model);
+        await conn.UpsertPluginReview(vm);
+
+        var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug }, Request.Scheme);
+        TempData[TempDataConstant.SuccessMessage] = $"Review submitted successfully. Follow the link to the plugin detail to view: {url}";
+        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+    }
+
+    private async Task<(string ProfilePhotoUrl, string ProfileName)> GetNostrProfileUsingNpub(string npub)
+    {
+        if (string.IsNullOrWhiteSpace(npub))
+            return (string.Empty, string.Empty);
+        try
+        {
+            var hexPub = nostrService.NpubToHexPub(npub);
+            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(hexPub, timeoutPerRelayMs: 6000);
+
+            return profile is null
+                ? (string.Empty, string.Empty)
+                : (profile.PictureUrl ?? string.Empty, profile.Name ?? string.Empty);
+        }
+        catch (Exception)
+        {
+            return (string.Empty, string.Empty);
+        }
+    }
+
 
     [HttpPost("plugins/{pluginSlug}/ownership")]
     [ValidateAntiForgeryToken]
