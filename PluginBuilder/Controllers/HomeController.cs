@@ -459,11 +459,26 @@ public class HomeController(
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
             Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
             RatingFilter = model.RatingFilter,
-            OwnerGithubUrl = !string.IsNullOrWhiteSpace(ownerSettings.Github) ? $"https://github.com/{Uri.EscapeDataString(ownerSettings.Github.Trim())}" : null,
+            OwnerGithubUrl = NormalizeGithubUrl(ownerSettings.Github),
             OwnerNostrUrl = !string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub) ? $"https://primal.net/p/{Uri.EscapeDataString(ownerSettings.Nostr.Npub.Trim())}" : null
         };
         return View(vm);
     }
+
+    private static string? NormalizeGithubUrl(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return null;
+
+        input = input.Trim();
+        if (Uri.TryCreate(input, UriKind.Absolute, out var uri) && uri.Host.Contains("github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            var username = uri.AbsolutePath.Trim('/');
+            return $"https://github.com/{Uri.EscapeDataString(username)}";
+        }
+        var cleanUsername = input.Trim().Trim('/');
+        return $"https://github.com/{Uri.EscapeDataString(cleanUsername)}";
+    }
+
 
     [HttpPost("public/plugins/{pluginSlug}/reviews/upsert")]
     [ValidateAntiForgeryToken]
