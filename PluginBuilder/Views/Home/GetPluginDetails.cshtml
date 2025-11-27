@@ -66,18 +66,10 @@
                                         <img src="~/img/github.svg" alt="GitHub Verified" title="GitHub Verified" class="verified-icon" />
                                     </a>
                                 }
-
                                 @if (!string.IsNullOrWhiteSpace(Model.OwnerNostrUrl))
                                 {
                                     <a href="@Model.OwnerNostrUrl" rel="noreferrer noopener" target="_blank">
                                         <img src="~/img/nostr.svg" alt="Nostr Verified" title="Nostr Verified" class="verified-icon" />
-                                    </a>
-                                }
-
-                                @if (!string.IsNullOrWhiteSpace(Model.OwnerTwitterUrl))
-                                {
-                                    <a href="@Model.OwnerTwitterUrl" rel="noreferrer noopener" target="_blank">
-                                        <img src="~/img/x.svg" alt="X Verified" title="X Verified" class="verified-icon" />
                                     </a>
                                 }
                             </span>

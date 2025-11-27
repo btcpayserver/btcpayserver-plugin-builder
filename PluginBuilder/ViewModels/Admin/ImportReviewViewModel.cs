@@ -7,7 +7,7 @@ public class ImportReviewViewModel
 {
     public enum ImportReviewSourceEnum
     {
-        Nostr = 1, X, Github, WWW
+        Nostr = 1, X, Github
     }
 
     [Range(1, 5)]

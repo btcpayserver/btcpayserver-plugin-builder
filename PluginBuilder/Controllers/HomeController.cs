@@ -460,9 +460,7 @@ public class HomeController(
             Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
             RatingFilter = model.RatingFilter,
             OwnerGithubUrl = !string.IsNullOrWhiteSpace(ownerSettings.Github) ? $"https://github.com/{Uri.EscapeDataString(ownerSettings.Github.Trim())}" : null,
-            OwnerNostrUrl = !string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub) ? $"https://primal.net/p/{Uri.EscapeDataString(ownerSettings.Nostr.Npub.Trim())}" : null,
-            OwnerTwitterUrl = !string.IsNullOrWhiteSpace(ownerSettings.Twitter?.Trim().TrimStart('@', '/', ' '))
-                ? $"https://x.com/{Uri.EscapeDataString(ownerSettings.Twitter.Trim().TrimStart('@', '/', ' '))}" : null
+            OwnerNostrUrl = !string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub) ? $"https://primal.net/p/{Uri.EscapeDataString(ownerSettings.Nostr.Npub.Trim())}" : null
         };
         return View(vm);
     }
@@ -479,18 +477,18 @@ public class HomeController(
 
         await using var conn = await connectionFactory.Open();
 
-        var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId) ?? new();
-        if (string.IsNullOrEmpty(reviewerAccountDetails.Github) && (reviewerAccountDetails.Nostr == null || string.IsNullOrEmpty(reviewerAccountDetails.Nostr?.Npub)))
-        {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub or Nostr account in order to review plugins";
-            return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
-        }
-
         var isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
         if (isOwner)
         {
             TempData[TempDataConstant.WarningMessage] = "You cannot review your own plugin.";
             return RedirectToAction(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString() });
+        }
+
+        var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId) ?? new();
+        if (string.IsNullOrEmpty(reviewerAccountDetails.Github) && (reviewerAccountDetails.Nostr == null || string.IsNullOrEmpty(reviewerAccountDetails.Nostr?.Npub)))
+        {
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub or Nostr account in order to review plugins";
+            return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
         }
 
         int[]? pluginVersionParts = null;

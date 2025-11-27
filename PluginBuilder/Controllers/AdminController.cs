@@ -277,18 +277,16 @@ public class AdminController(
             switch (model.Source)
             {
                 case ImportReviewViewModel.ImportReviewSourceEnum.Nostr:
-                    model.ReviewerProfileUrl = $"https://primal.net/p/{model.ReviewerName}";
-                    model.ReviewerAvatarUrl = await GetNostrProfilePictureUsingNpub(model.ReviewerName);
+                    var nostrProfile = await GetNostrProfileUsingNpub(model.ReviewerName);
+                    /*model.ReviewerProfileUrl = $"https://primal.net/p/{model.ReviewerName}";
+                    model.ReviewerAvatarUrl = await GetNostrProfilePictureUsingNpub(model.ReviewerName);*/
+                    model.ReviewerAvatarUrl = nostrProfile.ProfilePhotoUrl;
+                    model.ReviewerProfileUrl = !string.IsNullOrEmpty(nostrProfile.ProfileName) ? $"https://primal.net/p/{model.ReviewerName}" : null;
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.X:
                     model.ReviewerProfileUrl = $"https://x.com/{model.ReviewerName}";
                     model.ReviewerAvatarUrl = $"https://unavatar.io/x/{model.ReviewerName}";
-                    break;
-
-                case ImportReviewViewModel.ImportReviewSourceEnum.WWW:
-                    model.ReviewerProfileUrl = $"https://{model.ReviewerName}";
-                    model.ReviewerAvatarUrl = null;
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.Github:
@@ -315,18 +313,25 @@ public class AdminController(
         return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
     }
 
-    private async Task<string> GetNostrProfilePictureUsingNpub(string npub)
+    private async Task<(string ProfilePhotoUrl, string ProfileName)> GetNostrProfileUsingNpub(string npub)
     {
+        if (string.IsNullOrWhiteSpace(npub))
+            return (string.Empty, string.Empty);
         try
         {
-            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(nostrService.NpubToHexPub(npub), timeoutPerRelayMs: 6000);
-            return profile?.PictureUrl ?? string.Empty;
+            var hexPub = nostrService.NpubToHexPub(npub);
+            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(hexPub, timeoutPerRelayMs: 6000);
+
+            return profile is null
+                ? (string.Empty, string.Empty)
+                : (profile.PictureUrl ?? string.Empty, profile.Name ?? string.Empty);
         }
         catch (Exception)
         {
-            return string.Empty;
+            return (string.Empty, string.Empty);
         }
     }
+
 
     [HttpPost("plugins/{pluginSlug}/ownership")]
     [ValidateAntiForgeryToken]

@@ -9,9 +9,7 @@ CREATE TABLE IF NOT EXISTS plugin_reviewers (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_plugin_reviewers_user_id ON plugin_reviewers (user_id);
 CREATE INDEX IF NOT EXISTS idx_plugin_reviewers_source_username ON plugin_reviewers (source, username);
-
 
 INSERT INTO plugin_reviewers (user_id, source, created_at, updated_at)
 SELECT DISTINCT user_id, 'system', NOW(), NOW()
