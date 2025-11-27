@@ -261,6 +261,11 @@ public class AdminController(
         if (model.LinkExistingUser && !string.IsNullOrEmpty(model.SelectedUserId))
         {
             var linkedUser = await userManager.FindByIdAsync(model.SelectedUserId);
+            if (linkedUser == null)
+            {
+                TempData[TempDataConstant.WarningMessage] = "Invalid system user";
+                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+            }
             var reviewerAccountDetails = await conn.GetAccountDetailSettings(linkedUser!.Id) ?? new();
             model = model.UpdatePluginReviewerData(reviewerAccountDetails);
         }
@@ -283,13 +288,18 @@ public class AdminController(
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.WWW:
-                    model.ReviewerProfileUrl = $"https://{model.ReviewerName}";
+                    var wwwUrl = model.ReviewerName;
+                    if (!wwwUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !wwwUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        wwwUrl = $"https://{wwwUrl}";
+                    }
+                    model.ReviewerProfileUrl = wwwUrl;
                     model.ReviewerAvatarUrl = null;
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.X:
                     model.ReviewerProfileUrl = $"https://x.com/{model.ReviewerName}";
-                    model.ReviewerAvatarUrl = $"https://unavatar.io/x/{model.ReviewerName}";
+                    model.ReviewerAvatarUrl = $"https://unavatar.io/twitter/{model.ReviewerName}";
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.Github:
