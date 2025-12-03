@@ -520,7 +520,7 @@ public class HomeController(
             Body = body,
             PluginVersion = pluginVersionParts
         };
-        reviewViewModel.ReviewerId = await conn.CreateOrUpdatePluginReviewer(UpdatePluginReviewerData(reviewerAccountDetails, userId));
+        reviewViewModel.ReviewerId = await conn.CreateOrUpdatePluginReviewer(await UpdatePluginReviewerData(reviewerAccountDetails, userId));
         await conn.UpsertPluginReview(reviewViewModel);
 
         var sort = Request.Query["sort"].ToString();
@@ -528,7 +528,7 @@ public class HomeController(
         return Redirect((url ?? "/") + "#reviews");
     }
 
-    public ImportReviewViewModel UpdatePluginReviewerData(AccountSettings settings, string userId)
+    private async Task<ImportReviewViewModel> UpdatePluginReviewerData(AccountSettings settings, string userId)
     {
         ImportReviewViewModel importReviewModel = new()
         {
@@ -547,7 +547,7 @@ public class HomeController(
             var nostr = settings.Nostr;
             importReviewModel.ReviewerProfileUrl = $"https://primal.net/p/{Uri.EscapeDataString(nostr.Npub)}";
             var pubKey = nostrService.NpubToHexPub(nostr.Npub);
-            var nostrProfile = nostrService.GetNostrProfileByAuthorHexAsync(pubKey).Result;
+            var nostrProfile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKey);
             if (nostrProfile is not null)
             {
                 importReviewModel.ReviewerName = nostrProfile.Name;

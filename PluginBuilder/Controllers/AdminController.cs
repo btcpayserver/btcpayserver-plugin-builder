@@ -365,26 +365,6 @@ public class AdminController(
         return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
     }
 
-    private async Task<(string ProfilePhotoUrl, string ProfileName)> GetNostrProfileUsingNpub(string npub)
-    {
-        if (string.IsNullOrWhiteSpace(npub))
-            return (string.Empty, string.Empty);
-        try
-        {
-            var hexPub = nostrService.NpubToHexPub(npub);
-            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(hexPub, timeoutPerRelayMs: 6000);
-
-            return profile is null
-                ? (string.Empty, string.Empty)
-                : (profile.PictureUrl ?? string.Empty, profile.Name ?? string.Empty);
-        }
-        catch (Exception)
-        {
-            return (string.Empty, string.Empty);
-        }
-    }
-
-
     [HttpPost("plugins/{pluginSlug}/ownership")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ManagePluginOwnership(string pluginSlug, string userId, string command = "")

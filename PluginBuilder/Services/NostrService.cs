@@ -113,8 +113,15 @@ public class NostrService(IMemoryCache cache, AdminSettingsCache adminSettingsCa
         if (!identifier.StartsWith(PrefixNpub, StringComparison.OrdinalIgnoreCase))
             return identifier.StartsWith(PrefixNprofile, StringComparison.OrdinalIgnoreCase) && TryDecodeNprofileToHex(identifier, out pubKeyHex);
 
-        pubKeyHex = NpubToHexPub(identifier);
-        return true;
+        try
+        {
+            pubKeyHex = NpubToHexPub(identifier);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task<JObject?> FetchFirstFromRelaysAsync(IEnumerable<NostrFilter> filters, TimeSpan timeout, Func<JObject, bool>? validate = null)
