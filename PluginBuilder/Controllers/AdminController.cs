@@ -336,13 +336,15 @@ public class AdminController(
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.X:
-                    model.ReviewerProfileUrl = $"https://x.com/{model.ReviewerName}";
-                    model.ReviewerAvatarUrl = $"https://unavatar.io/twitter/{model.ReviewerName}";
+                    var escapedXHandle = Uri.EscapeDataString(model.ReviewerName);
+                    model.ReviewerProfileUrl = $"https://x.com/{escapedXHandle}";
+                    model.ReviewerAvatarUrl = $"https://unavatar.io/twitter/{escapedXHandle}";
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.Github:
-                    model.ReviewerProfileUrl = $"https://github.com/{model.ReviewerName}";
-                    model.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{model.ReviewerName}";
+                    var escapedGhHandle = Uri.EscapeDataString(model.ReviewerName);
+                    model.ReviewerProfileUrl = $"https://github.com/{escapedGhHandle}";
+                    model.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{escapedGhHandle}";
                     break;
 
                 default:
@@ -360,7 +362,9 @@ public class AdminController(
         await conn.UpsertPluginReview(vm);
 
         var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug }, Request.Scheme);
-        TempData[TempDataConstant.SuccessMessage] = $"Review submitted successfully. <a class=\"alert-link\" href=\"{url}\">Click here to view it</a>.";
+        TempData[TempDataConstant.SuccessMessage] = "Review submitted successfully.";
+        TempData[TempDataConstant.SuccessLinkUrl] = url;
+        TempData[TempDataConstant.SuccessLinkText] = "Click here to view it";
         return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
     }
 

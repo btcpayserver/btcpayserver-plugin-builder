@@ -16,7 +16,7 @@ public class ImportReviewViewModel
     public ImportReviewSourceEnum Source { get; set; } = ImportReviewSourceEnum.Nostr;
     public string? SourceUrl { get; set; }
     public string? Body { get; set; }
-    public bool LinkExistingUser { get; set; } = true;
+    public bool LinkExistingUser { get; set; } = false;
     public string? SelectedUserId { get; set; }
     public string? ReviewerName { get; set; }
     public string? ReviewerAvatarUrl { get; set; }

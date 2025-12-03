@@ -1,7 +1,17 @@
 @if (TempData[TempDataConstant.SuccessMessage] is string successMessage)
 {
+    var successLinkUrl  = TempData[TempDataConstant.SuccessLinkUrl] as string;
+    var successLinkText = TempData[TempDataConstant.SuccessLinkText] as string ?? "Click here to view it";
+
     <div class="alert alert-success text-break" role="alert">
-        <span style="white-space: pre-wrap;">@Html.Raw(successMessage)</span>
+        <span style="white-space: pre-wrap;">@successMessage</span>
+        @if (!string.IsNullOrWhiteSpace(successLinkUrl)
+             && Uri.TryCreate(successLinkUrl, UriKind.Absolute, out var uri)
+             && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+        {
+            <span> </span>
+            <a class="alert-link" href="@successLinkUrl">@successLinkText</a>
+        }
     </div>
 }
 @if (TempData[TempDataConstant.WarningMessage] != null)
