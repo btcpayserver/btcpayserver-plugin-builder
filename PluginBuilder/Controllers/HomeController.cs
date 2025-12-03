@@ -541,8 +541,11 @@ public class HomeController(
         else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
         {
             var nostr = settings.Nostr;
-            importReviewModel.ReviewerProfileUrl = $"{ExternalProfileUrls.PrimalProfileFormat}{Uri.EscapeDataString(nostr.Npub)}";
-            importReviewModel.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
+            importReviewModel.ReviewerProfileUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(nostr.Npub));
+            importReviewModel.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name)
+                ? nostr.Npub.Length >= 8
+                    ? $"{nostr.Npub[..8]}…" : nostr.Npub
+                : nostr.Profile.Name;
             importReviewModel.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
                                                   (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
 
