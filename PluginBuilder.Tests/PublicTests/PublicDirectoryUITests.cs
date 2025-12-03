@@ -7,6 +7,7 @@ using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
+using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
 using Xunit;
 using Xunit.Abstractions;
@@ -172,6 +173,16 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
     private async Task SaveReviewData(NpgsqlConnection conn, string pluginSlug, string userId)
     {
         var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId);
+        var importModel = new ImportReviewViewModel
+        {
+            SelectedUserId = userId,
+            LinkExistingUser = true,
+            ReviewerName = reviewerAccountDetails?.Github ?? "test-reviewer",
+            ReviewerProfileUrl = reviewerAccountDetails?.Github is { Length: > 0 }
+                ? $"https://github.com/{reviewerAccountDetails.Github.Trim().TrimStart('@').Trim('/')}"
+                : null,
+            ReviewerAvatarUrl = null
+        };
         PluginReviewViewModel reviewViewModel = new()
         {
             PluginSlug = pluginSlug,
@@ -179,7 +190,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
             Rating = 5,
             Body = "This is a good plugin"
         };
-        reviewViewModel.ReviewerId = await conn.CreateOrUpdatePluginReviewer(reviewViewModel.UpdatePluginReviewerData(reviewerAccountDetails, userId));
+        reviewViewModel.ReviewerId = await conn.CreateOrUpdatePluginReviewer(importModel);
         await conn.UpsertPluginReview(reviewViewModel);
     }
 }

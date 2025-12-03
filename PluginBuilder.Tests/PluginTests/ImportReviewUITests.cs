@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
@@ -16,7 +17,7 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
     private readonly XUnitLogger _log = new("ImportReviewTests", output);
 
     [Fact]
-    public async Task Import_Review_For_Exisitng_User_Tests()
+    public async Task Import_Review_Tests()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
@@ -54,6 +55,8 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
         Assert.Equal(BuildStates.Uploaded, terminal);
         await Task.Delay(2_000);
         await t.Page.ReloadAsync();
+
+        // Internal reviewer
         string pluginReview = "An awesome plugin";
         await Expect(t.Page!.Locator("button:text-is('Release')")).ToBeVisibleAsync();
         await t.Page.ClickAsync("button:text-is('Release')");
@@ -75,50 +78,9 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
         var emptyStars = t.Page.Locator(".test-review-rating[data-rating='4'] .text-secondary");
         await Expect(emptyStars).ToHaveCountAsync(1);
         await Expect(t.Page.Locator("a[href*='RatingFilter=4']")).ToContainTextAsync("1");
-    }
 
-    [Fact]
-    public async Task Import_Review_For_External_Tests()
-    {
-        await using var t = new PlaywrightTester(_log);
-        t.Server.ReuseDatabase = false;
-        await t.StartAsync();
-        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
-
-        await t.GoToUrl("/register");
-        var user = await t.RegisterNewUser();
-        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
-        await t.VerifyUserAccounts(user);
-
-        var pluginSlug = "cb-a-" + PlaywrightTester.GetRandomUInt256()[..8];
-        await t.GoToUrl("/plugins/create");
-        await t.Page.FillAsync("#PluginSlug", pluginSlug);
-        await t.Page!.FillAsync("#PluginTitle", pluginSlug);
-        await t.Page!.FillAsync("#Description", "Test");
-        await t.Page.ClickAsync("#Create");
-        await t.AssertNoError();
-
+        // External reviewer
         await t.GoToUrl($"/plugins/{pluginSlug}");
-        await t.Page.ClickAsync("#CreateNewBuild");
-        await t.Page.FillAsync("#GitRepository", ServerTester.RepoUrl);
-        await t.Page.FillAsync("#GitRef", ServerTester.GitRef);
-        await t.Page.FillAsync("#PluginDirectory", ServerTester.PluginDir);
-        await t.Page.FillAsync("#BuildConfig", ServerTester.BuildCfg);
-        await t.Page.ClickAsync("#Create");
-        await Expect(t.Page).ToHaveURLAsync(new Regex($@"/plugins/{Regex.Escape(pluginSlug)}/builds/\d+$", RegexOptions.IgnoreCase));
-        var m = Regex.Match(t.Page.Url, @"/builds/(\d+)$");
-        Assert.True(m.Success, "Could not parse build url");
-        var buildIdA = int.Parse(m.Groups[1].Value);
-        var terminal = await t.Server.WaitForBuildToFinishAsync(new FullBuildId(pluginSlug, buildIdA));
-        Assert.Equal(BuildStates.Uploaded, terminal);
-        await Task.Delay(2_000);
-        await t.Page.ReloadAsync();
-        string pluginReview = "An awesome plugin";
-        await Expect(t.Page!.Locator("button:text-is('Release')")).ToBeVisibleAsync();
-        await t.Page.ClickAsync("button:text-is('Release')");
         await t.Page!.ClickAsync("#AdminNav-Plugins");
         await t.Page.ClickAsync("table tbody tr:first-child a:text-is('Edit')");
         await t.Page.ClickAsync("a.btn.btn-primary:has-text('Import Reviews')");
@@ -130,14 +92,17 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
         await t.Page.ClickAsync("button[type='submit'][form='import-review-form']");
         await t.AssertNoError();
         await t.GoToUrl($"/public/plugins/{pluginSlug}");
-        await Expect(t.Page.Locator(".test-review-card")).ToBeVisibleAsync();
-        var ratingLocator = t.Page.Locator(".test-review-rating[data-rating='5']");
-        await Expect(ratingLocator).ToBeVisibleAsync();
-        await Expect(t.Page.Locator(".test-review-card")).ToContainTextAsync(pluginReview);
-        var filledStars = t.Page.Locator(".test-review-rating[data-rating='5'] .text-warning");
-        await Expect(filledStars).ToHaveCountAsync(5);
-        var emptyStars = t.Page.Locator(".test-review-rating[data-rating='5'] .text-secondary");
-        await Expect(emptyStars).ToHaveCountAsync(0);
+        var reviewCards = t.Page.Locator(".test-review-card");
+        await Expect(reviewCards).ToHaveCountAsync(2);
+        var externalReviewCard = reviewCards.Filter(new LocatorFilterOptions { HasText = "NicolasDorier" });
+        await Expect(externalReviewCard).ToBeVisibleAsync();
+        var ratingLocatorExternal = t.Page.Locator(".test-review-rating[data-rating='5']");
+        await Expect(ratingLocatorExternal).ToBeVisibleAsync();
+        await Expect(externalReviewCard).ToContainTextAsync(pluginReview);
+        var filledStarsExternal = t.Page.Locator(".test-review-rating[data-rating='5'] .text-warning");
+        await Expect(filledStarsExternal).ToHaveCountAsync(5);
+        var emptyStarsExternal = t.Page.Locator(".test-review-rating[data-rating='5'] .text-secondary");
+        await Expect(emptyStarsExternal).ToHaveCountAsync(0);
         await Expect(t.Page.Locator("a[href*='RatingFilter=5']")).ToContainTextAsync("1");
     }
 }
