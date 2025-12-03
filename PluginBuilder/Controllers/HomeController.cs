@@ -448,6 +448,15 @@ public class HomeController(
         var primaryOwnerId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
         var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId!) ?? new AccountSettings();
         var ownerGithubHandle = ExternalAccountVerificationService.GetGithubHandle(ownerSettings.Github);
+        string? ownerGithubUrl = null;
+        if (!string.IsNullOrWhiteSpace(ownerGithubHandle))
+            ownerGithubUrl = $"{ExternalProfileUrls.GithubBaseUrl}{Uri.EscapeDataString(ownerGithubHandle)}";
+
+        string? ownerNostrUrl = null;
+        var ownerNpub = ownerSettings.Nostr?.Npub?.Trim();
+        if (!string.IsNullOrWhiteSpace(ownerNpub))
+            ownerNostrUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(ownerNpub));
+
 
         var vm = new PluginDetailsViewModel
         {
@@ -461,8 +470,8 @@ public class HomeController(
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
             Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
             RatingFilter = model.RatingFilter,
-            OwnerGithubUrl = $"https://github.com/{ownerGithubHandle}",
-            OwnerNostrUrl = !string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub) ? $"https://primal.net/p/{Uri.EscapeDataString(ownerSettings.Nostr.Npub.Trim())}" : null
+            OwnerGithubUrl = ownerGithubUrl,
+            OwnerNostrUrl = ownerNostrUrl
         };
         return View(vm);
     }
@@ -532,7 +541,7 @@ public class HomeController(
         else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
         {
             var nostr = settings.Nostr;
-            importReviewModel.ReviewerProfileUrl = $"https://primal.net/p/{Uri.EscapeDataString(nostr.Npub)}";
+            importReviewModel.ReviewerProfileUrl = $"{ExternalProfileUrls.PrimalProfileFormat}{Uri.EscapeDataString(nostr.Npub)}";
             importReviewModel.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
             importReviewModel.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
                                                   (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;

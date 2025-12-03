@@ -83,11 +83,24 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
         var safe = Uri.EscapeDataString(handle);
         return new GitHubContributor
         {
-            Login       = handle,
-            HtmlUrl     = $"https://github.com/{safe}",
-            AvatarUrl   = $"https://avatars.githubusercontent.com/{safe}?s={size}",
+            Login = handle,
+            HtmlUrl = $"{ExternalProfileUrls.GithubBaseUrl}{safe}",
+            AvatarUrl = string.Format(ExternalProfileUrls.GithubAvatarFormat, safe, size),
             UserViewType= "user",
             Contributions = 0
         };
     }
+}
+
+public static class ExternalProfileUrls
+{
+    public const string GithubBaseUrl = "https://github.com/";
+    public const string GithubAvatarFormat = "https://github.com/{0}.png?size={1}";
+
+    public const string XBaseUrl = "https://x.com/";
+    public const string XAvatarFormat = "https://unavatar.io/twitter/{0}";
+
+    public const string PrimalProfileFormat = "https://primal.net/p/{0}";
+
+    public const string UnavatarSiteFormat  = "https://unavatar.io/{0}";
 }

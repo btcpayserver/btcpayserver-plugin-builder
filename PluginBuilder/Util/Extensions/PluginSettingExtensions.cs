@@ -1,4 +1,5 @@
 using PluginBuilder.DataModels;
+using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
 
@@ -43,17 +44,19 @@ public static class PluginSettingExtensions
         if (!string.IsNullOrEmpty(settings.Github))
         {
             var githubUserName = settings.Github.Trim().TrimStart('@').Trim('/');
+            var safe = Uri.EscapeDataString(githubUserName);
+
             model.ReviewerName = githubUserName;
-            model.ReviewerProfileUrl = $"https://github.com/{Uri.EscapeDataString(githubUserName)}";
-            model.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{Uri.EscapeDataString(githubUserName)}?s=48";
+            model.ReviewerProfileUrl = $"{ExternalProfileUrls.GithubBaseUrl}{safe}";
+            model.ReviewerAvatarUrl = string.Format(ExternalProfileUrls.GithubAvatarFormat, safe, 48);
         }
         else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
         {
             var nostr = settings.Nostr;
             model.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
-            model.ReviewerProfileUrl = $"https://primal.net/p/{Uri.EscapeDataString(nostr.Npub)}";
+            model.ReviewerProfileUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(nostr.Npub));
             model.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
-                                    (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
+                                      (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
         }
         return model;
     }

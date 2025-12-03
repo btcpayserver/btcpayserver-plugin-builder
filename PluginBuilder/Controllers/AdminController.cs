@@ -265,7 +265,7 @@ public class AdminController(
                 TempData[TempDataConstant.WarningMessage] = "Invalid system user";
                 return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
             }
-            var reviewerAccountDetails = await conn.GetAccountDetailSettings(linkedUser!.Id) ?? new();
+            var reviewerAccountDetails = await conn.GetAccountDetailSettings(linkedUser.Id) ?? new AccountSettings();
             model = model.UpdatePluginReviewerData(reviewerAccountDetails);
         }
 
@@ -295,7 +295,7 @@ public class AdminController(
                         ? nostrProfile.Name!
                         : nostrIdentifier;
 
-                    model.ReviewerProfileUrl = $"https://primal.net/p/{pubKeyHex}";
+                    model.ReviewerProfileUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(pubKeyHex));
                     model.ReviewerAvatarUrl = nostrProfile?.PictureUrl;
                     break;
 
@@ -330,21 +330,21 @@ public class AdminController(
                         model.ReviewerAvatarUrl = model.WwwAvatarUrl;
                     }
                     else
-                        model.ReviewerAvatarUrl = $"https://unavatar.io/{host}";
+                        model.ReviewerAvatarUrl = string.Format(ExternalProfileUrls.UnavatarSiteFormat, host);
 
 
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.X:
                     var escapedXHandle = Uri.EscapeDataString(model.ReviewerName);
-                    model.ReviewerProfileUrl = $"https://x.com/{escapedXHandle}";
-                    model.ReviewerAvatarUrl = $"https://unavatar.io/twitter/{escapedXHandle}";
+                    model.ReviewerProfileUrl = $"{ExternalProfileUrls.XBaseUrl}{escapedXHandle}";
+                    model.ReviewerAvatarUrl = string.Format(ExternalProfileUrls.XAvatarFormat, escapedXHandle);
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.Github:
                     var escapedGhHandle = Uri.EscapeDataString(model.ReviewerName);
-                    model.ReviewerProfileUrl = $"https://github.com/{escapedGhHandle}";
-                    model.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{escapedGhHandle}";
+                    model.ReviewerProfileUrl = $"{ExternalProfileUrls.GithubBaseUrl}{escapedGhHandle}";
+                    model.ReviewerAvatarUrl = string.Format(ExternalProfileUrls.GithubAvatarFormat, escapedGhHandle, 48);
                     break;
 
                 default:

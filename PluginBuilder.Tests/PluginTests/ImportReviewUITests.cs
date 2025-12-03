@@ -57,12 +57,13 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
         await t.Page.ReloadAsync();
 
         // Internal reviewer
-        string pluginReview = "An awesome plugin";
+        const string pluginReview = "An awesome plugin";
         await Expect(t.Page!.Locator("button:text-is('Release')")).ToBeVisibleAsync();
         await t.Page.ClickAsync("button:text-is('Release')");
         await t.Page!.ClickAsync("#AdminNav-Plugins");
         await t.Page.ClickAsync("table tbody tr:first-child a:text-is('Edit')");
         await t.Page.ClickAsync("a.btn.btn-primary:has-text('Import Reviews')");
+        await t.Page.Locator("#LinkExistingUser").CheckAsync();
         await t.Page.FillAsync("#SourceUrl", "https://primal.net/e/nevent1qqswdrazgv99sp5tdrqre9ez3h6xf62u82mctp042tv8s0shaswx5kqx2trp3");
         await t.Page.FillAsync("#Body", pluginReview);
         await t.Page.Locator("#Rating").FillAsync("4");
