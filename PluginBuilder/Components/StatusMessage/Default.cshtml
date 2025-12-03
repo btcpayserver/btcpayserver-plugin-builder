@@ -1,7 +1,7 @@
-@if (TempData[TempDataConstant.SuccessMessage] != null)
+@if (TempData[TempDataConstant.SuccessMessage] is string successMessage)
 {
     <div class="alert alert-success text-break" role="alert">
-        <span style="white-space: pre-wrap;">@TempData[TempDataConstant.SuccessMessage]</span>
+        <span style="white-space: pre-wrap;">@Html.Raw(successMessage)</span>
     </div>
 }
 @if (TempData[TempDataConstant.WarningMessage] != null)

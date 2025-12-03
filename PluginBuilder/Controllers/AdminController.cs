@@ -360,7 +360,7 @@ public class AdminController(
         await conn.UpsertPluginReview(vm);
 
         var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug }, Request.Scheme);
-        TempData[TempDataConstant.SuccessMessage] = $"Review submitted successfully. Follow the link to the plugin detail to view: {url}";
+        TempData[TempDataConstant.SuccessMessage] = $"Review submitted successfully. <a class=\"alert-link\" href=\"{url}\">Click here to view it</a>.";
         return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
     }
 
