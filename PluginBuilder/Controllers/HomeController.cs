@@ -446,7 +446,8 @@ public class HomeController(
         };
 
         var primaryOwnerId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-        var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId) ?? new AccountSettings();
+        var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId!) ?? new AccountSettings();
+        var ownerGithubHandle = ExternalAccountVerificationService.GetGithubHandle(ownerSettings.Github);
 
         var vm = new PluginDetailsViewModel
         {
@@ -460,26 +461,11 @@ public class HomeController(
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
             Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
             RatingFilter = model.RatingFilter,
-            OwnerGithubUrl = NormalizeGithubUrl(ownerSettings.Github),
+            OwnerGithubUrl = $"https://github.com/{ownerGithubHandle}",
             OwnerNostrUrl = !string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub) ? $"https://primal.net/p/{Uri.EscapeDataString(ownerSettings.Nostr.Npub.Trim())}" : null
         };
         return View(vm);
     }
-
-    private static string? NormalizeGithubUrl(string? input)
-    {
-        if (string.IsNullOrWhiteSpace(input)) return null;
-
-        input = input.Trim();
-        if (Uri.TryCreate(input, UriKind.Absolute, out var uri) && uri.Host.Contains("github.com", StringComparison.OrdinalIgnoreCase))
-        {
-            var username = uri.AbsolutePath.Trim('/');
-            return $"https://github.com/{Uri.EscapeDataString(username)}";
-        }
-        var cleanUsername = input.Trim().Trim('/');
-        return $"https://github.com/{Uri.EscapeDataString(cleanUsername)}";
-    }
-
 
     [HttpPost("public/plugins/{pluginSlug}/reviews/upsert")]
     [ValidateAntiForgeryToken]
@@ -537,10 +523,11 @@ public class HomeController(
         };
         if (!string.IsNullOrEmpty(settings.Github))
         {
-            var githubUserName = settings.Github.Trim().TrimStart('@').Trim('/');
-            importReviewModel.ReviewerName = githubUserName;
-            importReviewModel.ReviewerProfileUrl = $"https://github.com/{Uri.EscapeDataString(githubUserName)}";
-            importReviewModel.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{Uri.EscapeDataString(githubUserName)}?s=48";
+            var githubProfile = ExternalAccountVerificationService.GetGithubIdentity(settings.Github);
+
+            importReviewModel.ReviewerName = githubProfile?.Login;
+            importReviewModel.ReviewerProfileUrl = githubProfile?.HtmlUrl;
+            importReviewModel.ReviewerAvatarUrl = githubProfile?.AvatarUrl;
         }
         else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
         {
