@@ -612,39 +612,52 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task<long> CreateOrUpdatePluginReviewer(this NpgsqlConnection connection, ImportReviewViewModel reviewModel)
     {
-        const string sql = """
-            WITH existing AS (
-                SELECT id FROM plugin_reviewers
-                WHERE (user_id = @user_id AND @user_id IS NOT NULL)
-                   OR profile_url = @profile_url
+        const string updateSql = """
+            UPDATE plugin_reviewers p
+            SET
+                user_id = COALESCE(p.user_id, @user_id),
+                username = @username,
+                source = @source,
+                profile_url = @profile_url,
+                avatar_url = @avatar_url,
+                updated_at = NOW()
+            WHERE p.id = (
+                SELECT id
+                FROM plugin_reviewers
+                WHERE
+                    (@user_id IS NOT NULL AND user_id = @user_id)
+                    OR (@profile_url IS NOT NULL AND profile_url = @profile_url)
+                ORDER BY
+                    CASE
+                        WHEN @user_id IS NOT NULL AND user_id = @user_id THEN 0
+                        WHEN profile_url = @profile_url THEN 1
+                        ELSE 2
+                    END
                 LIMIT 1
-            ),
-            inserted AS (
-                INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
-                SELECT @user_id, @username, @source, @profile_url, @avatar_url, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                WHERE NOT EXISTS (SELECT 1 FROM existing)
-                RETURNING id
-            ),
-            updated AS (
-                UPDATE plugin_reviewers p
-                SET username = @username, source = @source, profile_url = @profile_url, avatar_url = @avatar_url, updated_at = CURRENT_TIMESTAMP
-                FROM existing WHERE p.id = existing.id
-                RETURNING p.id
             )
-            SELECT id FROM inserted
-            UNION ALL
-            SELECT id FROM updated
-            LIMIT 1;
+            RETURNING id;
             """;
 
-        return await connection.ExecuteScalarAsync<long>(sql, new
+        var param = new
         {
             user_id = reviewModel.SelectedUserId,
             username = reviewModel.ReviewerName,
             source = reviewModel.LinkExistingUser ? "system" : reviewModel.Source.ToString().ToLower(),
             profile_url = reviewModel.ReviewerProfileUrl,
             avatar_url = reviewModel.ReviewerAvatarUrl
-        });
+        };
+
+        var updatedId = await connection.ExecuteScalarAsync<long?>(updateSql, param);
+        if (updatedId.HasValue)
+            return updatedId.Value;
+
+        const string insertSql = """
+            INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
+            VALUES (@user_id, @username, @source, @profile_url, @avatar_url, NOW(), NOW())
+            RETURNING id;
+            """;
+
+        return await connection.ExecuteScalarAsync<long>(insertSql, param);
     }
 
     #endregion
