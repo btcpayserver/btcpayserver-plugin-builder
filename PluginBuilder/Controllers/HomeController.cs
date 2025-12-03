@@ -546,17 +546,25 @@ public class HomeController(
         {
             var nostr = settings.Nostr;
             importReviewModel.ReviewerProfileUrl = $"https://primal.net/p/{Uri.EscapeDataString(nostr.Npub)}";
-            var pubKey = nostrService.NpubToHexPub(nostr.Npub);
-            var nostrProfile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKey);
-            if (nostrProfile is not null)
-            {
-                importReviewModel.ReviewerName = nostrProfile.Name;
-                importReviewModel.ReviewerAvatarUrl = nostrProfile.PictureUrl;
-                return importReviewModel;
-            }
             importReviewModel.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
             importReviewModel.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
                                                   (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
+
+            try
+            {
+                var pubKey = nostrService.NpubToHexPub(nostr.Npub);
+                var nostrProfile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKey);
+                if (nostrProfile is not null)
+                {
+                    importReviewModel.ReviewerName = nostrProfile.Name;
+                    importReviewModel.ReviewerAvatarUrl = nostrProfile.PictureUrl;
+                    return importReviewModel;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error while retrieving nostr profile for {Npub}", nostr.Npub);
+            }
         }
         return importReviewModel;
     }

@@ -16,7 +16,6 @@ using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
-using static Dapper.SqlMapper;
 
 namespace PluginBuilder.Controllers;
 
