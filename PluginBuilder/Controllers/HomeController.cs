@@ -14,6 +14,7 @@ using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Home;
 using PluginBuilder.ViewModels.Plugin;
 
@@ -499,7 +500,7 @@ public class HomeController(
             return RedirectToAction(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString() });
         }
 
-        var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId) ?? new();
+        var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
         if (string.IsNullOrEmpty(reviewerAccountDetails.Github) && (reviewerAccountDetails.Nostr == null || string.IsNullOrEmpty(reviewerAccountDetails.Nostr?.Npub)))
         {
             TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub or Nostr account in order to review plugins";
@@ -519,7 +520,7 @@ public class HomeController(
             Body = body,
             PluginVersion = pluginVersionParts
         };
-        reviewViewModel.ReviewerId = await conn.CreateOrUpdatePluginReviewer(reviewViewModel.UpdatePluginReviewerData(reviewerAccountDetails, userId));
+        reviewViewModel.ReviewerId = await conn.CreateOrUpdatePluginReviewer(UpdatePluginReviewerData(reviewerAccountDetails, userId));
         await conn.UpsertPluginReview(reviewViewModel);
 
         var sort = Request.Query["sort"].ToString();
@@ -527,8 +528,40 @@ public class HomeController(
         return Redirect((url ?? "/") + "#reviews");
     }
 
+    public ImportReviewViewModel UpdatePluginReviewerData(AccountSettings settings, string userId)
+    {
+        ImportReviewViewModel importReviewModel = new()
+        {
+            SelectedUserId = userId,
+            LinkExistingUser = true,
+        };
+        if (!string.IsNullOrEmpty(settings.Github))
+        {
+            var githubUserName = settings.Github.Trim().TrimStart('@').Trim('/');
+            importReviewModel.ReviewerName = githubUserName;
+            importReviewModel.ReviewerProfileUrl = $"https://github.com/{Uri.EscapeDataString(githubUserName)}";
+            importReviewModel.ReviewerAvatarUrl = $"https://avatars.githubusercontent.com/{Uri.EscapeDataString(githubUserName)}?s=48";
+        }
+        else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
+        {
+            var nostr = settings.Nostr;
+            importReviewModel.ReviewerProfileUrl = $"https://primal.net/p/{Uri.EscapeDataString(nostr.Npub)}";
+            var pubKey = nostrService.NpubToHexPub(nostr.Npub);
+            var nostrProfile = nostrService.GetNostrProfileByAuthorHexAsync(pubKey).Result;
+            if (nostrProfile is not null)
+            {
+                importReviewModel.ReviewerName = nostrProfile.Name;
+                importReviewModel.ReviewerAvatarUrl = nostrProfile.PictureUrl;
+                return importReviewModel;
+            }
+            importReviewModel.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
+            importReviewModel.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
+                                                  (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
+        }
+        return importReviewModel;
+    }
 
-    [HttpPost("public/plugins/{pluginSlug}/reviews/{id}/vote")]
+    [HttpPost("public/plugins/{pluginSlug}/reviews/{id:long}/vote")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> VoteReview(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
@@ -553,7 +586,7 @@ public class HomeController(
         return Redirect((url ?? "/") + "#reviews");
     }
 
-    [HttpPost("public/plugins/{pluginSlug}/reviews/{id}/delete")]
+    [HttpPost("public/plugins/{pluginSlug}/reviews/{id:long}/delete")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteReview(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
@@ -651,7 +684,6 @@ public class HomeController(
         if (!ModelState.IsValid)
             return View(model);
 
-        // TODO: Require the user to have a confirmed email before they can log on.
         var user = await userManager.FindByEmailAsync(model.Email);
         if (user is null)
         {

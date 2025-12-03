@@ -282,19 +282,58 @@ public class AdminController(
             switch (model.Source)
             {
                 case ImportReviewViewModel.ImportReviewSourceEnum.Nostr:
-                    var nostrProfile = await GetNostrProfileUsingNpub(model.ReviewerName);
-                    model.ReviewerProfileUrl = $"https://primal.net/p/{model.ReviewerName}";
-                    model.ReviewerAvatarUrl = nostrProfile.ProfilePhotoUrl;
+                    var nostrIdentifier = model.ReviewerName.Trim();
+
+                    if (!nostrService.TryGetPubKeyHex(nostrIdentifier, out var pubKeyHex))
+                    {
+                        TempData[TempDataConstant.WarningMessage] = "Invalid Nostr identifier (npub, nprofile or hex).";
+                        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+                    }
+
+                    var nostrProfile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKeyHex);
+
+                    model.ReviewerName = !string.IsNullOrWhiteSpace(nostrProfile?.Name)
+                        ? nostrProfile.Name!
+                        : nostrIdentifier;
+
+                    model.ReviewerProfileUrl = $"https://primal.net/p/{pubKeyHex}";
+                    model.ReviewerAvatarUrl = nostrProfile?.PictureUrl;
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.WWW:
-                    var wwwUrl = model.ReviewerName;
-                    if (!wwwUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !wwwUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    var wwwInput = model.ReviewerName.Trim();
+
+                    if (!wwwInput.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                        !wwwInput.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                     {
-                        wwwUrl = $"https://{wwwUrl}";
+                        wwwInput = $"https://{wwwInput}";
                     }
-                    model.ReviewerProfileUrl = wwwUrl;
-                    model.ReviewerAvatarUrl = null;
+
+                    if (!Uri.TryCreate(wwwInput, UriKind.Absolute, out var uri))
+                    {
+                        TempData[TempDataConstant.WarningMessage] = "Invalid website URL.";
+                        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+                    }
+
+                    model.ReviewerProfileUrl = wwwInput;
+
+                    var host = uri.Host;
+                    if (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+                        host = host[4..];
+
+
+                    model.ReviewerName = !string.IsNullOrWhiteSpace(model.WwwDisplayName) ? model.WwwDisplayName.Trim() : host;
+
+                    if (!string.IsNullOrWhiteSpace(model.WwwAvatarUrl)
+                        && Uri.TryCreate(model.WwwAvatarUrl, UriKind.Absolute, out var avatarUri)
+                        && (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps))
+                    {
+                        model.ReviewerAvatarUrl = model.WwwAvatarUrl;
+                    }
+                    else
+                        model.ReviewerAvatarUrl = $"https://unavatar.io/{host}";
+
+
                     break;
 
                 case ImportReviewViewModel.ImportReviewSourceEnum.X:

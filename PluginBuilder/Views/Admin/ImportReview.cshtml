@@ -42,13 +42,30 @@
 					<label asp-for="Source" class="form-label">Reviewer platform</label>
 					<select asp-for="Source" asp-items="Html.GetEnumSelectList<ImportReviewSourceEnum>()" class="form-select" id="platformSelect"></select>
 				</div>
-				<div class="form-group">
-					<label class="form-label">Profile URL</label>
-					<div class="input-group">
-						<span class="input-group-text" id="handlePrefix">https://</span>
-						<input asp-for="ReviewerName" class="form-control" />
-					</div>
-				</div>
+                <div class="form-group">
+                    <label class="form-label">Profile URL</label>
+                    <div class="input-group">
+                        <span class="input-group-text" id="handlePrefix">https://</span>
+                        <input asp-for="ReviewerName" class="form-control" />
+                    </div>
+                </div>
+                <div id="wwwExtras" style="display:none">
+                    <div class="form-group mt-3">
+                        <label asp-for="WwwDisplayName" class="form-label">
+                            Display name (optional)
+                        </label>
+                        <input asp-for="WwwDisplayName" class="form-control" />
+                    </div>
+                    <div class="form-group mt-3">
+                        <label asp-for="WwwAvatarUrl" class="form-label">
+                            Profile picture URL (optional)
+                        </label>
+                        <input asp-for="WwwAvatarUrl" class="form-control" />
+                        <div class="form-text">
+                            Leave empty to use the site's avatar automatically.
+                        </div>
+                    </div>
+                </div>
 			</div>
 		</form>
 	</div>
@@ -83,6 +100,11 @@
 		const handlePrefix   = document.getElementById('handlePrefix');
 		function syncPrefix() {
 			handlePrefix.textContent = prefixMap[platformSelect.value];
+            if (Number(platformSelect.value) === 4)
+                wwwExtras.style.display = 'block';
+            else
+                wwwExtras.style.display = 'none';
+
 		}
 		platformSelect.addEventListener('change', syncPrefix);
 		syncPrefix();

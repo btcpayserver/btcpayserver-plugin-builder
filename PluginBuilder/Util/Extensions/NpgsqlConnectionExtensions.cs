@@ -610,31 +610,13 @@ public static class NpgsqlConnectionExtensions
         return rows > 0;
     }
 
-    public static async Task<long> CreatePluginReviewer(this NpgsqlConnection connection, ImportReviewViewModel reviewModel)
-    {
-        const string sql = """
-            INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
-            VALUES (@user_id, @username, @source, @profile_url, @avatar_url, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            RETURNING id
-            """;
-
-        return await connection.ExecuteScalarAsync<long>(sql, new
-        {
-            user_id = reviewModel.SelectedUserId,
-            username = reviewModel.ReviewerName,
-            source = reviewModel.LinkExistingUser ? "system" : reviewModel.Source.ToString().ToLower(),
-            profile_url = reviewModel.ReviewerProfileUrl,
-            avatar_url = reviewModel.ReviewerAvatarUrl
-        });
-    }
-
     public static async Task<long> CreateOrUpdatePluginReviewer(this NpgsqlConnection connection, ImportReviewViewModel reviewModel)
     {
         const string sql = """
             WITH existing AS (
                 SELECT id FROM plugin_reviewers
                 WHERE (user_id = @user_id AND @user_id IS NOT NULL)
-                   OR (source = @source AND username = @username AND @username IS NOT NULL)
+                   OR profile_url = @profile_url
                 LIMIT 1
             ),
             inserted AS (
@@ -665,18 +647,6 @@ public static class NpgsqlConnectionExtensions
         });
     }
 
-    public static async Task<PluginReviewerViewModel?> GetPluginReviewer(this NpgsqlConnection connection, string? userId, string? username)
-    {
-        const string sql = """
-            SELECT id, user_id, username, source, profile_url, avatar_url
-            FROM   plugin_reviewers
-            WHERE  (user_id = @userId OR @userId IS NULL) AND (username = @username OR @username IS NULL)
-            ORDER  BY user_id NULLS LAST
-            LIMIT  1
-            """;
-        return await connection.QueryFirstOrDefaultAsync<PluginReviewerViewModel?>(sql, new { userId, username });
-    }
-
     #endregion
 
 
@@ -689,7 +659,7 @@ public static class NpgsqlConnectionExtensions
             VALUES (@pluginSlug, @releaseNote, @telegramMessage, @userReviews, @announcementDate, 'pending', CURRENT_TIMESTAMP)
             RETURNING id
             """;
-        
+
         return await connection.ExecuteScalarAsync<int>(sql, new
         {
             pluginSlug = pluginSlug.ToString(),
@@ -703,44 +673,44 @@ public static class NpgsqlConnectionExtensions
     public static async Task<PluginListingRequest?> GetListingRequest(this NpgsqlConnection connection, int requestId)
     {
         const string sql = """
-            SELECT id AS "Id", 
-                   plugin_slug AS "PluginSlug", 
-                   release_note AS "ReleaseNote", 
-                   telegram_verification_message AS "TelegramVerificationMessage", 
-                   user_reviews AS "UserReviews", 
-                   announcement_date AS "AnnouncementDate", 
-                   status AS "Status", 
-                   submitted_at AS "SubmittedAt", 
-                   reviewed_at AS "ReviewedAt", 
-                   reviewed_by AS "ReviewedBy", 
+            SELECT id AS "Id",
+                   plugin_slug AS "PluginSlug",
+                   release_note AS "ReleaseNote",
+                   telegram_verification_message AS "TelegramVerificationMessage",
+                   user_reviews AS "UserReviews",
+                   announcement_date AS "AnnouncementDate",
+                   status AS "Status",
+                   submitted_at AS "SubmittedAt",
+                   reviewed_at AS "ReviewedAt",
+                   reviewed_by AS "ReviewedBy",
                    rejection_reason AS "RejectionReason"
             FROM plugin_listing_requests
             WHERE id = @requestId
             """;
-        
+
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { requestId });
     }
 
     public static async Task<PluginListingRequest?> GetPendingListingRequestForPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         const string sql = """
-            SELECT id AS "Id", 
-                   plugin_slug AS "PluginSlug", 
-                   release_note AS "ReleaseNote", 
-                   telegram_verification_message AS "TelegramVerificationMessage", 
-                   user_reviews AS "UserReviews", 
-                   announcement_date AS "AnnouncementDate", 
-                   status AS "Status", 
-                   submitted_at AS "SubmittedAt", 
-                   reviewed_at AS "ReviewedAt", 
-                   reviewed_by AS "ReviewedBy", 
+            SELECT id AS "Id",
+                   plugin_slug AS "PluginSlug",
+                   release_note AS "ReleaseNote",
+                   telegram_verification_message AS "TelegramVerificationMessage",
+                   user_reviews AS "UserReviews",
+                   announcement_date AS "AnnouncementDate",
+                   status AS "Status",
+                   submitted_at AS "SubmittedAt",
+                   reviewed_at AS "ReviewedAt",
+                   reviewed_by AS "ReviewedBy",
                    rejection_reason AS "RejectionReason"
             FROM plugin_listing_requests
             WHERE plugin_slug = @pluginSlug AND status = 'pending'
             ORDER BY submitted_at DESC
             LIMIT 1
             """;
-        
+
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
 
@@ -750,7 +720,7 @@ public static class NpgsqlConnectionExtensions
             UPDATE plugin_listing_requests SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy
             WHERE id = @requestId AND status = 'pending'
             """;
-        
+
         var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy });
         return affected == 1;
     }
@@ -762,7 +732,7 @@ public static class NpgsqlConnectionExtensions
             SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy, rejection_reason = @rejectionReason
             WHERE id = @requestId AND status = 'pending'
             """;
-        
+
         var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy, rejectionReason });
         return affected == 1;
     }
@@ -772,30 +742,30 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
             SELECT EXISTS(SELECT 1 FROM plugin_listing_requests WHERE plugin_slug = @pluginSlug AND status = 'pending')
             """;
-        
+
         return await connection.ExecuteScalarAsync<bool>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
 
     public static async Task<PluginListingRequest?> GetLatestRejectedListingRequestForPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         const string sql = """
-            SELECT id AS "Id", 
-                   plugin_slug AS "PluginSlug", 
-                   release_note AS "ReleaseNote", 
-                   telegram_verification_message AS "TelegramVerificationMessage", 
-                   user_reviews AS "UserReviews", 
-                   announcement_date AS "AnnouncementDate", 
-                   status AS "Status", 
-                   submitted_at AS "SubmittedAt", 
-                   reviewed_at AS "ReviewedAt", 
-                   reviewed_by AS "ReviewedBy", 
+            SELECT id AS "Id",
+                   plugin_slug AS "PluginSlug",
+                   release_note AS "ReleaseNote",
+                   telegram_verification_message AS "TelegramVerificationMessage",
+                   user_reviews AS "UserReviews",
+                   announcement_date AS "AnnouncementDate",
+                   status AS "Status",
+                   submitted_at AS "SubmittedAt",
+                   reviewed_at AS "ReviewedAt",
+                   reviewed_by AS "ReviewedBy",
                    rejection_reason AS "RejectionReason"
             FROM plugin_listing_requests
             WHERE plugin_slug = @pluginSlug AND status = 'rejected'
             ORDER BY submitted_at DESC
             LIMIT 1
             """;
-        
+
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
 
@@ -804,7 +774,7 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
             SELECT COUNT(*) FROM plugin_listing_requests WHERE status = 'pending'
             """;
-        
+
         return await connection.ExecuteScalarAsync<int>(sql);
     }
 
