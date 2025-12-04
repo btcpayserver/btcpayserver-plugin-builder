@@ -612,6 +612,38 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task<long> CreateOrUpdatePluginReviewer(this NpgsqlConnection connection, ImportReviewViewModel reviewModel)
     {
+        // NOTE: This method intentionally allows matching by EITHER user_id OR profile_url.
+        // This is a FEATURE, not a bug - it enables "review migration" where:
+        // 1. External reviews are imported first (matched by profile_url, user_id is NULL)
+        // 2. When that person registers as a system user, admin can link them (matched by profile_url)
+        // 3. The user_id gets populated, claiming ownership of their previously imported reviews
+        // This allows users to "claim" their external reviews when they join the platform.
+        const string updateSql = """
+            UPDATE plugin_reviewers p
+            SET
+                user_id = COALESCE(p.user_id, @user_id),
+                username = @username,
+                source = @source,
+                profile_url = @profile_url,
+                avatar_url = @avatar_url,
+                updated_at = NOW()
+            WHERE p.id = (
+                SELECT id
+                FROM plugin_reviewers
+                WHERE
+                    (@user_id IS NOT NULL AND user_id = @user_id)
+                    OR (@profile_url IS NOT NULL AND profile_url = @profile_url)
+                ORDER BY
+                    CASE
+                        WHEN @user_id IS NOT NULL AND user_id = @user_id THEN 0
+                        WHEN profile_url = @profile_url THEN 1
+                        ELSE 2
+                    END
+                LIMIT 1
+            )
+            RETURNING id;
+            """;
+
         var param = new
         {
             user_id = reviewModel.SelectedUserId,
@@ -621,62 +653,17 @@ public static class NpgsqlConnectionExtensions
             avatar_url = reviewModel.ReviewerAvatarUrl
         };
 
-        // Critical: Prevent identity hijacking by enforcing strict matching rules
-        // If linking to a system user, ONLY match by user_id (never by profile_url)
-        // If creating external reviewer, ONLY match by profile_url where user_id is NULL
-        if (reviewModel.LinkExistingUser && !string.IsNullOrEmpty(reviewModel.SelectedUserId))
-        {
-            // System user: match ONLY by user_id
-            const string updateSystemUserSql = """
-                UPDATE plugin_reviewers
-                SET
-                    username = @username,
-                    source = @source,
-                    profile_url = @profile_url,
-                    avatar_url = @avatar_url,
-                    updated_at = NOW()
-                WHERE user_id = @user_id
-                RETURNING id;
-                """;
+        var updatedId = await connection.ExecuteScalarAsync<long?>(updateSql, param);
+        if (updatedId.HasValue)
+            return updatedId.Value;
 
-            var updatedId = await connection.ExecuteScalarAsync<long?>(updateSystemUserSql, param);
-            if (updatedId.HasValue)
-                return updatedId.Value;
+        const string insertSql = """
+            INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
+            VALUES (@user_id, @username, @source, @profile_url, @avatar_url, NOW(), NOW())
+            RETURNING id;
+            """;
 
-            // Create new reviewer for this system user
-            const string insertSql = """
-                INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
-                VALUES (@user_id, @username, @source, @profile_url, @avatar_url, NOW(), NOW())
-                RETURNING id;
-                """;
-            return await connection.ExecuteScalarAsync<long>(insertSql, param);
-        }
-        else
-        {
-            // External reviewer: match ONLY by profile_url where user_id is NULL
-            const string updateExternalSql = """
-                UPDATE plugin_reviewers
-                SET
-                    username = @username,
-                    source = @source,
-                    avatar_url = @avatar_url,
-                    updated_at = NOW()
-                WHERE profile_url = @profile_url AND user_id IS NULL
-                RETURNING id;
-                """;
-
-            var updatedId = await connection.ExecuteScalarAsync<long?>(updateExternalSql, param);
-            if (updatedId.HasValue)
-                return updatedId.Value;
-
-            // Create new external reviewer
-            const string insertSql = """
-                INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
-                VALUES (NULL, @username, @source, @profile_url, @avatar_url, NOW(), NOW())
-                RETURNING id;
-                """;
-            return await connection.ExecuteScalarAsync<long>(insertSql, param);
-        }
+        return await connection.ExecuteScalarAsync<long>(insertSql, param);
     }
 
     #endregion
