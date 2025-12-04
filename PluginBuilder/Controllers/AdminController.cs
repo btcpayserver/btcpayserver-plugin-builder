@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.OutputCaching;
 using Npgsql;
 using PluginBuilder.Configuration;
@@ -14,6 +15,7 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Controllers;
 
@@ -25,6 +27,7 @@ public class AdminController(
     DBConnectionFactory connectionFactory,
     AzureStorageClient azureStorageClient,
     EmailService emailService,
+    NostrService nostrService,
     AdminSettingsCache adminSettingsCache,
     ReferrerNavigationService referrerNavigation,
     PluginBuilderOptions pbOptions,
@@ -216,6 +219,153 @@ public class AdminController(
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
 
         return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
+    }
+
+    [HttpGet("plugins/import-review/{pluginSlug}")]
+    public IActionResult ImportReview(string pluginSlug)
+    {
+        var vm = new ImportReviewViewModel
+        {
+            PluginSlug = pluginSlug.ToString(),
+            ExistingUsers = userManager.Users.Select(u => new SelectListItem
+            {
+                Value = u.Id,
+                Text = u.Email
+            }).ToList()
+        };
+        return View(vm);
+    }
+
+
+    [HttpPost("plugins/import-review/{pluginSlug}")]
+    public async Task<IActionResult> ImportReview(ImportReviewViewModel model, string pluginSlug)
+    {
+        if (model.Rating is < 1 or > 5 || string.IsNullOrEmpty(model.Body))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Invalid rating or body specified";
+            return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+        }
+        if (!string.IsNullOrWhiteSpace(model.SourceUrl))
+        {
+            model.Body += $"\n\n[Click here to continue reading]({model.SourceUrl})";
+        }
+        await using var conn = await connectionFactory.Open();
+        PluginReviewViewModel vm = new()
+        {
+            PluginSlug = pluginSlug,
+            Rating = model.Rating,
+            Body = model.Body,
+            CreatedAt = DateTime.UtcNow
+        };
+        if (model.LinkExistingUser && !string.IsNullOrEmpty(model.SelectedUserId))
+        {
+            var linkedUser = await userManager.FindByIdAsync(model.SelectedUserId);
+            if (linkedUser == null)
+            {
+                TempData[TempDataConstant.WarningMessage] = "Invalid system user";
+                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+            }
+            var reviewerAccountDetails = await conn.GetAccountDetailSettings(linkedUser.Id) ?? new AccountSettings();
+            model = model.UpdatePluginReviewerData(reviewerAccountDetails);
+        }
+
+        if (!model.LinkExistingUser)
+        {
+            if (string.IsNullOrEmpty(model.ReviewerName))
+            {
+                TempData[TempDataConstant.WarningMessage] = "Kindly provide the reviewer profile";
+                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+            }
+            model.ReviewerName = model.ReviewerName.TrimStart('/').TrimEnd();
+            model.SelectedUserId = null;
+            switch (model.Source)
+            {
+                case ImportReviewViewModel.ImportReviewSourceEnum.Nostr:
+                    var nostrIdentifier = model.ReviewerName.Trim();
+
+                    if (!nostrService.TryGetPubKeyHex(nostrIdentifier, out var pubKeyHex))
+                    {
+                        TempData[TempDataConstant.WarningMessage] = "Invalid Nostr identifier (npub, nprofile or hex).";
+                        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+                    }
+
+                    var nostrProfile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKeyHex);
+
+                    model.ReviewerName = !string.IsNullOrWhiteSpace(nostrProfile?.Name)
+                        ? nostrProfile.Name!
+                        : nostrIdentifier;
+
+                    model.ReviewerProfileUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(pubKeyHex));
+                    model.ReviewerAvatarUrl = nostrProfile?.PictureUrl;
+                    break;
+
+                case ImportReviewViewModel.ImportReviewSourceEnum.WWW:
+                    var wwwInput = model.ReviewerName.Trim();
+
+                    if (!wwwInput.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                        !wwwInput.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        wwwInput = $"https://{wwwInput}";
+                    }
+
+                    if (!Uri.TryCreate(wwwInput, UriKind.Absolute, out var uri))
+                    {
+                        TempData[TempDataConstant.WarningMessage] = "Invalid website URL.";
+                        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+                    }
+
+                    model.ReviewerProfileUrl = wwwInput;
+
+                    var host = uri.Host;
+                    if (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+                        host = host[4..];
+
+
+                    model.ReviewerName = !string.IsNullOrWhiteSpace(model.WwwDisplayName) ? model.WwwDisplayName.Trim() : host;
+
+                    if (!string.IsNullOrWhiteSpace(model.WwwAvatarUrl)
+                        && Uri.TryCreate(model.WwwAvatarUrl, UriKind.Absolute, out var avatarUri)
+                        && (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps))
+                    {
+                        model.ReviewerAvatarUrl = model.WwwAvatarUrl;
+                    }
+                    else
+                        model.ReviewerAvatarUrl = string.Format(ExternalProfileUrls.UnavatarSiteFormat, host);
+
+
+                    break;
+
+                case ImportReviewViewModel.ImportReviewSourceEnum.X:
+                    var escapedXHandle = Uri.EscapeDataString(model.ReviewerName);
+                    model.ReviewerProfileUrl = $"{ExternalProfileUrls.XBaseUrl}{escapedXHandle}";
+                    model.ReviewerAvatarUrl = string.Format(ExternalProfileUrls.XAvatarFormat, escapedXHandle);
+                    break;
+
+                case ImportReviewViewModel.ImportReviewSourceEnum.Github:
+                    var escapedGhHandle = Uri.EscapeDataString(model.ReviewerName);
+                    model.ReviewerProfileUrl = $"{ExternalProfileUrls.GithubBaseUrl}{escapedGhHandle}";
+                    model.ReviewerAvatarUrl = string.Format(ExternalProfileUrls.GithubAvatarFormat, escapedGhHandle, 48);
+                    break;
+
+                default:
+                    model.ReviewerProfileUrl = null;
+                    model.ReviewerAvatarUrl = null;
+                    break;
+            }
+            if (model.ReviewerProfileUrl == null)
+            {
+                TempData[TempDataConstant.WarningMessage] = "Invalid source selected";
+                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+            }
+        }
+        vm.ReviewerId = await conn.CreateOrUpdatePluginReviewer(model);
+        await conn.UpsertPluginReview(vm);
+
+        var url = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = model.PluginSlug }, Request.Scheme);
+        TempData[TempDataConstant.SuccessMessage] = "Review submitted successfully.";
+        TempData[TempDataConstant.SuccessLinkUrl] = url;
+        TempData[TempDataConstant.SuccessLinkText] = "Click here to view it";
+        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
     }
 
     [HttpPost("plugins/{pluginSlug}/ownership")]

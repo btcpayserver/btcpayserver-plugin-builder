@@ -8,13 +8,15 @@ using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
+using PluginBuilder.JsonConverters;
+using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
+using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Home;
-using PluginBuilder.ModelBinders;
-using PluginBuilder.JsonConverters;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Controllers;
 
@@ -384,10 +386,9 @@ public class HomeController(
                         -- THIRD QUERY
                         SELECT
                           r.id AS Id,
-                          (u.""AccountDetail""->>'github') AS ""AuthorUrl"",
-                          (u.""AccountDetail""->'nostr'->>'npub')                           AS ""Npub"",
-                          (u.""AccountDetail""->'nostr'->'profile'->>'name')                AS ""NostrName"",
-                          (u.""AccountDetail""->'nostr'->'profile'->>'pictureUrl')          AS ""NostrAvatarUrl"",
+                          u.username AS ""AuthorDisplay"",
+                          u.profile_url AS ""AuthorUrl"",
+                          u.avatar_url AS ""AuthorAvatarUrl"",
                           r.rating AS Rating,
                           r.body AS Body,
                           array_to_string(r.plugin_version, '.')::text AS ""PluginVersion"",
@@ -402,7 +403,7 @@ public class HomeController(
                             ELSE NULL
                           END AS ""UserVoteHelpful""
                         FROM plugin_reviews r
-                        LEFT JOIN ""AspNetUsers"" u ON u.""Id"" = r.user_id
+                        LEFT JOIN plugin_reviewers u ON u.id = r.reviewer_id
                         LEFT JOIN LATERAL (
                           SELECT
                             COUNT(*) FILTER (WHERE kv.value::boolean)      AS up_count,
@@ -423,50 +424,10 @@ public class HomeController(
         var versions = pluginDetails.versions as IEnumerable<string> ?? Enumerable.Empty<string>();
 
         //second
-        var summary = await multi.ReadFirstOrDefaultAsync<PluginRatingSummary>()
-                      ?? new PluginRatingSummary();
+        var summary = await multi.ReadFirstOrDefaultAsync<PluginRatingSummary>() ?? new PluginRatingSummary();
 
         // third
         var items = (await multi.ReadAsync<Review>()).ToList();
-
-        foreach (var item in items)
-        {
-            var gh = GetGithubIdentity(item.AuthorUrl, size: 48);
-            if (gh is not null)
-            {
-                item.AuthorDisplay   = gh.Login ?? "GitHub User";
-                item.AuthorUrl       = gh.HtmlUrl;
-                item.AuthorAvatarUrl = gh.AvatarUrl;
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(item.Npub))
-            {
-                item.AuthorDisplay = string.IsNullOrWhiteSpace(item.NostrName)
-                    ? $"{item.Npub[..8]}…"
-                    : item.NostrName;
-
-                // choose primal instead of njump because works for any case
-                item.AuthorUrl = !string.IsNullOrWhiteSpace(item.Npub)
-                    ? $"https://primal.net/p/{item.Npub}"
-                    : null;
-
-                if (!string.IsNullOrWhiteSpace(item.NostrAvatarUrl) &&
-                    Uri.TryCreate(item.NostrAvatarUrl, UriKind.Absolute, out var u) &&
-                    (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
-                {
-                    item.AuthorAvatarUrl = item.NostrAvatarUrl;
-                }
-                else
-                {
-                    item.AuthorAvatarUrl = null;
-                }
-                continue;
-            }
-
-            item.AuthorDisplay   = "Anonymous";
-            item.AuthorAvatarUrl = null;
-        }
 
         var settings = SafeJson.Deserialize<PluginSettings>((string)pluginDetails.settings);
         var manifestInfo = JObject.Parse((string)pluginDetails.manifest_info);
@@ -484,43 +445,18 @@ public class HomeController(
             RatingSummary = summary
         };
 
-        var isOwner = false;
-            if (userId != null)
-                isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
-
         var primaryOwnerId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+        var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId!) ?? new AccountSettings();
+        var ownerGithubHandle = ExternalAccountVerificationService.GetGithubHandle(ownerSettings.Github);
+        string? ownerGithubUrl = null;
+        if (!string.IsNullOrWhiteSpace(ownerGithubHandle))
+            ownerGithubUrl = $"{ExternalProfileUrls.GithubBaseUrl}{Uri.EscapeDataString(ownerGithubHandle)}";
 
-        string? ownerGithubUrl   = null;
-        string? ownerNostrUrl    = null;
-        string? ownerTwitterUrl  = null;
+        string? ownerNostrUrl = null;
+        var ownerNpub = ownerSettings.Nostr?.Npub?.Trim();
+        if (!string.IsNullOrWhiteSpace(ownerNpub))
+            ownerNostrUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(ownerNpub));
 
-        if (!string.IsNullOrEmpty(primaryOwnerId))
-        {
-            var ownerSettings = await conn.GetAccountDetailSettings(primaryOwnerId) ?? new AccountSettings();
-
-            if (!string.IsNullOrWhiteSpace(ownerSettings.Github))
-            {
-                var safeHandle = GetGithubHandle(ownerSettings.Github);
-                if (!string.IsNullOrWhiteSpace(safeHandle))
-                    ownerGithubUrl = $"https://github.com/{safeHandle}";
-            }
-
-            if (!string.IsNullOrWhiteSpace(ownerSettings.Nostr?.Npub))
-            {
-                var safeNpub = Uri.EscapeDataString(ownerSettings.Nostr.Npub.Trim());
-                ownerNostrUrl = $"https://primal.net/p/{safeNpub}";
-            }
-
-            if (!string.IsNullOrWhiteSpace(ownerSettings.Twitter))
-            {
-                var handle = ownerSettings.Twitter.Trim().TrimStart('@', '/', ' ');
-                if (!string.IsNullOrWhiteSpace(handle))
-                {
-                    var safeHandle = Uri.EscapeDataString(handle);
-                    ownerTwitterUrl = $"https://x.com/{safeHandle}";
-                }
-            }
-        }
 
         var vm = new PluginDetailsViewModel
         {
@@ -529,28 +465,23 @@ public class HomeController(
             Skip = model.Skip,
             Reviews = items,
             IsAdmin = isAdmin,
-            IsOwner = isOwner,
+            IsOwner = userId != null && userId == primaryOwnerId,
             PluginVersions = versions.ToList(),
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
             Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
             RatingFilter = model.RatingFilter,
             OwnerGithubUrl = ownerGithubUrl,
-            OwnerNostrUrl = ownerNostrUrl,
-            OwnerTwitterUrl = ownerTwitterUrl
+            OwnerNostrUrl = ownerNostrUrl
         };
-
         return View(vm);
     }
 
     [HttpPost("public/plugins/{pluginSlug}/reviews/upsert")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpsertReview(
-        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
-        int rating,
-        string? body,
-        string? pluginVersion)
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, int rating, string? body, string? pluginVersion)
     {
-        if (rating is < 1 or > 5) return BadRequest("Invalid rating.");
+        if (rating is < 1 or > 5) return BadRequest("Invalid rating");
 
         var userId = userManager.GetUserId(User);
         if (string.IsNullOrEmpty(userId)) return Forbid();
@@ -558,66 +489,86 @@ public class HomeController(
         await using var conn = await connectionFactory.Open();
 
         var isOwner = await conn.UserOwnsPlugin(userId, pluginSlug);
-
         if (isOwner)
         {
             TempData[TempDataConstant.WarningMessage] = "You cannot review your own plugin.";
-            var backUrl = Url.Action(nameof(GetPluginDetails), "Home",
-                new { pluginSlug = pluginSlug.ToString() });
-            return Redirect(backUrl ?? "/");
+            return RedirectToAction(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString() });
         }
 
-        var hasGithub = await userVerifiedLogic.IsUserGithubVerified(User, conn);
-        var hasNostr  = await userVerifiedLogic.IsNostrVerified(User, conn);
-
-        if (!(hasGithub || hasNostr))
+        var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
+        if (string.IsNullOrEmpty(reviewerAccountDetails.Github) && (reviewerAccountDetails.Nostr == null || string.IsNullOrEmpty(reviewerAccountDetails.Nostr?.Npub)))
         {
-            TempData[TempDataConstant.WarningMessage] =
-                "You need to verify your GitHub or Nostr account in order to review plugins";
-            return RedirectToAction("AccountDetails", "Account");
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub or Nostr account in order to review plugins";
+            return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
         }
 
         int[]? pluginVersionParts = null;
-        if (!string.IsNullOrWhiteSpace(pluginVersion) &&
-            PluginVersion.TryParse(pluginVersion, out var v))
+        if (!string.IsNullOrWhiteSpace(pluginVersion) && PluginVersion.TryParse(pluginVersion, out var v))
         {
             pluginVersionParts = v.VersionParts;
         }
-
-        if (!hasGithub && hasNostr)
+        PluginReviewViewModel reviewViewModel = new()
         {
+            PluginSlug = pluginSlug.ToString(),
+            UserId = userId,
+            Rating = rating,
+            Body = body,
+            PluginVersion = pluginVersionParts
+        };
+        reviewViewModel.ReviewerId = await conn.CreateOrUpdatePluginReviewer(await UpdatePluginReviewerData(reviewerAccountDetails, userId));
+        await conn.UpsertPluginReview(reviewViewModel);
+
+        var sort = Request.Query["sort"].ToString();
+        var url = Url.Action(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString(), sort = string.IsNullOrEmpty(sort) ? null : sort });
+        return Redirect((url ?? "/") + "#reviews");
+    }
+
+    private async Task<ImportReviewViewModel> UpdatePluginReviewerData(AccountSettings settings, string userId)
+    {
+        ImportReviewViewModel importReviewModel = new()
+        {
+            SelectedUserId = userId,
+            LinkExistingUser = true,
+        };
+        if (!string.IsNullOrEmpty(settings.Github))
+        {
+            var githubProfile = ExternalAccountVerificationService.GetGithubIdentity(settings.Github);
+
+            importReviewModel.ReviewerName = githubProfile?.Login;
+            importReviewModel.ReviewerProfileUrl = githubProfile?.HtmlUrl;
+            importReviewModel.ReviewerAvatarUrl = githubProfile?.AvatarUrl;
+        }
+        else if (settings.Nostr != null && !string.IsNullOrEmpty(settings.Nostr.Npub))
+        {
+            var nostr = settings.Nostr;
+            importReviewModel.ReviewerProfileUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(nostr.Npub));
+            importReviewModel.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name)
+                ? nostr.Npub.Length >= 8
+                    ? $"{nostr.Npub[..8]}…" : nostr.Npub
+                : nostr.Profile.Name;
+            importReviewModel.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
+                                                  (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
+
             try
             {
-                var acc = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
-
-                if (!string.IsNullOrWhiteSpace(acc.Nostr?.Npub))
+                var pubKey = nostrService.NpubToHexPub(nostr.Npub);
+                var nostrProfile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKey);
+                if (nostrProfile is not null)
                 {
-                    var pubKey = nostrService.NpubToHexPub(acc.Nostr.Npub);
-                    var profile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKey, timeoutPerRelayMs: 6000);
-                    if (profile is not null)
-                    {
-                        acc.Nostr ??= new NostrSettings();
-                        acc.Nostr.Profile = profile;
-                        await conn.SetAccountDetailSettings(acc, userId);
-                    }
+                    importReviewModel.ReviewerName = nostrProfile.Name;
+                    importReviewModel.ReviewerAvatarUrl = nostrProfile.PictureUrl;
+                    return importReviewModel;
                 }
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error while updating nostr profile");
+                logger.LogError(ex, "Error while retrieving nostr profile for {Npub}", nostr.Npub);
             }
         }
-
-        await conn.UpsertPluginReview(pluginSlug, userId, rating, body, pluginVersionParts);
-
-        var sort = Request.Query["sort"].ToString();
-        var url = Url.Action(nameof(GetPluginDetails), "Home",
-            new { pluginSlug = pluginSlug.ToString(), sort = string.IsNullOrEmpty(sort) ? null : sort });
-
-        return Redirect((url ?? "/") + "#reviews");
+        return importReviewModel;
     }
 
-    [HttpPost("public/plugins/{pluginSlug}/reviews/{id}/vote")]
+    [HttpPost("public/plugins/{pluginSlug}/reviews/{id:long}/vote")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> VoteReview(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
@@ -642,7 +593,7 @@ public class HomeController(
         return Redirect((url ?? "/") + "#reviews");
     }
 
-    [HttpPost("public/plugins/{pluginSlug}/reviews/{id}/delete")]
+    [HttpPost("public/plugins/{pluginSlug}/reviews/{id:long}/delete")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteReview(
         [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
@@ -740,7 +691,6 @@ public class HomeController(
         if (!ModelState.IsValid)
             return View(model);
 
-        // TODO: Require the user to have a confirmed email before they can log on.
         var user = await userManager.FindByEmailAsync(model.Email);
         if (user is null)
         {
@@ -792,58 +742,6 @@ public class HomeController(
 
         return RedirectToAction(nameof(HomePage), "Home");
     }
-
-    static string? GetGithubHandle(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return null;
-        url = url.Trim();
-
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
-        {
-            var raw = url.TrimStart('/');
-            if (raw.StartsWith("github.com/", StringComparison.OrdinalIgnoreCase) ||
-                         raw.StartsWith("www.github.com/", StringComparison.OrdinalIgnoreCase))
-                {
-                if (!Uri.TryCreate("https://" + raw, UriKind.Absolute, out u))
-                    return null;
-                }
-            else
-            {
-                if (!Uri.TryCreate("https://github.com/" + raw, UriKind.Absolute, out u))
-                    return null;
-            }
-        }
-
-        if (!u.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) || u.Host.Equals("www.github.com", StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        var segs = u.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (segs.Length == 0) return null;
-
-        var handle = segs[0];
-        if (handle.Equals("orgs", StringComparison.OrdinalIgnoreCase) ||
-            handle.Equals("users", StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        return handle;
-    }
-
-    static GitHubContributor? GetGithubIdentity(string? githubUrl, int size = 48)
-    {
-        var handle = GetGithubHandle(githubUrl);
-        if (string.IsNullOrWhiteSpace(handle)) return null;
-
-        var safe = Uri.EscapeDataString(handle);
-        return new GitHubContributor
-        {
-            Login       = handle,
-            HtmlUrl     = $"https://github.com/{safe}",
-            AvatarUrl   = $"https://avatars.githubusercontent.com/{safe}?s={size}",
-            UserViewType= "user",
-            Contributions = 0
-        };
-    }
-
 
     [AllowAnonymous]
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]

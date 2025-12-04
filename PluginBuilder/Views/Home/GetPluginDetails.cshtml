@@ -250,7 +250,7 @@
                                             @if (!string.IsNullOrEmpty(review.AuthorAvatarUrl))
                                             {
                                                 <img src="@review.AuthorAvatarUrl"
-                                                     srcset="@review.AuthorAvatarUrl 1x, @($"{review.AuthorAvatarUrl}&s=96") 2x"
+                                                     srcset="@review.AuthorAvatarUrl 1x, @($"{review.AuthorAvatarUrl}?s=96") 2x"
                                                      alt="@review.AuthorDisplay avatar"
                                                      class="rounded-circle me-1"
                                                      style="width:24px;height:24px;" loading="lazy" />
@@ -430,7 +430,7 @@
                                             </div>
                                         </div>
                                     </div>
-									<partial name="_MarkdownToolbarTextArea" model="@("reviewBody")" />
+									<partial name="_MarkdownToolbarTextArea" model="@("Body")" />
                                     <button class="btn btn-primary mt-3">Submit</button>
                                 </form>
                                 }

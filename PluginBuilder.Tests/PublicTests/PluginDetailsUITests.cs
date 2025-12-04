@@ -44,6 +44,10 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.Server.CreateFakeUserAsync(email: "reviewer@x.com", confirmEmail: true, githubVerified: true);
         await tester.Server.CreateFakeUserAsync(email: "voter@x.com",    confirmEmail: true, githubVerified: true);
 
+
+        await tester.VerifyUserAccounts("reviewer@x.com", "reviewernpub1");
+        await tester.VerifyUserAccounts("voter@x.com", "voternpub1");
+
         const string url = $"/public/plugins/{slug}";
 
         //Plugin owners can't create review
@@ -164,6 +168,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         const string slug = ServerTester.PluginSlug;
         await tester.Server.CreateAndBuildPluginAsync(ownerId, slug: slug);
         await tester.Server.CreateFakeUserAsync(email: "reviewer@x.com", confirmEmail: true, githubVerified: true);
+        await tester.VerifyUserAccounts("reviewer@x.com", "reviewernpub1");
 
         // Login as reviewer and create review with markdown
         await tester.LogIn("reviewer@x.com");

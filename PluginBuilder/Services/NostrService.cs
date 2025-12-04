@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -28,6 +29,8 @@ public class NostrService(IMemoryCache cache, AdminSettingsCache adminSettingsCa
     private const string PrefixNpub = "npub";
     private const string PrefixNote = "note";
     private const string PrefixNevent = "nevent";
+    private const string PrefixNprofile = "nprofile";
+
     private static string ChallengeCacheKey(string userId) => $"nostr:active:{userId}";
 
     public string GetOrCreateActiveChallenge(string userId)
@@ -92,6 +95,33 @@ public class NostrService(IMemoryCache cache, AdminSettingsCache adminSettingsCa
         var raw = ConvertBits(data5, fromBits:5, toBits:8, pad:false);
         if (raw.Length != 32) throw new FormatException("Invalid npub payload length");
         return Convert.ToHexString(raw).ToLowerInvariant();
+    }
+
+    public bool TryGetPubKeyHex(string? identifier, [NotNullWhen(true)] out string? pubKeyHex)
+    {
+        pubKeyHex = null;
+        if (string.IsNullOrWhiteSpace(identifier))
+            return false;
+        identifier = identifier.Trim();
+
+        if (IsHex64(identifier))
+        {
+            pubKeyHex = identifier.ToLowerInvariant();
+            return true;
+        }
+
+        if (!identifier.StartsWith(PrefixNpub, StringComparison.OrdinalIgnoreCase))
+            return identifier.StartsWith(PrefixNprofile, StringComparison.OrdinalIgnoreCase) && TryDecodeNprofileToHex(identifier, out pubKeyHex);
+
+        try
+        {
+            pubKeyHex = NpubToHexPub(identifier);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task<JObject?> FetchFirstFromRelaysAsync(IEnumerable<NostrFilter> filters, TimeSpan timeout, Func<JObject, bool>? validate = null)
@@ -246,6 +276,34 @@ public class NostrService(IMemoryCache cache, AdminSettingsCache adminSettingsCa
             }
             return false;
         } catch { return false; }
+    }
+
+    public static bool TryDecodeNprofileToHex(string nprofile, out string? authorPubKeyHex)
+    {
+        authorPubKeyHex = null;
+        try
+        {
+            var tlvBytes = ConvertBits(Bech32DecodeTo5(PrefixNprofile, nprofile), 5, 8, false);
+            for (var i = 0; i + 2 <= tlvBytes.Length;)
+            {
+                var type = tlvBytes[i++];
+                var length = tlvBytes[i++];
+                if (i + length > tlvBytes.Length) break;
+
+                if (type == 0 && length == 32)
+                {
+                    authorPubKeyHex = Convert.ToHexString(tlvBytes.AsSpan(i, length)).ToLowerInvariant();
+                    return true;
+                }
+
+                i += length;
+            }
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static byte[] Bech32DecodeTo5(string hrp, string bech) => Encoders.Bech32(hrp).DecodeDataRaw(bech.Trim(), out _);

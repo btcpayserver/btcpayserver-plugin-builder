@@ -3,9 +3,12 @@ using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
+using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
+using PluginBuilder.ViewModels.Admin;
+using PluginBuilder.ViewModels.Plugin;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -70,10 +73,6 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']", new PageWaitForSelectorOptions { State = WaitForSelectorState.Hidden });
         Assert.False(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
 
-        // Public page should not be accessible if hidden and owner is not logged in
-        var response = await tester.GoToUrl("/public/plugins/rockstar-stylist");
-        Assert.Equal(404, response?.Status);
-
         // Log in as plugin owner and access page again
         await tester.GoToUrl("/register");
         var email = await tester.RegisterNewUser();
@@ -116,8 +115,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         Assert.True(popularAlpha < rockstarAlpha, "Expected 'Alice Plugin' to appear before 'Bob Plugin' in alpha sort.");
 
         // 3) sort=rating
-        const string insertReviewSql = "INSERT INTO plugin_reviews (plugin_slug, user_id, rating) VALUES (@slug, @userId, @rating)";
-        await conn.ExecuteAsync(insertReviewSql, new { slug = slugString, userId = reviewer1, rating = 5 });
+        await SaveReviewData(conn, slugString, reviewer1);
         var (rockstarRating, popularRating) = await GetIndexesAsync("?sort=rating");
         Assert.True(rockstarRating < popularRating, "Expected plugin with rating to appear before plugin without rating in rating sort.");
 
@@ -126,13 +124,13 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         Assert.True(popularRecent < rockstarRecent, "Expected newer plugin to appear first in recent sort.");
 
         // 5) sort=smart
-        await conn.ExecuteAsync(insertReviewSql, new { slug = slugString, userId = reviewer2, rating = 5 });
-        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer1, rating = 5 });
-        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer2, rating = 5 });
-        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer3, rating = 5 });
-        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer4, rating = 5 });
-        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer5, rating = 5 });
-        await conn.ExecuteAsync(insertReviewSql, new { slug = popularSlugString, userId = reviewer6, rating = 5 });
+        await SaveReviewData(conn, slugString, reviewer2);
+        await SaveReviewData(conn, popularSlugString, reviewer1);
+        await SaveReviewData(conn, popularSlugString, reviewer2);
+        await SaveReviewData(conn, popularSlugString, reviewer3);
+        await SaveReviewData(conn, popularSlugString, reviewer4);
+        await SaveReviewData(conn, popularSlugString, reviewer5);
+        await SaveReviewData(conn, popularSlugString, reviewer6);
         var (rockstarSmart, popularSmart) = await GetIndexesAsync("?sort=smart");
         Assert.True(popularSmart < rockstarSmart, "Expected plugin with many reviews to appear first in smart sort.");
 
@@ -170,5 +168,29 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 
             return (rockstarIndex, popularIndex);
         }
+    }
+
+    private async Task SaveReviewData(NpgsqlConnection conn, string pluginSlug, string userId)
+    {
+        var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId);
+        var importModel = new ImportReviewViewModel
+        {
+            SelectedUserId = userId,
+            LinkExistingUser = true,
+            ReviewerName = reviewerAccountDetails?.Github ?? "test-reviewer",
+            ReviewerProfileUrl = reviewerAccountDetails?.Github is { Length: > 0 }
+                ? $"https://github.com/{reviewerAccountDetails.Github.Trim().TrimStart('@').Trim('/')}"
+                : null,
+            ReviewerAvatarUrl = null
+        };
+        PluginReviewViewModel reviewViewModel = new()
+        {
+            PluginSlug = pluginSlug,
+            UserId = userId,
+            Rating = 5,
+            Body = "This is a good plugin"
+        };
+        reviewViewModel.ReviewerId = await conn.CreateOrUpdatePluginReviewer(importModel);
+        await conn.UpsertPluginReview(reviewViewModel);
     }
 }

@@ -1,0 +1,112 @@
+@using static PluginBuilder.ViewModels.Admin.ImportReviewViewModel
+@model ImportReviewViewModel
+@{
+	Layout = "_Layout";
+	ViewData.SetActivePage(AdminNavPages.Plugins, "Plugins");
+}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+	<h2 class="mb-3 mb-md-0">Import Review for @Model.PluginSlug</h2>
+	<div class="d-flex gap-3 mt-3 mt-sm-0">
+		<button type="submit" form="import-review-form" class="btn btn-success">Submit Review</button>
+	</div>
+</div>
+
+<div class="row">
+	<div class="col-xl-8 col-xxl-constrain">
+		<form id="import-review-form" asp-action="ImportReview" method="post">
+			<input asp-for="PluginSlug" type="hidden" />
+			<div class="form-group">
+				<label asp-for="Body" class="form-label" data-required></label>
+				<partial name="_MarkdownToolbarTextArea" model="@("Body")" />
+			</div>
+			<div class="form-group">
+				<label asp-for="Rating" class="form-label">Rating</label>
+				<input asp-for="Rating" type="range" min="1" max="5" class="form-range" />
+				<div class="form-text">Selected: <span id="starLabel">5</span> ⭐</div>
+			</div>
+			<div class="form-group">
+				<label asp-for="SourceUrl" class="form-label">Review Source URL</label>
+				<input asp-for="SourceUrl" class="form-control" />
+			</div>
+			<div class="form-group d-flex align-items-center">
+				<input class="btcpay-toggle me-2" type="checkbox" asp-for="LinkExistingUser">
+				<label class="form-check-label">Review by an existing Plugin Builder user?</label>
+			</div>
+			<div id="existingUserSection" class="mb-3" style="display:none">
+				<label class="form-label">Select user</label>
+				<select asp-for="SelectedUserId" asp-items="Model.ExistingUsers" class="form-select"></select>
+			</div>
+			<div id="manualIdentitySection">
+				<div class="form-group">
+					<label asp-for="Source" class="form-label">Reviewer platform</label>
+					<select asp-for="Source" asp-items="Html.GetEnumSelectList<ImportReviewSourceEnum>()" class="form-select" id="platformSelect"></select>
+				</div>
+                <div class="form-group">
+                    <label class="form-label">Profile URL</label>
+                    <div class="input-group">
+                        <span class="input-group-text" id="handlePrefix">https://</span>
+                        <input asp-for="ReviewerName" class="form-control" />
+                    </div>
+                </div>
+                <div id="wwwExtras" style="display:none">
+                    <div class="form-group mt-3">
+                        <label asp-for="WwwDisplayName" class="form-label">
+                            Display name (optional)
+                        </label>
+                        <input asp-for="WwwDisplayName" class="form-control" />
+                    </div>
+                    <div class="form-group mt-3">
+                        <label asp-for="WwwAvatarUrl" class="form-label">
+                            Profile picture URL (optional)
+                        </label>
+                        <input asp-for="WwwAvatarUrl" class="form-control" />
+                        <div class="form-text">
+                            Leave empty to use the site's avatar automatically.
+                        </div>
+                    </div>
+                </div>
+			</div>
+		</form>
+	</div>
+</div>
+
+@section FooterScripts {
+	<script>
+		const prefixMap = {
+			1: 'https://primal.net/p/',
+			2: 'https://x.com/',
+			3: 'https://github.com/',
+			4: 'https://'
+		};
+		const rating = document.querySelector('input[name="Rating"]');
+		rating.addEventListener('input', e => document.getElementById('starLabel').textContent = e.target.value);
+		const checkbox = document.querySelector('[name="LinkExistingUser"]');
+		const existingSection = document.getElementById('existingUserSection');
+		const manualSection = document.getElementById('manualIdentitySection');
+		function toggleSections() {
+			if (checkbox.checked) {
+				existingSection.style.display = 'block';
+				manualSection.style.display = 'none';
+			} else {
+				existingSection.style.display = 'none';
+				manualSection.style.display = 'block';
+			}
+		}
+		checkbox.addEventListener('change', toggleSections);
+		toggleSections();
+
+		const platformSelect = document.getElementById('platformSelect');
+		const handlePrefix   = document.getElementById('handlePrefix');
+		function syncPrefix() {
+			handlePrefix.textContent = prefixMap[platformSelect.value];
+            if (Number(platformSelect.value) === 4)
+                wwwExtras.style.display = 'block';
+            else
+                wwwExtras.style.display = 'none';
+
+		}
+		platformSelect.addEventListener('change', syncPrefix);
+		syncPrefix();
+	</script>
+}
