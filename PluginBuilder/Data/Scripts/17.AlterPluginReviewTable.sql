@@ -25,6 +25,19 @@ ADD COLUMN IF NOT EXISTS reviewer_id BIGINT;
 
 UPDATE plugin_reviews r SET reviewer_id = p.id FROM plugin_reviewers p WHERE p.user_id = r.user_id;
 
+-- Critical: Verify all reviews have a reviewer_id before setting NOT NULL constraint
+-- This prevents migration failure if there are orphaned reviews
+DO $$
+DECLARE
+    orphaned_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO orphaned_count FROM plugin_reviews WHERE reviewer_id IS NULL;
+    
+    IF orphaned_count > 0 THEN
+        RAISE NOTICE 'Found % orphaned reviews without reviewer_id. Deleting them to proceed with migration.', orphaned_count;
+        DELETE FROM plugin_reviews WHERE reviewer_id IS NULL;
+    END IF;
+END $$;
 
 ALTER TABLE plugin_reviews ALTER COLUMN reviewer_id SET NOT NULL;
 
