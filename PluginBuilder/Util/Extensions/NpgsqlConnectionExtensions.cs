@@ -476,15 +476,6 @@ public static class NpgsqlConnectionExtensions
 
     #region Plugin Reviewers and reviews
 
-    public static async Task<IEnumerable<PluginReviewViewModel>> GetPluginReviews(this NpgsqlConnection connection, string pluginSlug)
-    {
-        return await connection.QueryAsync<PluginReviewViewModel>(
-            """
-            SELECT plugin_slug AS PluginSlug, user_id AS UserId, rating AS Rating, body AS Body, plugin_version AS PluginVersion, helpful_voters AS HelpfulVoters, author_username AS AuthorName,
-            author_profile_url AS AuthorProfileUrl, author_avatar_url AS AuthorAvatarUrl, created_at AS CreatedAt, updated_at AS UpdatedAt FROM plugin_reviews WHERE plugin_slug = @pluginSlug
-        """, new { pluginSlug });
-    }
-
     public static Task UpsertPluginReview(this NpgsqlConnection connection, PluginReviewViewModel model)
     {
         const string sql = """
@@ -525,10 +516,17 @@ public static class NpgsqlConnectionExtensions
         bool isAdmin)
     {
         const string sql = """
-                           DELETE FROM plugin_reviews
-                           WHERE id = @id
-                             AND plugin_slug = @slug
-                             AND ( @isAdmin OR user_id = @userId )
+                           DELETE FROM plugin_reviews pr
+                           USING plugin_reviewers r
+                           WHERE pr.id = @id
+                             AND pr.plugin_slug = @slug
+                             AND (
+                                   @isAdmin
+                                   OR (
+                                       pr.reviewer_id = r.id
+                                       AND r.user_id = @userId
+                                   )
+                             );
                            """;
 
         var rows = await conn.ExecuteAsync(sql, new
@@ -568,12 +566,14 @@ public static class NpgsqlConnectionExtensions
         string userId)
     {
         const string sql = """
-                               UPDATE plugin_reviews
-                               SET helpful_voters = helpful_voters - @userId
-                               WHERE id = @id
-                                 AND plugin_slug = @slug
-                                 AND user_id <> @userId;
-                               """;
+                           UPDATE plugin_reviews pr
+                           SET helpful_voters = pr.helpful_voters - @userId
+                           FROM plugin_reviewers r
+                           WHERE pr.id = @id
+                             AND pr.plugin_slug = @slug
+                             AND pr.reviewer_id = r.id
+                             AND (r.user_id IS NULL OR r.user_id <> @userId);
+                           """;
         var rows = await conn.ExecuteAsync(sql, new
         {
             id = reviewId,
@@ -591,15 +591,19 @@ public static class NpgsqlConnectionExtensions
         bool isHelpful)
     {
         const string sql = """
-                               UPDATE plugin_reviews
-                               SET helpful_voters = jsonb_set((helpful_voters),
-                                   ARRAY[@userId],
-                                   to_jsonb(@isHelpful),
-                                   true)
-                               WHERE id = @id
-                                 AND plugin_slug = @slug
-                                 AND user_id <> @userId;
-                               """;
+                           UPDATE plugin_reviews pr
+                           SET helpful_voters = jsonb_set(
+                               pr.helpful_voters,
+                               ARRAY[@userId],
+                               to_jsonb(@isHelpful),
+                               true
+                           )
+                           FROM plugin_reviewers r
+                           WHERE pr.id = @id
+                             AND pr.plugin_slug = @slug
+                             AND pr.reviewer_id = r.id
+                             AND (r.user_id IS NULL OR r.user_id <> @userId);
+                           """;
         var rows = await conn.ExecuteAsync(sql, new
         {
             id = reviewId,

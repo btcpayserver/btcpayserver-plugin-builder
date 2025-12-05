@@ -395,7 +395,7 @@ public class HomeController(
                           r.created_at AS ""CreatedAt"",
                           COALESCE(hv.up_count, 0)   AS ""UpCount"",
                           COALESCE(hv.down_count, 0) AS ""DownCount"",
-                          ( @currentUserId IS NOT NULL AND r.user_id = @currentUserId ) AS ""IsReviewOwner"",
+                          ( @currentUserId IS NOT NULL AND u.user_id = @currentUserId ) AS ""IsReviewOwner"",
                           CASE
                             WHEN @currentUserId IS NULL THEN NULL
                             WHEN r.helpful_voters ? @currentUserId
