@@ -701,7 +701,7 @@ public class HomeController(
         if (!result.Succeeded)
         {
             foreach (var err in result.Errors)
-                ModelState.AddModelError(model.Email, $"{err.Description}");
+                ModelState.AddModelError(string.Empty, err.Description);
 
             return View(model);
         }
