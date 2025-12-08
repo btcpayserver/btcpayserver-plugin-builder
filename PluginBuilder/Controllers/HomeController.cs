@@ -701,7 +701,7 @@ public class HomeController(
         if (!result.Succeeded)
         {
             foreach (var err in result.Errors)
-                ModelState.AddModelError("PasswordResetToken", $"{err.Description}");
+                ModelState.AddModelError(model.Email, $"{err.Description}");
 
             return View(model);
         }
