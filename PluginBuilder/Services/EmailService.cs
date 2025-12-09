@@ -131,7 +131,10 @@ BTCPay Server Plugin Builder";
         {
             await DeliverEmail(new[] { recipient }, "Reset your password on BTCPay Server Plugin Builder", body);
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error sending password reset email to {Email}", email);
+        }
     }
 
     public async Task NotifyPluginOwnerForRequestListingStatus(string email, string pluginTitle, bool isApproved, string reviewUrlOrReason)
