@@ -730,7 +730,7 @@ public class HomeController(
             var callbackUrl = Url.Action(nameof(PasswordReset), "Home",
                 new { email = user.Email, code }, Request.Scheme);
 
-            await emailService.SendPasswordResetLinkAsync(model.Email, callbackUrl!);
+            await emailService.ResetPasswordEmail(model.Email, callbackUrl!);
         }
 
         model.FormSubmitted = true;
