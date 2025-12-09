@@ -675,7 +675,6 @@ public class HomeController(
     {
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(code))
         {
-            // Redirect to login or show an error if parameters are missing
             TempData[TempDataConstant.WarningMessage] = "Invalid password reset link.";
             return RedirectToAction(nameof(Login));
         }
@@ -699,12 +698,14 @@ public class HomeController(
         }
 
         var result = await userManager.ResetPasswordAsync(user, model.PasswordResetToken, model.Password);
-        model.PasswordSuccessfulyReset = result.Succeeded;
+        if (!result.Succeeded)
+        {
+            foreach (var err in result.Errors)
+                ModelState.AddModelError(string.Empty, err.Description);
 
-        foreach (var err in result.Errors)
-            ModelState.AddModelError("PasswordResetToken", $"{err.Description}");
-
-        return View(model);
+            return View(model);
+        }
+        return RedirectToAction(nameof(Login));
     }
 
     [AllowAnonymous]
@@ -729,7 +730,7 @@ public class HomeController(
             var callbackUrl = Url.Action(nameof(PasswordReset), "Home",
                 new { email = user.Email, code }, Request.Scheme);
 
-            await emailService.SendPasswordResetLinkAsync(model.Email, callbackUrl!);
+            await emailService.ResetPasswordEmail(model.Email, callbackUrl!);
         }
 
         model.FormSubmitted = true;

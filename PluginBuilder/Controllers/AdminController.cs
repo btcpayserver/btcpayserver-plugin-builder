@@ -510,17 +510,18 @@ public class AdminController(
     {
         if (!ModelState.IsValid) return View(model);
 
-        // Require the user to have a confirmed email before they can log on.
+        // Require the user to have a confirmed email before they can log on
         var user = await userManager.FindByEmailAsync(model.Email);
         if (user is null)
         {
             ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
             return View(model);
         }
-
-        var result = await userManager.GeneratePasswordResetTokenAsync(user);
-        model.PasswordResetToken = result;
-        return View(model);
+        var code = await userManager.GeneratePasswordResetTokenAsync(user);
+        var callbackUrl = Url.Action(nameof(HomeController.PasswordReset), "Home", new { email = user.Email, code }, Request.Scheme);
+        await emailService.ResetPasswordEmail(model.Email, callbackUrl!);
+        TempData[TempDataConstant.SuccessMessage] = "Password reset initiated successfully. Email has been sent to user";
+        return RedirectToAction(nameof(Users));
     }
 
     [HttpGet("/admin/userchangeemail")]

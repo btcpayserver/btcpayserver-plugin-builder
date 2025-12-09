@@ -113,6 +113,29 @@ BTCPay Server Plugin Builder";
         catch (Exception) { }
     }
 
+    public async Task ResetPasswordEmail(string email, string passwordResetUrl)
+    {
+        var recipient = MailboxAddressValidator.Parse(email);
+        var body = $@"
+Hello {email},
+
+We received a request to reset your password for your account. If you made this request, click the link below to reset your password:
+
+{passwordResetUrl}
+
+If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.
+
+Thank you,
+BTCPay Server Plugin Builder";
+        try
+        {
+            await DeliverEmail(new[] { recipient }, "Reset your password on BTCPay Server Plugin Builder", body);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error sending password reset email to {Email}", email);
+        }
+    }
 
     public async Task NotifyPluginOwnerForRequestListingStatus(string email, string pluginTitle, bool isApproved, string reviewUrlOrReason)
     {
@@ -189,13 +212,6 @@ BTCPay Server Plugin Builder";
         }
 
         return client;
-    }
-
-    public Task SendPasswordResetLinkAsync(string toEmail, string passwordResetUrl)
-    {
-        var body = $"Please reset your password by visiting following link: {passwordResetUrl}";
-
-        return SendEmail(toEmail, "Reset your password on BTCPay Server Plugin Builder", body);
     }
 }
 
