@@ -161,10 +161,11 @@ public static class NpgsqlConnectionExtensions
             new { pluginSlug = pluginSlug.ToString(), userId, isPrimary });
     }
 
-    public static Task<int> RemovePluginOwner(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
+    public static async Task<bool> RemovePluginOwner(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
-        return connection.ExecuteAsync("DELETE FROM users_plugins WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
+        var deleted = await connection.ExecuteAsync("DELETE FROM users_plugins WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
             new { pluginSlug = pluginSlug.ToString(), userId });
+        return deleted == 1;
     }
 
     public static async Task<List<OwnerVm>> GetPluginOwners(this NpgsqlConnection connection, PluginSlug pluginSlug)

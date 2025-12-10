@@ -21,6 +21,7 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
 
         await t.GoToUrl("/register");
         var email = await t.RegisterNewUser();
+        await t.VerifyUserAccounts(email);
 
         var slugFail = "cb-f-" + PlaywrightTester.GetRandomUInt256()[..8];
         await t.GoToUrl("/plugins/create");
