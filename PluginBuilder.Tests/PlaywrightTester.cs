@@ -43,11 +43,11 @@ public class PlaywrightTester : IAsyncDisposable
         Browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
         {
             Headless = true,
-            SlowMo = 0 // 50 if you want to slow down
+            SlowMo = 0 
         });
         var context = await Browser.NewContextAsync();
         Page = await context.NewPageAsync();
-        Page.SetDefaultTimeout(10000); // Set default timeout to 10 seconds
+        Page.SetDefaultTimeout(10000);
         ServerUri = new Uri(Server.WebApp.Urls.FirstOrDefault() ?? throw new InvalidOperationException("No URLs found"));
         Logger.LogInformation($"Playwright: Using {Page.GetType()}");
         Logger.LogInformation($"Playwright: Browsing to {ServerUri}");

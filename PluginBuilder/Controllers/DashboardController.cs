@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
@@ -13,24 +12,18 @@ namespace PluginBuilder.Controllers;
 public class DashboardController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
-    AzureStorageClient azureStorageClient,
-    UserVerifiedLogic userVerifiedLogic) : Controller
+    AzureStorageClient azureStorageClient) : Controller
 {
     // plugin methods
 
     [HttpGet("/plugins/create")]
     public async Task<IActionResult> CreatePlugin()
     {
-        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
-        {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your email address in order to create and publish plugins";
-            return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
-        }
-
         await using var conn = await connectionFactory.Open();
-        if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
+        var user = await userManager.GetUserAsync(User);
+        if (!await userManager.IsEmailConfirmedAsync(user!) || !await conn.IsGithubAccountVerified(user!.Id))
         {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub account in order to create and publish plugins";
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your email address and github account in order to create and publish plugins";
             return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
         }
         return View();
@@ -46,18 +39,13 @@ public class DashboardController(
             return View(model);
         }
         await using var conn = await connectionFactory.Open();
-        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
+        var user = await userManager.GetUserAsync(User);
+        if (!await userManager.IsEmailConfirmedAsync(user!) || !await conn.IsGithubAccountVerified(user!.Id))
         {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your email address in order to create and publish plugins";
-            return RedirectToAction("AccountDetails", "Account");
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your email address and github account in order to create and publish plugins";
+            return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
         }
-        var userId = userManager.GetUserId(User)!;
-        if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
-        {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub Account in order to create and publish plugins";
-            return RedirectToAction("AccountDetails", "Account");
-        }
-        if (!await conn.NewPlugin(pluginSlug, userId))
+        if (!await conn.NewPlugin(pluginSlug, user!.Id))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
             return View(model);

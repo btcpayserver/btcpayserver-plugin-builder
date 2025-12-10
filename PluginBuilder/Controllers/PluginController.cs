@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
@@ -129,10 +130,12 @@ public class PluginController(
         PluginSlug pluginSlug, long? copyBuild = null)
     {
         await using var conn = await connectionFactory.Open();
-        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User) || !await userVerifiedLogic.IsUserGithubVerified(User, conn))
+
+        var user = await userManager.GetUserAsync(User);
+        if (!await userManager.IsEmailConfirmedAsync(user!) || !await conn.IsGithubAccountVerified(user!.Id))
         {
             TempData[TempDataConstant.WarningMessage] = "You need to verify your email address and github account in order to create and publish plugins";
-            return RedirectToAction("AccountDetails", "Account");
+            return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
         }
 
         var settings = await conn.GetSettings(pluginSlug);
@@ -625,26 +628,24 @@ public class PluginController(
 
             if (await conn.UserOwnsPlugin(user.Id, pluginSlug))
             {
-                TempData[TempDataConstant.WarningMessage] = "User is already an owner.";
+                TempData[TempDataConstant.WarningMessage] = "User is already an owner for this plugin";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            var targetPrincipal = await principalFactory.CreateAsync(user);
-
-            if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(targetPrincipal))
+            if (!await userManager.IsEmailConfirmedAsync(user!))
             {
-                TempData[TempDataConstant.WarningMessage] = "Owner must have a confirmed email.";
+                TempData[TempDataConstant.WarningMessage] = "Owner must have a confirmed email";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            if (!await userVerifiedLogic.IsUserGithubVerified(targetPrincipal, conn))
+            if (!await conn.IsGithubAccountVerified(user.Id))
             {
-                TempData[TempDataConstant.WarningMessage] = "Owner must have a verified Github account.";
+                TempData[TempDataConstant.WarningMessage] = "Owner must have a verified Github account";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
             await conn.AddUserPlugin(pluginSlug, user.Id);
-            TempData[TempDataConstant.SuccessMessage] = "User added.";
+            TempData[TempDataConstant.SuccessMessage] = "User added as part of this plugin owners";
         }
         catch (InvalidOperationException ex) { TempData[TempDataConstant.WarningMessage] = ex.Message; }
         return RedirectToAction(nameof(Owners), new { pluginSlug });
@@ -693,54 +694,49 @@ public class PluginController(
         {
             var currentUserId = userManager.GetUserId(User);
             await using var conn = await connectionFactory.Open();
-            await using var tx = await conn.BeginTransactionAsync();
 
             var owners = (await conn.QueryAsync<(string UserId, bool IsPrimary)>(
-                """
-                SELECT user_id AS UserId, is_primary_owner AS IsPrimary
-                          FROM users_plugins
-                          WHERE plugin_slug = @slug
-                          FOR UPDATE;
-                """,
-                new { slug = pluginSlug.ToString() }, tx)).ToList();
+            """
+            SELECT user_id AS UserId, is_primary_owner AS IsPrimary FROM users_plugins WHERE plugin_slug = @slug
+            """, new { slug = pluginSlug.ToString() })).ToList();
 
-            if (owners.All(o => o.UserId != userId))
+            if (!owners.Any(o => o.UserId == userId))
             {
-                TempData[TempDataConstant.WarningMessage] = "User not an owner.";
+                TempData[TempDataConstant.WarningMessage] = "User not an owner";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            var primaryId = owners.FirstOrDefault(o => o.IsPrimary).UserId;
+            var primaryOwnerId = owners.FirstOrDefault(o => o.IsPrimary).UserId;
 
-            var currentIsPrimary = primaryId == currentUserId;
-            if (!currentIsPrimary && userId != currentUserId)
+            var isCurrentUserPrimaryOwner = primaryOwnerId == currentUserId;
+            if (!isCurrentUserPrimaryOwner && userId != currentUserId)
             {
-                TempData[TempDataConstant.WarningMessage] = "Only primary owner can remove other owners.";
+                TempData[TempDataConstant.WarningMessage] = "Only primary owner can remove other owners";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            if (userId == primaryId)
+            if (userId == primaryOwnerId)
             {
-                TempData[TempDataConstant.WarningMessage] = "Primary owner cannot be removed.";
+                TempData[TempDataConstant.WarningMessage] = "Primary owner cannot be removed";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
             if (owners.Count <= 1)
             {
-                TempData[TempDataConstant.WarningMessage] = "Cannot remove the last owner.";
+                TempData[TempDataConstant.WarningMessage] = "Cannot remove the last owner";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
             var deleted = await conn.RemovePluginOwner(pluginSlug, userId);
 
-            if (deleted != 1)
+            if (!deleted)
             {
-                TempData[TempDataConstant.WarningMessage] = "Failed to remove owner.";
-                return RedirectToAction(nameof(Owners), new { pluginSlug });
+                TempData[TempDataConstant.WarningMessage] = "Failed to remove owner";
             }
-
-            await tx.CommitAsync();
-            TempData[TempDataConstant.SuccessMessage] = "Owner removed.";
+            else
+            {
+                TempData[TempDataConstant.SuccessMessage] = "Owner removed";
+            }
         }
         catch (InvalidOperationException ex)
         {

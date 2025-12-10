@@ -2,10 +2,6 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
-using PluginBuilder.Controllers.Logic;
-using PluginBuilder.DataModels;
-using PluginBuilder.Services;
-using PluginBuilder.Util.Extensions;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -22,11 +18,6 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
         await t.StartAsync();
-
-        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
 
         await t.GoToUrl("/register");
         var userA = await t.RegisterNewUser();
