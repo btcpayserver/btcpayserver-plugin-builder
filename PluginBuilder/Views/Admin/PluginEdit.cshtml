@@ -53,8 +53,9 @@
 				<form asp-action="PluginEdit" method="post" enctype="multipart/form-data">
 					@Html.AntiForgeryToken()
 					<div class="mb-3">
-						<label class="form-label fw-semibold">Plugin Title</label>
-						<input type="text" asp-for="PluginSettings.PluginTitle" class="form-control" placeholder="Enter plugin title" />
+						<label asp-for="PluginSettings.PluginTitle" class="form-label fw-semibold">Plugin Title</label>
+                        <input type="text" asp-for="PluginSettings.PluginTitle" class="form-control" placeholder="Enter plugin title" />
+                        <span asp-validation-for="PluginSettings.PluginTitle" class="text-danger"></span>
 					</div>
 					<div class="mb-3">
 						<label class="form-label fw-semibold">Description</label>
