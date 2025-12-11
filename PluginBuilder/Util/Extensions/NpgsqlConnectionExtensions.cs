@@ -44,6 +44,24 @@ public static class NpgsqlConnectionExtensions
             "SELECT slug AS \"PluginSlug\", identifier, settings::text AS settings, visibility::text AS visibility FROM plugins WHERE slug=@pluginSlug",
             new { pluginSlug = pluginSlug.ToString() });
     }
+    public static async Task<bool> IsPluginTitleInUse(this NpgsqlConnection conn,string pluginTitle, PluginSlug? currentSlug = null)
+    {
+        const string sql = """
+                           SELECT slug
+                           FROM plugins
+                           WHERE LOWER(settings->>'pluginTitle') = LOWER(@Title)
+                             AND (@CurrentSlug IS NULL OR slug <> @CurrentSlug)
+                           LIMIT 1
+                           """;
+
+        var existingSlug = await conn.QueryFirstOrDefaultAsync<string>(sql, new
+        {
+            Title = pluginTitle.Trim(),
+            CurrentSlug = currentSlug?.ToString()
+        });
+
+        return existingSlug is not null;
+    }
 
     #endregion
 

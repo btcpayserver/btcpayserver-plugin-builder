@@ -40,6 +40,9 @@ public class DashboardController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
     {
+        if (!ModelState.IsValid)
+            return View(model);
+
         if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
@@ -57,6 +60,14 @@ public class DashboardController(
             TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub Account in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
+
+        if (await conn.IsPluginTitleInUse(model.PluginTitle))
+        {
+            ModelState.AddModelError(nameof(model.PluginTitle),
+                "This plugin title is already in use. Please choose a different title.");
+            return View(model);
+        }
+
         if (!await conn.NewPlugin(pluginSlug, userId))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");

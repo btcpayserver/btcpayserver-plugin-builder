@@ -148,6 +148,23 @@ public class AdminController(
         }
         var plugin = await conn.GetPluginDetails(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
+
+        var newTitle = model.PluginSettings.PluginTitle?.Trim();
+        var currentTitle = pluginSettings.PluginTitle?.Trim();
+        if (!string.IsNullOrWhiteSpace(newTitle) && !string.Equals(newTitle, currentTitle, StringComparison.OrdinalIgnoreCase))
+        {
+            PluginSlug? currentSlug = null;
+            if (PluginSlug.TryParse(pluginSlug, out var parsedSlug))
+                currentSlug = parsedSlug;
+
+            if (await conn.IsPluginTitleInUse(newTitle, currentSlug))
+            {
+                ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.PluginTitle)}",
+                    "This plugin title is already in use. Please choose a different title.");
+                model.PluginUsers = await GetPluginUsers(conn, pluginSlug);
+                return View(model);
+            }
+        }
         pluginSettings.PluginTitle = model.PluginSettings.PluginTitle;
         pluginSettings.Description = model.PluginSettings.Description;
         pluginSettings.GitRepository = model.PluginSettings.GitRepository;
@@ -170,7 +187,8 @@ public class AdminController(
             }
             catch (Exception)
             {
-                ModelState.AddModelError(nameof(model.PluginSettings.Logo), "Could not complete settings upload. An error occurred while uploading logo");
+                ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.Logo)}",
+                    "Could not complete settings upload. An error occurred while uploading logo");
                 model.PluginUsers = await GetPluginUsers(conn, pluginSlug);
                 return View(model);
             }
