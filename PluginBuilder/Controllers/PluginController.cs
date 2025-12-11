@@ -88,6 +88,19 @@ public class PluginController(
             return View(settingViewModel);
         }
 
+        if (settingViewModel.IsPluginPrimaryOwner && !string.IsNullOrWhiteSpace(settingViewModel.PluginTitle))
+        {
+            var newTitle = settingViewModel.PluginTitle.Trim();
+            var currentTitle = existingSetting?.PluginTitle?.Trim();
+
+            if (!string.Equals(newTitle, currentTitle, StringComparison.OrdinalIgnoreCase) && await conn.IsPluginTitleInUse(newTitle, pluginSlug))
+            {
+                ModelState.AddModelError(nameof(settingViewModel.PluginTitle),
+                    "This plugin title is already in use. Please choose a different title.");
+                return View(settingViewModel);
+            }
+        }
+
         if (settingViewModel.Logo != null)
         {
             if (!settingViewModel.Logo.ValidateUploadedImage(out string errorMessage))
@@ -226,10 +239,10 @@ public class PluginController(
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
         var pendingRequest = await conn.GetPendingListingRequestForPlugin(pluginSlug);
         var rejectedRequest = await conn.GetLatestRejectedListingRequestForPlugin(pluginSlug);
-        
+
         model.ReleaseNote = pluginSettings?.Description;
         model.HasPreviousRejection = rejectedRequest != null;
-        
+
         if (pendingRequest != null)
         {
             model.PendingListing = true;
