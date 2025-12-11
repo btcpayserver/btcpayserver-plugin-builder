@@ -40,6 +40,9 @@ public class DashboardController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
     {
+        if (!ModelState.IsValid)
+            return View(model);
+
         if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
