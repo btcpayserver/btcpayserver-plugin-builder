@@ -397,31 +397,15 @@ public class AdminController(
             TempData[TempDataConstant.WarningMessage] = "Invalid plugin user";
             return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
         }
-        switch (command)
+
+        var ok = await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
+        if (!ok)
         {
-            case "RevokeOwnership":
-                {
-                    var ok = await conn.RevokePluginPrimaryOwnership(pluginSlug, userId);
-                    if (!ok)
-                    {
-                        TempData[TempDataConstant.WarningMessage] = "Error revoking primary ownership";
-                        return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
-                    }
-                    TempData[TempDataConstant.SuccessMessage] = "Primary ownership revoked";
-                    break;
-                }
-            case "AssignOwnership":
-                {
-                    var ok = await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
-                    if (!ok)
-                    {
-                        TempData[TempDataConstant.WarningMessage] = "Error assigning primary ownership";
-                        return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
-                    }
-                    TempData[TempDataConstant.SuccessMessage] = "Primary owner assigned";
-                    break;
-                }
+            TempData[TempDataConstant.WarningMessage] = "Error assigning primary ownership";
+            return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
         }
+        TempData[TempDataConstant.SuccessMessage] = "Primary owner assigned";
+
         return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
     }
 

@@ -23,28 +23,31 @@
 						<strong>Identifier:</strong> <code>@Model.Identifier</code>
 					</div>
 				}
-				@if (Model.PluginUsers?.Any() == true)
+				@if (Model.PluginUsers.Any())
 				{
 					<div class="mb-5">
 						<h5 class="fw-bold mb-3">Owners</h5>
 						@foreach (var user in Model.PluginUsers)
 						{
 							<div class="d-flex justify-content-between align-items-center border-bottom py-2">
-								<div>
-									<strong>@user.Email</strong>
-									@if (user.IsPluginOwner)
-									{
-										<span class="badge bg-success ms-2">Owner</span>
-									}
-								</div>
-								<form method="post" asp-controller="Admin" asp-action="ManagePluginOwnership"
-									  asp-route-pluginSlug="@Model.PluginSlug" asp-route-userId="@user.UserId"
-									  asp-route-command="@(user.IsPluginOwner ? "RevokeOwnership" : "AssignOwnership")" class="d-inline">
-									@Html.AntiForgeryToken()
-									<button type="submit" class="btn btn-sm @(user.IsPluginOwner ? "btn-outline-danger" : "btn-outline-primary")">
-										@(user.IsPluginOwner ? "Revoke Ownership" : "Set as Owner")
-									</button>
-								</form>
+                                <div>
+                                    <strong>@user.Email</strong>
+                                    @if (user.IsPluginOwner)
+                                    {
+                                        <span class="badge bg-success ms-2">Owner</span>
+                                    }
+                                </div>
+                                @if (!user.IsPluginOwner)
+                                {
+                                    <form method="post" asp-controller="Admin" asp-action="ManagePluginOwnership"
+                                          asp-route-pluginSlug="@Model.PluginSlug" asp-route-userId="@user.UserId"
+                                          asp-route-command="AssignOwnership" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-sm @(user.IsPluginOwner ? "btn-outline-danger" : "btn-outline-primary")">
+                                            @(user.IsPluginOwner ? "Revoke Ownership" : "Set as Owner")
+                                        </button>
+                                    </form>
+                                }
 							</div>
 						}
 					</div>

@@ -166,13 +166,6 @@ public static class NpgsqlConnectionExtensions
         return true;
     }
 
-    public static async Task<bool> RevokePluginPrimaryOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
-    {
-        var updated = await connection.ExecuteAsync(@"UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
-            new { pluginSlug = pluginSlug.ToString(), userId });
-        return updated == 1;
-    }
-
     public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId, bool isPrimary = false)
     {
         await connection.ExecuteAsync("INSERT INTO users_plugins (user_id, plugin_slug, is_primary_owner) VALUES (@userId, @pluginSlug, @isPrimary) ON CONFLICT DO NOTHING",
