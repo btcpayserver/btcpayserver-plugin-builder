@@ -249,7 +249,7 @@ public class HomeController(
             const string pluginNameExpr = "COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')";
             var orderByClause = sort.ToLowerInvariant() switch
             {
-                "rating" => $"rs.avg_rating DESC NULLS LAST, {pluginNameExpr}",
+                "rating" => $"rs.avg_rating DESC NULLS LAST, rs.total_reviews DESC, b.created_at DESC, {pluginNameExpr}",
                 "recent" => $"b.created_at DESC, {pluginNameExpr}",
                 "alpha" => pluginNameExpr,
                 _ => $"""
