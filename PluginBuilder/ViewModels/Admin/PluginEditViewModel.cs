@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using PluginBuilder.DataModels;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.ViewModels.Admin;
 
@@ -18,17 +19,10 @@ public class PluginViewModel
 public class PluginEditViewModel : PluginViewModel
 {
     [ValidateNever]
-    public List<PluginUsersViewModel> PluginUsers { get; set; }
+    public List<OwnerVm> PluginUsers { get; set; } = new();
     [ValidateNever]
     public PluginSettings PluginSettings { get; set; }
 
     [Display(Name = "Logo")]
     public IFormFile? LogoFile { get; set; }
-}
-
-public class PluginUsersViewModel
-{
-    public string UserId { get; set; } = null!;
-    public string Email { get; set; } = null!;
-    public bool IsPluginOwner { get; set; }
 }
