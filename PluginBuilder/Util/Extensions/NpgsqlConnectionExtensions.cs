@@ -182,7 +182,7 @@ public static class NpgsqlConnectionExtensions
     {
         const string sql = """
                            SELECT
-                               u."Id"               AS "UserId",
+                               u."Id" AS "UserId",
                                up.is_primary_owner  AS "IsPrimary",
                                u."Email",
                                u."AccountDetail",
@@ -194,6 +194,26 @@ public static class NpgsqlConnectionExtensions
                            """;
 
         var owners = await connection.QueryAsync<OwnerVm>(sql, new { slug = pluginSlug.ToString() });
+        return owners.ToList();
+    }
+
+    public static async Task<List<(string UserId, bool IsPrimary)>> GetPluginOwnersForUpdate(
+        this NpgsqlConnection connection,
+        PluginSlug pluginSlug,
+        NpgsqlTransaction tx)
+    {
+        const string sql = """
+                           SELECT user_id AS "UserId", is_primary_owner AS "IsPrimary"
+                           FROM users_plugins
+                           WHERE plugin_slug = @slug
+                           FOR UPDATE;
+                           """;
+
+        var owners = await connection.QueryAsync<(string UserId, bool IsPrimary)>(
+            sql,
+            new { slug = pluginSlug.ToString() },
+            tx);
+
         return owners.ToList();
     }
 

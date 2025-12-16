@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.OutputCaching;
-using Npgsql;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
+using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
@@ -31,8 +31,8 @@ public class AdminController(
     AdminSettingsCache adminSettingsCache,
     ReferrerNavigationService referrerNavigation,
     PluginBuilderOptions pbOptions,
-    IOutputCacheStore outputCacheStore)
-
+    IOutputCacheStore outputCacheStore,
+    PluginOwnershipService ownershipService)
     : Controller
 {
     // settings editor
@@ -119,7 +119,7 @@ public class AdminController(
     {
         referrerNavigation.StoreReferrer();
         await using var conn = await connectionFactory.Open();
-        var pluginUsers = await GetPluginUsers(conn, pluginSlug);
+        var pluginUsers = await conn.GetPluginOwners(pluginSlug);
 
         var plugin = await conn.GetPluginDetails(pluginSlug);
         if (plugin == null)
@@ -143,7 +143,7 @@ public class AdminController(
         await using var conn = await connectionFactory.Open();
         if (!ModelState.IsValid)
         {
-            model.PluginUsers = await GetPluginUsers(conn, pluginSlug);
+            model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
             return View(model);
         }
         var plugin = await conn.GetPluginDetails(pluginSlug);
@@ -161,7 +161,7 @@ public class AdminController(
             {
                 ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.PluginTitle)}",
                     "This plugin title is already in use. Please choose a different title.");
-                model.PluginUsers = await GetPluginUsers(conn, pluginSlug);
+                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
                 return View(model);
             }
         }
@@ -177,7 +177,7 @@ public class AdminController(
             if (!model.LogoFile.ValidateUploadedImage(out string errorMessage))
             {
                 ModelState.AddModelError(nameof(model.LogoFile), $"Image upload validation failed: {errorMessage}");
-                model.PluginUsers = await GetPluginUsers(conn, pluginSlug);
+                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
                 return View(model);
             }
             try
@@ -189,7 +189,7 @@ public class AdminController(
             {
                 ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.Logo)}",
                     "Could not complete settings upload. An error occurred while uploading logo");
-                model.PluginUsers = await GetPluginUsers(conn, pluginSlug);
+                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
                 return View(model);
             }
         }
@@ -386,29 +386,45 @@ public class AdminController(
         return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
     }
 
-    [HttpPost("plugins/{pluginSlug}/ownership")]
+    [HttpPost("plugins/{pluginSlug}/owners/{userId}/transfer-primary")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ManagePluginOwnership(string pluginSlug, string userId, string command = "")
+    public async Task<IActionResult> TransferPrimaryOwner([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, string userId)
     {
-        await using var conn = await connectionFactory.Open();
-        var userIds = await conn.RetrievePluginUserIds(pluginSlug);
-        if (!userIds.Contains(userId))
-        {
-            TempData[TempDataConstant.WarningMessage] = "Invalid plugin user";
-            return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
-        }
+        var result = await ownershipService.TransferPrimaryAsync(pluginSlug, userId);
 
-        var ok = await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
-        if (!ok)
-        {
-            TempData[TempDataConstant.WarningMessage] = "Error assigning primary ownership";
-            return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
-        }
-        TempData[TempDataConstant.SuccessMessage] = "Primary owner assigned";
+        TempData[result.Success ? TempDataConstant.SuccessMessage : TempDataConstant.WarningMessage] =
+            result.Success ? "Primary owner assigned" : result.Error;
 
         return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
     }
 
+    [HttpPost("plugins/{pluginSlug}/owners/add")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddOwner([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, string email)
+    {
+        var result = await ownershipService.AddOwnerByEmailAsync(pluginSlug, email);
+
+        TempData[result.Success ? TempDataConstant.SuccessMessage : TempDataConstant.WarningMessage] =
+            result.Success ? "Owner added." : result.Error;
+
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
+    }
+
+    [HttpPost("plugins/{pluginSlug}/owners/{userId}/remove")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveOwner([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, string userId)
+    {
+        var result = await ownershipService.RemoveOwnerAsync(
+            pluginSlug,
+            userId,
+            currentUserId: null,
+            isServerAdmin: true);
+
+        TempData[result.Success ? TempDataConstant.SuccessMessage : TempDataConstant.WarningMessage] =
+            result.Success ? "Owner removed." : result.Error;
+
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
+    }
 
     // list users
     [HttpGet("users")]
@@ -762,23 +778,6 @@ public class AdminController(
             return NotFound();
         }
         return View("Logs", vm);
-    }
-
-    private async Task<List<PluginUsersViewModel>> GetPluginUsers(NpgsqlConnection conn, string pluginSlug)
-    {
-        var ownerId = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-        var userIds = (await conn.RetrievePluginUserIds(pluginSlug)).ToList();
-
-        if (userIds.Count == 0)
-            return new List<PluginUsersViewModel>();
-
-        var users = await userManager.FindUsersByIdsAsync(userIds);
-        return users.Select(u => new PluginUsersViewModel
-        {
-            Email = u.Email ?? string.Empty,
-            UserId = u.Id,
-            IsPluginOwner = u.Id == ownerId
-        }).ToList();
     }
 
     #region Listing Requests Management
