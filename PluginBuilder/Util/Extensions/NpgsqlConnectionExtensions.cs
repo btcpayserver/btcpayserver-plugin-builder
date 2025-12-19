@@ -166,13 +166,6 @@ public static class NpgsqlConnectionExtensions
         return true;
     }
 
-    public static async Task<bool> RevokePluginPrimaryOwnership(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
-    {
-        var updated = await connection.ExecuteAsync(@"UPDATE users_plugins SET is_primary_owner = FALSE WHERE plugin_slug = @pluginSlug AND user_id = @userId;",
-            new { pluginSlug = pluginSlug.ToString(), userId });
-        return updated == 1;
-    }
-
     public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId, bool isPrimary = false)
     {
         await connection.ExecuteAsync("INSERT INTO users_plugins (user_id, plugin_slug, is_primary_owner) VALUES (@userId, @pluginSlug, @isPrimary) ON CONFLICT DO NOTHING",
@@ -189,7 +182,7 @@ public static class NpgsqlConnectionExtensions
     {
         const string sql = """
                            SELECT
-                               u."Id"               AS "UserId",
+                               u."Id" AS "UserId",
                                up.is_primary_owner  AS "IsPrimary",
                                u."Email",
                                u."AccountDetail",
@@ -201,6 +194,26 @@ public static class NpgsqlConnectionExtensions
                            """;
 
         var owners = await connection.QueryAsync<OwnerVm>(sql, new { slug = pluginSlug.ToString() });
+        return owners.ToList();
+    }
+
+    public static async Task<List<(string UserId, bool IsPrimary)>> GetPluginOwnersForUpdate(
+        this NpgsqlConnection connection,
+        PluginSlug pluginSlug,
+        NpgsqlTransaction tx)
+    {
+        const string sql = """
+                           SELECT user_id AS "UserId", is_primary_owner AS "IsPrimary"
+                           FROM users_plugins
+                           WHERE plugin_slug = @slug
+                           FOR UPDATE;
+                           """;
+
+        var owners = await connection.QueryAsync<(string UserId, bool IsPrimary)>(
+            sql,
+            new { slug = pluginSlug.ToString() },
+            tx);
+
         return owners.ToList();
     }
 

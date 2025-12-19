@@ -3,112 +3,109 @@
 @{
 	Layout = "_Layout";
 	ViewData.SetActivePage(AdminNavPages.Plugins, "Edit Plugin");
+
+    var ownersTableVm = new PluginOwnersTableViewModel(Model.PluginSlug)
+    {
+        Controller = "Admin",
+        CurrentUserId = string.Empty,
+        Owners = Model.PluginUsers,
+        CanAddOwner = true,
+        CanManageOwners = true,
+        CanLeave = false
+    };
 }
 
 <div class="d-flex flex-column flex-md-row align-items-center justify-content-between mb-4">
-	<h2 class="mb-3 mb-md-0">@ViewData["Title"] - @Model.PluginSlug</h2>
+    <h2 class="mb-3 mb-md-0">@ViewData["Title"] - @Model.PluginSlug</h2>
 
-	<div class="d-flex flex-column flex-sm-row align-items-center gap-3">
-		<a asp-controller="Admin" asp-action="ImportReview" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-primary">
-			Import Reviews
-		</a>
-	</div>
+    <div class="d-flex flex-column flex-sm-row align-items-center gap-3">
+        <a asp-controller="Admin" asp-action="ImportReview" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-primary">
+            Import Reviews
+        </a>
+    </div>
 </div>
 
 <div class="row">
-	<div class="col-md-10 col-lg-8">
-				@if (!string.IsNullOrEmpty(Model.Identifier))
-				{
-					<div class="mb-4">
-						<strong>Identifier:</strong> <code>@Model.Identifier</code>
-					</div>
-				}
-				@if (Model.PluginUsers?.Any() == true)
-				{
-					<div class="mb-5">
-						<h5 class="fw-bold mb-3">Owners</h5>
-						@foreach (var user in Model.PluginUsers)
-						{
-							<div class="d-flex justify-content-between align-items-center border-bottom py-2">
-								<div>
-									<strong>@user.Email</strong>
-									@if (user.IsPluginOwner)
-									{
-										<span class="badge bg-success ms-2">Owner</span>
-									}
-								</div>
-								<form method="post" asp-controller="Admin" asp-action="ManagePluginOwnership"
-									  asp-route-pluginSlug="@Model.PluginSlug" asp-route-userId="@user.UserId"
-									  asp-route-command="@(user.IsPluginOwner ? "RevokeOwnership" : "AssignOwnership")" class="d-inline">
-									@Html.AntiForgeryToken()
-									<button type="submit" class="btn btn-sm @(user.IsPluginOwner ? "btn-outline-danger" : "btn-outline-primary")">
-										@(user.IsPluginOwner ? "Revoke Ownership" : "Set as Owner")
-									</button>
-								</form>
-							</div>
-						}
-					</div>
-				}
+    <div class="col-xxl-constrain col-xl-10">
+        @if (!string.IsNullOrEmpty(Model.Identifier))
+        {
+            <div class="mb-4">
+                <strong>Identifier:</strong> <code>@Model.Identifier</code>
+            </div>
+        }
 
-				<form asp-action="PluginEdit" method="post" enctype="multipart/form-data">
-					@Html.AntiForgeryToken()
-					<div class="mb-3">
-						<label asp-for="PluginSettings.PluginTitle" class="form-label fw-semibold">Plugin Title</label>
-                        <input type="text" asp-for="PluginSettings.PluginTitle" class="form-control" placeholder="Enter plugin title" />
-                        <span asp-validation-for="PluginSettings.PluginTitle" class="text-danger"></span>
-					</div>
-					<div class="mb-3">
-						<label class="form-label fw-semibold">Description</label>
-						<textarea asp-for="PluginSettings.Description" class="form-control" rows="4" placeholder="Enter plugin description">@Model.PluginSettings?.Description</textarea>
-					</div>
-					<div class="form-group">
-						<label asp-for="PluginSettings.GitRepository" class="form-label"></label>
-						<input asp-for="PluginSettings.GitRepository" class="form-control" placeholder="https://github.com/Kukks/btcpayserver" />
-					</div>
-					<div class="form-group">
-						<label asp-for="PluginSettings.Documentation" class="form-label"></label>
-						<input asp-for="PluginSettings.Documentation" class="form-control" placeholder="https://docs.btcpayserver.org/PodServer/" />
-					</div>
-					<div class="form-group">
-						<label asp-for="PluginSettings.GitRef" class="form-label"></label>
-						<input asp-for="PluginSettings.GitRef" class="form-control" placeholder="plugins/collection" />
-					</div>
-					<div class="form-group">
-						<label asp-for="PluginSettings.PluginDirectory" class="form-label"></label>
-						<input asp-for="PluginSettings.PluginDirectory" class="form-control" placeholder="Plugins/BTCPayServer.Plugins.RockstarStylist" />
-					</div>
-					<div class="form-group">
-						<label asp-for="PluginSettings.BuildConfig" class="form-label"></label>
-						<input asp-for="PluginSettings.BuildConfig" class="form-control" placeholder="Release" />
-					</div>
-					<div class="form-group">
-						<div class="d-flex align-items-center justify-content-between gap-2">
-							<label asp-for="PluginSettings.Logo" class="form-label"></label>
-							@if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
-							{
-								<button type="submit" class="btn btn-link p-0 text-danger" name="removeLogoFile" value="true">
-									<vc:icon symbol="cross" /> Remove
-								</button>
-							}
-						</div>
-						<div class="d-flex align-items-center gap-3">
-							<input asp-for="LogoFile" type="file" class="form-control flex-grow" accept="image/*">
-							@if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
-							{
-								<img src="@Model.PluginSettings.Logo" alt="Logo" style="height:2.1rem;max-width:10.5rem;" />
-							}
-						</div>
-						<span asp-validation-for="PluginSettings.Logo" class="text-danger"></span>
-					</div>
+        <div class="mb-2">
+            <h5 class="fw-bold mb-3">Owners</h5>
+            <partial name="_PluginOwnersTable" model="ownersTableVm" />
+        </div>
+    </div>
+</div>
 
-					<div class="mb-3">
-						<label asp-for="Visibility" class="form-label"></label>
-						<select asp-for="Visibility" class="form-select" asp-items="Html.GetEnumSelectList<PluginVisibilityEnum>()"></select>
-						<span asp-validation-for="Visibility" class="text-danger"></span>
-					</div>
-					<div class="text-end mt-4">
-						<input type="submit" class="btn btn-primary" value="Save Changes" />
-					</div>
-				</form>
-			</div>
-		</div>
+<div class="row">
+    <div class="col-md-10 col-lg-8">
+        <h5 class="fw-bold mb-3">Settings</h5>
+
+        <form asp-action="PluginEdit" method="post" enctype="multipart/form-data">
+            @Html.AntiForgeryToken()
+            <div class="mb-3">
+                <label asp-for="PluginSettings.PluginTitle" class="form-label fw-semibold">Plugin Title</label>
+                <input type="text" asp-for="PluginSettings.PluginTitle" class="form-control" placeholder="Enter plugin title" />
+                <span asp-validation-for="PluginSettings.PluginTitle" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Description</label>
+                <textarea asp-for="PluginSettings.Description" class="form-control" rows="4" placeholder="Enter plugin description">@Model.PluginSettings?.Description</textarea>
+            </div>
+            <div class="form-group">
+                <label asp-for="PluginSettings.GitRepository" class="form-label"></label>
+                <input asp-for="PluginSettings.GitRepository" class="form-control" placeholder="https://github.com/Kukks/btcpayserver" />
+            </div>
+            <div class="form-group">
+                <label asp-for="PluginSettings.Documentation" class="form-label"></label>
+                <input asp-for="PluginSettings.Documentation" class="form-control" placeholder="https://docs.btcpayserver.org/PodServer/" />
+            </div>
+            <div class="form-group">
+                <label asp-for="PluginSettings.GitRef" class="form-label"></label>
+                <input asp-for="PluginSettings.GitRef" class="form-control" placeholder="plugins/collection" />
+            </div>
+            <div class="form-group">
+                <label asp-for="PluginSettings.PluginDirectory" class="form-label"></label>
+                <input asp-for="PluginSettings.PluginDirectory" class="form-control" placeholder="Plugins/BTCPayServer.Plugins.RockstarStylist" />
+            </div>
+            <div class="form-group">
+                <label asp-for="PluginSettings.BuildConfig" class="form-label"></label>
+                <input asp-for="PluginSettings.BuildConfig" class="form-control" placeholder="Release" />
+            </div>
+            <div class="form-group">
+                <div class="d-flex align-items-center justify-content-between gap-2">
+                    <label asp-for="PluginSettings.Logo" class="form-label"></label>
+                    @if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
+                    {
+                        <button type="submit" class="btn btn-link p-0 text-danger" name="removeLogoFile" value="true">
+                            <vc:icon symbol="cross" /> Remove
+                        </button>
+                    }
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <input asp-for="LogoFile" type="file" class="form-control flex-grow" accept="image/*">
+                    @if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
+                    {
+                        <img src="@Model.PluginSettings.Logo" alt="Logo" style="height:2.1rem;max-width:10.5rem;" />
+                    }
+                </div>
+                <span asp-validation-for="PluginSettings.Logo" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Visibility" class="form-label"></label>
+                <select asp-for="Visibility" class="form-select" asp-items="Html.GetEnumSelectList<PluginVisibilityEnum>()"></select>
+                <span asp-validation-for="Visibility" class="text-danger"></span>
+            </div>
+            <div class="text-end mt-4">
+                <input type="submit" class="btn btn-primary" value="Save Changes" />
+            </div>
+        </form>
+    </div>
+</div>
+
+<partial name="_Confirm" model="@(new ConfirmModel(title: "Confirm action", desc: "Are you sure?", action: "Confirm"))" />

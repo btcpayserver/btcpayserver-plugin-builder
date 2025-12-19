@@ -17,7 +17,6 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Plugin;
-using static Dapper.SqlMapper;
 
 namespace PluginBuilder.Controllers;
 
@@ -31,8 +30,9 @@ public class PluginController(
     GPGKeyService gpgKeyService,
     AzureStorageClient azureStorageClient,
     UserVerifiedLogic userVerifiedLogic,
-    IUserClaimsPrincipalFactory<IdentityUser> principalFactory,
-    IOutputCacheStore outputCacheStore)
+    IOutputCacheStore outputCacheStore,
+    PluginOwnershipService ownershipService,
+    ILogger<PluginController> logger)
     : Controller
 {
     [HttpGet("settings")]
@@ -613,59 +613,36 @@ public class PluginController(
             await using var conn = await connectionFactory.Open();
 
             var primaryOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-
             if (primaryOwner != userManager.GetUserId(User))
             {
                 TempData[TempDataConstant.WarningMessage] = "Only primary owners can add new owners.";
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            email = email.Trim();
+            var result = await ownershipService.AddOwnerByEmailAsync(pluginSlug, email);
 
-            if (string.IsNullOrWhiteSpace(email))
+            if (!result.Success)
             {
-                TempData[TempDataConstant.WarningMessage] = "Email cannot be empty.";
+                TempData[TempDataConstant.WarningMessage] = result.Error;
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            var user = await userManager.FindByEmailAsync(email);
-
-            if (user is null)
-            {
-                TempData[TempDataConstant.WarningMessage] = "User not found.";
-                return RedirectToAction(nameof(Owners), new { pluginSlug });
-            }
-
-            if (await conn.UserOwnsPlugin(user.Id, pluginSlug))
-            {
-                TempData[TempDataConstant.WarningMessage] = "User is already an owner.";
-                return RedirectToAction(nameof(Owners), new { pluginSlug });
-            }
-
-            var targetPrincipal = await principalFactory.CreateAsync(user);
-
-            if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(targetPrincipal))
-            {
-                TempData[TempDataConstant.WarningMessage] = "Owner must have a confirmed email.";
-                return RedirectToAction(nameof(Owners), new { pluginSlug });
-            }
-
-            if (!await userVerifiedLogic.IsUserGithubVerified(targetPrincipal, conn))
-            {
-                TempData[TempDataConstant.WarningMessage] = "Owner must have a verified Github account.";
-                return RedirectToAction(nameof(Owners), new { pluginSlug });
-            }
-
-            await conn.AddUserPlugin(pluginSlug, user.Id);
             TempData[TempDataConstant.SuccessMessage] = "User added.";
+            return RedirectToAction(nameof(Owners), new { pluginSlug });
         }
-        catch (InvalidOperationException ex) { TempData[TempDataConstant.WarningMessage] = ex.Message; }
-        return RedirectToAction(nameof(Owners), new { pluginSlug });
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Unexpected error while adding owner");
+            TempData[TempDataConstant.WarningMessage] = "Unexpected error while adding owner";
+            return RedirectToAction(nameof(Owners), new { pluginSlug });
+        }
     }
 
     [HttpPost("owners/{userId}/transfer-primary-owner")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> TransferPrimaryOwner([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, string userId)
+    public async Task<IActionResult> TransferPrimaryOwner(
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+        string userId)
     {
         try
         {
@@ -678,87 +655,55 @@ public class PluginController(
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            if (!await conn.UserOwnsPlugin(userId, pluginSlug))
-            {
-                TempData[TempDataConstant.WarningMessage] = "Target user is not an owner";
-                return RedirectToAction(nameof(Owners), new { pluginSlug });
-            }
+            var result = await ownershipService.TransferPrimaryAsync(pluginSlug, userId);
 
-            var ok = await conn.AssignPluginPrimaryOwner(pluginSlug, userId);
-
-            if (!ok)
+            if (!result.Success)
             {
-                TempData[TempDataConstant.WarningMessage] = "Failed to assign primary owner.";
+                TempData[TempDataConstant.WarningMessage] = result.Error;
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
             TempData[TempDataConstant.SuccessMessage] = "Primary owner transferred.";
+            return RedirectToAction(nameof(Owners), new { pluginSlug });
         }
-        catch (InvalidOperationException ex) { TempData[TempDataConstant.WarningMessage] = ex.Message; }
-        return RedirectToAction(nameof(Owners), new { pluginSlug });
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Unexpected error while transferring primary owner");
+            TempData[TempDataConstant.WarningMessage] = "Unexpected error while transferring primary owner";
+            return RedirectToAction(nameof(Owners), new { pluginSlug });
+        }
     }
 
     [HttpPost("owners/{userId}/remove")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RemoveOwner([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, string userId)
+    public async Task<IActionResult> RemoveOwner(
+        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+        string userId)
     {
         try
         {
             var currentUserId = userManager.GetUserId(User);
-            await using var conn = await connectionFactory.Open();
-            await using var tx = await conn.BeginTransactionAsync();
 
-            var owners = (await conn.QueryAsync<(string UserId, bool IsPrimary)>(
-                """
-                SELECT user_id AS UserId, is_primary_owner AS IsPrimary
-                          FROM users_plugins
-                          WHERE plugin_slug = @slug
-                          FOR UPDATE;
-                """,
-                new { slug = pluginSlug.ToString() }, tx)).ToList();
+            var result = await ownershipService.RemoveOwnerAsync(
+                pluginSlug,
+                userId,
+                currentUserId,
+                isServerAdmin: false);
 
-            if (owners.All(o => o.UserId != userId))
+            if (!result.Success)
             {
-                TempData[TempDataConstant.WarningMessage] = "User not an owner.";
+                TempData[TempDataConstant.WarningMessage] = result.Error;
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            var primaryId = owners.FirstOrDefault(o => o.IsPrimary).UserId;
-
-            var currentIsPrimary = primaryId == currentUserId;
-            if (!currentIsPrimary && userId != currentUserId)
-            {
-                TempData[TempDataConstant.WarningMessage] = "Only primary owner can remove other owners.";
-                return RedirectToAction(nameof(Owners), new { pluginSlug });
-            }
-
-            if (userId == primaryId)
-            {
-                TempData[TempDataConstant.WarningMessage] = "Primary owner cannot be removed.";
-                return RedirectToAction(nameof(Owners), new { pluginSlug });
-            }
-
-            if (owners.Count <= 1)
-            {
-                TempData[TempDataConstant.WarningMessage] = "Cannot remove the last owner.";
-                return RedirectToAction(nameof(Owners), new { pluginSlug });
-            }
-
-            var deleted = await conn.RemovePluginOwner(pluginSlug, userId);
-
-            if (deleted != 1)
-            {
-                TempData[TempDataConstant.WarningMessage] = "Failed to remove owner.";
-                return RedirectToAction(nameof(Owners), new { pluginSlug });
-            }
-
-            await tx.CommitAsync();
             TempData[TempDataConstant.SuccessMessage] = "Owner removed.";
+            return RedirectToAction(nameof(Owners), new { pluginSlug });
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex)
         {
-            TempData[TempDataConstant.WarningMessage] = ex.Message;
+            logger.LogError(ex, "Unexpected error while removing owner");
+            TempData[TempDataConstant.WarningMessage] = "Unexpected error while removing owner";
+            return RedirectToAction(nameof(Owners), new { pluginSlug });
         }
-        return RedirectToAction(nameof(Owners), new { pluginSlug });
     }
 }

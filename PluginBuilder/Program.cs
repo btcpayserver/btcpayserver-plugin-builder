@@ -192,6 +192,8 @@ public class Program
             var actionContext = sp.GetRequiredService<IActionContextAccessor>().ActionContext;
             return new UrlHelper(actionContext);
         });
+        services.AddScoped<PluginOwnershipService>();
+
 
         services.AddOutputCache(options =>
         {
