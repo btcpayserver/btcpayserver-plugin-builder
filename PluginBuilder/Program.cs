@@ -176,7 +176,16 @@ public class Program
         services.AddSingleton<AzureStorageClient>();
         services.AddSingleton<ServerEnvironment>();
         services.AddSingleton<EventAggregator>();
-        services.AddHttpClient();
+        services.AddHttpClient(HttpClientNames.GitHub, client =>
+        {
+            client.BaseAddress = new Uri("https://api.github.com/");
+            client.DefaultRequestHeaders.Add("User-Agent", "PluginBuilder");
+
+            var token = configuration["GITHUB_TOKEN"];
+            if (!string.IsNullOrWhiteSpace(token))
+                client.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        });
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
         services.AddSingleton<FirstBuildEvent>();
