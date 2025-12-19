@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using System.Xml.Linq;
 using Dapper;
 using Newtonsoft.Json.Linq;
+using PluginBuilder.DataModels;
 using PluginBuilder.Events;
 using PluginBuilder.JsonConverters;
 using PluginBuilder.Util;
@@ -14,7 +15,7 @@ public class BuildServiceException(string message) : Exception(message);
 public class BuildService
 {
     private static readonly SemaphoreSlim _semaphore = new(5);
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public BuildService(
         ILogger<BuildService> logger,
@@ -22,16 +23,17 @@ public class BuildService
         DBConnectionFactory connectionFactory,
         EventAggregator eventAggregator,
         AzureStorageClient azureStorageClient,
-        HttpClient httpClient)
+        IHttpClientFactory httpClientFactory)
     {
         Logger = logger;
         ProcessRunner = processRunner;
         ConnectionFactory = connectionFactory;
         EventAggregator = eventAggregator;
         AzureStorageClient = azureStorageClient;
-        _httpClient = httpClient;
+        _httpClientFactory = httpClientFactory;
     }
 
+    private HttpClient GitHubClient() => _httpClientFactory.CreateClient(HttpClientNames.GitHub);
     public ILogger<BuildService> Logger { get; }
     public ProcessRunner ProcessRunner { get; }
     public DBConnectionFactory ConnectionFactory { get; }
@@ -264,29 +266,32 @@ public class BuildService
 
     public async Task<string> FetchIdentifierFromGithubCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
     {
-        if (_httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
-            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("btcpay-plugin-builder/1.0");
+        var githubClient = GitHubClient();
 
         var (owner, repo) = ExtractOwnerRepo(repoUrl);
-        var refName = string.IsNullOrWhiteSpace(gitRef) ? "HEAD" : gitRef.Trim();
         var dir = string.IsNullOrWhiteSpace(pluginDir) ? "" : pluginDir.Trim('/');
 
-        var encodedRef = Uri.EscapeDataString(refName);
         var encodedDir = string.Join('/', dir.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.EscapeDataString));
+        var apiUrl = $"repos/{owner}/{repo}/contents" + (string.IsNullOrEmpty(encodedDir) ? "" : "/" + encodedDir);
 
-        var apiUrl = $"https://api.github.com/repos/{owner}/{repo}/contents{(string.IsNullOrEmpty(encodedDir) ? "" : "/" + encodedDir)}?ref={encodedRef}";
-        using var resp = await _httpClient.GetAsync(apiUrl);
+        if (!string.IsNullOrWhiteSpace(gitRef))
+            apiUrl += $"?ref={Uri.EscapeDataString(gitRef.Trim())}";
+
+        using var resp = await githubClient.GetAsync(apiUrl);
         var body = await resp.Content.ReadAsStringAsync();
         if (!resp.IsSuccessStatusCode)
             throw new BuildServiceException($"GitHub error ({(int)resp.StatusCode}) listing '{(string.IsNullOrEmpty(dir) ? "/" : dir)}': {apiUrl}\nBody: {body}");
+
+        if (body.TrimStart().StartsWith('{'))
+            throw new BuildServiceException($"Expected directory listing but GitHub returned an object. Check pluginDir='{pluginDir}' (must be a directory). Path: {apiUrl}");
 
         var items = SafeJson.Deserialize<List<GithubContentItem>>(body);
         var csprojs = items
             .Where(i => string.Equals(i.type, "file", StringComparison.OrdinalIgnoreCase)
                         && i.name.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)).ToList();
 
-        if (csprojs == null || !csprojs.Any())
-            throw new BuildServiceException($"No .csproj found in '{(string.IsNullOrEmpty(dir) ? "/" : dir)}' at {refName}.");
+        if (csprojs == null || csprojs.Count == 0)
+            throw new BuildServiceException($"No .csproj found in '{(string.IsNullOrEmpty(dir) ? "/" : dir)}' at {(string.IsNullOrWhiteSpace(gitRef) ? "default branch" : gitRef)}.");
         if (csprojs.Count > 1)
             throw new BuildServiceException("Multiple .csproj found. Keep exactly one.");
 
@@ -294,7 +299,7 @@ public class BuildService
         if (string.IsNullOrWhiteSpace(downloadUrl))
             throw new BuildServiceException($"GitHub item '{csprojs[0].name}' has no download_url.");
 
-        using var csprojResp = await _httpClient.GetAsync(downloadUrl);
+        using var csprojResp = await githubClient.GetAsync(downloadUrl);
         var csprojBody = await csprojResp.Content.ReadAsStringAsync();
 
         if (!csprojResp.IsSuccessStatusCode || string.IsNullOrWhiteSpace(csprojBody))
