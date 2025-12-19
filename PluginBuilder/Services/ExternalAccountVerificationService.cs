@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
+using PluginBuilder.DataModels;
 
 namespace PluginBuilder.Services;
 
@@ -16,10 +17,9 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
         var gistUsername = match.Groups[1].Value;
         var gistId = match.Groups[2].Value;
 
-        var client = httpClientFactory.CreateClient();
-        var url = $"https://api.github.com/gists/{gistId}";
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("GitHubVerificationApp");
-        var response = await client.GetAsync(url);
+        var client = httpClientFactory.CreateClient(HttpClientNames.GitHub);
+        var response = await client.GetAsync($"gists/{gistId}");
+
         if (!response.IsSuccessStatusCode)
             return null;
 
@@ -30,14 +30,15 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
         if (owner == null || !owner.Equals(gistUsername, StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var files = gistData["files"]!;
-        foreach (var file in files)
-        {
-            var fileContent = file.First!["content"]?.ToString();
-            if (fileContent != null && fileContent.Contains(token))
-                return gistUsername;
-        }
-        return null;
+        var files = gistData["files"];
+        if (files == null) return null;
+
+        return files
+            .Select(file => file.First?["content"]?.ToString())
+            .OfType<string>()
+            .Any(fileContent => fileContent.Contains(token, StringComparison.Ordinal))
+            ? gistUsername
+            : null;
     }
 
     public static string? GetGithubHandle(string? url)
