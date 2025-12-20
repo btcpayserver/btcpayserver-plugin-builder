@@ -33,12 +33,13 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
         var files = gistData["files"];
         if (files == null) return null;
 
-        return files
-            .Select(file => file.First?["content"]?.ToString())
-            .OfType<string>()
-            .Any(fileContent => fileContent.Contains(token, StringComparison.Ordinal))
-            ? gistUsername
-            : null;
+        foreach (var file in files)
+        {
+            var fileContent = file.First?["content"]?.ToString();
+            if (fileContent != null && content.Contains(token, StringComparison.Ordinal))
+                return gistUsername;
+        }
+        return null;
     }
 
     public static string? GetGithubHandle(string? url)
