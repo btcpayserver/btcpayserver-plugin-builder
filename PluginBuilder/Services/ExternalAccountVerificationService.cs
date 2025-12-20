@@ -36,7 +36,7 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
         foreach (var file in files)
         {
             var fileContent = file.First?["content"]?.ToString();
-            if (fileContent != null && content.Contains(token, StringComparison.Ordinal))
+            if (fileContent != null && fileContent.Contains(token, StringComparison.Ordinal))
                 return gistUsername;
         }
         return null;
