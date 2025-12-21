@@ -46,29 +46,27 @@ public class PublishedPlugin : PublishedVersion
         return new GithubRepository(match.Groups[2].Value, match.Groups[3].Value);
     }
 
-    public async Task<List<GitHubContributor>> GetContributorsAsync(HttpClient httpClient, string pluginDir)
+    public async Task<List<GitHubContributor>> GetContributorsAsync(HttpClient githubClient, string pluginDir)
     {
         var repo = GetGithubRepository();
         if (repo == null)
-            return new();
+            return new List<GitHubContributor>();
 
-        string url = string.IsNullOrEmpty(pluginDir)
-            ? $"https://api.github.com/repos/{repo.Owner}/{repo.RepositoryName}/commits"
-            : $"https://api.github.com/repos/{repo.Owner}/{repo.RepositoryName}/commits?path={pluginDir}";
+        var pathQuery = string.IsNullOrEmpty(pluginDir) ? "" : $"?path={Uri.EscapeDataString(pluginDir)}";
+
+        var apiPath = $"repos/{repo.Owner}/{repo.RepositoryName}/commits{pathQuery}";
         try
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.UserAgent.ParseAdd("PluginBuilder");
-            using var response = await httpClient.SendAsync(request);
+            using var response = await githubClient.GetAsync(apiPath);
             if (!response.IsSuccessStatusCode)
-                return new();
+                return new List<GitHubContributor>();
 
             var json = await response.Content.ReadAsStringAsync();
             var commits = JArray.Parse(json);
 
             return commits
                 .Select(c => c["author"])
-                .Where(a => a != null && a["login"] != null)
+                .Where(a => a?["login"] != null)
                 .GroupBy(a => a["login"]!.ToString())
                 .Select(g => new GitHubContributor
                 {
@@ -81,7 +79,7 @@ public class PublishedPlugin : PublishedVersion
         }
         catch (Exception)
         {
-            return new();
+            return new List<GitHubContributor>();
         }
     }
 }

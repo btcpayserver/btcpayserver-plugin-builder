@@ -26,7 +26,7 @@ public class HomeController(
     UserManager<IdentityUser> userManager,
     SignInManager<IdentityUser> signInManager,
     EmailService emailService,
-    HttpClient httpClient,
+    IHttpClientFactory httpClientFactory,
     UserVerifiedLogic userVerifiedLogic,
     ServerEnvironment env,
     NostrService nostrService,
@@ -457,6 +457,7 @@ public class HomeController(
         if (!string.IsNullOrWhiteSpace(ownerNpub))
             ownerNostrUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(ownerNpub));
 
+        var githubClient = httpClientFactory.CreateClient(HttpClientNames.GitHub);
 
         var vm = new PluginDetailsViewModel
         {
@@ -468,7 +469,7 @@ public class HomeController(
             IsOwner = userId != null && userId == primaryOwnerId,
             PluginVersions = versions.ToList(),
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
-            Contributors = await plugin.GetContributorsAsync(httpClient, plugin.pluginDir),
+            Contributors = await plugin.GetContributorsAsync(githubClient, plugin.pluginDir),
             RatingFilter = model.RatingFilter,
             OwnerGithubUrl = ownerGithubUrl,
             OwnerNostrUrl = ownerNostrUrl
