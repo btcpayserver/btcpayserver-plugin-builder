@@ -180,37 +180,48 @@
                         </div>
                         <div class="small">
                             <div class="d-flex align-items-center mb-1">
-                                @if (owner.EmailVerified)
-                                {
-                                    <vc:icon symbol="checkmark" css-class="text-success me-1" />
-                                }
-                                else
-                                {
-                                    <vc:icon symbol="cross" css-class="text-danger me-1" />
-                                }
-                                <span>Email Verified</span>
+								@if (owner.EmailVerified)
+								{
+									<vc:icon symbol="checkmark" css-class="text-success me-1" />
+									<a href="mailto:@owner.Email" class="text-decoration-none">
+										Email Verified
+									</a>
+								}
+								else
+								{
+									<vc:icon symbol="cross" css-class="text-danger me-1" />
+									<span class="text-muted">Email Not Verified</span>
+								}
                             </div>
+
                             <div class="d-flex align-items-center mb-1">
-                                @if (owner.GithubVerified)
-                                {
-                                    <vc:icon symbol="checkmark" css-class="text-success me-1" />
-                                }
-                                else
-                                {
-                                    <vc:icon symbol="cross" css-class="text-danger me-1" />
-                                }
-                                <span>GitHub Verified</span>
+								@if (owner.GithubVerified)
+								{
+									<vc:icon symbol="checkmark" css-class="text-success me-1" />
+									<a href="@owner.GithubProfile" target="_blank" rel="noopener" class="text-decoration-none">
+										GitHub Verified
+									</a>
+								}
+								else
+								{
+									<vc:icon symbol="cross" css-class="text-danger me-1" />
+									<span class="text-muted">GitHub Not Verified</span>
+								}
                             </div>
+
                             <div class="d-flex align-items-center">
-                                @if (owner.NostrVerified)
-                                {
-                                    <vc:icon symbol="checkmark" css-class="text-success me-1" />
-                                }
-                                else
-                                {
-                                    <vc:icon symbol="cross" css-class="text-danger me-1" />
-                                }
-                                <span>Nostr Verified</span>
+								@if (owner.NostrVerified)
+								{
+									<vc:icon symbol="checkmark" css-class="text-success me-1" />
+									<a href="@owner.NostrProfile" target="_blank" rel="noopener" class="text-decoration-none">
+										Nostr Verified
+									</a>
+								}
+								else
+								{
+									<vc:icon symbol="cross" css-class="text-danger me-1" />
+									<span class="text-muted">Nostr Not Verified</span>
+								}
                             </div>
                         </div>
                     </div>
