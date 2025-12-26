@@ -834,6 +834,7 @@ public class AdminController(
         {
             var accountSettings = SafeJson.Deserialize<AccountSettings>(owner.AccountDetail);
             var ownerNpub = accountSettings?.Nostr?.Npub?.Trim();
+            var githubHandle = ExternalAccountVerificationService.GetGithubHandle(accountSettings?.Github);
             ownerVerifications.Add(new OwnerVerificationViewModel
             {
                 Email = owner.Email ?? string.Empty,
@@ -841,7 +842,7 @@ public class AdminController(
                 EmailVerified = owner.EmailConfirmed,
                 GithubVerified = accountSettings?.Github != null,
                 NostrVerified = !string.IsNullOrEmpty(ownerNpub),
-                GithubProfile = string.IsNullOrEmpty(accountSettings?.Github) ? string.Empty : $"https://github.com/{Uri.EscapeDataString(ExternalAccountVerificationService.GetGithubHandle(accountSettings.Github)!)}",
+                GithubProfile = string.IsNullOrWhiteSpace(githubHandle) ? string.Empty : $"{ExternalProfileUrls.GithubBaseUrl}{Uri.EscapeDataString(githubHandle)}",
                 NostrProfile = string.IsNullOrEmpty(ownerNpub) ? string.Empty : string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(ownerNpub))
             });
         }
