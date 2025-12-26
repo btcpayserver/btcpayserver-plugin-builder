@@ -48,6 +48,8 @@ public class OwnerVerificationViewModel
     public bool EmailVerified { get; set; }
     public bool GithubVerified { get; set; }
     public bool NostrVerified { get; set; }
+    public string? NostrProfile { get; set; }
+    public string? GithubProfile { get; set; }
 }
 
 public class ApproveListingRequestViewModel
