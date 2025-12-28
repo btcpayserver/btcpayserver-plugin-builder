@@ -832,14 +832,16 @@ public class AdminController(
         var ownerVerifications = new List<OwnerVerificationViewModel>();
         foreach (var owner in owners)
         {
-            var accountSettings = await conn.GetAccountDetailSettings(owner.UserId);
+            var accountSettings = SafeJson.Deserialize<AccountSettings>(owner.AccountDetail);
+            var ownerNpub = accountSettings?.Nostr?.Npub?.Trim();
+            var githubHandle = ExternalAccountVerificationService.GetGithubHandle(accountSettings?.Github);
             ownerVerifications.Add(new OwnerVerificationViewModel
             {
-                Email = owner.Email ?? string.Empty,
-                IsPrimary = owner.IsPrimary,
+                Email = owner.Email,
                 EmailVerified = owner.EmailConfirmed,
-                GithubVerified = accountSettings?.Github != null,
-                NostrVerified = accountSettings?.Nostr?.Npub != null
+                IsPrimary = owner.IsPrimary,
+                GithubProfile = string.IsNullOrWhiteSpace(githubHandle) ? null : $"{ExternalProfileUrls.GithubBaseUrl}{Uri.EscapeDataString(githubHandle)}",
+                NostrProfile = string.IsNullOrEmpty(ownerNpub) ? null : string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(ownerNpub))
             });
         }
         var reviewedByEmail = request.ReviewedBy != null ? (await userManager.FindByIdAsync(request.ReviewedBy))?.Email : null;

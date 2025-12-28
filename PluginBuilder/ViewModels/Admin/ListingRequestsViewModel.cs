@@ -43,11 +43,11 @@ public class ListingRequestDetailViewModel
 
 public class OwnerVerificationViewModel
 {
-    public string Email { get; set; } = null!;
-    public bool IsPrimary { get; set; }
+    public string? Email { get; set; }
     public bool EmailVerified { get; set; }
-    public bool GithubVerified { get; set; }
-    public bool NostrVerified { get; set; }
+    public bool IsPrimary { get; set; }
+    public string? NostrProfile { get; set; }
+    public string? GithubProfile { get; set; }
 }
 
 public class ApproveListingRequestViewModel
