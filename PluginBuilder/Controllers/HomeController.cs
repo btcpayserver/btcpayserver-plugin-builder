@@ -308,6 +308,9 @@ public class HomeController(
         PluginSlug pluginSlug,
         [FromQuery] PluginDetailsViewModel? model)
     {
+        if (pluginSlug is null)
+            return NotFound();
+
         model ??= new PluginDetailsViewModel();
 
         var sort = string.Equals(model.Sort, "helpful", StringComparison.OrdinalIgnoreCase) ? "helpful" : "newest";
