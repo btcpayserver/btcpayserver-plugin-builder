@@ -85,6 +85,7 @@ public class HomeController(
             b.PluginSlug = row.slug;
             b.PluginIdentifier = row.identifier ?? row.slug;
         }
+
         return View("Views/Plugin/Dashboard", vm);
     }
 
@@ -116,7 +117,7 @@ public class HomeController(
             return View(model);
         }
 
-        var result = await signInManager.CheckPasswordSignInAsync(user, model.Password, lockoutOnFailure: true);
+        var result = await signInManager.CheckPasswordSignInAsync(user, model.Password, true);
         if (!result.Succeeded)
         {
             ModelState.AddModelError(string.Empty, "Invalid login attempt.");
@@ -130,7 +131,7 @@ public class HomeController(
 
             if (isVerified)
             {
-                await signInManager.SignInAsync(user, isPersistent: model.RememberMe);
+                await signInManager.SignInAsync(user, model.RememberMe);
                 return RedirectToLocal(returnUrl);
             }
 
@@ -142,10 +143,10 @@ public class HomeController(
             ViewData["VerifyEmailTitle"] = "Email confirmation required to sign in";
             ViewData["VerifyEmailDescription"] =
                 "After you confirm your email, please sign in again to continue.";
-            return View(nameof(VerifyEmail), model: email);
+            return View(nameof(VerifyEmail), email);
         }
 
-        await signInManager.SignInAsync(user, isPersistent: model.RememberMe);
+        await signInManager.SignInAsync(user, model.RememberMe);
         return RedirectToLocal(returnUrl);
     }
 
@@ -281,7 +282,7 @@ public class HomeController(
         versions.AddRange(rows.Select(r =>
         {
             var manifestInfo = JObject.Parse(r.manifest_info);
-            PluginSettings? settings = SafeJson.Deserialize<PluginSettings>(r.settings);
+            var settings = SafeJson.Deserialize<PluginSettings>(r.settings);
             return new PublishedPlugin
             {
                 PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
@@ -335,8 +336,8 @@ public class HomeController(
             rating = model.RatingFilter
         };
 
-         var sql =
-                         @"
+        var sql =
+                @"
                          -- FIRST QUERY
                          SELECT
                            v.plugin_slug,
@@ -416,7 +417,7 @@ public class HomeController(
                         WHERE r.plugin_slug = @pluginSlug AND (@rating IS NULL OR r.rating = @rating)
                         ORDER BY " + orderBy + @"
                         OFFSET @skip LIMIT @take;"
-                         ;
+            ;
 
         await using var conn = await connectionFactory.Open();
         await using var multi = await conn.QueryMultipleAsync(sql, prms);
@@ -442,9 +443,9 @@ public class HomeController(
             ManifestInfo = manifestInfo,
             PluginLogo = settings?.Logo,
             Documentation = settings?.Documentation,
-            Version       = (string)pluginDetails.ver_str,
-            BuildInfo     = JObject.Parse((string)pluginDetails.build_info),
-            CreatedDate   = (DateTimeOffset)pluginDetails.created_at,
+            Version = (string)pluginDetails.ver_str,
+            BuildInfo = JObject.Parse((string)pluginDetails.build_info),
+            CreatedDate = (DateTimeOffset)pluginDetails.created_at,
             RatingSummary = summary
         };
 
@@ -483,7 +484,8 @@ public class HomeController(
     [HttpPost("public/plugins/{pluginSlug}/reviews/upsert")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpsertReview(
-        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug, int rating, string? body, string? pluginVersion)
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug, int rating, string? body, string? pluginVersion)
     {
         if (rating is < 1 or > 5) return BadRequest("Invalid rating");
 
@@ -500,17 +502,15 @@ public class HomeController(
         }
 
         var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
-        if (string.IsNullOrEmpty(reviewerAccountDetails.Github) && (reviewerAccountDetails.Nostr == null || string.IsNullOrEmpty(reviewerAccountDetails.Nostr?.Npub)))
+        if (string.IsNullOrEmpty(reviewerAccountDetails.Github) &&
+            (reviewerAccountDetails.Nostr == null || string.IsNullOrEmpty(reviewerAccountDetails.Nostr?.Npub)))
         {
             TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub or Nostr account in order to review plugins";
             return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
         }
 
         int[]? pluginVersionParts = null;
-        if (!string.IsNullOrWhiteSpace(pluginVersion) && PluginVersion.TryParse(pluginVersion, out var v))
-        {
-            pluginVersionParts = v.VersionParts;
-        }
+        if (!string.IsNullOrWhiteSpace(pluginVersion) && PluginVersion.TryParse(pluginVersion, out var v)) pluginVersionParts = v.VersionParts;
         PluginReviewViewModel reviewViewModel = new()
         {
             PluginSlug = pluginSlug.ToString(),
@@ -532,7 +532,7 @@ public class HomeController(
         ImportReviewViewModel importReviewModel = new()
         {
             SelectedUserId = userId,
-            LinkExistingUser = true,
+            LinkExistingUser = true
         };
         if (!string.IsNullOrEmpty(settings.Github))
         {
@@ -548,10 +548,14 @@ public class HomeController(
             importReviewModel.ReviewerProfileUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(nostr.Npub));
             importReviewModel.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name)
                 ? nostr.Npub.Length >= 8
-                    ? $"{nostr.Npub[..8]}…" : nostr.Npub
+                    ? $"{nostr.Npub[..8]}…"
+                    : nostr.Npub
                 : nostr.Profile.Name;
-            importReviewModel.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
-                                                  (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
+            importReviewModel.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) &&
+                                                  Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
+                                                  (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps)
+                ? nostr.Profile.PictureUrl
+                : null;
 
             try
             {
@@ -569,13 +573,15 @@ public class HomeController(
                 logger.LogError(ex, "Error while retrieving nostr profile for {Npub}", nostr.Npub);
             }
         }
+
         return importReviewModel;
     }
 
     [HttpPost("public/plugins/{pluginSlug}/reviews/{id:long}/vote")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> VoteReview(
-        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
         long id,
         bool isHelpful)
     {
@@ -600,7 +606,8 @@ public class HomeController(
     [HttpPost("public/plugins/{pluginSlug}/reviews/{id:long}/delete")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteReview(
-        [ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
         long id)
     {
         var userId = userManager.GetUserId(User);
@@ -709,6 +716,7 @@ public class HomeController(
 
             return View(model);
         }
+
         return RedirectToAction(nameof(Login));
     }
 

@@ -228,6 +228,17 @@ csharp_space_between_square_brackets = false
 csharp_style_prefer_null_check_over_type_check = true:warning
 csharp_prefer_simple_using_statement = true:warning
 
+# Rider/ReSharper specific formatting rules
+resharper_csharp_keep_existing_arrangement = true
+resharper_keep_existing_embedded_block_arrangement = true
+resharper_keep_existing_linebreaks = true
+resharper_csharp_wrap_before_ternary_opsigns = false
+resharper_csharp_nested_ternary_style = simple_wrap
+resharper_csharp_wrap_ternary_expr_style = wrap_if_long
+resharper_csharp_keep_existing_embedded_arrangement = true
+resharper_place_simple_embedded_statement_on_same_line = never
+csharp_prefer_braces = false:silent
+
 # C++ Files
 
 [*.{cpp,h,in}]
