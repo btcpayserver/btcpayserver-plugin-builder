@@ -19,7 +19,7 @@ public static class PluginSettingExtensions
             PluginDirectory = viewModel.PluginDirectory,
             BuildConfig = viewModel.BuildConfig,
             Logo = viewModel.LogoUrl,
-            RequireGPGSignatureForRelease = viewModel.RequireGPGSignatureForRelease,
+            RequireGPGSignatureForRelease = viewModel.RequireGPGSignatureForRelease
         };
     }
 
@@ -55,9 +55,13 @@ public static class PluginSettingExtensions
             var nostr = settings.Nostr;
             model.ReviewerName = string.IsNullOrWhiteSpace(nostr.Profile?.Name) ? $"{nostr.Npub[..8]}…" : nostr.Profile.Name;
             model.ReviewerProfileUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(nostr.Npub));
-            model.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) && Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
-                                      (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps) ? nostr.Profile.PictureUrl : null;
+            model.ReviewerAvatarUrl = !string.IsNullOrWhiteSpace(nostr.Profile?.PictureUrl) &&
+                                      Uri.TryCreate(nostr.Profile.PictureUrl, UriKind.Absolute, out var avatarUri) &&
+                                      (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps)
+                ? nostr.Profile.PictureUrl
+                : null;
         }
+
         return model;
     }
 }

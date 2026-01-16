@@ -77,7 +77,8 @@ public class ApiController(
         else
         {
             filters.Add("(p.visibility = 'listed' OR p.visibility = 'unlisted')");
-            if (hasPluginName) filters.Add("(p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)");
+            if (hasPluginName)
+                filters.Add("(p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)");
         }
 
         var whereClause = "WHERE " + string.Join(" AND ", filters);
@@ -107,7 +108,7 @@ public class ApiController(
 
         versions.AddRange(rows.Select(r =>
         {
-            var manifestInfo = JObject.Parse((string)r.manifest_info);
+            var manifestInfo = JObject.Parse(r.manifest_info);
             var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
             return new PublishedVersion
             {
@@ -171,7 +172,7 @@ public class ApiController(
         List<PublishedVersion> versions = new(count);
         versions.AddRange(rows.Select(r =>
         {
-            var manifestInfo = JObject.Parse((string)r.manifest_info);
+            var manifestInfo = JObject.Parse(r.manifest_info);
             var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
             return new PublishedVersion
             {
@@ -377,7 +378,7 @@ public class ApiController(
         (
             from row in rows
             let latestVerString = string.Join('.', row.ver)
-            let manifestInfo = JObject.Parse((string)row.manifest_info)
+            let manifestInfo = JObject.Parse(row.manifest_info)
             let settings = SafeJson.Deserialize<PluginSettings>((string?)row.settings)
             select new PublishedVersion
             {

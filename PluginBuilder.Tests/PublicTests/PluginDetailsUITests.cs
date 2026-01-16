@@ -1,8 +1,9 @@
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
+using PluginBuilder.DataModels;
+using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 using Xunit;
 using Xunit.Abstractions;
@@ -22,18 +23,18 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.StartAsync();
 
         // plugin + 3 users (owner, reviewer, voter)
-        var ownerId = await tester.Server.CreateFakeUserAsync(email: "owner@x.com", confirmEmail: true, githubVerified: true);
+        var ownerId = await tester.Server.CreateFakeUserAsync("owner@x.com", confirmEmail: true, githubVerified: true);
         const string slug = ServerTester.PluginSlug;
-        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug: slug);
+        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
 
         // Set up owner's social accounts
-        await using (var conn = await tester.Server.GetService<Services.DBConnectionFactory>().Open())
+        await using (var conn = await tester.Server.GetService<DBConnectionFactory>().Open())
         {
-            await conn.SetAccountDetailSettings(new DataModels.AccountSettings
+            await conn.SetAccountDetailSettings(new AccountSettings
             {
                 Github = "rockstardev",
                 Twitter = "@r0ckstardev",
-                Nostr = new DataModels.NostrSettings
+                Nostr = new NostrSettings
                 {
                     Npub = "npub1rockstar123",
                     Proof = "proof123"
@@ -41,8 +42,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
             }, ownerId);
         }
 
-        await tester.Server.CreateFakeUserAsync(email: "reviewer@x.com", confirmEmail: true, githubVerified: true);
-        await tester.Server.CreateFakeUserAsync(email: "voter@x.com",    confirmEmail: true, githubVerified: true);
+        await tester.Server.CreateFakeUserAsync("reviewer@x.com", confirmEmail: true, githubVerified: true);
+        await tester.Server.CreateFakeUserAsync("voter@x.com", confirmEmail: true, githubVerified: true);
 
 
         await tester.VerifyUserAccounts("reviewer@x.com", "reviewernpub1");
@@ -100,7 +101,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         var votableCard = tester.Page
             .Locator(".test-review-card")
-            .Filter(new LocatorFilterOptions {
+            .Filter(new LocatorFilterOptions
+            {
                 Has = tester.Page.Locator(".test-upvote-form")
             })
             .First;
@@ -164,10 +166,10 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.StartAsync();
 
         // Setup: Create plugin and users
-        var ownerId = await tester.Server.CreateFakeUserAsync(email: "owner@x.com", confirmEmail: true, githubVerified: true);
+        var ownerId = await tester.Server.CreateFakeUserAsync("owner@x.com", confirmEmail: true, githubVerified: true);
         const string slug = ServerTester.PluginSlug;
-        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug: slug);
-        await tester.Server.CreateFakeUserAsync(email: "reviewer@x.com", confirmEmail: true, githubVerified: true);
+        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
+        await tester.Server.CreateFakeUserAsync("reviewer@x.com", confirmEmail: true, githubVerified: true);
         await tester.VerifyUserAccounts("reviewer@x.com", "reviewernpub1");
 
         // Login as reviewer and create review with markdown
@@ -179,7 +181,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.Page.ClickAsync("#ratingStars .star-btn[data-value='5']");
 
         // Review text with various markdown elements
-        const string reviewText = "This is the **best** plugin *ever*! Read more on https://x.com/r0ckstardev. As well as [markdown Google link](https://google.com)";
+        const string reviewText =
+            "This is the **best** plugin *ever*! Read more on https://x.com/r0ckstardev. As well as [markdown Google link](https://google.com)";
         await tester.Page.FillAsync("textarea[name='Body']", reviewText);
         await form.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Submit" }).ClickAsync();
         await tester.Page.WaitForURLAsync(new Regex("public/plugins/.+?#reviews"));

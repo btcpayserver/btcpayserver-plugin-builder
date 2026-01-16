@@ -49,31 +49,33 @@ public class AdminController(
             whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText OR p.settings->>'pluginTitle' ILIKE @searchText)");
             parameters.Add("searchText", $"%{model.SearchText}%");
         }
+
         if (!string.IsNullOrEmpty(model.Status) && Enum.TryParse<PluginVisibilityEnum>(model.Status, true, out var statusEnum))
         {
             whereConditions.Add("p.visibility = CAST(@status AS plugin_visibility_enum)");
             parameters.Add("status", statusEnum.ToString().ToLower());
         }
+
         var whereClause = whereConditions.Count > 0 ? "WHERE " + string.Join(" AND ", whereConditions) : "";
         parameters.Add("skip", model.Skip);
         parameters.Add("take", model.Count);
 
         await using var conn = await connectionFactory.Open();
         var rows = await conn.QueryAsync($"""
-                                         SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email, p.settings,
-                                                EXISTS(SELECT 1 FROM plugin_listing_requests lr WHERE lr.plugin_slug = p.slug AND lr.status = 'pending') as has_pending_request
-                                         FROM plugins p
-                                         LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
-                                         LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
-                                         LEFT JOIN (
-                                             SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
-                                             FROM versions
-                                             ORDER BY plugin_slug, updated_at DESC
-                                         ) v ON p.slug = v.plugin_slug
-                                         {whereClause}
-                                         ORDER BY p.slug
-                                         OFFSET @skip LIMIT @take;
-                                         """, parameters);
+                                          SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email, p.settings,
+                                                 EXISTS(SELECT 1 FROM plugin_listing_requests lr WHERE lr.plugin_slug = p.slug AND lr.status = 'pending') as has_pending_request
+                                          FROM plugins p
+                                          LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
+                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
+                                          LEFT JOIN (
+                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
+                                              FROM versions
+                                              ORDER BY plugin_slug, updated_at DESC
+                                          ) v ON p.slug = v.plugin_slug
+                                          {whereClause}
+                                          ORDER BY p.slug
+                                          OFFSET @skip LIMIT @take;
+                                          """, parameters);
         List<AdminPluginViewModel> plugins = new();
 
         foreach (var row in rows)
@@ -95,6 +97,7 @@ public class AdminController(
                 plugin.PreRelease = row.pre_release;
                 plugin.UpdatedAt = row.updated_at;
             }
+
             plugins.Add(plugin);
         }
 
@@ -146,6 +149,7 @@ public class AdminController(
             model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
             return View(model);
         }
+
         var plugin = await conn.GetPluginDetails(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
 
@@ -165,6 +169,7 @@ public class AdminController(
                 return View(model);
             }
         }
+
         pluginSettings.PluginTitle = model.PluginSettings.PluginTitle;
         pluginSettings.Description = model.PluginSettings.Description;
         pluginSettings.GitRepository = model.PluginSettings.GitRepository;
@@ -174,12 +179,13 @@ public class AdminController(
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         if (model.LogoFile != null)
         {
-            if (!model.LogoFile.ValidateUploadedImage(out string errorMessage))
+            if (!model.LogoFile.ValidateUploadedImage(out var errorMessage))
             {
                 ModelState.AddModelError(nameof(model.LogoFile), $"Image upload validation failed: {errorMessage}");
                 model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
                 return View(model);
             }
+
             try
             {
                 var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.LogoFile.FileName)}";
@@ -200,7 +206,8 @@ public class AdminController(
         }
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
-        if (!setPluginSettings) return NotFound();
+        if (!setPluginSettings)
+            return NotFound();
 
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = "Plugin settings updated successfully";
@@ -215,7 +222,8 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.GetPluginDetails(routeSlug);
-        if (plugin == null) return NotFound();
+        if (plugin == null)
+            return NotFound();
 
         return View(plugin);
     }
@@ -232,11 +240,12 @@ public class AdminController(
                                                    DELETE FROM versions WHERE plugin_slug = @slug;
                                                    DELETE FROM plugins WHERE slug = @slug;
                                                    """, new { slug = routeSlug });
-        if (affectedRows == 0) return NotFound();
+        if (affectedRows == 0)
+            return NotFound();
 
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
 
-        return referrerNavigation.RedirectToReferrerOr(this,"ListPlugins");
+        return referrerNavigation.RedirectToReferrerOr(this, "ListPlugins");
     }
 
     [HttpGet("plugins/import-review/{pluginSlug}")]
@@ -244,7 +253,7 @@ public class AdminController(
     {
         var vm = new ImportReviewViewModel
         {
-            PluginSlug = pluginSlug.ToString(),
+            PluginSlug = pluginSlug,
             ExistingUsers = userManager.Users.Select(u => new SelectListItem
             {
                 Value = u.Id,
@@ -263,10 +272,9 @@ public class AdminController(
             TempData[TempDataConstant.WarningMessage] = "Invalid rating or body specified";
             return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
         }
+
         if (!string.IsNullOrWhiteSpace(model.SourceUrl))
-        {
             model.Body += $"\n\n[Click here to continue reading]({model.SourceUrl})";
-        }
         await using var conn = await connectionFactory.Open();
         PluginReviewViewModel vm = new()
         {
@@ -283,6 +291,7 @@ public class AdminController(
                 TempData[TempDataConstant.WarningMessage] = "Invalid system user";
                 return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
             }
+
             var reviewerAccountDetails = await conn.GetAccountDetailSettings(linkedUser.Id) ?? new AccountSettings();
             model = model.UpdatePluginReviewerData(reviewerAccountDetails);
         }
@@ -294,6 +303,7 @@ public class AdminController(
                 TempData[TempDataConstant.WarningMessage] = "Kindly provide the reviewer profile";
                 return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
             }
+
             model.ReviewerName = model.ReviewerName.TrimStart('/').TrimEnd();
             model.SelectedUserId = null;
             switch (model.Source)
@@ -322,9 +332,7 @@ public class AdminController(
 
                     if (!wwwInput.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
                         !wwwInput.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                    {
                         wwwInput = $"https://{wwwInput}";
-                    }
 
                     if (!Uri.TryCreate(wwwInput, UriKind.Absolute, out var uri))
                     {
@@ -344,9 +352,7 @@ public class AdminController(
                     if (!string.IsNullOrWhiteSpace(model.WwwAvatarUrl)
                         && Uri.TryCreate(model.WwwAvatarUrl, UriKind.Absolute, out var avatarUri)
                         && (avatarUri.Scheme == Uri.UriSchemeHttp || avatarUri.Scheme == Uri.UriSchemeHttps))
-                    {
                         model.ReviewerAvatarUrl = model.WwwAvatarUrl;
-                    }
                     else
                         model.ReviewerAvatarUrl = string.Format(ExternalProfileUrls.UnavatarSiteFormat, host);
 
@@ -370,12 +376,14 @@ public class AdminController(
                     model.ReviewerAvatarUrl = null;
                     break;
             }
+
             if (model.ReviewerProfileUrl == null)
             {
                 TempData[TempDataConstant.WarningMessage] = "Invalid source selected";
                 return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
             }
         }
+
         vm.ReviewerId = await conn.CreateOrUpdatePluginReviewer(model);
         await conn.UpsertPluginReview(vm);
 
@@ -417,8 +425,8 @@ public class AdminController(
         var result = await ownershipService.RemoveOwnerAsync(
             pluginSlug,
             userId,
-            currentUserId: null,
-            isServerAdmin: true);
+            null,
+            true);
 
         TempData[result.Success ? TempDataConstant.SuccessMessage : TempDataConstant.WarningMessage] =
             result.Success ? "Owner removed." : result.Error;
@@ -463,7 +471,8 @@ public class AdminController(
     public async Task<IActionResult> EditRoles(string userId)
     {
         var user = await userManager.FindByIdAsync(userId);
-        if (user == null) return NotFound();
+        if (user == null)
+            return NotFound();
 
         var userRoles = await userManager.GetRolesAsync(user);
         var allRoles = roleManager.Roles.ToList();
@@ -481,7 +490,8 @@ public class AdminController(
     public async Task<IActionResult> EditRoles(string userId, List<string> userRoles)
     {
         var user = await userManager.FindByIdAsync(userId);
-        if (user == null) return NotFound();
+        if (user == null)
+            return NotFound();
 
         var currentRoles = await userManager.GetRolesAsync(user);
         var rolesToAdd = userRoles.Except(currentRoles).ToList();
@@ -518,7 +528,8 @@ public class AdminController(
     {
         InitPasswordResetViewModel model = new();
         var user = await userManager.FindByIdAsync(userId);
-        if (user != null) model.Email = user.Email;
+        if (user != null)
+            model.Email = user.Email;
 
         return View(model);
     }
@@ -526,7 +537,8 @@ public class AdminController(
     [HttpPost("/admin/userpasswordreset")]
     public async Task<IActionResult> UserPasswordReset(InitPasswordResetViewModel model)
     {
-        if (!ModelState.IsValid) return View(model);
+        if (!ModelState.IsValid)
+            return View(model);
 
         // Require the user to have a confirmed email before they can log on
         var user = await userManager.FindByEmailAsync(model.Email);
@@ -535,6 +547,7 @@ public class AdminController(
             ModelState.AddModelError(string.Empty, "User with suggested email doesn't exist");
             return View(model);
         }
+
         var code = await userManager.GeneratePasswordResetTokenAsync(user);
         var callbackUrl = Url.Action(nameof(HomeController.PasswordReset), "Home", new { email = user.Email, code }, Request.Scheme);
         await emailService.ResetPasswordEmail(model.Email, callbackUrl!);
@@ -595,7 +608,8 @@ public class AdminController(
         if (passwordSet)
         {
             var dbModel = await emailService.GetEmailSettingsFromDb();
-            if (dbModel != null) model.Password = dbModel.Password;
+            if (dbModel != null)
+                model.Password = dbModel.Password;
             ModelState.Remove("Password");
 
             if (command?.Equals("resetpassword", StringComparison.OrdinalIgnoreCase) == true)
@@ -606,9 +620,12 @@ public class AdminController(
                 return RedirectToAction(nameof(EmailSettings));
             }
         }
-        if (!ModelState.IsValid) return View(model);
 
-        if (!await ValidateSmtpConnection(model)) return View(model);
+        if (!ModelState.IsValid)
+            return View(model);
+
+        if (!await ValidateSmtpConnection(model))
+            return View(model);
 
         await emailService.SaveEmailSettingsToDatabase(model);
         TempData[TempDataConstant.SuccessMessage] = $"SMTP settings updated. Emails will be sent from {model.From}.";
@@ -660,7 +677,8 @@ public class AdminController(
     [HttpPost("emailsender")]
     public async Task<IActionResult> EmailSender(EmailSenderViewModel model)
     {
-        if (!ModelState.IsValid) return View(model);
+        if (!ModelState.IsValid)
+            return View(model);
         if (!emailService.IsValidEmailList(model.To))
         {
             ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
@@ -725,13 +743,15 @@ public class AdminController(
     [HttpGet("server/logs/{file?}")]
     public async Task<IActionResult> LogsView(string? file = null, int offset = 0, bool download = false)
     {
-        if (offset < 0) offset = 0;
+        if (offset < 0)
+            offset = 0;
 
         var vm = new LogsViewModel();
 
         if (string.IsNullOrEmpty(pbOptions.DebugLogFile))
         {
-            TempData[TempDataConstant.WarningMessage] = "File Logging Option not specified. You need to set debuglog and optionally debugloglevel in the configuration or through runtime arguments";
+            TempData[TempDataConstant.WarningMessage] =
+                "File Logging Option not specified. You need to set debuglog and optionally debugloglevel in the configuration or through runtime arguments";
             return View("Logs", vm);
         }
 
@@ -746,8 +766,8 @@ public class AdminController(
         var fileExtension = Path.GetExtension(pbOptions.DebugLogFile);
 
         var allFiles = logsDirectory.GetFiles($"{fileNameWithoutExtension}*{fileExtension}")
-                         .OrderByDescending(info => info.LastWriteTime)
-                         .ToList();
+            .OrderByDescending(info => info.LastWriteTime)
+            .ToList();
 
         vm.LogFileCount = allFiles.Count;
         vm.LogFiles = allFiles.Skip(offset).Take(5).ToList();
@@ -764,9 +784,7 @@ public class AdminController(
         {
             var fileStream = new FileStream(selectedFile.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             if (download)
-            {
-                return File(fileStream, "text/plain", file, enableRangeProcessing: true);
-            }
+                return File(fileStream, "text/plain", file, true);
             await using (fileStream)
             using (var reader = new StreamReader(fileStream))
             {
@@ -777,6 +795,7 @@ public class AdminController(
         {
             return NotFound();
         }
+
         return View("Logs", vm);
     }
 
@@ -789,23 +808,23 @@ public class AdminController(
 
         var statusFilter = status?.ToLowerInvariant() ?? "pending";
         var sql = """
-            SELECT
-                lr.id AS "Id",
-                lr.plugin_slug AS "PluginSlug",
-                lr.status AS "Status",
-                lr.submitted_at AS "SubmittedAt",
-                lr.announcement_date AS "AnnouncementDate",
-                p.settings->>'pluginTitle' AS "PluginTitle",
-                u."Email" AS "PrimaryOwnerEmail"
-            FROM plugin_listing_requests lr
-            JOIN plugins p ON lr.plugin_slug = p.slug
-            LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner = true
-            LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
-            WHERE (@status = 'all' OR lr.status = @status)
-            ORDER BY
-                CASE WHEN lr.status = 'pending' THEN 0 ELSE 1 END,
-                lr.submitted_at DESC
-            """;
+                  SELECT
+                      lr.id AS "Id",
+                      lr.plugin_slug AS "PluginSlug",
+                      lr.status AS "Status",
+                      lr.submitted_at AS "SubmittedAt",
+                      lr.announcement_date AS "AnnouncementDate",
+                      p.settings->>'pluginTitle' AS "PluginTitle",
+                      u."Email" AS "PrimaryOwnerEmail"
+                  FROM plugin_listing_requests lr
+                  JOIN plugins p ON lr.plugin_slug = p.slug
+                  LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner = true
+                  LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
+                  WHERE (@status = 'all' OR lr.status = @status)
+                  ORDER BY
+                      CASE WHEN lr.status = 'pending' THEN 0 ELSE 1 END,
+                      lr.submitted_at DESC
+                  """;
 
         var requests = await conn.QueryAsync<ListingRequestItemViewModel>(sql, new { status = statusFilter });
 
@@ -823,7 +842,8 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         var request = await conn.GetListingRequest(requestId);
-        if (request == null) return NotFound();
+        if (request == null)
+            return NotFound();
 
         var plugin = await conn.GetPluginDetails(new PluginSlug(request.PluginSlug));
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
@@ -844,6 +864,7 @@ public class AdminController(
                 NostrProfile = string.IsNullOrEmpty(ownerNpub) ? null : string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(ownerNpub))
             });
         }
+
         var reviewedByEmail = request.ReviewedBy != null ? (await userManager.FindByIdAsync(request.ReviewedBy))?.Email : null;
         var vm = new ListingRequestDetailViewModel
         {
@@ -875,13 +896,15 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         var request = await conn.GetListingRequest(requestId);
-        if (request == null) return NotFound();
+        if (request == null)
+            return NotFound();
 
         if (request.Status != PluginListingRequestStatus.Pending)
         {
             TempData[TempDataConstant.WarningMessage] = "This request has already been processed";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
+
         var userId = userManager.GetUserId(User)!;
         var pluginSlug = new PluginSlug(request.PluginSlug);
         var approved = await conn.ApproveListingRequest(requestId, userId);
@@ -890,6 +913,7 @@ public class AdminController(
             TempData[TempDataConstant.WarningMessage] = "Failed to approve the listing request";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
+
         var existingSettings = await conn.GetSettings(pluginSlug);
         var updated = await conn.SetPluginSettings(pluginSlug, existingSettings, PluginVisibilityEnum.Listed);
         if (!updated)
@@ -897,16 +921,17 @@ public class AdminController(
             TempData[TempDataConstant.WarningMessage] = "Failed to update plugin visibility";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
+
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
         if (primaryOwner != null && !string.IsNullOrEmpty(primaryOwner.Email))
         {
             var pluginPublicUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug }, Request.Scheme);
             if (pluginPublicUrl != null)
-            {
-                await emailService.NotifyPluginOwnerForRequestListingStatus(primaryOwner.Email, existingSettings?.PluginTitle ?? pluginSlug.ToString(), true, pluginPublicUrl);
-            }
+                await emailService.NotifyPluginOwnerForRequestListingStatus(primaryOwner.Email, existingSettings?.PluginTitle ?? pluginSlug.ToString(), true,
+                    pluginPublicUrl);
         }
+
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = $"Plugin '{request.PluginSlug}' has been approved and is now listed";
         return RedirectToAction(nameof(ListingRequests));
@@ -918,18 +943,21 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         var request = await conn.GetListingRequest(requestId);
-        if (request == null) return NotFound();
+        if (request == null)
+            return NotFound();
 
         if (request.Status != PluginListingRequestStatus.Pending)
         {
             TempData[TempDataConstant.WarningMessage] = "This request has already been processed";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
+
         if (string.IsNullOrWhiteSpace(rejectionReason))
         {
             TempData[TempDataConstant.WarningMessage] = "Rejection reason is required";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
+
         var userId = userManager.GetUserId(User)!;
         var pluginSlug = new PluginSlug(request.PluginSlug);
         var rejected = await conn.RejectListingRequest(requestId, userId, rejectionReason.Trim());
@@ -938,13 +966,13 @@ public class AdminController(
             TempData[TempDataConstant.WarningMessage] = "Failed to reject the listing request";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
+
         var existingSettings = await conn.GetSettings(pluginSlug);
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
         if (primaryOwner != null && !string.IsNullOrEmpty(primaryOwner.Email))
-        {
-            await emailService.NotifyPluginOwnerForRequestListingStatus(primaryOwner.Email, existingSettings?.PluginTitle ?? pluginSlug.ToString(), false, rejectionReason);
-        }
+            await emailService.NotifyPluginOwnerForRequestListingStatus(primaryOwner.Email, existingSettings?.PluginTitle ?? pluginSlug.ToString(), false,
+                rejectionReason);
         TempData[TempDataConstant.SuccessMessage] = $"Plugin listing request for '{request.PluginSlug}' has been rejected";
         return RedirectToAction(nameof(ListingRequests));
     }

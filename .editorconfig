@@ -171,6 +171,20 @@ dotnet_sort_system_directives_first = true
 csharp_preserve_single_line_blocks = true
 csharp_preserve_single_line_statements = false
 
+# Rider/ReSharper: Force multi-line formatting for simple if statements
+resharper_csharp_place_simple_embedded_statement_on_same_line = never
+resharper_csharp_keep_existing_embedded_arrangement = false
+
+# Rider/ReSharper: Keep expression-bodied properties on single line
+resharper_csharp_place_expr_property_on_single_line = always
+resharper_csharp_place_expr_accessor_on_single_line = always
+resharper_csharp_keep_existing_expr_member_arrangement = true
+
+# Rider/ReSharper: Keep simple property/accessor declarations on single line
+resharper_csharp_place_simple_accessorholder_on_single_line = true
+resharper_csharp_place_simple_accessor_on_single_line = true
+resharper_csharp_keep_existing_declaration_block_arrangement = false
+
 # Expression-level preferences
 dotnet_style_object_initializer = true:suggestion
 dotnet_style_collection_initializer = true:suggestion
@@ -182,9 +196,9 @@ dotnet_style_null_propagation = true:suggestion
 csharp_style_expression_bodied_methods = false:none
 csharp_style_expression_bodied_constructors = false:none
 csharp_style_expression_bodied_operators = false:none
-csharp_style_expression_bodied_properties = true:none
-csharp_style_expression_bodied_indexers = true:none
-csharp_style_expression_bodied_accessors = true:none
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_expression_bodied_indexers = true:suggestion
+csharp_style_expression_bodied_accessors = true:suggestion
 
 # Property and accessor preferences
 csharp_style_auto_properties = true:suggestion
@@ -227,17 +241,6 @@ csharp_space_between_parentheses = false
 csharp_space_between_square_brackets = false
 csharp_style_prefer_null_check_over_type_check = true:warning
 csharp_prefer_simple_using_statement = true:warning
-
-# Rider/ReSharper specific formatting rules
-resharper_csharp_keep_existing_arrangement = true
-resharper_keep_existing_embedded_block_arrangement = true
-resharper_keep_existing_linebreaks = true
-resharper_csharp_wrap_before_ternary_opsigns = false
-resharper_csharp_nested_ternary_style = simple_wrap
-resharper_csharp_wrap_ternary_expr_style = wrap_if_long
-resharper_csharp_keep_existing_embedded_arrangement = true
-resharper_place_simple_embedded_statement_on_same_line = never
-csharp_prefer_braces = false:silent
 
 # C++ Files
 

@@ -4,7 +4,7 @@
 }
 
 <div class="sticky-header">
-	<h2 class="my-1">@ViewData["Title"]</h2>
+    <h2 class="my-1">@ViewData["Title"]</h2>
 </div>
 
 <ul class="list-unstyled">
@@ -24,12 +24,12 @@
     var countOnPage = Model.LogFiles?.Count ?? 0;
 
     var shownFrom = total == 0 ? 0 : Model.LogFileOffset + 1;
-    var shownTo   = Model.LogFileOffset + countOnPage;
+    var shownTo = Model.LogFileOffset + countOnPage;
 
-    var hasPrev   = Model.LogFileOffset > 0;
+    var hasPrev = Model.LogFileOffset > 0;
     var prevOffset = Math.Max(0, Model.LogFileOffset - Math.Max(1, countOnPage));
 
-    var hasNext   = shownTo < total;
+    var hasNext = shownTo < total;
     var nextOffset = hasNext ? shownTo : Model.LogFileOffset;
 }
 <nav aria-label="Logs pagination" class="w-100">
@@ -50,11 +50,11 @@
 
 @if (!string.IsNullOrEmpty(Model.Log))
 {
-<br>
-<br>
-<br>
+    <br>
+    <br>
+    <br>
 
-<pre>
+    <pre>
 @Model.Log
 </pre>
 }

@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using PluginBuilder.DataModels;
 
 namespace PluginBuilder.ViewModels;
 
@@ -12,6 +11,7 @@ public class RequestListingViewModel
         UpdatePluginSettings,
         Done
     }
+
     public string PluginSlug { get; set; } = string.Empty;
 
     [MaxLength(200)]
@@ -25,6 +25,7 @@ public class RequestListingViewModel
     [Required]
     [Display(Name = "User Reviews")]
     public string UserReviews { get; set; } = string.Empty;
+
     public bool PendingListing { get; set; }
     public bool HasPreviousRejection { get; set; }
     public bool CanSendEmailReminder { get; set; }

@@ -25,7 +25,8 @@ public class AccountController(
     public async Task<IActionResult> VerifyEmail()
     {
         var user = await userManager.GetUserAsync(User);
-        if (user == null) throw new Exception("User not found");
+        if (user == null)
+            throw new Exception("User not found");
 
         var emailSettings = await emailService.GetEmailSettingsFromDb();
         var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user);
@@ -74,7 +75,8 @@ public class AccountController(
     [HttpPost("details")]
     public async Task<IActionResult> AccountDetails(AccountDetailsViewModel model)
     {
-        if (!ModelState.IsValid) return View(model);
+        if (!ModelState.IsValid)
+            return View(model);
 
         var user = await userManager.GetUserAsync(User)!;
 
@@ -190,7 +192,7 @@ public class AccountController(
         settings.Nostr.Npub = npub;
         settings.Nostr.Proof = req.Event.Id;
 
-        var profile = await nostrService.GetNostrProfileByAuthorHexAsync(req.Event.Pubkey, 6000);
+        var profile = await nostrService.GetNostrProfileByAuthorHexAsync(req.Event.Pubkey);
         if (profile is not null)
             settings.Nostr.Profile = profile;
 
@@ -212,7 +214,8 @@ public class AccountController(
     [HttpPost("nostr/verify-public-note")]
     public async Task<IActionResult> NostrVerifyPublicNote(VerifyNostrManualViewModel model)
     {
-        if (!ModelState.IsValid) return View(model);
+        if (!ModelState.IsValid)
+            return View(model);
 
         var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
 
@@ -294,7 +297,7 @@ public class AccountController(
 
         try
         {
-            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(ev.Pubkey, 6000);
+            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(ev.Pubkey);
             if (profile is not null)
                 settings.Nostr.Profile = profile;
         }

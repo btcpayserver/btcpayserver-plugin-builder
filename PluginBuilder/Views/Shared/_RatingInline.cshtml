@@ -1,13 +1,13 @@
 @using System.Globalization
-@model PluginBuilder.ViewModels.RatingInlineViewModel
+@model RatingInlineViewModel
 @{
     var avg = Model.Average;
     if (avg < 0m) avg = 0m;
     else if (avg > 5m) avg = 5m;
 
-    var total   = Model.TotalReviews;
-    var full    = (int)Math.Floor(avg);
-    var frac    = avg - full;
+    var total = Model.TotalReviews;
+    var full = (int)Math.Floor(avg);
+    var frac = avg - full;
     var halfStarWidth = Math.Clamp(frac * 100m, 0m, 100m).ToString("0.#", CultureInfo.InvariantCulture) + "%";
     var hasFrac = frac > 0m;
 
@@ -28,16 +28,16 @@
 
     <span class="d-inline-flex align-items-center lh-1" aria-label="@aria">
 		@for (var i = 1; i <= 5; i++)
-		{
-			if (i <= full)
-			{
-				<span class="text-warning @iconSize align-middle lh-1 d-inline-flex">
+        {
+            if (i <= full)
+            {
+                <span class="text-warning @iconSize align-middle lh-1 d-inline-flex">
 					<vc:icon symbol="star-fill" />
 				</span>
-			}
-			else if (i == full + 1 && hasFrac)
-			{
-				<span class="position-relative d-inline-block align-middle" style="line-height:0; vertical-align:middle;">
+            }
+            else if (i == full + 1 && hasFrac)
+            {
+                <span class="position-relative d-inline-block align-middle" style="line-height:0; vertical-align:middle;">
 					<span class="text-secondary @iconSize position-absolute" style="inset:0;">
 						<vc:icon symbol="star-fill" />
 					</span>
@@ -48,14 +48,14 @@
 						<vc:icon symbol="star-fill" />
 					</span>
 				</span>
-			}
-			else
-			{
-				<span class="text-secondary @iconSize align-middle lh-1 d-inline-flex">
+            }
+            else
+            {
+                <span class="text-secondary @iconSize align-middle lh-1 d-inline-flex">
 					<vc:icon symbol="star-fill" />
 				</span>
-			}
-		}
+            }
+        }
         @if (Model.ShowTotalReviews)
         {
             <span class="ms-1 small text-muted align-middle d-inline-flex lh-1">(@total)</span>

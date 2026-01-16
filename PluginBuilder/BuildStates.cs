@@ -43,6 +43,8 @@ public static class BuildStatesExtensions
         };
     }
 
-    public static bool IsTerminal(this BuildStates s) =>
-        s is BuildStates.Uploaded or BuildStates.Failed or BuildStates.Removed;
+    public static bool IsTerminal(this BuildStates s)
+    {
+        return s is BuildStates.Uploaded or BuildStates.Failed or BuildStates.Removed;
+    }
 }

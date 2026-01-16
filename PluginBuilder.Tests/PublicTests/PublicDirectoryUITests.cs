@@ -62,7 +62,8 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         // Unlisted with search term should be visible
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync("rockstar");
         await tester.Page.Keyboard.PressAsync("Enter");
-        await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']", new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible });
+        await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']",
+            new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible });
         Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
 
         // Hidden shouldn't appear
@@ -70,7 +71,8 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await tester.GoToUrl("/public/plugins");
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync("rockstar");
         await tester.Page.Keyboard.PressAsync("Enter");
-        await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']", new PageWaitForSelectorOptions { State = WaitForSelectorState.Hidden });
+        await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']",
+            new PageWaitForSelectorOptions { State = WaitForSelectorState.Hidden });
         Assert.False(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
 
         // Log in as plugin owner and access page again
@@ -87,12 +89,12 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 
         //sort tests
         await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Listed);
-        var reviewer1 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer1@x.com");
-        var reviewer2 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer2@x.com");
-        var reviewer3 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer3@x.com");
-        var reviewer4 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer4@x.com");
-        var reviewer5 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer5@x.com");
-        var reviewer6 = await tester.Server.CreateFakeUserAsync(email: "sort-reviewer6@x.com");
+        var reviewer1 = await tester.Server.CreateFakeUserAsync("sort-reviewer1@x.com");
+        var reviewer2 = await tester.Server.CreateFakeUserAsync("sort-reviewer2@x.com");
+        var reviewer3 = await tester.Server.CreateFakeUserAsync("sort-reviewer3@x.com");
+        var reviewer4 = await tester.Server.CreateFakeUserAsync("sort-reviewer4@x.com");
+        var reviewer5 = await tester.Server.CreateFakeUserAsync("sort-reviewer5@x.com");
+        var reviewer6 = await tester.Server.CreateFakeUserAsync("sort-reviewer6@x.com");
 
         var popularSlug = new PluginSlug("public-directory-popular");
         var popularSlugString = popularSlug.ToString();
@@ -105,10 +107,10 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 
         // 2) sort=alpha
         const string updateTitleSql = """
-            UPDATE plugins
-            SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('pluginTitle', @title)
-            WHERE slug = @slug
-            """;
+                                      UPDATE plugins
+                                      SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('pluginTitle', @title)
+                                      WHERE slug = @slug
+                                      """;
         await conn.ExecuteAsync(updateTitleSql, new { slug = slugString, title = "Bob Plugin" });
         await conn.ExecuteAsync(updateTitleSql, new { slug = popularSlugString, title = "Alice Plugin" });
         var (rockstarAlpha, popularAlpha) = await GetIndexesAsync("?sort=alpha");
@@ -160,9 +162,12 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
             for (var i = 0; i < count; i++)
             {
                 var href = await links.Nth(i).GetAttributeAsync("href");
-                if (href == $"/public/plugins/{slugString}") rockstarIndex = i;
-                else if (href == $"/public/plugins/{popularSlugString}") popularIndex = i;
+                if (href == $"/public/plugins/{slugString}")
+                    rockstarIndex = i;
+                else if (href == $"/public/plugins/{popularSlugString}")
+                    popularIndex = i;
             }
+
             Assert.True(rockstarIndex >= 0, $"{slugString} not found.");
             Assert.True(popularIndex >= 0, $"{popularSlugString} not found.");
 

@@ -8,11 +8,13 @@ namespace PluginBuilder.ViewModels.Admin;
 public class PluginViewModel
 {
     public string PluginSlug { get; set; } = null!;
+
     [ValidateNever]
     public string? Identifier { get; set; }
 
     [ValidateNever]
     public string? Settings { get; set; }
+
     public PluginVisibilityEnum Visibility { get; set; }
 }
 
@@ -20,6 +22,7 @@ public class PluginEditViewModel : PluginViewModel
 {
     [ValidateNever]
     public List<OwnerVm> PluginUsers { get; set; } = new();
+
     [ValidateNever]
     public PluginSettings PluginSettings { get; set; }
 

@@ -19,19 +19,19 @@ namespace PluginBuilder.Tests;
 
 public class ServerTester : IAsyncDisposable
 {
-    private readonly List<IAsyncDisposable> disposables = new();
-    private WebApplication? _WebApp;
-    public int Port { get; set; } = Utils.FreeTcpPort();
-    private string? _dbname;
-    private string? _serverConnString;
-
-    public const string RepoUrl   = "https://github.com/NicolasDorier/btcpayserver";
-    public const string GitRef    = "plugins/collection2";
+    public const string RepoUrl = "https://github.com/NicolasDorier/btcpayserver";
+    public const string GitRef = "plugins/collection2";
     public const string PluginDir = "Plugins/BTCPayServer.Plugins.RockstarStylist";
-    public const string BuildCfg  = "Release";
+    public const string BuildCfg = "Release";
     public const string PluginSlug = "rockstar-stylist";
 
-    private const string StorageConnectionString = "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==";
+    private const string StorageConnectionString =
+        "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==";
+
+    private readonly List<IAsyncDisposable> disposables = new();
+    private string? _dbname;
+    private string? _serverConnString;
+    private WebApplication? _WebApp;
 
 
     public ServerTester(string testFolder, XUnitLogger logs)
@@ -39,6 +39,8 @@ public class ServerTester : IAsyncDisposable
         TestFolder = testFolder;
         Logs = logs;
     }
+
+    public int Port { get; set; } = Utils.FreeTcpPort();
 
     public string TestFolder { get; }
 
@@ -61,7 +63,6 @@ public class ServerTester : IAsyncDisposable
 
         // If we are not reusing the database, drop the test database to keep environments clean
         if (!ReuseDatabase && !string.IsNullOrEmpty(_dbname) && !string.IsNullOrEmpty(_serverConnString))
-        {
             try
             {
                 await DropDatabaseAsync();
@@ -76,9 +77,9 @@ public class ServerTester : IAsyncDisposable
                 _dbname = null;
                 _serverConnString = null;
             }
-        }
 
-        foreach (var d in disposables) await d.DisposeAsync();
+        foreach (var d in disposables)
+            await d.DisposeAsync();
     }
 
     public T GetService<T>() where T : notnull
@@ -152,9 +153,7 @@ public class ServerTester : IAsyncDisposable
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
 
         while (directory != null && !directory.GetFiles("btcpayserver-plugin-builder.sln").Any())
-        {
             directory = directory.Parent;
-        }
 
         if (directory == null)
             throw new InvalidOperationException("Could not find the solution directory.");
@@ -200,7 +199,8 @@ public class ServerTester : IAsyncDisposable
         if (!res.Succeeded)
             throw new InvalidOperationException("Failed to create test user: " + string.Join(", ", res.Errors.Select(e => e.Description)));
 
-        if (!githubVerified) return user.Id;
+        if (!githubVerified)
+            return user.Id;
 
         await using var conn = await GetService<DBConnectionFactory>().Open();
         await conn.VerifyGithubAccount(user.Id, "https://gist.github.com/dummy/123");
@@ -245,9 +245,11 @@ public class ServerTester : IAsyncDisposable
 
         IDisposable? sub = agg.Subscribe<BuildChanged>(e =>
         {
-            if (!e.FullBuildId.Equals(id)) return;
+            if (!e.FullBuildId.Equals(id))
+                return;
             var state = BuildStatesExtensions.FromEventName(e.EventName);
-            if (state.IsTerminal()) tcs.TrySetResult(state);
+            if (state.IsTerminal())
+                tcs.TrySetResult(state);
         });
 
         using var cts = new CancellationTokenSource(timeout.Value);

@@ -22,5 +22,6 @@ public class AdminPluginSettingViewModel : BasePagingViewModel
     public bool VerifiedEmailForPluginPublish { get; set; }
     public string SearchText { get; set; } = null!;
     public string? Status { get; set; }
+
     public override int CurrentPageCount => Plugins.Count();
 }

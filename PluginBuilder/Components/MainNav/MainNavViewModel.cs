@@ -10,6 +10,6 @@ public class MainNavViewModel
     public string PluginSlug { get; set; }
 
     public List<PluginVersionViewModel> Versions { get; set; } = new();
-    
+
     public int PendingListingRequestsCount { get; set; }
 }

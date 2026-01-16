@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.AspNetCore.Identity;
@@ -26,40 +27,40 @@ public class AdminPluginDeleteUITests(ITestOutputHelper output) : PageTest
         await tester.StartAsync();
 
         var adminEmail = await CreateServerAdminAsync(tester);
-        var ownerId = await tester.Server.CreateFakeUserAsync(email: "owner@admin-delete.test", confirmEmail: true, githubVerified: true);
+        var ownerId = await tester.Server.CreateFakeUserAsync("owner@admin-delete.test", confirmEmail: true, githubVerified: true);
         var slug = $"admin-delete-{Guid.NewGuid():N}".Substring(0, 20);
-        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug: slug);
+        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
 
         await tester.LogIn(adminEmail);
         await tester.GoToUrl("/admin/plugins");
 
         var row = tester.Page!.Locator("tbody tr", new PageLocatorOptions { HasTextString = slug }).First;
         await Expect(row).ToBeVisibleAsync();
-        
+
         // Test Edit link navigation
         await row.Locator("a:has-text(\"Edit\")").ClickAsync();
-        await Expect(tester.Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex($"/admin/plugins/edit/{slug}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
-        
+        await Expect(tester.Page).ToHaveURLAsync(new Regex($"/admin/plugins/edit/{slug}$", RegexOptions.IgnoreCase));
+
         // Verify edit page displays plugin slug and identifier
         var pageHeading = tester.Page.Locator("h2");
         await Expect(pageHeading).ToContainTextAsync(slug);
         var identifierCode = tester.Page.Locator("code");
         await Expect(identifierCode.First).ToBeVisibleAsync();
-        
+
         // Navigate back to plugins list
         await tester.GoToUrl("/admin/plugins");
-        
+
         // Now test deletion
         var deleteRow = tester.Page.Locator("tbody tr", new PageLocatorOptions { HasTextString = slug }).First;
         await Expect(deleteRow).ToBeVisibleAsync();
         await deleteRow.Locator("a:has-text(\"Delete\")").ClickAsync();
 
-        await Expect(tester.Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex($"/admin/plugins/delete/{slug}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        await Expect(tester.Page).ToHaveURLAsync(new Regex($"/admin/plugins/delete/{slug}$", RegexOptions.IgnoreCase));
         var slugInput = tester.Page.Locator("input[name='PluginSlug']");
         await Expect(slugInput).ToHaveValueAsync(slug);
 
         await tester.Page.ClickAsync("#Delete");
-        await Expect(tester.Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/admin/plugins", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        await Expect(tester.Page).ToHaveURLAsync(new Regex("/admin/plugins", RegexOptions.IgnoreCase));
 
         var deletedRow = tester.Page.Locator("tbody tr", new PageLocatorOptions { HasTextString = slug });
         await Expect(deletedRow).ToHaveCountAsync(0);
@@ -76,9 +77,7 @@ public class AdminPluginDeleteUITests(ITestOutputHelper output) : PageTest
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
         if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
-        {
             await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
-        }
 
         var email = $"admin-{Guid.NewGuid():N}@test.com";
         const string password = "123456";

@@ -1,8 +1,8 @@
 @using PluginBuilder.DataModels
 @model PluginEditViewModel
 @{
-	Layout = "_Layout";
-	ViewData.SetActivePage(AdminNavPages.Plugins, "Edit Plugin");
+    Layout = "_Layout";
+    ViewData.SetActivePage(AdminNavPages.Plugins, "Edit Plugin");
 
     var ownersTableVm = new PluginOwnersTableViewModel(Model.PluginSlug)
     {
@@ -54,7 +54,8 @@
             </div>
             <div class="mb-3">
                 <label class="form-label fw-semibold">Description</label>
-                <textarea asp-for="PluginSettings.Description" class="form-control" rows="4" placeholder="Enter plugin description">@Model.PluginSettings?.Description</textarea>
+                <textarea asp-for="PluginSettings.Description" class="form-control" rows="4"
+                          placeholder="Enter plugin description">@Model.PluginSettings?.Description</textarea>
             </div>
             <div class="form-group">
                 <label asp-for="PluginSettings.GitRepository" class="form-label"></label>
@@ -82,7 +83,8 @@
                     @if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
                     {
                         <button type="submit" class="btn btn-link p-0 text-danger" name="removeLogoFile" value="true">
-                            <vc:icon symbol="cross" /> Remove
+                            <vc:icon symbol="cross" />
+                            Remove
                         </button>
                     }
                 </div>
@@ -108,4 +110,4 @@
     </div>
 </div>
 
-<partial name="_Confirm" model="@(new ConfirmModel(title: "Confirm action", desc: "Are you sure?", action: "Confirm"))" />
+<partial name="_Confirm" model="@(new ConfirmModel("Confirm action", "Are you sure?", "Confirm"))" />

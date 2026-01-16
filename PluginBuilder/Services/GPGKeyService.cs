@@ -20,6 +20,7 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
             message = "Private key block detected; upload only the public key";
             return false;
         }
+
         try
         {
             using var publicKeyStream = new MemoryStream(Encoding.ASCII.GetBytes(publicKey));
@@ -27,11 +28,11 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
             var keyRingBundle = new PgpPublicKeyRingBundle(decoderStream);
             PgpPublicKey? key = null;
 
-            foreach (PgpPublicKeyRing keyRing in keyRingBundle.GetKeyRings())
+            foreach (var keyRing in keyRingBundle.GetKeyRings())
             {
-                foreach (PgpPublicKey k in keyRing.GetPublicKeys())
+                foreach (var k in keyRing.GetPublicKeys())
                 {
-                    if (k.GetSignatures().All(sig => ((sig.GetHashedSubPackets()?.GetKeyFlags()) & PgpKeyFlags.CanSign) == 0))
+                    if (k.GetSignatures().All(sig => (sig.GetHashedSubPackets()?.GetKeyFlags() & PgpKeyFlags.CanSign) == 0))
                         continue;
                     key = k;
                     break;
@@ -47,13 +48,13 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
                 return false;
             }
 
-            bool canSign = key.Algorithm switch
+            var canSign = key.Algorithm switch
             {
                 PublicKeyAlgorithmTag.RsaGeneral or
-                PublicKeyAlgorithmTag.RsaSign or
-                PublicKeyAlgorithmTag.Dsa or
-                PublicKeyAlgorithmTag.ECDsa or
-                PublicKeyAlgorithmTag.EdDsa => true,
+                    PublicKeyAlgorithmTag.RsaSign or
+                    PublicKeyAlgorithmTag.Dsa or
+                    PublicKeyAlgorithmTag.ECDsa or
+                    PublicKeyAlgorithmTag.EdDsa => true,
                 _ => false
             };
             if (!canSign)
@@ -73,6 +74,7 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
                 message = "Key is revoked";
                 return false;
             }
+
             vm = new PgpKeyViewModel
             {
                 KeyId = key.KeyId.ToString("X"),
@@ -109,7 +111,7 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
             var sigBytes = ms.ToArray();
             var decodedStream = PgpUtilities.GetDecoderStream(new MemoryStream(sigBytes));
 
-            PgpObjectFactory sigFact = new PgpObjectFactory(decodedStream);
+            var sigFact = new PgpObjectFactory(decodedStream);
             PgpSignatureList? sigList = null;
             object? obj;
             while ((obj = sigFact.NextPgpObject()) != null)
@@ -124,9 +126,11 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
                         sigFact = new PgpObjectFactory(compressed.GetDataStream());
                         continue;
                 }
+
                 if (sigList != null)
                     break;
             }
+
             if (sigList == null || sigList.Count == 0)
                 return new SignatureProofResponse(false, "No signature found in uploaded file");
 

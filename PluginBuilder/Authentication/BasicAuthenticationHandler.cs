@@ -48,7 +48,8 @@ public class BasicAuthenticationHandler : AuthenticationHandler<PluginBuilderAut
 
         var user = await _userManager.Users
             .FirstOrDefaultAsync(applicationUser => applicationUser.NormalizedUserName == _userManager.NormalizeName(username));
-        if (user == null) return AuthenticateResult.Fail("User not found");
+        if (user == null)
+            return AuthenticateResult.Fail("User not found");
 
         List<Claim> claims = new() { new Claim(_identityOptions.CurrentValue.ClaimsIdentity.UserIdClaimType, user.Id) };
         claims.AddRange((await _userManager.GetRolesAsync(user)).Select(s => new Claim(_identityOptions.CurrentValue.ClaimsIdentity.RoleClaimType, s)));

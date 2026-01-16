@@ -11,7 +11,10 @@ public class OutputCapture : IOutputCapture
 {
     private readonly List<string> _lines = new();
 
-    public IEnumerable<string> Lines => _lines;
+    public IEnumerable<string> Lines
+    {
+        get => _lines;
+    }
 
     public void AddLine(string line)
     {
@@ -60,7 +63,7 @@ public class ProcessRunner
     // May not be necessary in the future. See https://github.com/dotnet/corefx/issues/12039
     public async Task<int> RunAsync(ProcessSpec processSpec, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(processSpec, nameof(processSpec));
+        ArgumentNullException.ThrowIfNull(processSpec);
 
         int exitCode;
 
@@ -78,7 +81,8 @@ public class ProcessRunner
                 readOutput = true;
                 process.OutputDataReceived += (_, a) =>
                 {
-                    if (!string.IsNullOrEmpty(a.Data)) processSpec.OutputCapture.AddLine(a.Data);
+                    if (!string.IsNullOrEmpty(a.Data))
+                        processSpec.OutputCapture.AddLine(a.Data);
                 };
             }
 
@@ -93,7 +97,8 @@ public class ProcessRunner
                 readError = true;
                 process.ErrorDataReceived += (_, a) =>
                 {
-                    if (!string.IsNullOrEmpty(a.Data)) processSpec.ErrorCapture.AddLine(a.Data);
+                    if (!string.IsNullOrEmpty(a.Data))
+                        processSpec.ErrorCapture.AddLine(a.Data);
                 };
             }
 
@@ -122,8 +127,10 @@ public class ProcessRunner
             stopwatch.Start();
             process.Start();
 
-            if (readOutput) process.BeginOutputReadLine();
-            if (readError) process.BeginErrorReadLine();
+            if (readOutput)
+                process.BeginOutputReadLine();
+            if (readError)
+                process.BeginErrorReadLine();
 
             if (processSpec.Input is not null)
             {
@@ -163,7 +170,8 @@ public class ProcessRunner
             for (var i = 0; i < processSpec.Arguments.Count; i++)
                 process.StartInfo.ArgumentList.Add(processSpec.Arguments[i]);
 
-        foreach (var env in processSpec.EnvironmentVariables) process.StartInfo.Environment.Add(env.Key, env.Value);
+        foreach (var env in processSpec.EnvironmentVariables)
+            process.StartInfo.Environment.Add(env.Key, env.Value);
 
         SetEnvironmentVariable(process.StartInfo, "DOTNET_STARTUP_HOOKS", processSpec.EnvironmentVariables.DotNetStartupHooks, Path.PathSeparator,
             _getEnvironmentVariable);
@@ -176,10 +184,12 @@ public class ProcessRunner
     internal static void SetEnvironmentVariable(ProcessStartInfo processStartInfo, string envVarName, List<string> envVarValues, char separator,
         Func<string, string?> getEnvironmentVariable)
     {
-        if (envVarValues is { Count: 0 }) return;
+        if (envVarValues is { Count: 0 })
+            return;
 
         var existing = getEnvironmentVariable(envVarName);
-        if (processStartInfo.Environment.TryGetValue(envVarName, out var value)) existing = CombineEnvironmentVariable(existing, value, separator);
+        if (processStartInfo.Environment.TryGetValue(envVarName, out var value))
+            existing = CombineEnvironmentVariable(existing, value, separator);
 
         string result;
         if (!string.IsNullOrEmpty(existing))
@@ -191,7 +201,8 @@ public class ProcessRunner
 
         static string? CombineEnvironmentVariable(string? a, string? b, char separator)
         {
-            if (!string.IsNullOrEmpty(a)) return !string.IsNullOrEmpty(b) ? a + separator + b : a;
+            if (!string.IsNullOrEmpty(a))
+                return !string.IsNullOrEmpty(b) ? a + separator + b : a;
 
             return b;
         }
@@ -216,7 +227,8 @@ public class ProcessRunner
                     // events.
                     //
                     // See the remarks here: https://docs.microsoft.com/en-us/dotnet/api/system.diagnostics.process.waitforexit#System_Diagnostics_Process_WaitForExit_System_Int32_
-                    if (!_process.WaitForExit(int.MaxValue)) throw new TimeoutException();
+                    if (!_process.WaitForExit(int.MaxValue))
+                        throw new TimeoutException();
 
                     _process.WaitForExit();
                 }
@@ -242,11 +254,13 @@ public class ProcessRunner
 
         public void TryKill()
         {
-            if (_disposed) return;
+            if (_disposed)
+                return;
 
             try
             {
-                if (_process is not null && !_process.HasExited) _process.Kill(true);
+                if (_process is not null && !_process.HasExited)
+                    _process.Kill(true);
             }
             catch (Exception)
             {

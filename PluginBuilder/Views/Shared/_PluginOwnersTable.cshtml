@@ -47,9 +47,9 @@
                                             data-bs-toggle="modal"
                                             data-bs-target="#ConfirmModal"
                                             data-action='@Url.EnsureLocal(
-                                                Url.Action("TransferPrimaryOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
-                                                Context.Request
-                                            )'
+                                                             Url.Action("TransferPrimaryOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
+                                                             Context.Request
+                                                         )'
                                             data-title="Transfer primary owner"
                                             data-description="Transfer primary ownership to @o.Email? This action is irreversible."
                                             data-confirm="Confirm">
@@ -63,9 +63,9 @@
                                             data-bs-toggle="modal"
                                             data-bs-target="#ConfirmModal"
                                             data-action='@Url.EnsureLocal(
-                                                Url.Action("RemoveOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
-                                                Context.Request
-                                            )'
+                                                             Url.Action("RemoveOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
+                                                             Context.Request
+                                                         )'
                                             data-title="Remove owner"
                                             data-description='Remove <strong>@o.Email</strong> from owners?'
                                             data-description-html="true"
@@ -81,9 +81,9 @@
                                             data-bs-toggle="modal"
                                             data-bs-target="#ConfirmModal"
                                             data-action='@Url.EnsureLocal(
-                                                Url.Action("RemoveOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = Model.CurrentUserId }),
-                                                Context.Request
-                                            )'
+                                                             Url.Action("RemoveOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = Model.CurrentUserId }),
+                                                             Context.Request
+                                                         )'
                                             data-title="Leave plugin"
                                             data-description="Leave ownership of this plugin?"
                                             data-confirm="Leave">

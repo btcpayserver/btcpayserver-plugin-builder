@@ -24,9 +24,9 @@ public class AzureStorageClientException : Exception
 /// </summary>
 public class AzureStorageClient
 {
+    private readonly CloudBlobClient blobClient;
     private readonly bool isLocalhost;
     private readonly string scheme;
-    private readonly CloudBlobClient blobClient;
 
     public AzureStorageClient(ProcessRunner processRunner, IConfiguration configuration)
     {
@@ -37,7 +37,7 @@ public class AzureStorageClient
         scheme = acc.BlobEndpoint.Scheme;
         isLocalhost = acc.BlobEndpoint.Host == "localhost" || acc.BlobEndpoint.Host == "127.0.0.1";
         DefaultContainer = "artifacts";
-        CloudStorageAccount storageAccount = CloudStorageAccount.Parse(StorageConnectionString);
+        var storageAccount = CloudStorageAccount.Parse(StorageConnectionString);
         blobClient = storageAccount.CreateCloudBlobClient();
     }
 
@@ -71,6 +71,7 @@ public class AzureStorageClient
         {
             await blob.UploadFromStreamAsync(stream);
         }
+
         return blob.Uri.ToString();
     }
 

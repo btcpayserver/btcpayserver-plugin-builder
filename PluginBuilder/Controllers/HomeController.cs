@@ -170,7 +170,8 @@ public class HomeController(
         var result = await userManager.CreateAsync(user, model.Password);
         if (!result.Succeeded)
         {
-            foreach (var error in result.Errors) ModelState.AddModelError("", error.Description);
+            foreach (var error in result.Errors)
+                ModelState.AddModelError("", error.Description);
             return View(model);
         }
 
@@ -178,7 +179,8 @@ public class HomeController(
 
         var admins = await userManager.GetUsersInRoleAsync(Roles.ServerAdmin);
         var isAdminReg = admins.Count == 0 || (model.IsAdmin && env.CheatMode);
-        if (isAdminReg) await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
+        if (isAdminReg)
+            await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
 
         // check if it's not admin and we are requiring email verifications
         var emailSettings = await emailService.GetEmailSettingsFromDb();
@@ -316,7 +318,8 @@ public class HomeController(
 
         var sort = string.Equals(model.Sort, "helpful", StringComparison.OrdinalIgnoreCase) ? "helpful" : "newest";
 
-        if (model.RatingFilter is < 1 or > 5) model.RatingFilter = null;
+        if (model.RatingFilter is < 1 or > 5)
+            model.RatingFilter = null;
 
         var userId = User.Identity?.IsAuthenticated == true ? userManager.GetUserId(User) : null;
         var isAdmin = User.Identity?.IsAuthenticated == true && User.IsInRole(Roles.ServerAdmin);
@@ -424,7 +427,8 @@ public class HomeController(
 
         //first
         var pluginDetails = await multi.ReadFirstOrDefaultAsync<dynamic>();
-        if (pluginDetails is null) return NotFound();
+        if (pluginDetails is null)
+            return NotFound();
         var versions = pluginDetails.versions as IEnumerable<string> ?? Enumerable.Empty<string>();
 
         //second
@@ -487,10 +491,12 @@ public class HomeController(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug, int rating, string? body, string? pluginVersion)
     {
-        if (rating is < 1 or > 5) return BadRequest("Invalid rating");
+        if (rating is < 1 or > 5)
+            return BadRequest("Invalid rating");
 
         var userId = userManager.GetUserId(User);
-        if (string.IsNullOrEmpty(userId)) return Forbid();
+        if (string.IsNullOrEmpty(userId))
+            return Forbid();
 
         await using var conn = await connectionFactory.Open();
 
@@ -510,7 +516,8 @@ public class HomeController(
         }
 
         int[]? pluginVersionParts = null;
-        if (!string.IsNullOrWhiteSpace(pluginVersion) && PluginVersion.TryParse(pluginVersion, out var v)) pluginVersionParts = v.VersionParts;
+        if (!string.IsNullOrWhiteSpace(pluginVersion) && PluginVersion.TryParse(pluginVersion, out var v))
+            pluginVersionParts = v.VersionParts;
         PluginReviewViewModel reviewViewModel = new()
         {
             PluginSlug = pluginSlug.ToString(),
@@ -586,7 +593,8 @@ public class HomeController(
         bool isHelpful)
     {
         var userId = userManager.GetUserId(User);
-        if (string.IsNullOrEmpty(userId)) return Forbid();
+        if (string.IsNullOrEmpty(userId))
+            return Forbid();
 
         await using var conn = await connectionFactory.Open();
 
@@ -611,7 +619,8 @@ public class HomeController(
         long id)
     {
         var userId = userManager.GetUserId(User);
-        if (string.IsNullOrEmpty(userId)) return Forbid();
+        if (string.IsNullOrEmpty(userId))
+            return Forbid();
 
         var isAdmin = User.Identity?.IsAuthenticated == true && User.IsInRole(Roles.ServerAdmin);
 
@@ -732,7 +741,8 @@ public class HomeController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
     {
-        if (!ModelState.IsValid) return View(model);
+        if (!ModelState.IsValid)
+            return View(model);
 
         var user = await userManager.FindByEmailAsync(model.Email);
         // Check if user exists and if their email is confirmed before sending a reset link.
@@ -751,7 +761,8 @@ public class HomeController(
 
     private IActionResult RedirectToLocal(string? returnUrl = null)
     {
-        if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl)) return Redirect(returnUrl);
+        if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+            return Redirect(returnUrl);
 
         return RedirectToAction(nameof(HomePage), "Home");
     }

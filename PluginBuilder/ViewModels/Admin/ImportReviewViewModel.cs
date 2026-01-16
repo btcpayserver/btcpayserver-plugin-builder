@@ -12,6 +12,7 @@ public class ImportReviewViewModel
 
     [Range(1, 5)]
     public int Rating { get; set; } = 5;
+
     public string? PluginSlug { get; set; }
     public ImportReviewSourceEnum Source { get; set; } = ImportReviewSourceEnum.Nostr;
     public string? SourceUrl { get; set; }

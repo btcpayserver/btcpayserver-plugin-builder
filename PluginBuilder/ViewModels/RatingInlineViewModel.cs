@@ -6,6 +6,7 @@ public class RatingInlineViewModel
 {
     [Range(0, 5)]
     public decimal Average { get; set; }
+
     public int TotalReviews { get; set; }
     public string IconSize { get; set; } = "fs-5";
     public bool ShowNumber { get; set; } = true;

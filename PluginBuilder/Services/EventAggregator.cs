@@ -60,7 +60,8 @@ public class EventAggregator : IDisposable
         List<Action<object>> actionList = new();
         lock (_Subscriptions)
         {
-            if (_Subscriptions.TryGetValue(evtType, out var actions)) actionList = actions.Values.ToList();
+            if (_Subscriptions.TryGetValue(evtType, out var actions))
+                actionList = actions.Values.ToList();
         }
 
         var log = evt.ToString();

@@ -35,17 +35,17 @@
     <input asp-for="Count" type="hidden" />
     <input asp-for="SearchText" class="form-control" placeholder="Search…" />
 
-	<div class="dropdown">
-		<button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-			@(Model.Status ?? "All Status")
-		</button>
-		<div class="dropdown-menu" aria-labelledby="StatusOptionsToggle">
-			<a class="dropdown-item" asp-action="ListPlugins" asp-route-status="">All Status</a>
-			<a class="dropdown-item" asp-action="ListPlugins" asp-route-status="unlisted">Unlisted</a>
-			<a class="dropdown-item" asp-action="ListPlugins" asp-route-status="listed">Listed</a>
-			<a class="dropdown-item" asp-action="ListPlugins" asp-route-status="hidden">Hidden</a>
-		</div>
-	</div>
+    <div class="dropdown">
+        <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            @(Model.Status ?? "All Status")
+        </button>
+        <div class="dropdown-menu" aria-labelledby="StatusOptionsToggle">
+            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="">All Status</a>
+            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="unlisted">Unlisted</a>
+            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="listed">Listed</a>
+            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="hidden">Hidden</a>
+        </div>
+    </div>
 </form>
 
 
@@ -71,12 +71,12 @@
             {
                 <tr>
                     <td>@plugin.PluginSlug
-						@if (!string.IsNullOrEmpty(@plugin.Version) && plugin.BuildId.HasValue)
-						{
-							<a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.PluginSlug">
-								<span class="fa fa-globe"></span>
-							</a>
-						}
+                        @if (!string.IsNullOrEmpty(plugin.Version) && plugin.BuildId.HasValue)
+                        {
+                            <a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.PluginSlug">
+                                <span class="fa fa-globe"></span>
+                            </a>
+                        }
                     </td>
                     <td>@plugin.PluginTitle</td>
                     <td>@plugin.Version</td>
@@ -85,17 +85,17 @@
                     <td>@plugin.UpdatedAt</td>
                     <td>@plugin.PrimaryOwnerEmail</td>
                     <td>
-						@plugin.Visibility
-						@if (plugin.HasPendingListingRequest)
-						{
-							<span class="badge bg-warning ms-1" title="Listing request waiting for review"><vc:icon symbol="notification" /></span>
-						}
-					</td>
+                        @plugin.Visibility
+                        @if (plugin.HasPendingListingRequest)
+                        {
+                            <span class="badge bg-warning ms-1" title="Listing request waiting for review"><vc:icon symbol="notification" /></span>
+                        }
+                    </td>
                     <td>
                         <a asp-controller="Admin" asp-action="PluginEdit" asp-route-pluginSlug="@plugin.PluginSlug">Edit</a> |
                         <a asp-controller="Admin" asp-action="PluginDelete" asp-route-routeSlug="@plugin.PluginSlug">Delete</a>
                     </td>
-              </tr>
+                </tr>
             }
             </tbody>
         </table>
@@ -104,7 +104,7 @@
 }
 else
 {
-	<p class="text-secondary mt-3">There are no plugins matching your criteria.</p>
+    <p class="text-secondary mt-3">There are no plugins matching your criteria.</p>
 }
 
 <script src="~/scripts/searchtext.js" asp-append-version="true"></script>

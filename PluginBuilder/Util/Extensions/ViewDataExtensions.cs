@@ -13,7 +13,7 @@ public static class ViewDataExtensions
     public static void SetActivePage<T>(this ViewDataDictionary viewData, T activePage, string title = null, string activeId = null)
         where T : IConvertible
     {
-        SetActivePage(viewData, activePage.ToString(), activePage.GetType().ToString(), title, activeId);
+        viewData.SetActivePage(activePage.ToString(), activePage.GetType().ToString(), title, activeId);
     }
 
     public static void SetActivePage(this ViewDataDictionary viewData, string activePage, string category, string title = null, string activeId = null)
@@ -23,12 +23,12 @@ public static class ViewDataExtensions
         // Navigation
         viewData[ACTIVE_PAGE_KEY] = activePage;
         viewData[ACTIVE_ID_KEY] = activeId;
-        SetActiveCategory(viewData, category);
+        viewData.SetActiveCategory(category);
     }
 
     public static void SetActiveCategory<T>(this ViewDataDictionary viewData, T activeCategory)
     {
-        SetActiveCategory(viewData, activeCategory.ToString());
+        viewData.SetActiveCategory(activeCategory.ToString());
     }
 
     public static void SetActiveCategory(this ViewDataDictionary viewData, string activeCategory)
@@ -39,20 +39,21 @@ public static class ViewDataExtensions
     public static string IsActivePage<T>(this ViewDataDictionary viewData, T page, object id = null)
         where T : IConvertible
     {
-        return IsActivePage(viewData, page.ToString(), page.GetType().ToString(), id);
+        return viewData.IsActivePage(page.ToString(), page.GetType().ToString(), id);
     }
 
     public static string IsActivePage<T>(this ViewDataDictionary viewData, IEnumerable<T> pages, object id = null)
         where T : IConvertible
     {
-        return pages.Any(page => IsActivePage(viewData, page.ToString(), page.GetType().ToString(), id) == ActivePageClass)
+        return pages.Any(page => viewData.IsActivePage(page.ToString(), page.GetType().ToString(), id) == ActivePageClass)
             ? ActivePageClass
             : null;
     }
 
     public static string IsActivePage(this ViewDataDictionary viewData, string page, string category, object id = null)
     {
-        if (!viewData.ContainsKey(ACTIVE_PAGE_KEY)) return null;
+        if (!viewData.ContainsKey(ACTIVE_PAGE_KEY))
+            return null;
         var activeId = viewData[ACTIVE_ID_KEY];
         var activePage = viewData[ACTIVE_PAGE_KEY]?.ToString();
         var activeCategory = viewData[ACTIVE_CATEGORY_KEY]?.ToString();

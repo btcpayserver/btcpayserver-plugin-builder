@@ -588,7 +588,8 @@ public class PluginController(
                 repoName = repo.Substring("git@github.com:".Length);
             // https://github.com/Kukks/btcpayserver.git
             // https://github.com/Kukks/btcpayserver
-            else if (repo.StartsWith("https://github.com/")) repoName = repo.Substring("https://github.com/".Length);
+            else if (repo.StartsWith("https://github.com/"))
+                repoName = repo.Substring("https://github.com/".Length);
             if (repoName is not null)
             {
                 // Kukks/btcpayserver
