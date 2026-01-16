@@ -34,7 +34,7 @@
                     }
                     else
                     {
-                        <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version"
+                        <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@(Model.Version?.Version ?? "")"
                               method="post">
                             <button type="submit" name="command" value="release" class="btn btn-primary">Release</button>
                         </form>
@@ -45,12 +45,12 @@
                 }
                 else if (Model.Version?.Published is true)
                 {
-                    <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
+                    <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@(Model.Version?.Version ?? "")" method="post">
                         <button type="submit" name="command" value="unrelease" class="btn btn-outline-danger">Revert release</button>
                     </form>
                 }
 
-                <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@Model.Version.Version" method="post">
+                <form asp-action="Release" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-version="@(Model.Version?.Version ?? "")" method="post">
                     <button type="submit" name="command" value="remove" class="btn btn-outline-danger">Remove version</button>
                 </form>
                 if (Model.DownloadLink != null)

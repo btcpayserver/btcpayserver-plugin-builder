@@ -33,9 +33,9 @@ public class PluginSettingViewModel
     public bool IsPluginPrimaryOwner { get; set; }
 
     [Display(Name = "Plugin Title")]
-    public string PluginTitle { get; set; }
+    public string PluginTitle { get; set; } = null!;
 
-    public string Description { get; set; }
+    public string Description { get; set; } = null!;
 
     [Display(Name = "Require GPG verification for plugin releases")]
     public bool RequireGPGSignatureForRelease { get; set; }

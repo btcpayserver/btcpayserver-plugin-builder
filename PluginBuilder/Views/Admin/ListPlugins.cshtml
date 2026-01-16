@@ -73,7 +73,7 @@
                     <td>@plugin.PluginSlug
                         @if (!string.IsNullOrEmpty(plugin.Version) && plugin.BuildId.HasValue)
                         {
-                            <a id="PublicPluginPage" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.PluginSlug">
+                            <a id="PublicPluginPage-@plugin.PluginSlug" asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@plugin.PluginSlug">
                                 <span class="fa fa-globe"></span>
                             </a>
                         }

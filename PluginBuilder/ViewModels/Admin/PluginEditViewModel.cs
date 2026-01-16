@@ -24,7 +24,7 @@ public class PluginEditViewModel : PluginViewModel
     public List<OwnerVm> PluginUsers { get; set; } = new();
 
     [ValidateNever]
-    public PluginSettings PluginSettings { get; set; }
+    public PluginSettings PluginSettings { get; set; } = new();
 
     [Display(Name = "Logo")]
     public IFormFile? LogoFile { get; set; }

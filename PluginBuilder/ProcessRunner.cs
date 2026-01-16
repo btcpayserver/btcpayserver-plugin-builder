@@ -63,7 +63,7 @@ public class ProcessRunner
     // May not be necessary in the future. See https://github.com/dotnet/corefx/issues/12039
     public async Task<int> RunAsync(ProcessSpec processSpec, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(processSpec);
+        ArgumentNullException.ThrowIfNull(processSpec, nameof(processSpec));
 
         int exitCode;
 
