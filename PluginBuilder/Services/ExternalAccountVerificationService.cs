@@ -31,7 +31,8 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
             return null;
 
         var files = gistData["files"];
-        if (files == null) return null;
+        if (files == null)
+            return null;
 
         foreach (var file in files)
         {
@@ -39,12 +40,14 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
             if (fileContent != null && fileContent.Contains(token, StringComparison.Ordinal))
                 return gistUsername;
         }
+
         return null;
     }
 
     public static string? GetGithubHandle(string? url)
     {
-        if (string.IsNullOrWhiteSpace(url)) return null;
+        if (string.IsNullOrWhiteSpace(url))
+            return null;
         url = url.Trim();
 
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
@@ -67,7 +70,8 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
             return null;
 
         var segs = u.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (segs.Length == 0) return null;
+        if (segs.Length == 0)
+            return null;
 
         var handle = segs[0];
         if (handle.Equals("orgs", StringComparison.OrdinalIgnoreCase) ||
@@ -80,7 +84,8 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
     public static GitHubContributor? GetGithubIdentity(string? githubUrl, int size = 48)
     {
         var handle = GetGithubHandle(githubUrl);
-        if (string.IsNullOrWhiteSpace(handle)) return null;
+        if (string.IsNullOrWhiteSpace(handle))
+            return null;
 
         var safe = Uri.EscapeDataString(handle);
         return new GitHubContributor
@@ -88,7 +93,7 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
             Login = handle,
             HtmlUrl = $"{ExternalProfileUrls.GithubBaseUrl}{safe}",
             AvatarUrl = string.Format(ExternalProfileUrls.GithubAvatarFormat, safe, size),
-            UserViewType= "user",
+            UserViewType = "user",
             Contributions = 0
         };
     }
@@ -104,5 +109,5 @@ public static class ExternalProfileUrls
 
     public const string PrimalProfileFormat = "https://primal.net/p/{0}";
 
-    public const string UnavatarSiteFormat  = "https://unavatar.io/{0}";
+    public const string UnavatarSiteFormat = "https://unavatar.io/{0}";
 }

@@ -18,20 +18,28 @@ namespace PluginBuilder.Tests;
 
 public class PlaywrightTester : IAsyncDisposable
 {
-    public ServerTester Server { get; set; }
-    public Uri? ServerUri;
-    public IBrowser? Browser { get; private set; }
-    public IPage? Page { get; set; }
-    XUnitLogger Logger { get; }
     private string? CreatedUser;
-    public string? Password { get; private set; }
-    public bool IsAdmin { get; private set; }
+    public Uri? ServerUri;
 
 
     public PlaywrightTester(XUnitLogger logger, ServerTester? server = null)
     {
         Logger = logger;
         Server = server ?? new ServerTester("PlaywrightTest", logger);
+    }
+
+    public ServerTester Server { get; set; }
+    public IBrowser? Browser { get; private set; }
+    public IPage? Page { get; set; }
+    private XUnitLogger Logger { get; }
+    public string? Password { get; private set; }
+    public bool IsAdmin { get; private set; }
+
+    public async ValueTask DisposeAsync()
+    {
+        await SafeDispose(async () => await Page?.CloseAsync()!);
+        await SafeDispose(async () => await Browser?.CloseAsync()!);
+        await Server.DisposeAsync();
     }
 
     public async Task StartAsync()
@@ -55,16 +63,13 @@ public class PlaywrightTester : IAsyncDisposable
         await AssertNoError();
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        await SafeDispose(async () => await Page?.CloseAsync()!);
-        await SafeDispose(async () => await Browser?.CloseAsync()!);
-        await Server.DisposeAsync();
-    }
-
     private static async Task SafeDispose(Func<Task> action)
     {
-        try { if (action != null) await action(); }
+        try
+        {
+            if (action != null)
+                await action();
+        }
         catch { }
     }
 
@@ -81,7 +86,8 @@ public class PlaywrightTester : IAsyncDisposable
             for (var i = 0; i < count; i++)
             {
                 var alert = dangerAlerts.Nth(i);
-                if (!await alert.IsVisibleAsync()) continue;
+                if (!await alert.IsVisibleAsync())
+                    continue;
                 var alertText = await alert.InnerTextAsync();
                 Assert.Fail($"No alert should be displayed, but found this on {Page.Url}: {alertText}");
             }
@@ -102,6 +108,7 @@ public class PlaywrightTester : IAsyncDisposable
     {
         await GoToUrl("/login");
     }
+
     public async Task Logout()
     {
         await GoToUrl("/");
@@ -133,6 +140,7 @@ public class PlaywrightTester : IAsyncDisposable
         IsAdmin = isAdmin;
         return usr;
     }
+
     public async Task LogIn(string user, string password = "123456")
     {
         await GoToLogin();
@@ -148,7 +156,7 @@ public class PlaywrightTester : IAsyncDisposable
         await using var conn = await factory.Open();
         var githubHandle = $"test-eligibility-{email.Replace("@", "_").Replace(".", "_")}";
 
-        var settings = new AccountSettings { Nostr = new NostrSettings { Npub = npub, Proof = "nostrProof" }, Github = githubHandle};
+        var settings = new AccountSettings { Nostr = new NostrSettings { Npub = npub, Proof = "nostrProof" }, Github = githubHandle };
         await conn.ExecuteAsync(
             """
             UPDATE "AspNetUsers"
@@ -162,7 +170,7 @@ public class PlaywrightTester : IAsyncDisposable
 
     public void CreateTestImage(string path)
     {
-        byte[] pngData = new byte[]
+        var pngData = new byte[]
         {
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
             0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,

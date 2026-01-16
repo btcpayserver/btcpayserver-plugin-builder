@@ -46,9 +46,7 @@ public class MainNav : ViewComponent
 
         // Only load pending count for admins to avoid burdening database
         if (UserClaimsPrincipal.IsInRole(Roles.ServerAdmin))
-        {
             vm.PendingListingRequestsCount = await conn.GetPendingListingRequestsCount();
-        }
 
         return View(vm);
     }

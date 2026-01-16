@@ -5,18 +5,17 @@ using MailKit.Security;
 using MimeKit;
 using Newtonsoft.Json;
 using Npgsql;
-using Org.BouncyCastle.Asn1.X509;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels.Admin;
 
 namespace PluginBuilder.Services;
 
-public class EmailService(DBConnectionFactory connectionFactory,
+public class EmailService(
+    DBConnectionFactory connectionFactory,
     AdminSettingsCache adminSettingsCache,
     ILogger<EmailService> logger)
 {
-
     public const string PluginApprovedTemplate = @"
 Hello Plugin Owner,
 
@@ -42,7 +41,6 @@ You may update your submission and request a another review at any time.
 Thank you,
 BTCPay Server Plugin Builder Team
 ";
-
 
 
     public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText)
@@ -77,7 +75,11 @@ BTCPay Server Plugin Builder Team
         return recipients;
     }
 
-    public bool IsValidEmailList(string to) => to.Split(',').Select(email => email.Trim()).All(email => !string.IsNullOrWhiteSpace(email) && Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
+    public bool IsValidEmailList(string to)
+    {
+        return to.Split(',').Select(email => email.Trim())
+            .All(email => !string.IsNullOrWhiteSpace(email) && Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
+    }
 
     public Task SendVerifyEmail(string toEmail, string verifyUrl)
     {
@@ -110,7 +112,10 @@ BTCPay Server Plugin Builder";
         {
             await DeliverEmail(toList, "New Plugin Request Listing on BTCPay Server Plugin Builder", body);
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to notify admin about new plugin listing request for {PluginSlug}", pluginSlug);
+        }
     }
 
     public async Task ResetPasswordEmail(string email, string passwordResetUrl)
@@ -152,6 +157,7 @@ BTCPay Server Plugin Builder";
             subject = $"{pluginTitle} Not Approved";
             body = string.Format(PluginRejectedTemplate, pluginTitle, reviewUrlOrReason);
         }
+
         try
         {
             await DeliverEmail(new[] { MailboxAddressValidator.Parse(email) }, subject, body);
@@ -256,14 +262,16 @@ public static class MailboxAddressValidator
 
     public static MailboxAddress Parse(string? str)
     {
-        if (!TryParse(str, out var mb)) throw new FormatException("Invalid mailbox address (rfc822)");
+        if (!TryParse(str, out var mb))
+            throw new FormatException("Invalid mailbox address (rfc822)");
         return mb;
     }
 
     public static bool TryParse(string? str, [MaybeNullWhen(false)] out MailboxAddress mailboxAddress)
     {
         mailboxAddress = null;
-        if (string.IsNullOrWhiteSpace(str)) return false;
+        if (string.IsNullOrWhiteSpace(str))
+            return false;
         return MailboxAddress.TryParse(_options, str, out mailboxAddress) && mailboxAddress is not null;
     }
 }

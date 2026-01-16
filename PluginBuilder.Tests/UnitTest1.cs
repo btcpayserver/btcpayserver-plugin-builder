@@ -91,9 +91,9 @@ public class UnitTest1 : UnitTestBase
         // Another plugin slug try to hijack the package
         await tester.CreateAndBuildPluginAsync(
             ownerId,
-            slug: "rockstar-stylist-fake",
-            gitRef: "plugins/collection2",
-            pluginDir: "Plugins/BTCPayServer.Plugins.RockstarStylist"
+            "rockstar-stylist-fake",
+            "plugins/collection2",
+            "Plugins/BTCPayServer.Plugins.RockstarStylist"
         );
 
         var rockstarPlugins =

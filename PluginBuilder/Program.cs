@@ -1,16 +1,18 @@
+using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
-using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Npgsql;
 using PluginBuilder.Authentication;
+using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.HostedServices;
@@ -18,8 +20,8 @@ using PluginBuilder.Hubs;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 using Serilog;
+using Serilog.Events;
 using Serilog.Extensions.Logging;
-using PluginBuilder.Configuration;
 
 namespace PluginBuilder;
 
@@ -111,6 +113,7 @@ public class Program
                 var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
                 fbe.InitBaseUrl(baseUrl);
             }
+
             await next();
         });
 
@@ -149,11 +152,12 @@ public class Program
         services.AddLogging(logBuilder =>
         {
             var debugLogFile = pbOptions.DebugLogFile;
-            if (string.IsNullOrEmpty(debugLogFile)) return;
+            if (string.IsNullOrEmpty(debugLogFile))
+                return;
 
             Log.Logger = new LoggerConfiguration()
                 .Enrich.FromLogContext()
-                .MinimumLevel.Is(pbOptions.DebugLogLevel ?? Serilog.Events.LogEventLevel.Information)
+                .MinimumLevel.Is(pbOptions.DebugLogLevel ?? LogEventLevel.Information)
                 .WriteTo.File(debugLogFile,
                     rollingInterval: RollingInterval.Day,
                     fileSizeLimitBytes: maxDebugLogFileSize,
@@ -184,7 +188,7 @@ public class Program
             var token = configuration["GITHUB_TOKEN"];
             if (!string.IsNullOrWhiteSpace(token))
                 client.DefaultRequestHeaders.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                    new AuthenticationHeaderValue("Bearer", token);
         });
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
@@ -197,7 +201,8 @@ public class Program
         services.AddScoped<ReferrerNavigationService>();
         services.AddHttpContextAccessor();
         services.AddSingleton<IActionContextAccessor, ActionContextAccessor>();
-        services.AddScoped<IUrlHelper>(sp => {
+        services.AddScoped<IUrlHelper>(sp =>
+        {
             var actionContext = sp.GetRequiredService<IActionContextAccessor>().ActionContext;
             return new UrlHelper(actionContext);
         });

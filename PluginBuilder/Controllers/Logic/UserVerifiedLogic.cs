@@ -11,7 +11,10 @@ public class UserVerifiedLogic(
     EmailService emailService,
     AdminSettingsCache adminSettingsCache)
 {
-    public bool IsEmailVerificationRequiredForLogin => adminSettingsCache.IsEmailVerificationRequiredForLogin;
+    public bool IsEmailVerificationRequiredForLogin
+    {
+        get => adminSettingsCache.IsEmailVerificationRequiredForLogin;
+    }
 
     public async Task<bool> IsUserEmailVerifiedForPublish(ClaimsPrincipal claimsPrincipal)
     {

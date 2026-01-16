@@ -34,7 +34,7 @@ public sealed class PluginOwnershipService(
         if (!await userVerifiedLogic.IsUserGithubVerified(principal, conn))
             return ServiceResult.Fail("Owner must have a verified Github account.");
 
-        await conn.AddUserPlugin(pluginSlug, user.Id, isPrimary: false);
+        await conn.AddUserPlugin(pluginSlug, user.Id, false);
         return ServiceResult.Ok();
     }
 

@@ -1,14 +1,13 @@
-@using System.Globalization
 @model RequestListingViewModel
 @{
-	Layout = "_Layout";
-	ViewData.SetActivePage(PluginNavPages.Dashboard, "Plugin Listing Request");
-	bool step3Completed = Model.PendingListing;
-	bool step1Completed = Model.Step != RequestListingViewModel.State.UpdatePluginSettings;
-	bool step2Completed = Model.Step != RequestListingViewModel.State.UpdateOwnerAccountSettings && Model.Step != RequestListingViewModel.State.UpdatePluginSettings;
-	bool step1Expanded = !step1Completed;
-	bool step2Expanded = step1Completed && !step2Completed;
-	bool step3Expanded = step1Completed && step2Completed && !step3Completed;
+    Layout = "_Layout";
+    ViewData.SetActivePage(PluginNavPages.Dashboard, "Plugin Listing Request");
+    var step3Completed = Model.PendingListing;
+    var step1Completed = Model.Step != RequestListingViewModel.State.UpdatePluginSettings;
+    var step2Completed = Model.Step != RequestListingViewModel.State.UpdateOwnerAccountSettings && Model.Step != RequestListingViewModel.State.UpdatePluginSettings;
+    var step1Expanded = !step1Completed;
+    var step2Expanded = step1Completed && !step2Completed;
+    var step3Expanded = step1Completed && step2Completed && !step3Completed;
 }
 
 <div class="d-flex align-items-center justify-content-between mb-4">
@@ -18,9 +17,9 @@
     @if (!Model.PendingListing)
     {
         <div class="d-flex gap-3 mt-3 mt-sm-0">
-			<button type="submit" form="request-listing-form" class="btn btn-success" @(Model.Step == RequestListingViewModel.State.Done ? "" : "disabled")>
-				@(Model.HasPreviousRejection ? "Re-submit" : "Submit")
-			</button>
+            <button type="submit" form="request-listing-form" class="btn btn-success" @(Model.Step == RequestListingViewModel.State.Done ? "" : "disabled")>
+                @(Model.HasPreviousRejection ? "Re-submit" : "Submit")
+            </button>
         </div>
     }
     @if (Model.PendingListing && Model.CanSendEmailReminder)
@@ -34,145 +33,152 @@
 
 
 <div class="accordion" id="requestListingAccordion">
-	<div class="accordion-item">
-		<h3 class="accordion-header" id="pluginSettingsHeader">
-			<button class="accordion-button @(step1Expanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePluginSettings"
-					aria-expanded="@step1Expanded" aria-controls="collapsePluginSettings">
-				<h5>
-					@if (step1Completed)
-					{
-						<vc:icon symbol="checkmark" />
-					}
-					else
-					{
-						<vc:icon symbol="cross" />
-					}
-					<span>Update Plugin Settings</span>
-				</h5>
-				<vc:icon symbol="caret-down" />
-			</button>
-		</h3>
-		<div id="collapsePluginSettings" class="accordion-collapse collapse @(step1Expanded ? "show" : "")" aria-labelledby="pluginSettingsHeader" data-bs-parent="#requestListingAccordion">
-			<div class="accordion-body">
-				<p>
-					Your plugin must include Logo, Documentation URL, and Git Repository. Click
-					<a asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug" class="text-success text-decoration-none">this link</a>
-					to go to your plugin settings to complete the process
-				</p>
-			</div>
-		</div>
-	</div>
+    <div class="accordion-item">
+        <h3 class="accordion-header" id="pluginSettingsHeader">
+            <button class="accordion-button @(step1Expanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#collapsePluginSettings"
+                    aria-expanded="@step1Expanded" aria-controls="collapsePluginSettings">
+                <h5>
+                    @if (step1Completed)
+                    {
+                        <vc:icon symbol="checkmark" />
+                    }
+                    else
+                    {
+                        <vc:icon symbol="cross" />
+                    }
+                    <span>Update Plugin Settings</span>
+                </h5>
+                <vc:icon symbol="caret-down" />
+            </button>
+        </h3>
+        <div id="collapsePluginSettings" class="accordion-collapse collapse @(step1Expanded ? "show" : "")" aria-labelledby="pluginSettingsHeader"
+             data-bs-parent="#requestListingAccordion">
+            <div class="accordion-body">
+                <p>
+                    Your plugin must include Logo, Documentation URL, and Git Repository. Click
+                    <a asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug" class="text-success text-decoration-none">this
+                        link</a>
+                    to go to your plugin settings to complete the process
+                </p>
+            </div>
+        </div>
+    </div>
 
-	<div class="accordion-item">
-		<h3 class="accordion-header" id="ownerSettingsHeader">
-			<button class="accordion-button @(step2Expanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOwnerSettings"
-					aria-expanded="@step2Expanded" aria-controls="collapseOwnerSettings">
-				<h5>
-					@if (step2Completed)
-					{
-						<vc:icon symbol="checkmark" />
-					}
-					else
-					{
-						<vc:icon symbol="cross" />
-					}
-					<span>Verify Social Accounts for Plugin Owners</span>
-				</h5>
-				<vc:icon symbol="caret-down" />
-			</button>
-		</h3>
-		<div id="collapseOwnerSettings" class="accordion-collapse collapse @(step2Expanded ? "show" : "")" aria-labelledby="ownerSettingsHeader" data-bs-parent="#requestListingAccordion">
-			<div class="accordion-body">
-				<p>
-					All plugin owners must verify Email, Nostr, and GitHub. Click
-					<a asp-controller="Account" asp-action="AccountDetails" class="text-success text-decoration-none">this link</a> to verify your accounts.
-					If you have other owners, kindly ask them to do the same.
-				</p>
-			</div>
-		</div>
-	</div>
+    <div class="accordion-item">
+        <h3 class="accordion-header" id="ownerSettingsHeader">
+            <button class="accordion-button @(step2Expanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOwnerSettings"
+                    aria-expanded="@step2Expanded" aria-controls="collapseOwnerSettings">
+                <h5>
+                    @if (step2Completed)
+                    {
+                        <vc:icon symbol="checkmark" />
+                    }
+                    else
+                    {
+                        <vc:icon symbol="cross" />
+                    }
+                    <span>Verify Social Accounts for Plugin Owners</span>
+                </h5>
+                <vc:icon symbol="caret-down" />
+            </button>
+        </h3>
+        <div id="collapseOwnerSettings" class="accordion-collapse collapse @(step2Expanded ? "show" : "")" aria-labelledby="ownerSettingsHeader"
+             data-bs-parent="#requestListingAccordion">
+            <div class="accordion-body">
+                <p>
+                    All plugin owners must verify Email, Nostr, and GitHub. Click
+                    <a asp-controller="Account" asp-action="AccountDetails" class="text-success text-decoration-none">this link</a> to verify your accounts.
+                    If you have other owners, kindly ask them to do the same.
+                </p>
+            </div>
+        </div>
+    </div>
 
-	<div class="accordion-item">
-		<h3 class="accordion-header" id="requestFormHeader">
-			<button class="accordion-button @(step3Expanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRequestForm"
-					aria-expanded="@step3Expanded" aria-controls="collapseRequestForm">
-				<h5>
-					@if (step3Completed)
-					{
-						<vc:icon symbol="checkmark" />
-					}
-					else
-					{
-						<vc:icon symbol="cross" />
-					}
-					<span>Plugin Listing Form</span>
-				</h5>
-				<vc:icon symbol="caret-down" />
-			</button>
-		</h3>
+    <div class="accordion-item">
+        <h3 class="accordion-header" id="requestFormHeader">
+            <button class="accordion-button @(step3Expanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRequestForm"
+                    aria-expanded="@step3Expanded" aria-controls="collapseRequestForm">
+                <h5>
+                    @if (step3Completed)
+                    {
+                        <vc:icon symbol="checkmark" />
+                    }
+                    else
+                    {
+                        <vc:icon symbol="cross" />
+                    }
+                    <span>Plugin Listing Form</span>
+                </h5>
+                <vc:icon symbol="caret-down" />
+            </button>
+        </h3>
 
-		<div id="collapseRequestForm" class="accordion-collapse collapse @(step3Expanded ? "show" : "")" aria-labelledby="requestFormHeader" data-bs-parent="#requestListingAccordion">
-			<div class="accordion-body">
-				<div class="col-xl-8 col-xxl-constrain">
-					<form id="request-listing-form" asp-action="RequestListing" method="post" enctype="multipart/form-data">
-						<div asp-validation-summary="ModelOnly" class="text-danger"></div>
-						<div class="form-group">
-							<label asp-for="ReleaseNote" class="form-label" data-required>Release Note <span class="text-muted">(max 200 characters)</span></label>
-							<textarea asp-for="ReleaseNote" rows="2" maxlength="200" class="form-control" required></textarea>
+        <div id="collapseRequestForm" class="accordion-collapse collapse @(step3Expanded ? "show" : "")" aria-labelledby="requestFormHeader"
+             data-bs-parent="#requestListingAccordion">
+            <div class="accordion-body">
+                <div class="col-xl-8 col-xxl-constrain">
+                    <form id="request-listing-form" asp-action="RequestListing" method="post" enctype="multipart/form-data">
+                        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+                        <div class="form-group">
+                            <label asp-for="ReleaseNote" class="form-label" data-required>Release Note <span
+                                    class="text-muted">(max 200 characters)</span></label>
+                            <textarea asp-for="ReleaseNote" rows="2" maxlength="200" class="form-control" required></textarea>
                             <span asp-validation-for="ReleaseNote" class="text-danger"></span>
                             <div class="text-muted">We will use this in BTCPay Server's social post. Refine it as an elevator pitch.
                                 <a href="https://x.com/BtcpayServer/status/1981029395818025195" target="_blank">Example</a>
                             </div>
-						</div>
-						<div class="form-group">
-							<label asp-for="TelegramVerificationMessage" class="form-label" data-required></label>
-							<input asp-for="TelegramVerificationMessage" class="form-control" required />
+                        </div>
+                        <div class="form-group">
+                            <label asp-for="TelegramVerificationMessage" class="form-label" data-required></label>
+                            <input asp-for="TelegramVerificationMessage" class="form-control" required />
                             <span asp-validation-for="TelegramVerificationMessage" class="text-danger"></span>
                             <div class="text-muted">Join our Telegram channel so we can be in touch and post a bit about your plugin.
                                 <a href="https://t.me/btcpayserver/91512" target="_blank">Example</a>
                             </div>
-						</div>
-						<div class="form-group">
-							<label asp-for="UserReviews" class="form-label" data-required></label>
-							<textarea asp-for="UserReviews" class="form-control" rows="4" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label asp-for="UserReviews" class="form-label" data-required></label>
+                            <textarea asp-for="UserReviews" class="form-control" rows="4" required></textarea>
                             <span asp-validation-for="UserReviews" class="text-danger"></span>
-                            <div class="text-muted">Link at least one publicly posted review (Nostr, X, or user websites) from a reputable Bitcoiner who tested the plugin.
+                            <div class="text-muted">Link at least one publicly posted review (Nostr, X, or user websites) from a reputable Bitcoiner who tested
+                                the plugin.
                                 <a href="https://primal.net/e/nevent1qqsqkw7c5qmlue0qvyz784ywrpkvnz2v33js4ajkj2dj0xdjdn6n2qqem7auc" target="_blank">Example</a>
                             </div>
-						</div>
-						<div class="form-group">
-							<label asp-for="AnnouncementDate" class="form-label">Announcement Date & Time (optional)</label>
-							<input asp-for="AnnouncementDate" type="datetime-local" class="form-control" />
+                        </div>
+                        <div class="form-group">
+                            <label asp-for="AnnouncementDate" class="form-label">Announcement Date & Time (optional)</label>
+                            <input asp-for="AnnouncementDate" type="datetime-local" class="form-control" />
                             <span asp-validation-for="AnnouncementDate" class="text-danger"></span>
                             <div class="text-muted">
                                 You may specify when this announcement should go live (include date, time)<br />
                                 <strong>Note:</strong> It should ideally be scheduled at least 3 days in advance
                             </div>
-						</div>
-					</form>
-				</div>
-			</div>
-		</div>
-	</div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 @section HeaderScripts {
-	<style>
-		.accordion-button h5 svg {
-			transition: none !important;
-			transform: none !important;
-		}
+    <style>
+        .accordion-button h5 svg {
+            transition: none !important;
+            transform: none !important;
+        }
 
-		.accordion-button h5 svg.icon-checkmark {
-			color: var(--btcpay-success, #28a745);
-		}
+        .accordion-button h5 svg.icon-checkmark {
+            color: var(--btcpay-success, #28a745);
+        }
 
-		.accordion-button h5 svg.icon-cross {
-			color: var(--btcpay-danger, #dc3545);
-		}
-	</style>
+        .accordion-button h5 svg.icon-cross {
+            color: var(--btcpay-danger, #dc3545);
+        }
+    </style>
 }
 
 @section FooterScripts {
-	<partial name="_ValidationScriptsPartial" />
+    <partial name="_ValidationScriptsPartial" />
 }

@@ -14,22 +14,22 @@
                 <label asp-for="PluginSlug" class="form-label" data-required></label>
                 <input asp-for="PluginSlug" class="form-control" placeholder="my-awesome-plugin" required />
                 <span asp-validation-for="PluginSlug" class="text-danger"></span>
-			</div>
-			<div class="form-group">
-				<label asp-for="PluginTitle" class="form-label" data-required></label>
-				<input asp-for="PluginTitle" class="form-control" required />
-				<span asp-validation-for="PluginTitle" class="text-danger"></span>
-			</div>
-			<div class="form-group">
-				<label asp-for="Description" class="form-label" data-required></label>
-				<textarea asp-for="Description" class="form-control" rows="5" placeholder="Plugin description..." required></textarea>
-				<span asp-validation-for="Description" class="text-danger"></span>
-			</div>
-			<div class="form-group">
-				<label asp-for="Logo" class="form-label"></label>
-				<input asp-for="Logo" type="file" class="form-control flex-grow" accept="image/*">
-				<span asp-validation-for="Logo" class="text-danger"></span>
-			</div>
+            </div>
+            <div class="form-group">
+                <label asp-for="PluginTitle" class="form-label" data-required></label>
+                <input asp-for="PluginTitle" class="form-control" required />
+                <span asp-validation-for="PluginTitle" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Description" class="form-label" data-required></label>
+                <textarea asp-for="Description" class="form-control" rows="5" placeholder="Plugin description..." required></textarea>
+                <span asp-validation-for="Description" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Logo" class="form-label"></label>
+                <input asp-for="Logo" type="file" class="form-control flex-grow" accept="image/*">
+                <span asp-validation-for="Logo" class="text-danger"></span>
+            </div>
             <div class="form-group mt-4">
                 <input type="submit" value="Create" class="btn btn-primary" id="Create" />
             </div>

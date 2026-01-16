@@ -33,6 +33,7 @@ public class DashboardController(
             TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub account in order to create and publish plugins";
             return RedirectToAction(nameof(AccountController.AccountDetails), "Account");
         }
+
         return View();
     }
 
@@ -45,15 +46,18 @@ public class DashboardController(
 
         if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
         {
-            ModelState.AddModelError(nameof(model.PluginSlug), "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
+            ModelState.AddModelError(nameof(model.PluginSlug),
+                "Invalid plugin slug; it should only contain lowercase Latin letters, numbers, or '-' (example: my-awesome-plugin)");
             return View(model);
         }
+
         await using var conn = await connectionFactory.Open();
         if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] = "You need to verify your email address in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
+
         var userId = userManager.GetUserId(User)!;
         if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
         {
@@ -73,6 +77,7 @@ public class DashboardController(
             ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
             return View(model);
         }
+
         if (model.Logo != null)
         {
             string errorMessage;
@@ -81,6 +86,7 @@ public class DashboardController(
                 ModelState.AddModelError(nameof(model.Logo), $"Image upload validation failed: {errorMessage}");
                 return View(model);
             }
+
             try
             {
                 var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.Logo.FileName)}";
@@ -92,6 +98,7 @@ public class DashboardController(
                 return View(model);
             }
         }
+
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl, PluginTitle = model.PluginTitle, Description = model.Description });
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }

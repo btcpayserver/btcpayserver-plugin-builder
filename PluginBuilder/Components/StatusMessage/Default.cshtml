@@ -1,6 +1,6 @@
 @if (TempData[TempDataConstant.SuccessMessage] is string successMessage)
 {
-    var successLinkUrl  = TempData[TempDataConstant.SuccessLinkUrl] as string;
+    var successLinkUrl = TempData[TempDataConstant.SuccessLinkUrl] as string;
     var successLinkText = TempData[TempDataConstant.SuccessLinkText] as string ?? "Click here to view it";
 
     <div class="alert alert-success text-break" role="alert">

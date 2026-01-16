@@ -1,7 +1,3 @@
-using Microsoft.Extensions.Logging;
-using Npgsql;
-using PluginBuilder;
-
 namespace PluginBuilder.Services;
 
 public class FirstBuildEvent(EmailService emailService, ILogger<FirstBuildEvent> logger)

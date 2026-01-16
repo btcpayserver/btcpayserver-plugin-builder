@@ -21,21 +21,21 @@ public class PublishedVersion
 
 public class PublishedPlugin : PublishedVersion
 {
+    private static readonly Regex GithubRepositoryRegex = new("^https://(www\\.)?github\\.com/([^/]+)/([^/]+)/?");
     public DateTimeOffset CreatedDate { get; set; }
-    static Regex GithubRepositoryRegex = new Regex("^https://(www\\.)?github\\.com/([^/]+)/([^/]+)/?");
-    public string gitRepository => BuildInfo?["gitRepository"]?.ToString();
-    public string pluginDir => BuildInfo?["pluginDir"]?.ToString();
+
+    public string gitRepository
+    {
+        get => BuildInfo?["gitRepository"]?.ToString();
+    }
+
+    public string pluginDir
+    {
+        get => BuildInfo?["pluginDir"]?.ToString();
+    }
+
     public PluginRatingSummary RatingSummary { get; set; } = new();
 
-    public record GithubRepository(string Owner, string RepositoryName)
-    {
-        public string GetSourceUrl(string commit, string pluginDir)
-        {
-            if (commit is null)
-                return null;
-            return $"https://github.com/{Owner}/{RepositoryName}/tree/{commit}/{pluginDir}";
-        }
-    }
     public GithubRepository GetGithubRepository()
     {
         if (gitRepository is null)
@@ -82,6 +82,16 @@ public class PublishedPlugin : PublishedVersion
             return new List<GitHubContributor>();
         }
     }
+
+    public record GithubRepository(string Owner, string RepositoryName)
+    {
+        public string GetSourceUrl(string commit, string pluginDir)
+        {
+            if (commit is null)
+                return null;
+            return $"https://github.com/{Owner}/{RepositoryName}/tree/{commit}/{pluginDir}";
+        }
+    }
 }
 
 public class GitHubContributor
@@ -113,21 +123,28 @@ public class PluginRatingSummary
     public int C4 { get; set; }
     public int C5 { get; set; }
 
-    [JsonIgnore] public IReadOnlyDictionary<int,int> StarCounts => new Dictionary<int,int>
+    [JsonIgnore] public IReadOnlyDictionary<int, int> StarCounts
     {
-        [1] = C1, [2] = C2, [3] = C3, [4] = C4, [5] = C5
-    };
+        get => new Dictionary<int, int>
+        {
+            [1] = C1, [2] = C2, [3] = C3, [4] = C4, [5] = C5
+        };
+    }
 
-    [JsonIgnore] public IReadOnlyDictionary<int,int> StarPct
+    [JsonIgnore] public IReadOnlyDictionary<int, int> StarPct
     {
         get
         {
             var total = Math.Max(TotalReviews, 0);
-            return new Dictionary<int,int>
+            return new Dictionary<int, int>
             {
                 [1] = Pct(C1), [2] = Pct(C2), [3] = Pct(C3), [4] = Pct(C4), [5] = Pct(C5)
             };
-            int Pct(int c) => total == 0 ? 0 : (int)Math.Round(c * 100.0 / total);
+
+            int Pct(int c)
+            {
+                return total == 0 ? 0 : (int)Math.Round(c * 100.0 / total);
+            }
         }
     }
 }

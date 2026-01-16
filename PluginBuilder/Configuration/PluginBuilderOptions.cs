@@ -27,18 +27,14 @@ public sealed class PluginBuilderOptions
             var logDir = Path.GetDirectoryName(logFile);
 
             if (!string.IsNullOrEmpty(logDir))
-            {
                 Directory.CreateDirectory(logDir);
-            }
         }
 
         var rawLevel = conf["debugloglevel"];
         LogEventLevel? level = null;
         if (!string.IsNullOrWhiteSpace(rawLevel) &&
             Enum.TryParse(rawLevel, true, out LogEventLevel parsed))
-        {
             level = parsed;
-        }
 
         var retainRaw = conf["debuglogretaincount"];
         var retain = 1;

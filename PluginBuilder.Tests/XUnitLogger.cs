@@ -35,7 +35,8 @@ public class XUnitLogger : ILogger, ILoggerProvider, ILoggerFactory
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
     {
         log.WriteLine($"[{Simplified(category)}] {Simplified(logLevel)}: {formatter(state, exception)}");
-        if (exception is Exception) log.WriteLine($"Exception: {exception}");
+        if (exception is Exception)
+            log.WriteLine($"Exception: {exception}");
     }
 
     public void AddProvider(ILoggerProvider provider)

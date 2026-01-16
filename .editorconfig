@@ -171,6 +171,20 @@ dotnet_sort_system_directives_first = true
 csharp_preserve_single_line_blocks = true
 csharp_preserve_single_line_statements = false
 
+# Rider/ReSharper: Force multi-line formatting for simple if statements
+resharper_csharp_place_simple_embedded_statement_on_same_line = never
+resharper_csharp_keep_existing_embedded_arrangement = false
+
+# Rider/ReSharper: Keep expression-bodied properties on single line
+resharper_csharp_place_expr_property_on_single_line = always
+resharper_csharp_place_expr_accessor_on_single_line = always
+resharper_csharp_keep_existing_expr_member_arrangement = true
+
+# Rider/ReSharper: Keep simple property/accessor declarations on single line
+resharper_csharp_place_simple_accessorholder_on_single_line = true
+resharper_csharp_place_simple_accessor_on_single_line = true
+resharper_csharp_keep_existing_declaration_block_arrangement = false
+
 # Expression-level preferences
 dotnet_style_object_initializer = true:suggestion
 dotnet_style_collection_initializer = true:suggestion
@@ -182,9 +196,9 @@ dotnet_style_null_propagation = true:suggestion
 csharp_style_expression_bodied_methods = false:none
 csharp_style_expression_bodied_constructors = false:none
 csharp_style_expression_bodied_operators = false:none
-csharp_style_expression_bodied_properties = true:none
-csharp_style_expression_bodied_indexers = true:none
-csharp_style_expression_bodied_accessors = true:none
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_expression_bodied_indexers = true:suggestion
+csharp_style_expression_bodied_accessors = true:suggestion
 
 # Property and accessor preferences
 csharp_style_auto_properties = true:suggestion
@@ -271,7 +285,13 @@ indent_size = 2
 indent_style = space
 indent_size = 2
 
-[*.{appxmanifest,asax,ascx,aspx,axaml,blockshader,build,c,c++,c++m,cc,ccm,cginc,compute,cp,cpp,cppm,cs,cshtml,cu,cuh,cxx,cxxm,dtd,fs,fsi,fsscript,fsx,fx,fxh,h,h++,hh,hlsl,hlsli,hlslinc,hp,hpp,hxx,icc,inc,inl,ino,ipp,ixx,master,ml,mli,mpp,mq4,mq5,mqh,mxx,nuspec,paml,razor,resw,resx,shader,shaderFoundry,skin,tcc,tpp,urtshader,usf,ush,uxml,vb,xaml,xamlx,xoml,xsd}]
+# Razor/CSHTML files - minimal formatting to avoid breaking Razor directives
+[*.cshtml]
+indent_style = space
+indent_size = 4
+tab_width = 4
+
+[*.{appxmanifest,asax,ascx,aspx,axaml,blockshader,build,c,c++,c++m,cc,ccm,cginc,compute,cp,cpp,cppm,cs,cu,cuh,cxx,cxxm,dtd,fs,fsi,fsscript,fsx,fx,fxh,h,h++,hh,hlsl,hlsli,hlslinc,hp,hpp,hxx,icc,inc,inl,ino,ipp,ixx,master,ml,mli,mpp,mq4,mq5,mqh,mxx,nuspec,paml,razor,resw,resx,shader,shaderFoundry,skin,tcc,tpp,urtshader,usf,ush,uxml,vb,xaml,xamlx,xoml,xsd}]
 indent_style = space
 indent_size = 4
 tab_width = 4

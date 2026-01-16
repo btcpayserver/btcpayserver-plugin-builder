@@ -15,21 +15,21 @@ public class ConfirmModel
         string? actionName = null,
         string? controllerName = null)
     {
-        Title          = title;
-        Description    = desc;
-        Action         = action;
-        ActionName     = actionName;
+        Title = title;
+        Description = desc;
+        Action = action;
+        ActionName = actionName;
         ControllerName = controllerName;
-        ButtonClass    = buttonClass;
+        ButtonClass = buttonClass;
         DescriptionHtml = descriptionHtml;
     }
 
-    public bool   GenerateForm   { get; set; } = true;
-    public string Title          { get; set; } = string.Empty;
-    public string Description    { get; set; } = string.Empty;
-    public bool   DescriptionHtml{ get; set; }
-    public string? Action         { get; set; }
-    public string? ActionName     { get; set; }
+    public bool GenerateForm { get; set; } = true;
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool DescriptionHtml { get; set; }
+    public string? Action { get; set; }
+    public string? ActionName { get; set; }
     public string? ControllerName { get; set; }
-    public string ButtonClass    { get; set; } = ButtonClassDefault;
+    public string ButtonClass { get; set; } = ButtonClassDefault;
 }

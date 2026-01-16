@@ -15,6 +15,7 @@ public class AccountSettings
 
     [Display(Name = "Public Email address")]
     public string? Email { get; set; }
+
     public string? PendingNewEmail { get; set; }
     public PgpKeyViewModel? GPGKey { get; set; }
 }
@@ -23,6 +24,7 @@ public sealed class NostrSettings
 {
     [Display(Name = "Nostr Npub key")]
     public string? Npub { get; set; }
+
     public string? Proof { get; set; } // eventId (extension) | url/note1/nevent1 (manual)
     public NostrProfileCache? Profile { get; set; }
 }

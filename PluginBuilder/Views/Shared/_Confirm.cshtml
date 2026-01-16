@@ -12,6 +12,7 @@
                 return id + '_' + componentName;
             return componentName;
         }
+
         const modal = document.getElementById(fullId('ConfirmModal'))
         modal.addEventListener('show.bs.modal', event => {
             const $target = event.relatedTarget
@@ -28,7 +29,7 @@
                 $continue.value = $target.value;
 
 
-            const { title, description, confirm, confirmInput, buttonClass } = $target.dataset
+            const {title, description, confirm, confirmInput, buttonClass} = $target.dataset
             const action = $target.dataset.action || ($target.nodeName === 'A'
                 ? $target.getAttribute('href')
                 : $target.form.getAttribute('action'))
@@ -63,7 +64,7 @@
         modal.addEventListener('shown.bs.modal', event => {
             const $target = event.relatedTarget
             const $input = document.getElementById(fullId('ConfirmInput'))
-            const { confirmInput } = $target.dataset
+            const {confirmInput} = $target.dataset
             if (confirmInput) {
                 $input.focus()
             }

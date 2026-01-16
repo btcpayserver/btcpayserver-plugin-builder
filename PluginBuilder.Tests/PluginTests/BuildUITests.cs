@@ -10,8 +10,8 @@ namespace PluginBuilder.Tests.PluginTests;
 [Collection("Playwright Tests")]
 public class BuildUITests(ITestOutputHelper output) : PageTest
 {
-    private readonly XUnitLogger _log = new("BuildTests", output);
     private const string DirWithoutCsproj = "docs";
+    private readonly XUnitLogger _log = new("BuildTests", output);
 
     [Fact]
     public async Task CreateBuild_And_ValidatesCsproj()

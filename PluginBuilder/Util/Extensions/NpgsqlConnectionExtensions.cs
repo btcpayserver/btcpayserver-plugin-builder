@@ -13,8 +13,8 @@ namespace PluginBuilder.Util.Extensions;
 
 public static class NpgsqlConnectionExtensions
 {
-
     #region Methods relating to plugin settings
+
     public static async Task<PluginSettings?> GetSettings(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         var r = await connection.QueryFirstOrDefaultAsync<string>("SELECT settings FROM plugins WHERE slug=@pluginSlug",
@@ -24,7 +24,8 @@ public static class NpgsqlConnectionExtensions
         return JsonConvert.DeserializeObject<PluginSettings>(r, CamelCaseSerializerSettings.Instance);
     }
 
-    public static async Task<bool> SetPluginSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings? pluginSettings, PluginVisibilityEnum? visibility = null)
+    public static async Task<bool> SetPluginSettings(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginSettings? pluginSettings,
+        PluginVisibilityEnum? visibility = null)
     {
         var settingsJson = "{}";
         if (pluginSettings != null)
@@ -34,7 +35,8 @@ public static class NpgsqlConnectionExtensions
         if (visibility != null)
             sql = "UPDATE plugins SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum WHERE slug = @pluginSlug";
 
-        var affectedRows = await connection.ExecuteAsync(sql, new { pluginSlug = pluginSlug.ToString(), settings = settingsJson, visibility = visibility?.ToString().ToLowerInvariant() });
+        var affectedRows = await connection.ExecuteAsync(sql,
+            new { pluginSlug = pluginSlug.ToString(), settings = settingsJson, visibility = visibility?.ToString().ToLowerInvariant() });
         return affectedRows == 1;
     }
 
@@ -44,7 +46,8 @@ public static class NpgsqlConnectionExtensions
             "SELECT slug AS \"PluginSlug\", identifier, settings::text AS settings, visibility::text AS visibility FROM plugins WHERE slug=@pluginSlug",
             new { pluginSlug = pluginSlug.ToString() });
     }
-    public static async Task<bool> IsPluginTitleInUse(this NpgsqlConnection conn,string pluginTitle, PluginSlug? currentSlug = null)
+
+    public static async Task<bool> IsPluginTitleInUse(this NpgsqlConnection conn, string pluginTitle, PluginSlug? currentSlug = null)
     {
         const string sql = """
                            SELECT slug
@@ -138,6 +141,7 @@ public static class NpgsqlConnectionExtensions
         return await connection.QuerySingleAsync<bool>("SELECT EXISTS (SELECT * FROM users_plugins WHERE user_id=@userId AND plugin_slug=@pluginSlug);",
             new { pluginSlug = pluginSlug.ToString(), userId });
     }
+
     public static async Task<IEnumerable<string>> RetrievePluginUserIds(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         return await connection.QueryAsync<string>("SELECT user_id FROM users_plugins WHERE plugin_slug=@pluginSlug;",
@@ -146,7 +150,8 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task<string?> RetrievePluginPrimaryOwner(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
-        return await connection.QueryFirstOrDefaultAsync<string>("SELECT user_id FROM users_plugins WHERE plugin_slug=@pluginSlug AND is_primary_owner IS TRUE;",
+        return await connection.QueryFirstOrDefaultAsync<string>(
+            "SELECT user_id FROM users_plugins WHERE plugin_slug=@pluginSlug AND is_primary_owner IS TRUE;",
             new { pluginSlug = pluginSlug.ToString() });
     }
 
@@ -168,7 +173,8 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task AddUserPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId, bool isPrimary = false)
     {
-        await connection.ExecuteAsync("INSERT INTO users_plugins (user_id, plugin_slug, is_primary_owner) VALUES (@userId, @pluginSlug, @isPrimary) ON CONFLICT DO NOTHING",
+        await connection.ExecuteAsync(
+            "INSERT INTO users_plugins (user_id, plugin_slug, is_primary_owner) VALUES (@userId, @pluginSlug, @isPrimary) ON CONFLICT DO NOTHING",
             new { pluginSlug = pluginSlug.ToString(), userId, isPrimary });
     }
 
@@ -227,7 +233,8 @@ public static class NpgsqlConnectionExtensions
         var count = await connection.ExecuteAsync("INSERT INTO plugins (slug) VALUES (@id) ON CONFLICT DO NOTHING;",
             new { id = pluginSlug.ToString() });
 
-        if (count != 1) return false;
+        if (count != 1)
+            return false;
 
         await connection.AddUserPlugin(pluginSlug, userId, true);
         return true;
@@ -252,7 +259,8 @@ public static class NpgsqlConnectionExtensions
             });
     }
 
-    public static async Task<bool> UpdateVersionReleaseStatus(this NpgsqlConnection connection, PluginSlug pluginSlug, string command, PluginVersion version, SignatureProof? signatureProof = null)
+    public static async Task<bool> UpdateVersionReleaseStatus(this NpgsqlConnection connection, PluginSlug pluginSlug, string command, PluginVersion version,
+        SignatureProof? signatureProof = null)
     {
         var updated = await connection.ExecuteAsync(
             "UPDATE versions SET pre_release = @preRelease, signatureproof = CASE WHEN @hasSignature THEN @signatureproof::JSONB WHEN @preRelease THEN NULL ELSE signatureproof END " +
@@ -354,13 +362,13 @@ public static class NpgsqlConnectionExtensions
             PluginDir = buildParameters.PluginDirectory
         };
         var buildId = await connection.ExecuteScalarAsync<long>("" +
-                                                   "WITH cte AS " +
-                                                   "( " +
-                                                   " INSERT INTO builds_ids AS bi VALUES (@plugin_slug, 0)" +
-                                                   "        ON CONFLICT (plugin_slug) DO UPDATE SET curr_id=bi.curr_id+1 " +
-                                                   " RETURNING curr_id " +
-                                                   ") " +
-                                                   "INSERT INTO builds (plugin_slug, id, state, build_info) VALUES (@plugin_slug, (SELECT * FROM cte), @state, @buildInfo::JSONB) RETURNING id;",
+                                                                "WITH cte AS " +
+                                                                "( " +
+                                                                " INSERT INTO builds_ids AS bi VALUES (@plugin_slug, 0)" +
+                                                                "        ON CONFLICT (plugin_slug) DO UPDATE SET curr_id=bi.curr_id+1 " +
+                                                                " RETURNING curr_id " +
+                                                                ") " +
+                                                                "INSERT INTO builds (plugin_slug, id, state, build_info) VALUES (@plugin_slug, (SELECT * FROM cte), @state, @buildInfo::JSONB) RETURNING id;",
             new
             {
                 plugin_slug = pluginSlug.ToString(),
@@ -372,7 +380,8 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task<long> GetLatestPluginBuildNumber(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
-        return await connection.ExecuteScalarAsync<long>("SELECT curr_id FROM builds_ids WHERE plugin_slug = @plugin_slug", new { plugin_slug = pluginSlug.ToString() });
+        return await connection.ExecuteScalarAsync<long>("SELECT curr_id FROM builds_ids WHERE plugin_slug = @plugin_slug",
+            new { plugin_slug = pluginSlug.ToString() });
     }
 
     #endregion
@@ -417,38 +426,27 @@ public static class NpgsqlConnectionExtensions
         var query = "SELECT key, value FROM settings";
         var result = (await connection.QueryAsync<(string key, string value)>(query)).ToList();
         if (result.All(r => r.key != SettingsKeys.FirstPluginBuildReviewers))
-        {
             await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.FirstPluginBuildReviewers, value = "" });
-        }
 
         if (result.All(r => r.key != SettingsKeys.VerifiedEmailForPluginPublish))
-        {
             await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedEmailForPluginPublish, value = "true" });
-        }
         if (result.All(r => r.key != SettingsKeys.VerifiedEmailForLogin))
-        {
             await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedEmailForLogin, value = "true" });
-        }
 
         if (result.All(r => r.key != SettingsKeys.VerifiedGithub))
-        {
             await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedGithub, value = "false" });
-        }
 
         if (result.All(r => r.key != SettingsKeys.VerifiedNostr))
-        {
             await connection.ExecuteAsync(
                 "INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.VerifiedNostr, value = "false" });
-        }
 
         if (result.All(r => r.key != SettingsKeys.NostrRelays))
         {
-
             var json = JsonConvert.SerializeObject(NostrService.DefaultRelays);
             await connection.ExecuteAsync(
                 "INSERT INTO settings (key, value) VALUES (@key, @value)",
@@ -458,7 +456,7 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task<bool> GetVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection)
     {
-        var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedEmailForPluginPublish);
+        var settingValue = await connection.SettingsGetAsync(SettingsKeys.VerifiedEmailForPluginPublish);
         return bool.TryParse(settingValue, out var result) && result;
     }
 
@@ -471,24 +469,24 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task<bool> GetVerifiedEmailForLoginSetting(this NpgsqlConnection connection)
     {
-        var settingValue = await SettingsGetAsync(connection, SettingsKeys.VerifiedEmailForLogin);
+        var settingValue = await connection.SettingsGetAsync(SettingsKeys.VerifiedEmailForLogin);
         return bool.TryParse(settingValue, out var result) && result;
     }
 
     public static Task<string?> GetFirstPluginBuildReviewersSetting(this NpgsqlConnection connection)
     {
-        return SettingsGetAsync(connection, SettingsKeys.FirstPluginBuildReviewers);
+        return connection.SettingsGetAsync(SettingsKeys.FirstPluginBuildReviewers);
     }
 
     public static async Task<bool> GetVerifiedGithubSetting(this NpgsqlConnection connection)
     {
-        var v = await SettingsGetAsync(connection, SettingsKeys.VerifiedGithub);
+        var v = await connection.SettingsGetAsync(SettingsKeys.VerifiedGithub);
         return bool.TryParse(v, out var b) && b;
     }
 
     public static async Task<bool> GetVerifiedNostrSetting(this NpgsqlConnection connection)
     {
-        var v = await SettingsGetAsync(connection, SettingsKeys.VerifiedNostr);
+        var v = await connection.SettingsGetAsync(SettingsKeys.VerifiedNostr);
         return bool.TryParse(v, out var b) && b;
     }
 
@@ -572,16 +570,16 @@ public static class NpgsqlConnectionExtensions
     }
 
     public static Task<bool?> GetReviewHelpfulVoteAsync(
-            this NpgsqlConnection conn,
-            PluginSlug pluginSlug,
-            long reviewId,
-            string userId)
+        this NpgsqlConnection conn,
+        PluginSlug pluginSlug,
+        long reviewId,
+        string userId)
     {
         const string sql = """
-                               SELECT (helpful_voters ->> @userId)::boolean
-                               FROM plugin_reviews
-                               WHERE id = @id AND plugin_slug = @slug
-                               """;
+                           SELECT (helpful_voters ->> @userId)::boolean
+                           FROM plugin_reviews
+                           WHERE id = @id AND plugin_slug = @slug
+                           """;
         return conn.ExecuteScalarAsync<bool?>(sql, new
         {
             id = reviewId,
@@ -654,30 +652,30 @@ public static class NpgsqlConnectionExtensions
         // 3. The user_id gets populated, claiming ownership of their previously imported reviews
         // This allows users to "claim" their external reviews when they join the platform.
         const string updateSql = """
-            UPDATE plugin_reviewers p
-            SET
-                user_id = COALESCE(p.user_id, @user_id),
-                username = @username,
-                source = @source,
-                profile_url = @profile_url,
-                avatar_url = @avatar_url,
-                updated_at = NOW()
-            WHERE p.id = (
-                SELECT id
-                FROM plugin_reviewers
-                WHERE
-                    (@user_id IS NOT NULL AND user_id = @user_id)
-                    OR (@profile_url IS NOT NULL AND profile_url = @profile_url)
-                ORDER BY
-                    CASE
-                        WHEN @user_id IS NOT NULL AND user_id = @user_id THEN 0
-                        WHEN profile_url = @profile_url THEN 1
-                        ELSE 2
-                    END
-                LIMIT 1
-            )
-            RETURNING id;
-            """;
+                                 UPDATE plugin_reviewers p
+                                 SET
+                                     user_id = COALESCE(p.user_id, @user_id),
+                                     username = @username,
+                                     source = @source,
+                                     profile_url = @profile_url,
+                                     avatar_url = @avatar_url,
+                                     updated_at = NOW()
+                                 WHERE p.id = (
+                                     SELECT id
+                                     FROM plugin_reviewers
+                                     WHERE
+                                         (@user_id IS NOT NULL AND user_id = @user_id)
+                                         OR (@profile_url IS NOT NULL AND profile_url = @profile_url)
+                                     ORDER BY
+                                         CASE
+                                             WHEN @user_id IS NOT NULL AND user_id = @user_id THEN 0
+                                             WHEN profile_url = @profile_url THEN 1
+                                             ELSE 2
+                                         END
+                                     LIMIT 1
+                                 )
+                                 RETURNING id;
+                                 """;
 
         var param = new
         {
@@ -693,10 +691,10 @@ public static class NpgsqlConnectionExtensions
             return updatedId.Value;
 
         const string insertSql = """
-            INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
-            VALUES (@user_id, @username, @source, @profile_url, @avatar_url, NOW(), NOW())
-            RETURNING id;
-            """;
+                                 INSERT INTO plugin_reviewers (user_id, username, source, profile_url, avatar_url, created_at, updated_at)
+                                 VALUES (@user_id, @username, @source, @profile_url, @avatar_url, NOW(), NOW())
+                                 RETURNING id;
+                                 """;
 
         return await connection.ExecuteScalarAsync<long>(insertSql, param);
     }
@@ -706,13 +704,14 @@ public static class NpgsqlConnectionExtensions
 
     #region Methods relating to plugin listing requests
 
-    public static async Task<int> CreateListingRequest(this NpgsqlConnection connection, PluginSlug pluginSlug, string releaseNote, string telegramMessage, string userReviews, DateTimeOffset? announcementDate)
+    public static async Task<int> CreateListingRequest(this NpgsqlConnection connection, PluginSlug pluginSlug, string releaseNote, string telegramMessage,
+        string userReviews, DateTimeOffset? announcementDate)
     {
         const string sql = """
-            INSERT INTO plugin_listing_requests (plugin_slug, release_note, telegram_verification_message, user_reviews, announcement_date, status, submitted_at)
-            VALUES (@pluginSlug, @releaseNote, @telegramMessage, @userReviews, @announcementDate, 'pending', CURRENT_TIMESTAMP)
-            RETURNING id
-            """;
+                           INSERT INTO plugin_listing_requests (plugin_slug, release_note, telegram_verification_message, user_reviews, announcement_date, status, submitted_at)
+                           VALUES (@pluginSlug, @releaseNote, @telegramMessage, @userReviews, @announcementDate, 'pending', CURRENT_TIMESTAMP)
+                           RETURNING id
+                           """;
 
         return await connection.ExecuteScalarAsync<int>(sql, new
         {
@@ -727,20 +726,20 @@ public static class NpgsqlConnectionExtensions
     public static async Task<PluginListingRequest?> GetListingRequest(this NpgsqlConnection connection, int requestId)
     {
         const string sql = """
-            SELECT id AS "Id",
-                   plugin_slug AS "PluginSlug",
-                   release_note AS "ReleaseNote",
-                   telegram_verification_message AS "TelegramVerificationMessage",
-                   user_reviews AS "UserReviews",
-                   announcement_date AS "AnnouncementDate",
-                   status AS "Status",
-                   submitted_at AS "SubmittedAt",
-                   reviewed_at AS "ReviewedAt",
-                   reviewed_by AS "ReviewedBy",
-                   rejection_reason AS "RejectionReason"
-            FROM plugin_listing_requests
-            WHERE id = @requestId
-            """;
+                           SELECT id AS "Id",
+                                  plugin_slug AS "PluginSlug",
+                                  release_note AS "ReleaseNote",
+                                  telegram_verification_message AS "TelegramVerificationMessage",
+                                  user_reviews AS "UserReviews",
+                                  announcement_date AS "AnnouncementDate",
+                                  status AS "Status",
+                                  submitted_at AS "SubmittedAt",
+                                  reviewed_at AS "ReviewedAt",
+                                  reviewed_by AS "ReviewedBy",
+                                  rejection_reason AS "RejectionReason"
+                           FROM plugin_listing_requests
+                           WHERE id = @requestId
+                           """;
 
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { requestId });
     }
@@ -748,22 +747,22 @@ public static class NpgsqlConnectionExtensions
     public static async Task<PluginListingRequest?> GetPendingListingRequestForPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         const string sql = """
-            SELECT id AS "Id",
-                   plugin_slug AS "PluginSlug",
-                   release_note AS "ReleaseNote",
-                   telegram_verification_message AS "TelegramVerificationMessage",
-                   user_reviews AS "UserReviews",
-                   announcement_date AS "AnnouncementDate",
-                   status AS "Status",
-                   submitted_at AS "SubmittedAt",
-                   reviewed_at AS "ReviewedAt",
-                   reviewed_by AS "ReviewedBy",
-                   rejection_reason AS "RejectionReason"
-            FROM plugin_listing_requests
-            WHERE plugin_slug = @pluginSlug AND status = 'pending'
-            ORDER BY submitted_at DESC
-            LIMIT 1
-            """;
+                           SELECT id AS "Id",
+                                  plugin_slug AS "PluginSlug",
+                                  release_note AS "ReleaseNote",
+                                  telegram_verification_message AS "TelegramVerificationMessage",
+                                  user_reviews AS "UserReviews",
+                                  announcement_date AS "AnnouncementDate",
+                                  status AS "Status",
+                                  submitted_at AS "SubmittedAt",
+                                  reviewed_at AS "ReviewedAt",
+                                  reviewed_by AS "ReviewedBy",
+                                  rejection_reason AS "RejectionReason"
+                           FROM plugin_listing_requests
+                           WHERE plugin_slug = @pluginSlug AND status = 'pending'
+                           ORDER BY submitted_at DESC
+                           LIMIT 1
+                           """;
 
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
@@ -771,9 +770,9 @@ public static class NpgsqlConnectionExtensions
     public static async Task<bool> ApproveListingRequest(this NpgsqlConnection connection, int requestId, string reviewedBy)
     {
         const string sql = """
-            UPDATE plugin_listing_requests SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy
-            WHERE id = @requestId AND status = 'pending'
-            """;
+                           UPDATE plugin_listing_requests SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy
+                           WHERE id = @requestId AND status = 'pending'
+                           """;
 
         var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy });
         return affected == 1;
@@ -782,10 +781,10 @@ public static class NpgsqlConnectionExtensions
     public static async Task<bool> RejectListingRequest(this NpgsqlConnection connection, int requestId, string reviewedBy, string rejectionReason)
     {
         const string sql = """
-            UPDATE plugin_listing_requests
-            SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy, rejection_reason = @rejectionReason
-            WHERE id = @requestId AND status = 'pending'
-            """;
+                           UPDATE plugin_listing_requests
+                           SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy, rejection_reason = @rejectionReason
+                           WHERE id = @requestId AND status = 'pending'
+                           """;
 
         var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy, rejectionReason });
         return affected == 1;
@@ -794,8 +793,8 @@ public static class NpgsqlConnectionExtensions
     public static async Task<bool> HasPendingListingRequest(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         const string sql = """
-            SELECT EXISTS(SELECT 1 FROM plugin_listing_requests WHERE plugin_slug = @pluginSlug AND status = 'pending')
-            """;
+                           SELECT EXISTS(SELECT 1 FROM plugin_listing_requests WHERE plugin_slug = @pluginSlug AND status = 'pending')
+                           """;
 
         return await connection.ExecuteScalarAsync<bool>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
@@ -803,22 +802,22 @@ public static class NpgsqlConnectionExtensions
     public static async Task<PluginListingRequest?> GetLatestRejectedListingRequestForPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         const string sql = """
-            SELECT id AS "Id",
-                   plugin_slug AS "PluginSlug",
-                   release_note AS "ReleaseNote",
-                   telegram_verification_message AS "TelegramVerificationMessage",
-                   user_reviews AS "UserReviews",
-                   announcement_date AS "AnnouncementDate",
-                   status AS "Status",
-                   submitted_at AS "SubmittedAt",
-                   reviewed_at AS "ReviewedAt",
-                   reviewed_by AS "ReviewedBy",
-                   rejection_reason AS "RejectionReason"
-            FROM plugin_listing_requests
-            WHERE plugin_slug = @pluginSlug AND status = 'rejected'
-            ORDER BY submitted_at DESC
-            LIMIT 1
-            """;
+                           SELECT id AS "Id",
+                                  plugin_slug AS "PluginSlug",
+                                  release_note AS "ReleaseNote",
+                                  telegram_verification_message AS "TelegramVerificationMessage",
+                                  user_reviews AS "UserReviews",
+                                  announcement_date AS "AnnouncementDate",
+                                  status AS "Status",
+                                  submitted_at AS "SubmittedAt",
+                                  reviewed_at AS "ReviewedAt",
+                                  reviewed_by AS "ReviewedBy",
+                                  rejection_reason AS "RejectionReason"
+                           FROM plugin_listing_requests
+                           WHERE plugin_slug = @pluginSlug AND status = 'rejected'
+                           ORDER BY submitted_at DESC
+                           LIMIT 1
+                           """;
 
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
@@ -826,8 +825,8 @@ public static class NpgsqlConnectionExtensions
     public static async Task<int> GetPendingListingRequestsCount(this NpgsqlConnection connection)
     {
         const string sql = """
-            SELECT COUNT(*) FROM plugin_listing_requests WHERE status = 'pending'
-            """;
+                           SELECT COUNT(*) FROM plugin_listing_requests WHERE status = 'pending'
+                           """;
 
         return await connection.ExecuteScalarAsync<int>(sql);
     }

@@ -1,5 +1,4 @@
-@using PluginBuilder.APIModels
-@model List<PublishedPlugin>?
+@model List<PluginBuilder.APIModels.PublishedPlugin>?
 @{
     Layout = "_LayoutPublicModal";
     const string title = "BTCPay Server Plugin Directory";
@@ -14,8 +13,8 @@
     {
         "rating" => "Highest rated",
         "recent" => "Most recent",
-        "alpha"  => "Alphabetical",
-        _        => "Relevance"
+        "alpha" => "Alphabetical",
+        _ => "Relevance"
     };
 }
 
@@ -145,12 +144,12 @@
         }
         else
         {
-			<div class="col-12 text-center py-5">
-				<h4>No plugins available yet</h4>
-				<p class="text-muted">Check back later, or
-					<a asp-action="Login" asp-controller="Home" class="text-success text-decoration-none">login to upload one</a>
-				</p>
-			</div>
+            <div class="col-12 text-center py-5">
+                <h4>No plugins available yet</h4>
+                <p class="text-muted">Check back later, or
+                    <a asp-action="Login" asp-controller="Home" class="text-success text-decoration-none">login to upload one</a>
+                </p>
+            </div>
         }
     </div>
 </div>

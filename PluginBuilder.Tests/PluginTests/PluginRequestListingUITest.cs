@@ -22,7 +22,6 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
     private readonly XUnitLogger _log = new("PluginRequestListingUITest", output);
 
 
-
     [Fact]
     public async Task RequestListing_Tests()
     {
@@ -235,9 +234,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
         if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
-        {
             await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
-        }
 
         var email = $"admin-{Guid.NewGuid():N}@test.com";
         const string password = "123456";
@@ -259,4 +256,3 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         return email;
     }
 }
-

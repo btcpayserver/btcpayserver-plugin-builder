@@ -3,11 +3,11 @@
     Layout = "_Layout";
     ViewData.SetActivePage("Account Settings");
 
-	var gpgKey = Model.Settings.GPGKey;
-	var hasKey = !string.IsNullOrEmpty(gpgKey?.Fingerprint);
-	DateTimeOffset? expiryDate = gpgKey?.ValidDays > 0 ? gpgKey.CreatedDate.AddDays(gpgKey.ValidDays) : null;
-	var isExpired = expiryDate.HasValue && expiryDate.Value <= DateTimeOffset.UtcNow;
-	var isExpiringSoon = expiryDate.HasValue && expiryDate.Value <= DateTimeOffset.UtcNow.AddMonths(1);
+    var gpgKey = Model.Settings.GPGKey;
+    var hasKey = !string.IsNullOrEmpty(gpgKey?.Fingerprint);
+    DateTimeOffset? expiryDate = gpgKey?.ValidDays > 0 ? gpgKey.CreatedDate.AddDays(gpgKey.ValidDays) : null;
+    var isExpired = expiryDate.HasValue && expiryDate.Value <= DateTimeOffset.UtcNow;
+    var isExpiringSoon = expiryDate.HasValue && expiryDate.Value <= DateTimeOffset.UtcNow.AddMonths(1);
 }
 
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
@@ -26,7 +26,7 @@
                     @if (Model.NeedToVerifyEmail)
                     {
                         <div class="input-group-append">
-							<a asp-controller="Account" asp-action="VerifyEmail" class="btn btn-outline-success ms-2">Verify Email</a>
+                            <a asp-controller="Account" asp-action="VerifyEmail" class="btn btn-outline-success ms-2">Verify Email</a>
                         </div>
                     }
                 </div>
@@ -42,7 +42,7 @@
                     @if (!Model.GithubAccountVerified)
                     {
                         <div class="input-group-append">
-							<a asp-controller="Account" asp-action="VerifyGithubAccount" class="btn btn-outline-success ms-2">Verify GitHub</a>
+                            <a asp-controller="Account" asp-action="VerifyGithubAccount" class="btn btn-outline-success ms-2">Verify GitHub</a>
                         </div>
                     }
                 </div>
@@ -55,7 +55,7 @@
                     <span class="badge bg-success ms-2">Confirmed</span>
                 }
                 <div class="d-flex align-items-center">
-                    <input asp-for="Settings.Nostr!.Npub" class="form-control" placeholder="npub…" readonly="readonly"/>
+                    <input asp-for="Settings.Nostr!.Npub" class="form-control" placeholder="npub…" readonly="readonly" />
 
                     @if (!Model.IsNostrVerified)
                     {
@@ -107,43 +107,44 @@
                 <span asp-validation-for="Settings.Email" class="text-danger"></span>
             </div>
 
-			<div class="form-group">
-				<label asp-for="Settings.GPGKey!.PublicKey" class="form-label">GPG Public Key</label>
-				@if (hasKey && (!expiryDate.HasValue || !isExpired))
-				{
-					<span class="badge bg-success ms-2">Confirmed</span>
-				}
-				@if (isExpired)
-				{
-					<div class="alert alert-danger mt-2">Your GPG key expired on @expiryDate?.ToString("yyyy-MM-dd")</div>
-				}
-				else if (isExpiringSoon)
-				{
-					<div class="alert alert-warning mt-2">Your GPG key will expire on @expiryDate?.ToString("yyyy-MM-dd")</div>
-				}
-				<div>
-					@if (!string.IsNullOrEmpty(Model.Settings.GPGKey?.Fingerprint))
-					{
-						<div id="existing-key-section" class="d-flex align-items-center">
-							<input class="form-control" readonly value="Fingerprint: @Model.Settings.GPGKey?.Fingerprint" />
-							<button type="button" class="btn btn-outline-danger ms-2" onclick="showResetKeyForm();">
-								Replace
-							</button>
-						</div>
+            <div class="form-group">
+                <label asp-for="Settings.GPGKey!.PublicKey" class="form-label">GPG Public Key</label>
+                @if (hasKey && (!expiryDate.HasValue || !isExpired))
+                {
+                    <span class="badge bg-success ms-2">Confirmed</span>
+                }
+                @if (isExpired)
+                {
+                    <div class="alert alert-danger mt-2">Your GPG key expired on @expiryDate?.ToString("yyyy-MM-dd")</div>
+                }
+                else if (isExpiringSoon)
+                {
+                    <div class="alert alert-warning mt-2">Your GPG key will expire on @expiryDate?.ToString("yyyy-MM-dd")</div>
+                }
+                <div>
+                    @if (!string.IsNullOrEmpty(Model.Settings.GPGKey?.Fingerprint))
+                    {
+                        <div id="existing-key-section" class="d-flex align-items-center">
+                            <input class="form-control" readonly value="Fingerprint: @Model.Settings.GPGKey?.Fingerprint" />
+                            <button type="button" class="btn btn-outline-danger ms-2" onclick="showResetKeyForm();">
+                                Replace
+                            </button>
+                        </div>
 
-						<div id="reset-key-section" class="mt-3" style="display:none;">
+                        <div id="reset-key-section" class="mt-3" style="display:none;">
 							<textarea asp-for="Settings.GPGKey!.PublicKey" class="form-control" rows="8"
-									  placeholder="Paste your armored GPG public key here..."></textarea>
-							<span asp-validation-for="Settings.GPGKey!.PublicKey" class="text-danger"></span>
-						</div>
-					}
-					else
-					{
-						<textarea asp-for="Settings.GPGKey!.PublicKey" class="form-control" rows="8" placeholder="Paste your armored GPG public key here..."></textarea>
-						<span asp-validation-for="Settings.GPGKey!.PublicKey" class="text-danger"></span>
-					}
-				</div>
-			</div>
+                                      placeholder="Paste your armored GPG public key here..."></textarea>
+                            <span asp-validation-for="Settings.GPGKey!.PublicKey" class="text-danger"></span>
+                        </div>
+                    }
+                    else
+                    {
+                        <textarea asp-for="Settings.GPGKey!.PublicKey" class="form-control" rows="8"
+                                  placeholder="Paste your armored GPG public key here..."></textarea>
+                        <span asp-validation-for="Settings.GPGKey!.PublicKey" class="text-danger"></span>
+                    }
+                </div>
+            </div>
 
             <div class="form-group mt-4">
                 <input type="submit" class="btn btn-primary" id="Save" value="Save" />
@@ -175,19 +176,19 @@
             $status.innerHTML = `<div class="alert ${cls} py-2 my-2">${msg}</div>`;
         }
 
-        async function getNip07Payload(){
-            const r = await fetch('/account/nostr/nip07-payload', { method: 'GET' });
-            if(!r.ok) throw new Error(await r.text());
+        async function getNip07Payload() {
+            const r = await fetch('/account/nostr/nip07-payload', {method: 'GET'});
+            if (!r.ok) throw new Error(await r.text());
             return r.json();
         }
 
-        async function verifyWithNip07(challengeToken, ev){
+        async function verifyWithNip07(challengeToken, ev) {
             const r = await fetch('/account/nostr/verify-nip07', {
-              method:'POST',
-              headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({ challengeToken, event: ev })
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({challengeToken, event: ev})
             });
-            if(!r.ok) throw new Error(await r.text());
+            if (!r.ok) throw new Error(await r.text());
         }
 
         async function nip07Flow() {
@@ -195,14 +196,14 @@
             const payload = await getNip07Payload();
             const pubkey = await window.nostr.getPublicKey();
             const unsigned = {
-              kind: 1,
-              created_at: Math.floor(Date.now()/1000),
-              content: payload.message,
-              tags: [
-                ["purpose","pluginbuilder-verification"],
-                ["challenge", payload.challengeToken]
-              ],
-              pubkey: pubkey
+                kind: 1,
+                created_at: Math.floor(Date.now() / 1000),
+                content: payload.message,
+                tags: [
+                    ["purpose", "pluginbuilder-verification"],
+                    ["challenge", payload.challengeToken]
+                ],
+                pubkey: pubkey
             };
             const signed = await window.nostr.signEvent(unsigned);
             await verifyWithNip07(payload.challengeToken, signed);
@@ -212,11 +213,11 @@
         $btn?.addEventListener('click', async () => {
             $btn.disabled = true;
             try {
-              await nip07Flow();
+                await nip07Flow();
             } catch (e) {
-              show('Verification failed: ' + (e?.message || e),'alert-danger');
+                show('Verification failed: ' + (e?.message || e), 'alert-danger');
             } finally {
-              $btn.disabled = false;
+                $btn.disabled = false;
             }
         });
     </script>

@@ -180,48 +180,48 @@
                         </div>
                         <div class="small">
                             <div class="d-flex align-items-center mb-1">
-								@if (owner.EmailVerified)
-								{
-									<vc:icon symbol="checkmark" css-class="text-success me-1" />
-									<a href="mailto:@owner.Email" class="text-decoration-none">
-										Email Verified
-									</a>
-								}
-								else
-								{
-									<vc:icon symbol="cross" css-class="text-danger me-1" />
-									<span class="text-muted">Email Not Verified</span>
-								}
+                                @if (owner.EmailVerified)
+                                {
+                                    <vc:icon symbol="checkmark" css-class="text-success me-1" />
+                                    <a href="mailto:@owner.Email" class="text-decoration-none">
+                                        Email Verified
+                                    </a>
+                                }
+                                else
+                                {
+                                    <vc:icon symbol="cross" css-class="text-danger me-1" />
+                                    <span class="text-muted">Email Not Verified</span>
+                                }
                             </div>
 
                             <div class="d-flex align-items-center mb-1">
-								@if (owner.GithubProfile != null)
-								{
-									<vc:icon symbol="checkmark" css-class="text-success me-1" />
-									<a href="@owner.GithubProfile" target="_blank" rel="noopener" class="text-decoration-none">
-										GitHub Verified
-									</a>
-								}
-								else
-								{
-									<vc:icon symbol="cross" css-class="text-danger me-1" />
-									<span class="text-muted">GitHub Not Verified</span>
-								}
+                                @if (owner.GithubProfile != null)
+                                {
+                                    <vc:icon symbol="checkmark" css-class="text-success me-1" />
+                                    <a href="@owner.GithubProfile" target="_blank" rel="noopener" class="text-decoration-none">
+                                        GitHub Verified
+                                    </a>
+                                }
+                                else
+                                {
+                                    <vc:icon symbol="cross" css-class="text-danger me-1" />
+                                    <span class="text-muted">GitHub Not Verified</span>
+                                }
                             </div>
 
                             <div class="d-flex align-items-center">
-								@if (owner.NostrProfile != null)
-								{
-									<vc:icon symbol="checkmark" css-class="text-success me-1" />
-									<a href="@owner.NostrProfile" target="_blank" rel="noopener" class="text-decoration-none">
-										Nostr Verified
-									</a>
-								}
-								else
-								{
-									<vc:icon symbol="cross" css-class="text-danger me-1" />
-									<span class="text-muted">Nostr Not Verified</span>
-								}
+                                @if (owner.NostrProfile != null)
+                                {
+                                    <vc:icon symbol="checkmark" css-class="text-success me-1" />
+                                    <a href="@owner.NostrProfile" target="_blank" rel="noopener" class="text-decoration-none">
+                                        Nostr Verified
+                                    </a>
+                                }
+                                else
+                                {
+                                    <vc:icon symbol="cross" css-class="text-danger me-1" />
+                                    <span class="text-muted">Nostr Not Verified</span>
+                                }
                             </div>
                         </div>
                     </div>
@@ -232,9 +232,9 @@
 </div>
 
 <div class="modal fade" id="approveModal" tabindex="-1" aria-labelledby="approveModalLabel" aria-hidden="true">
-	<div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-			<div class="modal-header border-0">
+            <div class="modal-header border-0">
                 <h5 class="modal-title" id="approveModalLabel">Approve Listing Request</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -244,7 +244,7 @@
                     <p>Are you sure you want to approve this listing request?</p>
                     <p class="mb-0">The plugin <strong>@Model.PluginSlug</strong> will be set to <strong>Listed</strong> visibility.</p>
                 </div>
-				<div class="modal-footer border-0">
+                <div class="modal-footer border-0">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-success">Approve</button>
                 </div>
@@ -254,9 +254,9 @@
 </div>
 
 <div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
-	<div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-			<div class="modal-header border-0">
+            <div class="modal-header border-0">
                 <h5 class="modal-title" id="rejectModalLabel">Reject Listing Request</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -269,7 +269,7 @@
                         <textarea class="form-control" id="rejectionReason" name="rejectionReason" rows="4" required></textarea>
                     </div>
                 </div>
-				<div class="modal-footer border-0">
+                <div class="modal-footer border-0">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-danger">Reject</button>
                 </div>

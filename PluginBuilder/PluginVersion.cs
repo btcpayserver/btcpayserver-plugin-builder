@@ -45,7 +45,7 @@ public class PluginVersion
     {
         return Version;
     }
-    
+
     public bool IsAtLeast(int major, int minor)
     {
         var actualMajor = VersionParts.ElementAtOrDefault(0);

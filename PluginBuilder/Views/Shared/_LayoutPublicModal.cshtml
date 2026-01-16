@@ -1,30 +1,30 @@
 @{
-	Layout = null;
+    Layout = null;
 }
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<title>@ViewData["Title"]</title>
+    <title>@ViewData["Title"]</title>
     <partial name="_CommonHead"></partial>
-    @RenderSection("Meta", required: false)
+    @RenderSection("Meta", false)
     <style>
-		body, section, .content-wrapper {
-			margin: 0;
-			padding: 0;
-		}
+        body, section, .content-wrapper {
+            margin: 0;
+            padding: 0;
+        }
 
-		.account-form {
-			max-width: 35em;
-			margin: 0 auto var(--btcpay-space-xl);
-			padding: 2rem;
-			background: var(--btcpay-bg-tile);
-			border-radius: var(--btcpay-border-radius);
-		}
+        .account-form {
+            max-width: 35em;
+            margin: 0 auto var(--btcpay-space-xl);
+            padding: 2rem;
+            background: var(--btcpay-bg-tile);
+            border-radius: var(--btcpay-border-radius);
+        }
 
-			.account-form h4 {
-				margin-bottom: 1.5rem;
-			}
-	</style>
+        .account-form h4 {
+            margin-bottom: 1.5rem;
+        }
+    </style>
 </head>
 <body class="d-flex flex-column min-vh-100">
 <section class="content-wrapper flex-grow-1">

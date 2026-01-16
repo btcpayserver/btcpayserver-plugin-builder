@@ -25,7 +25,8 @@ public class AccountController(
     public async Task<IActionResult> VerifyEmail()
     {
         var user = await userManager.GetUserAsync(User);
-        if (user == null) throw new Exception("User not found");
+        if (user == null)
+            throw new Exception("User not found");
 
         var emailSettings = await emailService.GetEmailSettingsFromDb();
         var needToVerifyEmail = emailSettings?.PasswordSet == true && !await userManager.IsEmailConfirmedAsync(user);
@@ -74,7 +75,8 @@ public class AccountController(
     [HttpPost("details")]
     public async Task<IActionResult> AccountDetails(AccountDetailsViewModel model)
     {
-        if (!ModelState.IsValid) return View(model);
+        if (!ModelState.IsValid)
+            return View(model);
 
         var user = await userManager.GetUserAsync(User)!;
 
@@ -91,12 +93,14 @@ public class AccountController(
                 TempData[TempDataConstant.WarningMessage] = $"GPG Key is not valid: {message}";
                 return View(model);
             }
+
             accountSettings.GPGKey = keyViewModel;
         }
         else
         {
             accountSettings.GPGKey = null;
         }
+
         await conn.SetAccountDetailSettings(accountSettings, user!.Id);
         TempData[TempDataConstant.SuccessMessage] = "Account details updated successfully";
         return RedirectToAction(nameof(AccountDetails));
@@ -133,6 +137,7 @@ public class AccountController(
                 TempData[TempDataConstant.WarningMessage] = "Unable to verify Github profile. Kindly ensure all data is correct and try again";
                 return View(model);
             }
+
             await using var conn = await connectionFactory.Open();
             var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
             accountSettings.Github = githubUsername;
@@ -177,7 +182,7 @@ public class AccountController(
 
         await using var conn = await connectionFactory.Open();
 
-        var npub =  NostrService.HexPubToNpub(req.Event.Pubkey);
+        var npub = NostrService.HexPubToNpub(req.Event.Pubkey);
         var npubOwnerId = await conn.GetUserIdByNpubAsync(npub);
         if (npubOwnerId is not null && !string.Equals(npubOwnerId, user.Id, StringComparison.Ordinal))
             return BadRequest("npub_already_linked_to_other_account");
@@ -187,7 +192,7 @@ public class AccountController(
         settings.Nostr.Npub = npub;
         settings.Nostr.Proof = req.Event.Id;
 
-        var profile = await nostrService.GetNostrProfileByAuthorHexAsync(req.Event.Pubkey, timeoutPerRelayMs: 6000);
+        var profile = await nostrService.GetNostrProfileByAuthorHexAsync(req.Event.Pubkey);
         if (profile is not null)
             settings.Nostr.Profile = profile;
 
@@ -201,7 +206,7 @@ public class AccountController(
     public async Task<IActionResult> NostrVerifyPublicNote()
     {
         var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
-        var token  = nostrService.GetOrCreateActiveChallenge(user.Id);
+        var token = nostrService.GetOrCreateActiveChallenge(user.Id);
         var message = $"Verifying my {Request.Host.Host} account. Proof: {token}";
         return View(new VerifyNostrManualViewModel { ChallengeToken = token, Message = message });
     }
@@ -209,7 +214,8 @@ public class AccountController(
     [HttpPost("nostr/verify-public-note")]
     public async Task<IActionResult> NostrVerifyPublicNote(VerifyNostrManualViewModel model)
     {
-        if (!ModelState.IsValid) return View(model);
+        if (!ModelState.IsValid)
+            return View(model);
 
         var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
 
@@ -276,7 +282,7 @@ public class AccountController(
 
         await using var conn = await connectionFactory.Open();
 
-        var npub =  NostrService.HexPubToNpub(ev.Pubkey);
+        var npub = NostrService.HexPubToNpub(ev.Pubkey);
         var npubOwnerId = await conn.GetUserIdByNpubAsync(npub);
         if (npubOwnerId is not null && !string.Equals(npubOwnerId, user.Id, StringComparison.Ordinal))
         {
@@ -291,7 +297,7 @@ public class AccountController(
 
         try
         {
-            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(ev.Pubkey, timeoutPerRelayMs: 6000);
+            var profile = await nostrService.GetNostrProfileByAuthorHexAsync(ev.Pubkey);
             if (profile is not null)
                 settings.Nostr.Profile = profile;
         }
@@ -306,5 +312,8 @@ public class AccountController(
         return RedirectToAction(nameof(AccountDetails));
     }
 
-    private static bool ContentHasProof(string? content, string token) => !string.IsNullOrEmpty(content) && content.Contains(token);
+    private static bool ContentHasProof(string? content, string token)
+    {
+        return !string.IsNullOrEmpty(content) && content.Contains(token);
+    }
 }

@@ -11,6 +11,7 @@ public class PluginSettingViewModel
     [MaxLength(200)]
     [Display(Name = "Git repository")]
     public string GitRepository { get; set; } = null!;
+
     [MaxLength(200)]
     [Display(Name = "Git branch or tag")]
     public string GitRef { get; set; } = null!;
@@ -28,11 +29,13 @@ public class PluginSettingViewModel
 
     [Display(Name = "Logo")]
     public IFormFile? Logo { get; set; }
+
     public bool IsPluginPrimaryOwner { get; set; }
 
     [Display(Name = "Plugin Title")]
-    public string PluginTitle { get; set; }
-    public string Description { get; set; }
+    public string PluginTitle { get; set; } = null!;
+
+    public string Description { get; set; } = null!;
 
     [Display(Name = "Require GPG verification for plugin releases")]
     public bool RequireGPGSignatureForRelease { get; set; }

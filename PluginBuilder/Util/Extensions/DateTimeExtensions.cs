@@ -9,8 +9,10 @@ public static class DateTimeExtensions
 
     private static string TimeString(this TimeSpan timeSpan)
     {
-        if (timeSpan.TotalMinutes < 1) return $"{(int)timeSpan.TotalSeconds} second{Plural((int)timeSpan.TotalSeconds)}";
-        if (timeSpan.TotalHours < 1) return $"{(int)timeSpan.TotalMinutes} minute{Plural((int)timeSpan.TotalMinutes)}";
+        if (timeSpan.TotalMinutes < 1)
+            return $"{(int)timeSpan.TotalSeconds} second{Plural((int)timeSpan.TotalSeconds)}";
+        if (timeSpan.TotalHours < 1)
+            return $"{(int)timeSpan.TotalMinutes} minute{Plural((int)timeSpan.TotalMinutes)}";
         return timeSpan.Days < 1
             ? $"{(int)timeSpan.TotalHours} hour{Plural((int)timeSpan.TotalHours)}"
             : $"{(int)timeSpan.TotalDays} day{Plural((int)timeSpan.TotalDays)}";

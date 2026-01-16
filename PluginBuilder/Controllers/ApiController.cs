@@ -78,9 +78,7 @@ public class ApiController(
         {
             filters.Add("(p.visibility = 'listed' OR p.visibility = 'unlisted')");
             if (hasPluginName)
-            {
                 filters.Add("(p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)");
-            }
         }
 
         var whereClause = "WHERE " + string.Join(" AND ", filters);
@@ -110,7 +108,7 @@ public class ApiController(
 
         versions.AddRange(rows.Select(r =>
         {
-            var manifestInfo = JObject.Parse((string)r.manifest_info);
+            var manifestInfo = JObject.Parse(r.manifest_info);
             var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
             return new PublishedVersion
             {
@@ -174,7 +172,7 @@ public class ApiController(
         List<PublishedVersion> versions = new(count);
         versions.AddRange(rows.Select(r =>
         {
-            var manifestInfo = JObject.Parse((string)r.manifest_info);
+            var manifestInfo = JObject.Parse(r.manifest_info);
             var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
             return new PublishedVersion
             {
@@ -365,36 +363,37 @@ public class ApiController(
                       AND p.visibility <> 'hidden'
                     """;
 
-        var rows = await conn.QueryAsync<(string plugin_slug, int[] ver, string identifier, string settings, long id, string manifest_info, string build_info, string fingerprint)>(
-            query,
-            new
-            {
-                btcpayVersion = btcpayVersion?.VersionParts,
-                includePreRelease = includePreRelease.Value,
-                identifiers
-            });
+        var rows = await conn
+            .QueryAsync<(string plugin_slug, int[] ver, string identifier, string settings, long id, string manifest_info, string build_info, string fingerprint
+                )>(
+                query,
+                new
+                {
+                    btcpayVersion = btcpayVersion?.VersionParts,
+                    includePreRelease = includePreRelease.Value,
+                    identifiers
+                });
 
         var updates =
-            (
-                from row in rows
-                let latestVerString = string.Join('.', row.ver)
-
-                let manifestInfo = JObject.Parse((string)row.manifest_info)
-                let settings = SafeJson.Deserialize<PluginSettings>((string?)row.settings)
-                select new PublishedVersion
-                {
-                    PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
-                    Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
-                    ProjectSlug = row.plugin_slug,
-                    Version = latestVerString,
-                    BuildId = row.id,
-                    BuildInfo = JObject.Parse(row.build_info),
-                    ManifestInfo = manifestInfo,
-                    PluginLogo = settings?.Logo,
-                    Documentation = PluginPublicPage(row.plugin_slug),
-                    Fingerprint = row.fingerprint
-                }
-            ).ToList();
+        (
+            from row in rows
+            let latestVerString = string.Join('.', row.ver)
+            let manifestInfo = JObject.Parse(row.manifest_info)
+            let settings = SafeJson.Deserialize<PluginSettings>((string?)row.settings)
+            select new PublishedVersion
+            {
+                PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
+                Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
+                ProjectSlug = row.plugin_slug,
+                Version = latestVerString,
+                BuildId = row.id,
+                BuildInfo = JObject.Parse(row.build_info),
+                ManifestInfo = manifestInfo,
+                PluginLogo = settings?.Logo,
+                Documentation = PluginPublicPage(row.plugin_slug),
+                Fingerprint = row.fingerprint
+            }
+        ).ToList();
 
         return Ok(updates);
     }
@@ -408,5 +407,8 @@ public class ApiController(
         return UnprocessableEntity(new { errors });
     }
 
-    private string PluginPublicPage(string slug) => Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = slug }, protocol: Request.Scheme, host: Request.Host.ToString());
+    private string PluginPublicPage(string slug)
+    {
+        return Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = slug }, Request.Scheme, Request.Host.ToString());
+    }
 }
