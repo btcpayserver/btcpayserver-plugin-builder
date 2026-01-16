@@ -40,7 +40,7 @@ public class ServerTester : IAsyncDisposable
         Logs = logs;
     }
 
-    public int Port { get; set; } = Utils.FreeTcpPort();
+    public int Port { get; private set; }
 
     public string TestFolder { get; }
 
@@ -109,7 +109,7 @@ public class ServerTester : IAsyncDisposable
         {
             ContentRootPath = projectDir,
             WebRootPath = Path.Combine(projectDir, "wwwroot"),
-            Args = [$"--urls=http://127.0.0.1:{Port}"]
+            Args = ["--urls=http://127.0.0.1:0"]
         });
 
         // Inject configuration directly instead of using environment variables to avoid cross-test contamination
@@ -130,6 +130,11 @@ public class ServerTester : IAsyncDisposable
         disposables.Add(webapp);
         await webapp.StartAsync();
         _WebApp = webapp;
+
+        // Extract the actual port Kestrel bound to
+        var address = webapp.Urls.First();
+        Port = new Uri(address).Port;
+        Logs.LogInformation("Server started on port {Port}", Port);
 
         await using var conn = await GetService<DBConnectionFactory>().Open();
         await conn.ReloadTypesAsync();

@@ -47,7 +47,7 @@ public class DashboardController(
         if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
         {
             ModelState.AddModelError(nameof(model.PluginSlug),
-                "Invalid plug slug, it should only contains latin letter in lowercase or numbers or '-' (example: my-awesome-plugin)");
+                "Invalid plugin slug; it should only contain lowercase Latin letters, numbers, or '-' (example: my-awesome-plugin)");
             return View(model);
         }
 

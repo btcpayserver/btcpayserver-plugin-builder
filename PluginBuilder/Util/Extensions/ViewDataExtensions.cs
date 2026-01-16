@@ -57,8 +57,8 @@ public static class ViewDataExtensions
         var activeId = viewData[ACTIVE_ID_KEY];
         var activePage = viewData[ACTIVE_PAGE_KEY]?.ToString();
         var activeCategory = viewData[ACTIVE_CATEGORY_KEY]?.ToString();
-        var categoryAndPageMatch = (category == null || activeCategory.Equals(category, StringComparison.InvariantCultureIgnoreCase)) &&
-                                   page.Equals(activePage, StringComparison.InvariantCultureIgnoreCase);
+        var categoryAndPageMatch = (category == null || string.Equals(activeCategory, category, StringComparison.InvariantCultureIgnoreCase)) &&
+                                   string.Equals(page, activePage, StringComparison.InvariantCultureIgnoreCase);
         var idMatch = id == null || activeId == null || id.Equals(activeId);
         return categoryAndPageMatch && idMatch ? ActivePageClass : null;
     }

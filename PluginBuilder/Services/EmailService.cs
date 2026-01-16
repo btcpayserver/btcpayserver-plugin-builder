@@ -112,7 +112,10 @@ BTCPay Server Plugin Builder";
         {
             await DeliverEmail(toList, "New Plugin Request Listing on BTCPay Server Plugin Builder", body);
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to notify admin about new plugin listing request for {PluginSlug}", pluginSlug);
+        }
     }
 
     public async Task ResetPasswordEmail(string email, string passwordResetUrl)

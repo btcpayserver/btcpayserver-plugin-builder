@@ -15,13 +15,13 @@ public static class FileExtensions
 
         if (!file.FileName.IsFileValidImage())
         {
-            error = "Could not complete file upload. File has invalid name";
+            error = "Invalid file type. Only images are allowed";
             return false;
         }
 
         if (!file.FileName.IsValidFileName())
         {
-            error = "Invalid file type. Only images are allowed";
+            error = "Could not complete file upload. File has invalid name";
             return false;
         }
 
