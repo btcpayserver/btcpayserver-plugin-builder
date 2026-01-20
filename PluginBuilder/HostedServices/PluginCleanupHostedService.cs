@@ -3,6 +3,12 @@ using PluginBuilder.Services;
 
 namespace PluginBuilder.HostedServices;
 
+/// <summary>
+/// Background service that identifies and removes "Zombie" plugins.
+/// A Zombie Plugin is defined as a plugin slug that:
+/// 1. Has never had a version published (empty versions table).
+/// 2. Was created more than 6 months ago (stale).
+/// </summary>
 public class PluginCleanupHostedService : BackgroundService
 {
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(24);
@@ -35,6 +41,10 @@ public class PluginCleanupHostedService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Connects to the database and executes the deletion query.
+    /// Safe to run repeatedly; it uses a "NOT EXISTS" check to ensure active plugins are never touched.
+    /// </summary>
     private async Task RunCleanupAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Starting cleanup...");
