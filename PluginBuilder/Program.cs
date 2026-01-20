@@ -172,6 +172,7 @@ public class Program
         services.AddHostedService<DockerStartupHostedService>();
         services.AddHostedService<AzureStartupHostedService>();
         services.AddHostedService<PluginHubHostedService>();
+        services.AddHostedService<PluginCleanupHostedService>();
 
         services.AddSingleton<DBConnectionFactory>();
         services.AddSingleton<BuildService>();
