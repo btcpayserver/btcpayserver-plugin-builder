@@ -230,8 +230,9 @@ public static class NpgsqlConnectionExtensions
 
     public static async Task<bool> NewPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug, string userId)
     {
-        var count = await connection.ExecuteAsync("INSERT INTO plugins (slug) VALUES (@id) ON CONFLICT DO NOTHING;",
-            new { id = pluginSlug.ToString() });
+        var count = await connection.ExecuteAsync(
+            "INSERT INTO plugins (slug, created_at) VALUES (@id, @created_at) ON CONFLICT DO NOTHING;",
+            new { id = pluginSlug.ToString(), created_at = DateTimeOffset.UtcNow });
 
         if (count != 1)
             return false;
