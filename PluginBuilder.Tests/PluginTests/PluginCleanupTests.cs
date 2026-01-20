@@ -38,11 +38,12 @@ public class PluginCleanupTests : UnitTestBase
         await conn.NewPlugin(veteranSlug, userId);
 
         // Add a build to veteran-slug so it has a version
-        await conn.NewBuild(veteranSlug, new PluginBuildParameters(ServerTester.RepoUrl)
+        var buildId = await conn.NewBuild(veteranSlug, new PluginBuildParameters(ServerTester.RepoUrl)
         {
             GitRef = ServerTester.GitRef,
             PluginDirectory = ServerTester.PluginDir
         });
+        await conn.SetVersionBuild(veteranSlug, "1.0.0.0", buildId);
 
         // Backdate zombie-slug and veteran-slug to 8 months ago
         var staleDate = DateTimeOffset.UtcNow.AddMonths(-8);
