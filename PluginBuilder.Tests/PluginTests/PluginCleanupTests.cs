@@ -62,20 +62,22 @@ public class PluginCleanupTests : UnitTestBase
             tester.GetService<DBConnectionFactory>(),
             NullLogger<PluginCleanupHostedService>.Instance);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        try
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await service.StartAsync(cts.Token);
+
+        // Poll until zombie plugin is deleted or timeout
+        string? zombieExists;
+        do
         {
-            await service.StartAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected - the service runs indefinitely until cancelled
-        }
+            await Task.Delay(100, cts.Token);
+            zombieExists = await conn.ExecuteScalarAsync<string?>(
+                "SELECT slug FROM plugins WHERE slug = @Slug",
+                new { Slug = zombieSlug });
+        } while (zombieExists is not null && !cts.Token.IsCancellationRequested);
+
+        await service.StopAsync(CancellationToken.None);
 
         // Assert
-        var zombieExists = await conn.ExecuteScalarAsync<string?>(
-            "SELECT slug FROM plugins WHERE slug = @Slug",
-            new { Slug = zombieSlug });
         var freshExists = await conn.ExecuteScalarAsync<string?>(
             "SELECT slug FROM plugins WHERE slug = @Slug",
             new { Slug = freshSlug });
