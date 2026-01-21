@@ -55,7 +55,7 @@ public class PluginCleanupHostedService : BackgroundService
         var deletedCount = await conn.ExecuteAsync(
             """
             DELETE FROM plugins 
-            WHERE created_at < @Threshold 
+            WHERE added_at < @Threshold 
             AND NOT EXISTS (SELECT 1 FROM versions WHERE plugin_slug = plugins.slug)
             """,
             new { Threshold = threshold });
