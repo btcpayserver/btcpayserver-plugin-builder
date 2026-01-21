@@ -43,7 +43,7 @@ public class PluginCleanupTests : UnitTestBase
             GitRef = ServerTester.GitRef,
             PluginDirectory = ServerTester.PluginDir
         });
-        await conn.SetVersionBuild(veteranSlug, "1.0.0.0", buildId);
+        await conn.SetVersionBuild(new FullBuildId(veteranSlug, buildId), PluginVersion.Parse("1.0.0.0"), null, false);
 
         // Backdate zombie-slug and veteran-slug to 8 months ago
         var staleDate = DateTimeOffset.UtcNow.AddMonths(-8);
