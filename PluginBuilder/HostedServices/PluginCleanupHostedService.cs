@@ -11,7 +11,7 @@ namespace PluginBuilder.HostedServices;
 /// </summary>
 public class PluginCleanupHostedService : BackgroundService
 {
-    private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(24);
+    private static readonly TimeSpan CleanupInterval = TimeSpan.FromDays(7);
 
     private readonly DBConnectionFactory _connectionFactory;
     private readonly ILogger<PluginCleanupHostedService> _logger;
