@@ -1,9 +1,6 @@
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
-using Microsoft.Extensions.Logging.Abstractions;
-using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 using Xunit;
@@ -55,26 +52,13 @@ public class PluginCleanupTests : UnitTestBase
         await conn.UpdateAddedAtAsync(PluginSlug.Parse(freshSlug), recentDate);
 
         // Act
-        var service = new PluginCleanupHostedService(
-            tester.GetService<DBConnectionFactory>(),
-            NullLogger<PluginCleanupHostedService>.Instance);
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await service.StartAsync(cts.Token);
-
-        // Poll until zombie plugin is deleted or timeout
-        string? zombieExists;
-        do
-        {
-            await Task.Delay(100, cts.Token);
-            zombieExists = await conn.ExecuteScalarAsync<string?>(
-                "SELECT slug FROM plugins WHERE slug = @Slug",
-                new { Slug = zombieSlug });
-        } while (zombieExists is not null && !cts.Token.IsCancellationRequested);
-
-        await service.StopAsync(CancellationToken.None);
+        var runner = tester.GetService<PluginCleanupRunner>();
+        var deletedCount = await runner.RunOnceAsync();
 
         // Assert
+        var zombieExists = await conn.ExecuteScalarAsync<string?>(
+            "SELECT slug FROM plugins WHERE slug = @Slug",
+            new { Slug = zombieSlug });
         var freshExists = await conn.ExecuteScalarAsync<string?>(
             "SELECT slug FROM plugins WHERE slug = @Slug",
             new { Slug = freshSlug });
@@ -82,9 +66,9 @@ public class PluginCleanupTests : UnitTestBase
             "SELECT slug FROM plugins WHERE slug = @Slug",
             new { Slug = veteranSlug });
 
+        Assert.Equal(1, deletedCount);
         Assert.Null(zombieExists); // Stale plugin without versions should be deleted
         Assert.Equal(freshSlug, freshExists); // Recent plugin should remain
         Assert.Equal(veteranSlug, veteranExists); // Old plugin with versions should remain
     }
 }
-

@@ -175,6 +175,7 @@ public class Program
         services.AddHostedService<PluginCleanupHostedService>();
 
         services.AddSingleton<DBConnectionFactory>();
+        services.AddScoped<PluginCleanupRunner>();
         services.AddSingleton<BuildService>();
         services.AddSingleton<ProcessRunner>();
         services.AddSingleton<GPGKeyService>();
