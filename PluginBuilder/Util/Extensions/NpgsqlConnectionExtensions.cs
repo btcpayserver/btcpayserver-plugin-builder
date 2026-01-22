@@ -241,13 +241,6 @@ public static class NpgsqlConnectionExtensions
         return true;
     }
 
-    public static Task<int> UpdateAddedAtAsync(this NpgsqlConnection connection, PluginSlug pluginSlug, DateTimeOffset addedAt)
-    {
-        return connection.ExecuteAsync(
-            "UPDATE plugins SET added_at = @addedAt WHERE slug = @slug",
-            new { slug = pluginSlug.ToString(), addedAt });
-    }
-
     public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo,
         PluginManifest? manifestInfo = null)
     {

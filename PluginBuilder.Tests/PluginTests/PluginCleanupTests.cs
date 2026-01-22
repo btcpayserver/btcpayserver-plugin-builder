@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Dapper;
+using Npgsql;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 using Xunit;
@@ -44,12 +45,11 @@ public class PluginCleanupTests : UnitTestBase
 
         // Backdate zombie-slug and veteran-slug to 8 months ago
         var staleDate = DateTimeOffset.UtcNow.AddMonths(-8);
-        await conn.UpdateAddedAtAsync(PluginSlug.Parse(zombieSlug), staleDate);
-        await conn.UpdateAddedAtAsync(PluginSlug.Parse(veteranSlug), staleDate);
+        await UpdateAddedAtAsync(conn, staleDate, zombieSlug, veteranSlug);
 
         // Set fresh-slug to 10 days ago (within threshold)
         var recentDate = DateTimeOffset.UtcNow.AddDays(-10);
-        await conn.UpdateAddedAtAsync(PluginSlug.Parse(freshSlug), recentDate);
+        await UpdateAddedAtAsync(conn, recentDate, freshSlug);
 
         // Act
         var runner = tester.GetService<PluginCleanupRunner>();
@@ -70,5 +70,12 @@ public class PluginCleanupTests : UnitTestBase
         Assert.Null(zombieExists); // Stale plugin without versions should be deleted
         Assert.Equal(freshSlug, freshExists); // Recent plugin should remain
         Assert.Equal(veteranSlug, veteranExists); // Old plugin with versions should remain
+    }
+
+    private static Task<int> UpdateAddedAtAsync(NpgsqlConnection conn, DateTimeOffset date, params string[] slugs)
+    {
+        return conn.ExecuteAsync(
+            "UPDATE plugins SET added_at = @Date WHERE slug = ANY(@Slugs)",
+            new { Date = date, Slugs = slugs });
     }
 }
