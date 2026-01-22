@@ -47,15 +47,12 @@ public class PluginCleanupTests : UnitTestBase
 
         // Backdate zombie-slug and veteran-slug to 8 months ago
         var staleDate = DateTimeOffset.UtcNow.AddMonths(-8);
-        await conn.ExecuteAsync(
-            "UPDATE plugins SET added_at = @StaleDate WHERE slug IN (@Zombie, @Veteran)",
-            new { StaleDate = staleDate, Zombie = zombieSlug, Veteran = veteranSlug });
+        await conn.UpdateAddedAtAsync(PluginSlug.Parse(zombieSlug), staleDate);
+        await conn.UpdateAddedAtAsync(PluginSlug.Parse(veteranSlug), staleDate);
 
         // Set fresh-slug to 10 days ago (within threshold)
         var recentDate = DateTimeOffset.UtcNow.AddDays(-10);
-        await conn.ExecuteAsync(
-            "UPDATE plugins SET added_at = @RecentDate WHERE slug = @Fresh",
-            new { RecentDate = recentDate, Fresh = freshSlug });
+        await conn.UpdateAddedAtAsync(PluginSlug.Parse(freshSlug), recentDate);
 
         // Act
         var service = new PluginCleanupHostedService(
