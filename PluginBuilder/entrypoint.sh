@@ -15,8 +15,17 @@ GIT_COMMIT_DATE=$(git show -s --format=%ci)
 # To UTC
 GIT_COMMIT_DATE=$(date -d "$GIT_COMMIT_DATE" --iso-8601=seconds --utc)
 [[ "$PLUGIN_DIR" ]] && cd "${PLUGIN_DIR}"
-ASSEMBLY_NAME="$(ls *.csproj)"
-# Publish the csproj explicitly to avoid building the solution
+
+shopt -s nullglob
+csprojs=( *.csproj )
+if (( ${#csprojs[@]} != 1 )); then
+    echo "Expected exactly one .csproj for ASSEMBLY_NAME in ${PLUGIN_DIR:-$(pwd)}, found ${#csprojs[@]}: ${csprojs[*]}" >&2
+    exit 1
+fi
+ASSEMBLY_NAME="${csprojs[0]}"
+shopt -u nullglob
+
+# Publish the csproj explicitly to avoid building the solution.
 dotnet publish "${ASSEMBLY_NAME}" -c "${BUILD_CONFIG}" -o "/tmp/publish"
 ASSEMBLY_NAME="${ASSEMBLY_NAME/.csproj/}"
 
