@@ -25,7 +25,7 @@ fi
 ASSEMBLY_NAME="${csprojs[0]}"
 shopt -u nullglob
 
-# Publish the csproj explicitly to avoid building the solution.
+# Publish the csproj explicitly to prevent MSBuild behavior that catches .sln files, and handle retarded project folder structures like https://github.com/btcpay-monero/btcpayserver-monero-plugin/tree/master/Plugins/Monero
 dotnet publish "${ASSEMBLY_NAME}" -c "${BUILD_CONFIG}" -o "/tmp/publish"
 ASSEMBLY_NAME="${ASSEMBLY_NAME/.csproj/}"
 
