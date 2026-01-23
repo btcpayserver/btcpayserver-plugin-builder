@@ -15,9 +15,19 @@ GIT_COMMIT_DATE=$(git show -s --format=%ci)
 # To UTC
 GIT_COMMIT_DATE=$(date -d "$GIT_COMMIT_DATE" --iso-8601=seconds --utc)
 [[ "$PLUGIN_DIR" ]] && cd "${PLUGIN_DIR}"
-ASSEMBLY_NAME="$(ls *.csproj)"
+
+shopt -s nullglob
+csprojs=( *.csproj )
+if (( ${#csprojs[@]} != 1 )); then
+    echo "Expected exactly one .csproj for ASSEMBLY_NAME in ${PLUGIN_DIR:-$(pwd)}, found ${#csprojs[@]}: ${csprojs[*]}" >&2
+    exit 1
+fi
+ASSEMBLY_NAME="${csprojs[0]}"
+shopt -u nullglob
+
+# Publish the csproj explicitly to prevent MSBuild behavior that catches .sln files, and handle retarded project folder structures like https://github.com/btcpay-monero/btcpayserver-monero-plugin/tree/master/Plugins/Monero
+dotnet publish "${ASSEMBLY_NAME}" -c "${BUILD_CONFIG}" -o "/tmp/publish"
 ASSEMBLY_NAME="${ASSEMBLY_NAME/.csproj/}"
-dotnet publish -c "${BUILD_CONFIG}" -o "/tmp/publish"
 
 # PluginPacker crash because of no gpg, but we don't use it anyway...
 /build-tools/PluginPacker/BTCPayServer.PluginPacker "/tmp/publish" "${ASSEMBLY_NAME}" "/tmp/publish-package" || true
@@ -42,11 +52,11 @@ jq --null-input \
 --arg assemblyName "$ASSEMBLY_NAME" \
 '{
 "assemblyName": $assemblyName,
-"gitRepository": $gitRepository, 
+"gitRepository": $gitRepository,
 "gitRef": $gitRef,
 "pluginDir": $pluginDir,
 "buildConfig": $buildConfig,
-"gitCommit": $gitCommit, 
+"gitCommit": $gitCommit,
 "gitCommitDate": $gitCommitDate,
 "buildDate": $buildDate,
 "buildHash": $buildHash
