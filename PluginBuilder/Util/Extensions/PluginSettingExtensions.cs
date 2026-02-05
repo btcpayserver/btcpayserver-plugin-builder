@@ -13,11 +13,11 @@ public static class PluginSettingExtensions
         {
             PluginTitle = viewModel.PluginTitle,
             Description = viewModel.Description,
-            Documentation = viewModel.Documentation,
+            Documentation = viewModel.Documentation ?? string.Empty,
             GitRepository = viewModel.GitRepository,
-            GitRef = viewModel.GitRef,
-            PluginDirectory = viewModel.PluginDirectory,
-            BuildConfig = viewModel.BuildConfig,
+            GitRef = viewModel.GitRef ?? string.Empty,
+            PluginDirectory = viewModel.PluginDirectory ?? string.Empty,
+            BuildConfig = viewModel.BuildConfig ?? string.Empty,
             Logo = viewModel.LogoUrl,
             RequireGPGSignatureForRelease = viewModel.RequireGPGSignatureForRelease
         };
@@ -29,11 +29,11 @@ public static class PluginSettingExtensions
         {
             PluginTitle = settings.PluginTitle,
             Description = settings.Description,
-            Documentation = settings.Documentation,
+            Documentation = settings.Documentation ?? string.Empty,
             GitRepository = settings.GitRepository,
-            GitRef = settings.GitRef,
-            PluginDirectory = settings.PluginDirectory,
-            BuildConfig = settings.BuildConfig,
+            GitRef = settings.GitRef ?? string.Empty,
+            PluginDirectory = settings.PluginDirectory ?? string.Empty,
+            BuildConfig = settings.BuildConfig ?? string.Empty,
             LogoUrl = settings.Logo,
             RequireGPGSignatureForRelease = settings.RequireGPGSignatureForRelease
         };
