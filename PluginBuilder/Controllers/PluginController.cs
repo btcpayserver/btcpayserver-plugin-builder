@@ -116,8 +116,9 @@ public class PluginController(
                 var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(settingViewModel.Logo.FileName)}";
                 settingViewModel.LogoUrl = await azureStorageClient.UploadImageFile(settingViewModel.Logo, uniqueBlobName);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                logger.LogError(ex, "Failed to upload logo for plugin {PluginSlug}", pluginSlug);
                 TempData[TempDataConstant.WarningMessage] = "Could not complete settings upload. An error occurred while uploading logo";
                 return View(settingViewModel);
             }
