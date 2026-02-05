@@ -67,7 +67,7 @@ public class PluginController(
             !Uri.TryCreate(settingViewModel.GitRepository, UriKind.Absolute, out var gitRepoUri) ||
             gitRepoUri.Scheme != Uri.UriSchemeHttps)
         {
-            ModelState.AddModelError(nameof(settingViewModel.GitRepository), "Git repository is required and must be an HTTPS URL");
+            TempData[TempDataConstant.WarningMessage] = "Git repository is required and must be an HTTPS URL";
             return View(settingViewModel);
         }
 
@@ -75,7 +75,7 @@ public class PluginController(
             (!Uri.TryCreate(settingViewModel.Documentation, UriKind.Absolute, out var docUri) ||
              docUri.Scheme != Uri.UriSchemeHttps))
         {
-            ModelState.AddModelError(nameof(settingViewModel.Documentation), "Documentation must be an HTTPS URL");
+            TempData[TempDataConstant.WarningMessage] = "Documentation must be an HTTPS URL";
             return View(settingViewModel);
         }
 
@@ -87,7 +87,7 @@ public class PluginController(
         settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
         if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
         {
-            ModelState.AddModelError(nameof(settingViewModel.PluginTitle), "Plugin title and description are required");
+            TempData[TempDataConstant.WarningMessage] = "Plugin title and description are required";
             return View(settingViewModel);
         }
 
@@ -98,8 +98,7 @@ public class PluginController(
 
             if (!string.Equals(newTitle, currentTitle, StringComparison.OrdinalIgnoreCase) && await conn.IsPluginTitleInUse(newTitle, pluginSlug))
             {
-                ModelState.AddModelError(nameof(settingViewModel.PluginTitle),
-                    "This plugin title is already in use. Please choose a different title.");
+                TempData[TempDataConstant.WarningMessage] = "This plugin title is already in use. Please choose a different title.";
                 return View(settingViewModel);
             }
         }
@@ -108,7 +107,7 @@ public class PluginController(
         {
             if (!settingViewModel.Logo.ValidateUploadedImage(out var errorMessage))
             {
-                ModelState.AddModelError(nameof(settingViewModel.Logo), $"Image upload validation failed: {errorMessage}");
+                TempData[TempDataConstant.WarningMessage] = $"Image upload validation failed: {errorMessage}";
                 return View(settingViewModel);
             }
 
@@ -119,7 +118,7 @@ public class PluginController(
             }
             catch (Exception)
             {
-                ModelState.AddModelError(nameof(settingViewModel.LogoUrl), "Could not complete settings upload. An error occurred while uploading logo");
+                TempData[TempDataConstant.WarningMessage] = "Could not complete settings upload. An error occurred while uploading logo";
                 return View(settingViewModel);
             }
         }
