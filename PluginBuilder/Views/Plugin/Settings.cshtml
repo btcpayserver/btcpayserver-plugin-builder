@@ -19,7 +19,7 @@
 <div class="row">
     <div class="col-xl-8 col-xxl-constrain">
         <form id="plugin-setting-form" asp-action="Settings" enctype="multipart/form-data">
-            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div asp-validation-summary="All" class="text-danger"></div>
 
             <div class="form-group d-flex align-items-center">
                 <input asp-for="RequireGPGSignatureForRelease" type="checkbox" class="btcpay-toggle me-3" disabled="@(!Model.IsPluginPrimaryOwner)" />
@@ -35,31 +35,38 @@
                 <div class="form-group">
                     <label asp-for="PluginTitle" class="form-label" data-required></label>
                     <input asp-for="PluginTitle" class="form-control" placeholder="My Awesome Plugin" required />
+                    <span asp-validation-for="PluginTitle" class="text-danger"></span>
                 </div>
                 <div class="form-group">
                     <label asp-for="Description" class="form-label" data-required></label>
                     <textarea asp-for="Description" class="form-control" rows="5" placeholder="Plugin description..." required></textarea>
+                    <span asp-validation-for="Description" class="text-danger"></span>
                 </div>
             }
             <div class="form-group">
                 <label asp-for="GitRepository" class="form-label" data-required></label>
                 <input asp-for="GitRepository" class="form-control" placeholder="https://github.com/Kukks/btcpayserver" required />
+                <span asp-validation-for="GitRepository" class="text-danger"></span>
             </div>
             <div class="form-group">
                 <label asp-for="Documentation" class="form-label"></label>
                 <input asp-for="Documentation" class="form-control" placeholder="https://docs.btcpayserver.org/PodServer/" />
+                <span asp-validation-for="Documentation" class="text-danger"></span>
             </div>
             <div class="form-group">
                 <label asp-for="GitRef" class="form-label"></label>
                 <input asp-for="GitRef" class="form-control" placeholder="plugins/collection" />
+                <span asp-validation-for="GitRef" class="text-danger"></span>
             </div>
             <div class="form-group">
                 <label asp-for="PluginDirectory" class="form-label"></label>
                 <input asp-for="PluginDirectory" class="form-control" placeholder="Plugins/BTCPayServer.Plugins.RockstarStylist" />
+                <span asp-validation-for="PluginDirectory" class="text-danger"></span>
             </div>
             <div class="form-group">
                 <label asp-for="BuildConfig" class="form-label"></label>
                 <input asp-for="BuildConfig" class="form-control" placeholder="Release" />
+                <span asp-validation-for="BuildConfig" class="text-danger"></span>
             </div>
             <div class="form-group">
                 <div class="d-flex align-items-center justify-content-between gap-2">
@@ -79,6 +86,7 @@
                         <img src="@Model.LogoUrl" alt="Logo" style="height:2.1rem;max-width:10.5rem;" />
                     }
                 </div>
+                <span asp-validation-for="LogoUrl" class="text-danger"></span>
             </div>
         </form>
     </div>
