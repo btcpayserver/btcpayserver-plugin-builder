@@ -3,7 +3,7 @@ namespace PluginBuilder.Util.Extensions;
 public static class FileExtensions
 {
     private const long _maxFileSize = 1024 * 1024;
-    private static readonly string[] _permittedExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+    private static readonly string[] _permittedExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg" };
 
     public static bool ValidateUploadedImage(this IFormFile file, out string error, long maxFileSizeInBytes = 1_000_000)
     {

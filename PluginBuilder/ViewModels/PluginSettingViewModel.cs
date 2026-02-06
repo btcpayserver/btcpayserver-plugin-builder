@@ -6,7 +6,7 @@ public class PluginSettingViewModel
 {
     [MaxLength(200)]
     [Display(Name = "Documentation link")]
-    public string Documentation { get; set; } = null!;
+    public string? Documentation { get; set; }
 
     [MaxLength(200)]
     [Display(Name = "Git repository")]
@@ -14,15 +14,15 @@ public class PluginSettingViewModel
 
     [MaxLength(200)]
     [Display(Name = "Git branch or tag")]
-    public string GitRef { get; set; } = null!;
+    public string? GitRef { get; set; }
 
     [MaxLength(200)]
     [Display(Name = "Directory to the plugin's project")]
-    public string PluginDirectory { get; set; } = null!;
+    public string? PluginDirectory { get; set; }
 
     [MaxLength(200)]
     [Display(Name = "Dotnet build configuration ")]
-    public string BuildConfig { get; set; } = null!;
+    public string? BuildConfig { get; set; }
 
     [Display(Name = "Logo")]
     public string? LogoUrl { get; set; }
