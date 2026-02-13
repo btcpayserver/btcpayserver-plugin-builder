@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Dapper;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
@@ -52,7 +53,8 @@ public class PluginCleanupTests : UnitTestBase
         await UpdateAddedAtAsync(conn, recentDate, freshSlug);
 
         // Act
-        var runner = tester.GetService<PluginCleanupRunner>();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var runner = scope.ServiceProvider.GetRequiredService<PluginCleanupRunner>();
         var deletedCount = await runner.RunOnceAsync();
 
         // Assert
