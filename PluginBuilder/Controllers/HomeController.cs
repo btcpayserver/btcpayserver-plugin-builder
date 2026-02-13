@@ -242,6 +242,7 @@ public class HomeController(
                                p.slug ILIKE @searchPattern
                                OR b.manifest_info->>'Name' ILIKE @searchPattern
                                OR p.settings->>'pluginTitle' ILIKE @searchPattern
+                               OR b.build_info->>'gitRepository' ILIKE @searchPattern
                            ))
                      ORDER BY {OrderByClause()}
                      """;

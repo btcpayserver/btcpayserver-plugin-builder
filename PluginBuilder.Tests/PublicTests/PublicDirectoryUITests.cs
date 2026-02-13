@@ -66,6 +66,14 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
             new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible });
         Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
 
+        // Author search should be visible
+        await tester.GoToUrl("/public/plugins");
+        await tester.Page.Locator("input[name='searchPluginName']").FillAsync("NicolasDorier");
+        await tester.Page.Keyboard.PressAsync("Enter");
+        await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']",
+            new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible });
+        Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
+
         // Hidden shouldn't appear
         await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Hidden);
         await tester.GoToUrl("/public/plugins");
