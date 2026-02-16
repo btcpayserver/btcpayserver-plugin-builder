@@ -1,0 +1,865 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "BTCPay Server Plugin Builder API",
+    "description": "REST API for the BTCPay Server Plugin Builder. Provides endpoints for querying published plugin versions, downloading plugin binaries, checking for updates, and triggering new plugin builds.\n\nThe live server is available at [plugin-builder.btcpayserver.org](https://plugin-builder.btcpayserver.org/).",
+    "version": "1.0.0",
+    "contact": {
+      "name": "BTCPay Server",
+      "url": "https://github.com/btcpayserver/btcpayserver-plugin-builder"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "Plugin Builder API v1"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Server",
+      "description": "Server version information"
+    },
+    {
+      "name": "Plugins",
+      "description": "Plugin querying, downloads, and update checks"
+    },
+    {
+      "name": "Builds",
+      "description": "Plugin build management (requires authentication)"
+    }
+  ],
+  "paths": {
+    "/version": {
+      "get": {
+        "tags": ["Server"],
+        "summary": "Get server version",
+        "description": "Returns the server's assembly version and git commit SHA.",
+        "operationId": "getVersion",
+        "responses": {
+          "200": {
+            "description": "Server version information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "description": "Assembly informational version",
+                      "example": "1.0.0"
+                    },
+                    "commit": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Git commit SHA",
+                      "example": "abc1234def5678"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins": {
+      "get": {
+        "tags": ["Plugins"],
+        "summary": "List published plugins",
+        "description": "Returns published plugin versions, optionally filtered by BTCPay Server version compatibility and plugin name. By default, only the latest version of each listed plugin is returned.",
+        "operationId": "getPlugins",
+        "parameters": [
+          {
+            "name": "btcpayVersion",
+            "in": "query",
+            "description": "Filter by BTCPay Server version compatibility (e.g. `1.12.0`). When set to a version >= 2.1, only `listed` plugins are returned unless `searchPluginName` is also specified.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "1.12.0"
+            }
+          },
+          {
+            "name": "includePreRelease",
+            "in": "query",
+            "description": "Include pre-release versions.",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "includeAllVersions",
+            "in": "query",
+            "description": "When `true`, returns all versions for each plugin instead of only the latest.",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "searchPluginName",
+            "in": "query",
+            "description": "Search by plugin slug or name (case-insensitive partial match).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of published plugin versions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PublishedVersion"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/{identifier}": {
+      "get": {
+        "tags": ["Plugins"],
+        "summary": "Get versions for a specific plugin",
+        "description": "Returns all published versions for a specific plugin, identified by its plugin identifier (e.g. `BTCPayServer.Plugins.LNbank`).",
+        "operationId": "getPluginVersions",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "description": "The plugin identifier (e.g. `BTCPayServer.Plugins.LNbank`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "btcpayVersion",
+            "in": "query",
+            "description": "Filter by BTCPay Server version compatibility.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "1.12.0"
+            }
+          },
+          {
+            "name": "includePreRelease",
+            "in": "query",
+            "description": "Include pre-release versions.",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "includeAllVersions",
+            "in": "query",
+            "description": "When `true`, returns all versions instead of only the latest.",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of published versions for the plugin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PublishedVersion"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/{pluginSlug}/versions/{version}": {
+      "get": {
+        "tags": ["Plugins"],
+        "summary": "Get a specific plugin version",
+        "description": "Returns details for a specific version of a plugin. The `pluginSlug` can be a slug (e.g. `rockstar-stylist`) or a bracketed identifier (e.g. `[BTCPayServer.Plugins.RockstarStylist]`).",
+        "operationId": "getPluginVersion",
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "description": "Plugin slug (e.g. `rockstar-stylist`) or bracketed identifier (e.g. `[BTCPayServer.Plugins.RockstarStylist]`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Plugin version (e.g. `1.0.0.0`).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1.0.0.0"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plugin version details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedVersion"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plugin version not found"
+          }
+        }
+      }
+    },
+    "/plugins/{pluginSlug}/versions/{version}/download": {
+      "get": {
+        "tags": ["Plugins"],
+        "summary": "Download a plugin version",
+        "description": "Redirects to the download URL for the plugin binary. The `pluginSlug` can be a slug or a bracketed identifier.",
+        "operationId": "downloadPluginVersion",
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "description": "Plugin slug or bracketed identifier.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Plugin version.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the plugin binary download URL.",
+            "headers": {
+              "Location": {
+                "description": "URL of the plugin binary",
+                "schema": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plugin version not found"
+          }
+        }
+      }
+    },
+    "/plugins/updates": {
+      "post": {
+        "tags": ["Plugins"],
+        "summary": "Check for plugin updates",
+        "description": "Given a list of installed plugins with their current versions, returns the latest available versions. Useful for BTCPay Server instances to check if updates are available.",
+        "operationId": "checkPluginUpdates",
+        "parameters": [
+          {
+            "name": "btcpayVersion",
+            "in": "query",
+            "description": "The BTCPay Server version to check compatibility against.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includePreRelease",
+            "in": "query",
+            "description": "Include pre-release versions in update results.",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InstalledPluginRequest"
+                }
+              },
+              "example": [
+                {
+                  "identifier": "BTCPayServer.Plugins.LNbank",
+                  "version": "1.5.0"
+                }
+              ]
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Latest available versions for the given plugins",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PublishedVersion"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (e.g. empty plugin list)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/{pluginSlug}/builds": {
+      "post": {
+        "tags": ["Builds"],
+        "summary": "Create a new build",
+        "description": "Triggers a new plugin build. If `gitRepository`, `gitRef`, `pluginDirectory`, or `buildConfig` are not provided, defaults from the plugin's settings are used.",
+        "operationId": "createBuild",
+        "security": [
+          {
+            "Basic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "description": "Plugin slug. You must be an owner of this plugin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBuildRequest"
+              },
+              "example": {
+                "gitRepository": "https://github.com/user/btcpayserver-plugin-example",
+                "gitRef": "v1.0.0",
+                "pluginDirectory": "BTCPayServer.Plugins.Example",
+                "buildConfig": "Release"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Build created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateBuildResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Not an owner of this plugin"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/{pluginSlug}/builds/{buildId}": {
+      "get": {
+        "tags": ["Builds"],
+        "summary": "Get build details",
+        "description": "Returns details for a specific plugin build.",
+        "operationId": "getBuild",
+        "security": [
+          {
+            "Basic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "description": "Plugin slug. You must be an owner of this plugin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buildId",
+            "in": "path",
+            "description": "Build ID.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Build details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildData"
+                },
+                "example": {
+                  "projectSlug": "lnbank",
+                  "buildId": 8,
+                  "buildInfo": {
+                    "gitRepository": "https://github.com/dennisreimann/btcpayserver-plugin-lnbank",
+                    "gitRef": "v1.5.1",
+                    "pluginDir": "BTCPayServer.Plugins.LNbank",
+                    "gitCommit": "4f0548cbc22d5a91493ef9a42db41a066251622a",
+                    "gitCommitDate": "2023-05-18T21:46:37+02:00",
+                    "buildDate": "2023-05-23T18:02:06+02:00",
+                    "buildHash": "c63a96792aafc80bedb067cd554667cfbd235cadb43aeceda39166c8018b6001",
+                    "url": "https://plugin-builder.btcpayserver.org/satoshi/artifacts/lnbank/8/BTCPayServer.Plugins.LNbank.btcpay",
+                    "error": null,
+                    "buildConfig": "Release",
+                    "assemblyName": "BTCPayServer.Plugins.LNbank",
+                    "additionalObjects": null
+                  },
+                  "manifestInfo": {
+                    "identifier": "BTCPayServer.Plugins.LNbank",
+                    "name": "LNbank",
+                    "version": "1.5.1",
+                    "description": "Use the BTCPay Server Lightning node in custodial mode.",
+                    "systemPlugin": false,
+                    "dependencies": [
+                      {
+                        "identifier": "BTCPayServer",
+                        "condition": ">=1.9.0"
+                      }
+                    ]
+                  },
+                  "createdDate": "2023-05-23T16:01:26.949327+00:00",
+                  "downloadLink": "https://plugin-builder.btcpayserver.org/satoshi/artifacts/lnbank/8/BTCPayServer.Plugins.LNbank.btcpay",
+                  "published": true,
+                  "prerelease": false,
+                  "commit": "4f0548cb",
+                  "repository": "https://github.com/dennisreimann/btcpayserver-plugin-lnbank",
+                  "gitRef": "v1.5.1"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Not an owner of this plugin"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "Basic": {
+        "type": "http",
+        "scheme": "basic",
+        "description": "HTTP Basic Authentication using your Plugin Builder login email and password. Format: `Authorization: Basic {base64(email:password)}`."
+      }
+    },
+    "schemas": {
+      "PublishedVersion": {
+        "type": "object",
+        "description": "A published plugin version.",
+        "properties": {
+          "projectSlug": {
+            "type": "string",
+            "description": "Plugin slug.",
+            "example": "lnbank"
+          },
+          "version": {
+            "type": "string",
+            "description": "Plugin version.",
+            "example": "1.5.1"
+          },
+          "buildId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Build ID.",
+            "example": 8
+          },
+          "buildInfo": {
+            "$ref": "#/components/schemas/BuildInfo"
+          },
+          "manifestInfo": {
+            "$ref": "#/components/schemas/PluginManifest"
+          },
+          "pluginLogo": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL of the plugin logo image."
+          },
+          "documentation": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL to the plugin's public page on the Plugin Builder."
+          },
+          "pluginTitle": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display title of the plugin.",
+            "example": "LNbank"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Short description of the plugin."
+          },
+          "fingerprint": {
+            "type": "string",
+            "nullable": true,
+            "description": "GPG fingerprint of the release signature, if signed."
+          }
+        }
+      },
+      "BuildData": {
+        "type": "object",
+        "description": "Details of a plugin build.",
+        "properties": {
+          "projectSlug": {
+            "type": "string",
+            "description": "Plugin slug.",
+            "example": "lnbank"
+          },
+          "buildId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Build ID.",
+            "example": 8
+          },
+          "buildInfo": {
+            "allOf": [
+              { "$ref": "#/components/schemas/BuildInfo" }
+            ],
+            "nullable": true
+          },
+          "manifestInfo": {
+            "allOf": [
+              { "$ref": "#/components/schemas/PluginManifest" }
+            ],
+            "nullable": true
+          },
+          "createdDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the build was created.",
+            "example": "2023-05-23T16:01:26.949327+00:00"
+          },
+          "downloadLink": {
+            "type": "string",
+            "nullable": true,
+            "description": "Direct download URL for the build artifact."
+          },
+          "published": {
+            "type": "boolean",
+            "description": "Whether this build has been published as a release."
+          },
+          "prerelease": {
+            "type": "boolean",
+            "description": "Whether this is a pre-release version."
+          },
+          "commit": {
+            "type": "string",
+            "nullable": true,
+            "description": "Short git commit SHA (first 8 characters).",
+            "example": "4f0548cb"
+          },
+          "repository": {
+            "type": "string",
+            "nullable": true,
+            "description": "Git repository URL."
+          },
+          "gitRef": {
+            "type": "string",
+            "nullable": true,
+            "description": "Git branch or tag used for the build.",
+            "example": "v1.5.1"
+          }
+        }
+      },
+      "BuildInfo": {
+        "type": "object",
+        "description": "Build artifact information.",
+        "properties": {
+          "gitRepository": {
+            "type": "string",
+            "nullable": true,
+            "description": "Source git repository URL."
+          },
+          "gitRef": {
+            "type": "string",
+            "nullable": true,
+            "description": "Git branch or tag."
+          },
+          "pluginDir": {
+            "type": "string",
+            "nullable": true,
+            "description": "Plugin project directory within the repository."
+          },
+          "gitCommit": {
+            "type": "string",
+            "nullable": true,
+            "description": "Full git commit SHA."
+          },
+          "gitCommitDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date of the git commit."
+          },
+          "buildDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date the build was executed."
+          },
+          "buildHash": {
+            "type": "string",
+            "nullable": true,
+            "description": "SHA-256 hash of the build artifact."
+          },
+          "url": {
+            "type": "string",
+            "nullable": true,
+            "description": "Download URL for the build artifact."
+          },
+          "error": {
+            "type": "string",
+            "nullable": true,
+            "description": "Build error message, if the build failed."
+          },
+          "buildConfig": {
+            "type": "string",
+            "nullable": true,
+            "description": "Dotnet build configuration (e.g. `Release`)."
+          },
+          "assemblyName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name of the built assembly."
+          },
+          "additionalObjects": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true,
+            "description": "Additional build metadata."
+          }
+        }
+      },
+      "PluginManifest": {
+        "type": "object",
+        "description": "Plugin manifest from the built assembly.",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "Unique plugin identifier.",
+            "example": "BTCPayServer.Plugins.LNbank"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of the plugin.",
+            "example": "LNbank"
+          },
+          "version": {
+            "type": "string",
+            "description": "Plugin version.",
+            "example": "1.5.1"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Plugin description."
+          },
+          "systemPlugin": {
+            "type": "boolean",
+            "description": "Whether this is a system plugin."
+          },
+          "dependencies": {
+            "type": "array",
+            "description": "Plugin dependencies.",
+            "items": {
+              "$ref": "#/components/schemas/PluginDependency"
+            }
+          }
+        }
+      },
+      "PluginDependency": {
+        "type": "object",
+        "description": "A plugin dependency requirement.",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "Dependency identifier.",
+            "example": "BTCPayServer"
+          },
+          "condition": {
+            "type": "string",
+            "description": "Version condition (e.g. `>=1.9.0`).",
+            "example": ">=1.9.0"
+          }
+        }
+      },
+      "CreateBuildRequest": {
+        "type": "object",
+        "description": "Request to create a new plugin build. If fields are omitted, defaults from the plugin's settings are used.",
+        "properties": {
+          "gitRepository": {
+            "type": "string",
+            "description": "Git repository URL. Required if not set in plugin settings.",
+            "example": "https://github.com/user/btcpayserver-plugin-example"
+          },
+          "gitRef": {
+            "type": "string",
+            "nullable": true,
+            "description": "Git branch or tag (defaults to plugin settings or `master`).",
+            "example": "v1.0.0"
+          },
+          "pluginDirectory": {
+            "type": "string",
+            "nullable": true,
+            "description": "Directory of the plugin project within the repository.",
+            "example": "BTCPayServer.Plugins.Example"
+          },
+          "buildConfig": {
+            "type": "string",
+            "nullable": true,
+            "description": "Dotnet build configuration (defaults to `Release`).",
+            "example": "Release"
+          }
+        }
+      },
+      "CreateBuildResponse": {
+        "type": "object",
+        "description": "Response after successfully creating a build.",
+        "properties": {
+          "pluginSlug": {
+            "type": "string",
+            "description": "Plugin slug.",
+            "example": "my-plugin"
+          },
+          "buildId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "ID of the newly created build.",
+            "example": 12
+          },
+          "buildUrl": {
+            "type": "string",
+            "description": "URL to view the build in the Plugin Builder web UI.",
+            "example": "https://plugin-builder.btcpayserver.org/plugins/my-plugin/builds/12"
+          }
+        }
+      },
+      "InstalledPluginRequest": {
+        "type": "object",
+        "description": "Represents an installed plugin with its current version.",
+        "required": ["identifier", "version"],
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "Plugin identifier.",
+            "example": "BTCPayServer.Plugins.LNbank"
+          },
+          "version": {
+            "type": "string",
+            "description": "Currently installed version.",
+            "example": "1.5.0"
+          }
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "description": "A single validation error.",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The field that caused the error."
+          },
+          "message": {
+            "type": "string",
+            "description": "Error message."
+          }
+        }
+      },
+      "ValidationErrorResponse": {
+        "type": "object",
+        "description": "Validation error response.",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            }
+          }
+        }
+      }
+    }
+  }
+}

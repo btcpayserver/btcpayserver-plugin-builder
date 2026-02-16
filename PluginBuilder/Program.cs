@@ -117,6 +117,7 @@ public class Program
             await next();
         });
 
+        app.UseDefaultFiles();
         app.UseStaticFiles();
         app.UseRouting();
         app.UseAuthentication();
