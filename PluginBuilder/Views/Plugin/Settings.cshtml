@@ -54,6 +54,11 @@
                 <span asp-validation-for="Documentation" class="text-danger"></span>
             </div>
             <div class="form-group">
+                <label asp-for="VideoUrl" class="form-label"></label>
+                <input asp-for="VideoUrl" class="form-control" placeholder="https://www.youtube.com/watch?v=..." />
+                <span asp-validation-for="VideoUrl" class="text-danger"></span>
+            </div>
+            <div class="form-group">
                 <label asp-for="GitRef" class="form-label"></label>
                 <input asp-for="GitRef" class="form-control" placeholder="plugins/collection" />
                 <span asp-validation-for="GitRef" class="text-danger"></span>

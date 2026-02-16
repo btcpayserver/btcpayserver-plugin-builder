@@ -79,6 +79,21 @@ public class PluginController(
             return View(settingViewModel);
         }
 
+        if (!string.IsNullOrEmpty(settingViewModel.VideoUrl))
+        {
+            if (!Uri.TryCreate(settingViewModel.VideoUrl, UriKind.Absolute, out var videoUri))
+            {
+                ModelState.AddModelError(nameof(settingViewModel.VideoUrl), "Video URL must be a valid URL");
+                return View(settingViewModel);
+            }
+
+            if (!settingViewModel.VideoUrl.IsSupportedVideoUrl())
+            {
+                ModelState.AddModelError(nameof(settingViewModel.VideoUrl), "Video URL must be from a supported platform (YouTube, Vimeo)");
+                return View(settingViewModel);
+            }
+        }
+
         var userId = userManager.GetUserId(User);
         await using var conn = await connectionFactory.Open();
         var existingSetting = await conn.GetSettings(pluginSlug);

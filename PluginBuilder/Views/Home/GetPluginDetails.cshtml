@@ -114,6 +114,25 @@
                             <p>@Model.Plugin.Description</p>
                         </div>
                     </div>
+
+                    @if (!string.IsNullOrWhiteSpace(Model.Plugin.VideoUrl))
+                    {
+                        if (!string.IsNullOrWhiteSpace(Model.Plugin.VideoUrl.GetVideoEmbedUrl()))
+                        {
+                            <div class="card mt-4">
+                                <div class="card-body">
+                                    <h4>Video</h4>
+                                    <div class="ratio ratio-16x9">
+                                        <iframe src="@Model.Plugin.VideoUrl.GetVideoEmbedUrl()"
+                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                allowfullscreen
+                                                loading="lazy"></iframe>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+
                     @if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())
                     {
                         <div class="card mt-4">
