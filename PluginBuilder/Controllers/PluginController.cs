@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
@@ -420,7 +419,7 @@ public class PluginController(
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
 
-                var message = GetManifestHash(NiceJson(manifest_info), true);
+                var message = ManifestHelper.GetManifestHash(ManifestHelper.NiceJson(manifest_info), true);
                 if (string.IsNullOrEmpty(message))
                 {
                     TempData[TempDataConstant.WarningMessage] = "manifest information for plugin not available";
@@ -496,7 +495,7 @@ public class PluginController(
         var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
         var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
         vm.FullBuildId = new FullBuildId(pluginSlug, buildId);
-        vm.ManifestInfo = NiceJson(row.manifest_info, signatureProof?.Fingerprint);
+        vm.ManifestInfo = ManifestHelper.NiceJson(row.manifest_info, signatureProof?.Fingerprint);
         vm.BuildInfo = buildInfo?.ToString(Formatting.Indented);
         vm.DownloadLink = buildInfo?.Url;
         vm.State = row.state;
@@ -509,7 +508,7 @@ public class PluginController(
         vm.DownloadLink = buildInfo?.Url;
         //vm.Error = buildInfo?.Error;
         vm.RequireGPGSignatureForRelease = pluginSetting?.RequireGPGSignatureForRelease ?? false;
-        vm.ManifestInfoSha256Hash = GetManifestHash(NiceJson(row.manifest_info), vm.RequireGPGSignatureForRelease);
+        vm.ManifestInfoSha256Hash = ManifestHelper.GetManifestHash(ManifestHelper.NiceJson(row.manifest_info), vm.RequireGPGSignatureForRelease);
         vm.Published = row.published;
         //var buildId = await conn.NewBuild(pluginSlug);
         //_ = buildService.Build(new FullBuildId(pluginSlug, buildId), model.ToBuildParameter());
@@ -518,27 +517,6 @@ public class PluginController(
         return View(vm);
     }
 
-
-    private string GetManifestHash(string? manifestInfo, bool requiresGPGSignature)
-    {
-        if (!requiresGPGSignature || string.IsNullOrEmpty(manifestInfo))
-            return string.Empty;
-
-        using var sha256 = SHA256.Create();
-        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(manifestInfo));
-        return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-    }
-
-    private string? NiceJson(string? json, string? fingerprint = null)
-    {
-        if (json is null)
-            return null;
-        var data = JObject.Parse(json);
-        data = new JObject(data.Properties().OrderBy(p => p.Name));
-        if (!string.IsNullOrWhiteSpace(fingerprint))
-            data["SignatureFingerprint"] = fingerprint;
-        return data.ToString(Formatting.Indented);
-    }
 
     [HttpGet("")]
     public async Task<IActionResult> Dashboard(
