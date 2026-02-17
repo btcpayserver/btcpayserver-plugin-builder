@@ -56,9 +56,10 @@ public class PublishedPlugin : PublishedVersion
         var contributors = new Dictionary<string, GitHubContributor>(StringComparer.OrdinalIgnoreCase);
         int page = 1;
         const int perPage = 100;
+        const int maxPages = 50;
         try
         {
-            while (true)
+            while (page <= maxPages)
             {
                 var apiPath = $"repos/{repo.Owner}/{repo.RepositoryName}/commits?per_page={perPage}&page={page}{pathQuery}";
                 using var response = await githubClient.GetAsync(apiPath);
