@@ -52,30 +52,51 @@ public class PublishedPlugin : PublishedVersion
         if (repo == null)
             return new List<GitHubContributor>();
 
-        var pathQuery = string.IsNullOrEmpty(pluginDir) ? "" : $"?path={Uri.EscapeDataString(pluginDir)}";
-
-        var apiPath = $"repos/{repo.Owner}/{repo.RepositoryName}/commits{pathQuery}";
+        var pathQuery = string.IsNullOrEmpty(pluginDir) ? "" : $"&path={Uri.EscapeDataString(pluginDir)}";
+        var contributors = new Dictionary<string, GitHubContributor>(StringComparer.OrdinalIgnoreCase);
+        int page = 1;
+        const int perPage = 100;
         try
         {
-            using var response = await githubClient.GetAsync(apiPath);
-            if (!response.IsSuccessStatusCode)
-                return new List<GitHubContributor>();
+            while (true)
+            {
+                var apiPath = $"repos/{repo.Owner}/{repo.RepositoryName}/commits?per_page={perPage}&page={page}{pathQuery}";
+                using var response = await githubClient.GetAsync(apiPath);
+                if (!response.IsSuccessStatusCode)
+                    break;
 
-            var json = await response.Content.ReadAsStringAsync();
-            var commits = JArray.Parse(json);
+                var json = await response.Content.ReadAsStringAsync();
+                var commits = JsonConvert.DeserializeObject<List<GitHubCommit>>(json);
+                if (commits.Count == 0)
+                    break;
 
-            return commits
-                .Select(c => c["author"])
-                .Where(a => a?["login"] != null)
-                .GroupBy(a => a["login"]!.ToString())
-                .Select(g => new GitHubContributor
+                foreach (var commit in commits)
                 {
-                    Login = g.Key,
-                    AvatarUrl = g.First()?["avatar_url"]?.ToString(),
-                    HtmlUrl = g.First()?["html_url"]?.ToString(),
-                    Contributions = g.Count()
-                })
-                .ToList();
+                    var login = commit.Author?.Login;
+                    if (string.IsNullOrEmpty(login))
+                        continue;
+
+                    if (contributors.TryGetValue(login, out var existing))
+                    {
+                        existing.Contributions++;
+                    }
+                    else
+                    {
+                        contributors[login] = new GitHubContributor
+                        {
+                            Login = commit.Author.Login,
+                            AvatarUrl = commit.Author.AvatarUrl,
+                            HtmlUrl = commit.Author.HtmlUrl,
+                            Contributions = 1
+                        };
+                    }
+                }
+                if (commits.Count < perPage)
+                    break;
+
+                page++;
+            }
+            return contributors.Values.OrderByDescending(c => c.Contributions).ToList();
         }
         catch (Exception)
         {
@@ -92,6 +113,12 @@ public class PublishedPlugin : PublishedVersion
             return $"https://github.com/{Owner}/{RepositoryName}/tree/{commit}/{pluginDir}";
         }
     }
+}
+
+public class GitHubCommit
+{
+    [JsonProperty("author")]
+    public GitHubContributor Author { get; set; }
 }
 
 public class GitHubContributor
