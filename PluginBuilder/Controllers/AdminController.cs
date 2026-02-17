@@ -163,6 +163,14 @@ public class AdminController(
                 return View(model);
             }
 
+            if (videoUri.Scheme != Uri.UriSchemeHttps)
+            {
+                ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.VideoUrl)}",
+                    "Video URL must use HTTPS.");
+                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
+                return View(model);
+            }
+
             if (!model.PluginSettings.VideoUrl.IsSupportedVideoUrl())
             {
                 ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.VideoUrl)}",

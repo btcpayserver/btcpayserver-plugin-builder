@@ -81,9 +81,9 @@ public class PluginController(
 
         if (!string.IsNullOrEmpty(settingViewModel.VideoUrl))
         {
-            if (!Uri.TryCreate(settingViewModel.VideoUrl, UriKind.Absolute, out var videoUri))
+            if (!Uri.TryCreate(settingViewModel.VideoUrl, UriKind.Absolute, out var videoUri) || videoUri.Scheme != Uri.UriSchemeHttps)
             {
-                ModelState.AddModelError(nameof(settingViewModel.VideoUrl), "Video URL must be a valid URL");
+                ModelState.AddModelError(nameof(settingViewModel.VideoUrl), "Video URL must be a valid HTTPS URL");
                 return View(settingViewModel);
             }
 
