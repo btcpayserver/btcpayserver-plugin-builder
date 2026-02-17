@@ -46,65 +46,6 @@ public class PublishedPlugin : PublishedVersion
         return new GithubRepository(match.Groups[2].Value, match.Groups[3].Value);
     }
 
-    public async Task<List<GitHubContributor>> GetContributorsAsync(HttpClient githubClient, string pluginDir)
-    {
-        var repo = GetGithubRepository();
-        if (repo == null)
-            return new List<GitHubContributor>();
-
-        var pathQuery = string.IsNullOrEmpty(pluginDir) ? "" : $"&path={Uri.EscapeDataString(pluginDir)}";
-        var contributors = new Dictionary<string, GitHubContributor>(StringComparer.OrdinalIgnoreCase);
-        int page = 1;
-        const int perPage = 100;
-        const int maxPages = 50;
-        try
-        {
-            while (page <= maxPages)
-            {
-                var apiPath = $"repos/{repo.Owner}/{repo.RepositoryName}/commits?per_page={perPage}&page={page}{pathQuery}";
-                using var response = await githubClient.GetAsync(apiPath);
-                if (!response.IsSuccessStatusCode)
-                    break;
-
-                var json = await response.Content.ReadAsStringAsync();
-                var commits = JsonConvert.DeserializeObject<List<GitHubCommit>>(json);
-                if (commits == null || commits.Count == 0)
-                    break;
-
-                foreach (var commit in commits)
-                {
-                    var login = commit.Author?.Login;
-                    if (string.IsNullOrEmpty(login))
-                        continue;
-
-                    if (contributors.TryGetValue(login, out var existing))
-                    {
-                        existing.Contributions++;
-                    }
-                    else
-                    {
-                        contributors[login] = new GitHubContributor
-                        {
-                            Login = commit.Author.Login,
-                            AvatarUrl = commit.Author.AvatarUrl,
-                            HtmlUrl = commit.Author.HtmlUrl,
-                            Contributions = 1
-                        };
-                    }
-                }
-                if (commits.Count < perPage)
-                    break;
-
-                page++;
-            }
-            return contributors.Values.OrderByDescending(c => c.Contributions).ToList();
-        }
-        catch (Exception)
-        {
-            return new List<GitHubContributor>();
-        }
-    }
-
     public record GithubRepository(string Owner, string RepositoryName)
     {
         public string GetSourceUrl(string commit, string pluginDir)

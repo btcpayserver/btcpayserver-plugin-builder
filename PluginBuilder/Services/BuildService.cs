@@ -172,11 +172,24 @@ public class BuildService
 
             await UpdateBuild(fullBuildId, BuildStates.Uploaded, new JObject { ["url"] = url });
             await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
+
+            await SavePluginContributorSnapshot(fullBuildId.PluginSlug, buildParameters);
         }
         finally
         {
             _semaphore.Release();
         }
+    }
+
+    private async Task SavePluginContributorSnapshot(PluginSlug pluginSlug, BuildInfo buildInfo)
+    {
+        try
+        {
+            var githubClient = _httpClientFactory.CreateClient(HttpClientNames.GitHub);
+            var contributors = await GithubService.GetContributorsAsync(githubClient, buildInfo.GitRepository, buildInfo.PluginDir);
+            await GithubService.SaveSnapshotAsync(pluginSlug, contributors);
+        }
+        catch (Exception) { }
     }
 
     private async Task<BuildInfo> GetBuildInfo(FullBuildId fullBuildId)
