@@ -32,7 +32,7 @@ public class DockerStartupHostedService : IHostedService
                 // Somehow we get permission problem when buildkit isn't used
                 ["DOCKER_BUILDKIT"] = "1"
             },
-            Arguments = new[] { "build", "-f", "PluginBuilder.Dockerfile", "-t", "plugin-builder", "." },
+            Arguments = new[] { "build", "--force-rm", "-f", "PluginBuilder.Dockerfile", "-t", "plugin-builder", "." },
             WorkingDirectory = ContentRootPath
         }, cancellationToken);
         if (result != 0)
