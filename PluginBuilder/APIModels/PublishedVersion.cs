@@ -67,7 +67,7 @@ public class PublishedPlugin : PublishedVersion
 
                 var json = await response.Content.ReadAsStringAsync();
                 var commits = JsonConvert.DeserializeObject<List<GitHubCommit>>(json);
-                if (commits.Count == 0)
+                if (commits == null || commits.Count == 0)
                     break;
 
                 foreach (var commit in commits)
