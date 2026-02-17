@@ -46,12 +46,13 @@ public class BuildService
 
     public async Task Build(FullBuildId fullBuildId)
     {
+        BuildInfo buildParameters;
         await _semaphore.WaitAsync();
         try
         {
             using BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory);
             List<string> args = new();
-            var buildParameters = await GetBuildInfo(fullBuildId);
+            buildParameters = await GetBuildInfo(fullBuildId);
             // Create the volumes where the artifacts will be stored
             args.AddRange(new[] { "volume", "create" });
             args.AddRange(new[] { "--label", $"BTCPAY_PLUGIN_BUILD={fullBuildId}" });
@@ -172,13 +173,12 @@ public class BuildService
 
             await UpdateBuild(fullBuildId, BuildStates.Uploaded, new JObject { ["url"] = url });
             await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
-
-            await SavePluginContributorSnapshot(fullBuildId.PluginSlug, buildParameters);
         }
         finally
         {
             _semaphore.Release();
         }
+        await SavePluginContributorSnapshot(fullBuildId.PluginSlug, buildParameters);
     }
 
     private async Task SavePluginContributorSnapshot(PluginSlug pluginSlug, BuildInfo buildInfo)

@@ -82,13 +82,20 @@ public static class GithubService
 
     public static List<GitHubContributor> LoadSnapshot(PluginSlug pluginSlug)
     {
-        var filePath = Path.Combine(Directory.GetCurrentDirectory(), "PluginData", $"{pluginSlug}.json");
-        if (!File.Exists(filePath))
-            return new List<GitHubContributor>();
+        try
+        {
+            var filePath = Path.Combine(Directory.GetCurrentDirectory(), "PluginData", $"{pluginSlug}.json");
+            if (!File.Exists(filePath))
+                return new List<GitHubContributor>();
 
-        var json = File.ReadAllText(filePath);
-        var data = JObject.Parse(json);
-        return data["contributors"]?.ToObject<List<GitHubContributor>>() ?? new List<GitHubContributor>();
+            var json = File.ReadAllText(filePath);
+            var data = JObject.Parse(json);
+            return data["contributors"]?.ToObject<List<GitHubContributor>>() ?? new();
+        }
+        catch (Exception)
+        {
+            return new();
+        }
     }
 
     private static (string Owner, string RepoName)? ParseRepository(string gitRepository)
