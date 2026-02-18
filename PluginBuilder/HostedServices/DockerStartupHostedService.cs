@@ -25,30 +25,34 @@ public class DockerStartupHostedService : IHostedService
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var skipBuildValue = Environment.GetEnvironmentVariable(SkipBuildEnvVar);
-        if (string.Equals(skipBuildValue, "1", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(skipBuildValue, "true", StringComparison.OrdinalIgnoreCase))
+        var skipBuild = string.Equals(skipBuildValue, "1", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(skipBuildValue, "true", StringComparison.OrdinalIgnoreCase);
+
+        if (skipBuild)
         {
             Logger.LogInformation("Skipping docker image build because {SkipBuildEnvVar}=true", SkipBuildEnvVar);
-            return;
+        }
+        else
+        {
+            Logger.LogInformation("Building the PluginBuilder docker image");
+
+            var buildResult = await ProcessRunner.RunAsync(new ProcessSpec
+            {
+                Executable = "docker",
+                EnvironmentVariables =
+                {
+                    // Somehow we get permission problem when buildkit isn't used
+                    ["DOCKER_BUILDKIT"] = "1"
+                },
+                Arguments = new[] { "build", "-f", "PluginBuilder.Dockerfile", "-t", "plugin-builder", "." },
+                WorkingDirectory = ContentRootPath
+            }, cancellationToken);
+            if (buildResult != 0)
+                throw new DockerStartupException("The build of PluginBuilder.Dockerfile failed");
         }
 
-        Logger.LogInformation("Building the PluginBuilder docker image");
-
-        var result = await ProcessRunner.RunAsync(new ProcessSpec
-        {
-            Executable = "docker",
-            EnvironmentVariables =
-            {
-                // Somehow we get permission problem when buildkit isn't used
-                ["DOCKER_BUILDKIT"] = "1"
-            },
-            Arguments = new[] { "build", "-f", "PluginBuilder.Dockerfile", "-t", "plugin-builder", "." },
-            WorkingDirectory = ContentRootPath
-        }, cancellationToken);
-        if (result != 0)
-            throw new DockerStartupException("The build of PluginBuilder.Dockerfile failed");
         OutputCapture output = new();
-        result = await ProcessRunner.RunAsync(
+        var result = await ProcessRunner.RunAsync(
             new ProcessSpec
             {
                 Executable = "docker",
