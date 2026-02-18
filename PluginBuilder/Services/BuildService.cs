@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using System.Xml.Linq;
 using Dapper;
 using Newtonsoft.Json.Linq;
+using PluginBuilder.Configuration;
 using PluginBuilder.DataModels;
 using PluginBuilder.Events;
 using PluginBuilder.JsonConverters;
@@ -16,9 +17,11 @@ public class BuildService
 {
     private static readonly SemaphoreSlim _semaphore = new(5);
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly PluginBuilderOptions _options;
 
     public BuildService(
         ILogger<BuildService> logger,
+        PluginBuilderOptions options,
         ProcessRunner processRunner,
         DBConnectionFactory connectionFactory,
         EventAggregator eventAggregator,
@@ -26,6 +29,7 @@ public class BuildService
         IHttpClientFactory httpClientFactory)
     {
         Logger = logger;
+        _options = options;
         ProcessRunner = processRunner;
         ConnectionFactory = connectionFactory;
         EventAggregator = eventAggregator;
@@ -187,7 +191,7 @@ public class BuildService
         { 
             var githubClient = _httpClientFactory.CreateClient(HttpClientNames.GitHub);
             var contributors = await GithubService.GetContributorsAsync(githubClient, buildInfo.GitRepository, buildInfo.PluginDir);
-            await GithubService.SaveSnapshotAsync(pluginSlug, contributors);
+            await GithubService.SaveSnapshotAsync(_options.PluginDataDir, pluginSlug, contributors);
         }
         catch (Exception) { }
     }

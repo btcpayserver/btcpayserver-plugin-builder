@@ -68,11 +68,12 @@ public static class GithubService
         }
     }
 
-    public static async Task SaveSnapshotAsync(PluginSlug pluginSlug, List<GitHubContributor> contributors)
+    public static async Task SaveSnapshotAsync(string pluginDataDir, PluginSlug pluginSlug, List<GitHubContributor> contributors)
     {
-        var dir = Path.Combine(Directory.GetCurrentDirectory(), "PluginData");
-        Directory.CreateDirectory(dir);
-        var filePath = Path.Combine(dir, $"{pluginSlug}.json");
+        if (!Directory.Exists(pluginDataDir))
+            Directory.CreateDirectory(pluginDataDir);
+
+        var filePath = Path.Combine(pluginDataDir, $"{pluginSlug}.json");
         var data = new JObject
         {
             ["contributors"] = JArray.FromObject(contributors)
@@ -80,11 +81,14 @@ public static class GithubService
         await File.WriteAllTextAsync(filePath, data.ToString(Formatting.Indented));
     }
 
-    public static List<GitHubContributor> LoadSnapshot(PluginSlug pluginSlug)
+    public static List<GitHubContributor> LoadSnapshot(string pluginDataDir, PluginSlug pluginSlug)
     {
+        if (!Directory.Exists(pluginDataDir))
+            Directory.CreateDirectory(pluginDataDir);
+
         try
         {
-            var filePath = Path.Combine(Directory.GetCurrentDirectory(), "PluginData", $"{pluginSlug}.json");
+            var filePath = Path.Combine(pluginDataDir, $"{pluginSlug}.json");
             if (!File.Exists(filePath))
                 return new List<GitHubContributor>();
 
@@ -95,6 +99,7 @@ public static class GithubService
         catch (Exception)
         {
             return new();
+
         }
     }
 

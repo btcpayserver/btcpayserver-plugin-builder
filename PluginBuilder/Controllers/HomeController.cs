@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
+using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
@@ -27,6 +28,7 @@ public class HomeController(
     SignInManager<IdentityUser> signInManager,
     EmailService emailService,
     UserVerifiedLogic userVerifiedLogic,
+    PluginBuilderOptions options,
     ServerEnvironment env,
     NostrService nostrService,
     ILogger<HomeController> logger)
@@ -475,7 +477,7 @@ public class HomeController(
             IsOwner = userId != null && userId == primaryOwnerId,
             PluginVersions = versions.ToList(),
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
-            Contributors = GithubService.LoadSnapshot(pluginSlug),
+            Contributors = GithubService.LoadSnapshot(options.PluginDataDir, pluginSlug),
             RatingFilter = model.RatingFilter,
             OwnerGithubUrl = ownerGithubUrl,
             OwnerNostrUrl = ownerNostrUrl
