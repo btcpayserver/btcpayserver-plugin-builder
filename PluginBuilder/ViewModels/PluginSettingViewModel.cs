@@ -39,4 +39,8 @@ public class PluginSettingViewModel
 
     [Display(Name = "Require GPG verification for plugin releases")]
     public bool RequireGPGSignatureForRelease { get; set; }
+
+    [MaxLength(200)]
+    [Display(Name = "Video URL")]
+    public string? VideoUrl { get; set; }
 }

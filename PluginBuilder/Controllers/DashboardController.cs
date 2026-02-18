@@ -72,6 +72,21 @@ public class DashboardController(
             return View(model);
         }
 
+        if (!string.IsNullOrEmpty(model.VideoUrl))
+        {
+            if (!Uri.TryCreate(model.VideoUrl, UriKind.Absolute, out var videoUri) || videoUri.Scheme != Uri.UriSchemeHttps)
+            {
+                ModelState.AddModelError(nameof(model.VideoUrl), "Video URL must be a valid HTTPS URL.");
+                return View(model);
+            }
+
+            if (!model.VideoUrl.IsSupportedVideoUrl())
+            {
+                ModelState.AddModelError(nameof(model.VideoUrl), "Video URL must be from a supported platform (YouTube, Vimeo).");
+                return View(model);
+            }
+        }
+
         if (!await conn.NewPlugin(pluginSlug, userId))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
@@ -99,7 +114,13 @@ public class DashboardController(
             }
         }
 
-        await conn.SetPluginSettings(pluginSlug, new PluginSettings { Logo = model.LogoUrl, PluginTitle = model.PluginTitle, Description = model.Description });
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings
+        {
+            Logo = model.LogoUrl,
+            PluginTitle = model.PluginTitle,
+            Description = model.Description,
+            VideoUrl = model.VideoUrl
+        });
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }
 }

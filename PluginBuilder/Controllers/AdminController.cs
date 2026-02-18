@@ -153,6 +153,25 @@ public class AdminController(
         var plugin = await conn.GetPluginDetails(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
 
+        if (!string.IsNullOrEmpty(model.PluginSettings.VideoUrl))
+        {
+            if (!Uri.TryCreate(model.PluginSettings.VideoUrl, UriKind.Absolute, out var videoUri) || videoUri.Scheme != Uri.UriSchemeHttps)
+            {
+                ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.VideoUrl)}",
+                    "Video URL must be a valid HTTPS URL.");
+                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
+                return View(model);
+            }
+
+            if (!model.PluginSettings.VideoUrl.IsSupportedVideoUrl())
+            {
+                ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.VideoUrl)}",
+                    "Video URL must be from a supported platform (YouTube, Vimeo).");
+                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
+                return View(model);
+            }
+        }
+
         var newTitle = model.PluginSettings.PluginTitle?.Trim();
         var currentTitle = pluginSettings.PluginTitle?.Trim();
         if (!string.IsNullOrWhiteSpace(newTitle) && !string.Equals(newTitle, currentTitle, StringComparison.OrdinalIgnoreCase))
@@ -177,6 +196,7 @@ public class AdminController(
         pluginSettings.BuildConfig = model.PluginSettings.BuildConfig;
         pluginSettings.Documentation = model.PluginSettings.Documentation;
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
+        pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
         if (model.LogoFile != null)
         {
             if (!model.LogoFile.ValidateUploadedImage(out var errorMessage))
