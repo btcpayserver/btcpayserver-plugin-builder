@@ -184,7 +184,7 @@ public class BuildService
     private async Task SavePluginContributorSnapshot(PluginSlug pluginSlug, BuildInfo buildInfo)
     {
         try
-        {
+        { 
             var githubClient = _httpClientFactory.CreateClient(HttpClientNames.GitHub);
             var contributors = await GithubService.GetContributorsAsync(githubClient, buildInfo.GitRepository, buildInfo.PluginDir);
             await GithubService.SaveSnapshotAsync(pluginSlug, contributors);
