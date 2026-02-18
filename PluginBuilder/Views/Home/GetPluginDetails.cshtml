@@ -115,25 +115,25 @@
                         </div>
                     </div>
 
-                    @if (!string.IsNullOrWhiteSpace(Model.Plugin.VideoUrl))
+                    @{
+                        var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
+                    }
+                    @if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
                     {
-                        if (!string.IsNullOrWhiteSpace(Model.Plugin.VideoUrl.GetVideoEmbedUrl()))
-                        {
-                            <div class="card mt-4">
-                                <div class="card-body">
-                                    <h4 class="mb-3">Video</h4>
-                                    <div class="ratio ratio-16x9 rounded overflow-hidden" style="border-radius: 0.5rem;">
-                                        <!-- default "allow" settings by youtube -->
-                                        <iframe src="@Model.Plugin.VideoUrl.GetVideoEmbedUrl()"
-                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                allowfullscreen
-                                                loading="lazy"
-                                                style="border: none;">
-                                        </iframe>
-                                    </div>
+                        <div class="card mt-4">
+                            <div class="card-body">
+                                <h4 class="mb-3">Video</h4>
+                                <div class="ratio ratio-16x9 rounded overflow-hidden" style="border-radius: 0.5rem;">
+                                    <!-- default "allow" settings by youtube -->
+                                    <iframe src="@videoEmbedUrl"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                            allowfullscreen
+                                            loading="lazy"
+                                            style="border: none;">
+                                    </iframe>
                                 </div>
                             </div>
-                        }
+                        </div>
                     }
 
                     @if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())

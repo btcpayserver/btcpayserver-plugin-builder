@@ -6,6 +6,7 @@ using Dapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright.Xunit;
+using PluginBuilder;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
@@ -50,7 +51,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
         await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
-        await conn.SetPluginSettings(pluginSlug, null, PluginVisibilityEnum.Listed);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Navigate to plugin settings and add YouTube video URL
         await t.GoToUrl($"/plugins/{pluginSlug}/settings");
@@ -81,8 +82,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         Assert.NotNull(iframeSrc);
         Assert.Contains("youtube.com/embed/dQw4w9WgXcQ", iframeSrc);
 
-        // Verify iframe has proper attributes for responsive design
-        await Expect(videoIframe).ToHaveAttributeAsync("width", "100%");
+        // Verify iframe has expected embed attributes
         await Expect(videoIframe).ToHaveAttributeAsync("allowfullscreen", "");
 
         // Verify video container has rounded border styling
@@ -117,7 +117,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
         await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
-        await conn.SetPluginSettings(pluginSlug, null, PluginVisibilityEnum.Listed);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Add initial YouTube URL
         await t.GoToUrl($"/plugins/{pluginSlug}/settings");
@@ -178,11 +178,11 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
         await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
-        await conn.SetPluginSettings(pluginSlug, null, PluginVisibilityEnum.Listed);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Add video URL
         await t.GoToUrl($"/plugins/{pluginSlug}/settings");
-        await t.Page.Locator("input[name='VideoUrl']").FillAsync("https://www.youtube.com/watch?v=test123");
+        await t.Page.Locator("input[name='VideoUrl']").FillAsync("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
         await t.Page.Locator("button[type='submit'][form='plugin-setting-form']").ClickAsync();
         await t.AssertNoError();
 
@@ -227,28 +227,31 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await t.VerifyUserAccounts(user);
 
         var pluginSlug = "video-validation-" + PlaywrightTester.GetRandomUInt256()[..8];
-        await t.GoToUrl("/plugins/create");
-        await t.Page.FillAsync("#PluginSlug", pluginSlug);
-        await t.Page.FillAsync("#PluginTitle", pluginSlug);
-        await t.Page.FillAsync("#Description", "Test");
-        await t.Page.ClickAsync("#Create");
-        await t.AssertNoError();
+        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(
+            await conn.QuerySingleAsync<string>("SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"Email\" = @Email", new { Email = user }),
+            pluginSlug);
+        var manifestInfoJson = await conn.QuerySingleAsync<string>(
+            "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
+            new { PluginSlug = pluginSlug, fullBuildId.BuildId });
+        var manifest = PluginManifest.Parse(manifestInfoJson);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Test invalid URL format
         await t.GoToUrl($"/plugins/{pluginSlug}/settings");
         await t.Page.Locator("input[name='VideoUrl']").FillAsync("not-a-valid-url");
         await t.Page.Locator("button[type='submit'][form='plugin-setting-form']").ClickAsync();
 
-        var errorMessage = t.Page.Locator(".field-validation-error, .validation-summary-errors, .alert-danger");
+        var errorMessage = t.Page.Locator("span[data-valmsg-for='VideoUrl']");
         await Expect(errorMessage).ToBeVisibleAsync();
-        await Expect(errorMessage).ToContainTextAsync(new Regex("valid url", RegexOptions.IgnoreCase));
+        await Expect(errorMessage).ToContainTextAsync("valid HTTPS URL");
 
         // Test unsupported platform (e.g., Dailymotion)
         await t.GoToUrl($"/plugins/{pluginSlug}/settings");
         await t.Page.Locator("input[name='VideoUrl']").FillAsync("https://www.dailymotion.com/video/x8abc123");
         await t.Page.Locator("button[type='submit'][form='plugin-setting-form']").ClickAsync();
 
-        var platformError = t.Page.Locator(".field-validation-error, .validation-summary-errors, .alert-danger");
+        var platformError = t.Page.Locator("span[data-valmsg-for='VideoUrl']");
         await Expect(platformError).ToBeVisibleAsync();
         await Expect(platformError).ToContainTextAsync(new Regex("supported.*platform|youtube|vimeo", RegexOptions.IgnoreCase));
     }
@@ -272,7 +275,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
         await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
-        await conn.SetPluginSettings(pluginSlug, null, PluginVisibilityEnum.Listed);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Create and login as admin
         var adminEmail = await CreateServerAdminAsync(t);
@@ -283,11 +286,11 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await Expect(t.Page).ToHaveURLAsync(new Regex($"/admin/plugins/edit/{Regex.Escape(pluginSlug)}$", RegexOptions.IgnoreCase));
 
         // Add video URL as admin
-        const string youtubeUrl = "https://www.youtube.com/watch?v=admin_test_123";
+        const string youtubeUrl = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
         var videoUrlInput = t.Page.Locator("input[name='PluginSettings.VideoUrl']");
         await Expect(videoUrlInput).ToBeVisibleAsync();
         await videoUrlInput.FillAsync(youtubeUrl);
-        await t.Page.Locator("button[type='submit']").ClickAsync();
+        await t.Page.Locator("input[type='submit'][value='Save Changes']").ClickAsync();
         await t.AssertNoError();
 
         // Verify VideoUrl was saved
@@ -300,6 +303,8 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await t.GoToUrl($"/public/plugins/{pluginSlug}");
         var videoIframe = t.Page.Locator("iframe[src*='youtube.com/embed']");
         await Expect(videoIframe).ToBeVisibleAsync();
+        var iframeSrc = await videoIframe.GetAttributeAsync("src");
+        Assert.Contains("youtube.com/embed/jNQXAC9IVRw", iframeSrc);
     }
 
     [Fact]
@@ -324,14 +329,14 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         // Test different YouTube URL formats
         var testCases = new[]
         {
-            new { Format = "Standard", Url = "https://www.youtube.com/watch?v=abc123xyz", ExpectedVideoId = "abc123xyz" },
-            new { Format = "Short", Url = "https://youtu.be/def456uvw", ExpectedVideoId = "def456uvw" },
-            new { Format = "With timestamp", Url = "https://www.youtube.com/watch?v=ghi789rst&t=30s", ExpectedVideoId = "ghi789rst" }
+            new { Format = "Standard", Url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ExpectedVideoId = "dQw4w9WgXcQ" },
+            new { Format = "Short", Url = "https://youtu.be/jNQXAC9IVRw", ExpectedVideoId = "jNQXAC9IVRw" },
+            new { Format = "With timestamp", Url = "https://www.youtube.com/watch?v=9bZkp7q19f0&t=30s", ExpectedVideoId = "9bZkp7q19f0" }
         };
 
         foreach (var testCase in testCases)
         {
-            var pluginSlug = $"yt-format-{testCase.Format.ToLowerInvariant().Replace(" ", "-")}-{PlaywrightTester.GetRandomUInt256()[..6]}";
+            var pluginSlug = $"ytf-{testCase.Format.ToLowerInvariant().Replace(" ", "-")}-{PlaywrightTester.GetRandomUInt256()[..5]}";
             var fullBuildId = await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
 
             // Release and list
@@ -340,7 +345,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
                 new { PluginSlug = pluginSlug, fullBuildId.BuildId });
             var manifest = PluginManifest.Parse(manifestInfoJson);
             await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
-            await conn.SetPluginSettings(pluginSlug, null, PluginVisibilityEnum.Listed);
+            await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
             // Add video URL
             await t.GoToUrl($"/plugins/{pluginSlug}/settings");
@@ -378,7 +383,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
         await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
-        await conn.SetPluginSettings(pluginSlug, null, PluginVisibilityEnum.Listed);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Navigate to public plugin page
         await t.GoToUrl($"/public/plugins/{pluginSlug}");

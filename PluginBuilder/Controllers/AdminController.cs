@@ -155,18 +155,10 @@ public class AdminController(
 
         if (!string.IsNullOrEmpty(model.PluginSettings.VideoUrl))
         {
-            if (!Uri.TryCreate(model.PluginSettings.VideoUrl, UriKind.Absolute, out var videoUri))
+            if (!Uri.TryCreate(model.PluginSettings.VideoUrl, UriKind.Absolute, out var videoUri) || videoUri.Scheme != Uri.UriSchemeHttps)
             {
                 ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.VideoUrl)}",
-                    "Video URL must be a valid URL.");
-                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
-                return View(model);
-            }
-
-            if (videoUri.Scheme != Uri.UriSchemeHttps)
-            {
-                ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.VideoUrl)}",
-                    "Video URL must use HTTPS.");
+                    "Video URL must be a valid HTTPS URL.");
                 model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
                 return View(model);
             }

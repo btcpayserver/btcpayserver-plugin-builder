@@ -5,15 +5,8 @@ namespace PluginBuilder.Util.Extensions;
 // Extension methods for handling video URLs from various platforms.
 public static partial class VideoUrlExtensions
 {
-    private static readonly string[] SupportedVideoHosts =
-    [
-        "youtube.com",
-        "youtu.be",
-        "vimeo.com"
-    ];
-
     // regex video ID validation
-    [GeneratedRegex(@"^[\w-]{11}$", RegexOptions.Compiled)]
+    [GeneratedRegex(@"^[A-Za-z0-9_-]{11}$", RegexOptions.Compiled)]
     private static partial Regex YoutubeIdRegex();
 
     [GeneratedRegex(@"^\d+$", RegexOptions.Compiled)]

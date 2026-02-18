@@ -74,9 +74,9 @@ public class DashboardController(
 
         if (!string.IsNullOrEmpty(model.VideoUrl))
         {
-            if (!Uri.TryCreate(model.VideoUrl, UriKind.Absolute, out var videoUri))
+            if (!Uri.TryCreate(model.VideoUrl, UriKind.Absolute, out var videoUri) || videoUri.Scheme != Uri.UriSchemeHttps)
             {
-                ModelState.AddModelError(nameof(model.VideoUrl), "Video URL must be a valid URL.");
+                ModelState.AddModelError(nameof(model.VideoUrl), "Video URL must be a valid HTTPS URL.");
                 return View(model);
             }
 
