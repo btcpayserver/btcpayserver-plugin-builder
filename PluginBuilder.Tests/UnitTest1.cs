@@ -24,6 +24,29 @@ public class UnitTest1 : UnitTestBase
         await using var tester = await Start();
     }
 
+    [Fact]
+    public async Task PluginsSearchWithNullByte_DoesNotReturnServerError()
+    {
+        await using var tester = await Start();
+
+        var ownerId = await tester.CreateFakeUserAsync();
+        await tester.CreateAndBuildPluginAsync(ownerId);
+
+        var client = tester.CreateHttpClient();
+        var urls = new[]
+        {
+            "/public/plugins?searchPluginName=%00",
+            "/api/v1/plugins?searchPluginName=%00"
+        };
+
+        foreach (var url in urls)
+        {
+            var response = await client.GetAsync(url);
+            Assert.True(response.IsSuccessStatusCode,
+                $"Expected successful response for {url}, but got {(int)response.StatusCode} ({response.StatusCode}).");
+        }
+    }
+
     [Theory]
     [InlineData("test-6", true)]
     [InlineData("test-6-", false)]
