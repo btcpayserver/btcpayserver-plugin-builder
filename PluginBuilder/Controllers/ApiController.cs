@@ -326,7 +326,7 @@ public class ApiController(
             DownloadLink = buildInfo?.Url,
             Published = row.published,
             Prerelease = row.pre_release,
-            Commit = buildInfo?.GitCommit?[..8],
+            Commit = buildInfo?.GitCommit is { Length: >= 8 } gc ? gc[..8] : buildInfo?.GitCommit,
             Repository = buildInfo?.GitRepository,
             GitRef = buildInfo?.GitRef
         };
@@ -367,7 +367,7 @@ public class ApiController(
                 DownloadLink = buildInfo?.Url,
                 Published = row.published,
                 Prerelease = row.pre_release,
-                Commit = buildInfo?.GitCommit?[..8],
+                Commit = buildInfo?.GitCommit is { Length: >= 8 } gc ? gc[..8] : buildInfo?.GitCommit,
                 Repository = buildInfo?.GitRepository,
                 GitRef = buildInfo?.GitRef
             };
@@ -387,14 +387,20 @@ public class ApiController(
     {
         await using var conn = await connectionFactory.Open();
 
-        var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)?>(
-            "SELECT v.build_id, p.identifier FROM versions v " +
-            "JOIN plugins p ON v.plugin_slug = p.slug " +
+        var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string state)?>(
+            "SELECT v.build_id, b.state FROM versions v " +
+            "JOIN builds b ON v.plugin_slug = b.plugin_slug AND v.build_id = b.id " +
             "WHERE v.plugin_slug=@pluginSlug AND v.ver=@version",
             new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
 
         if (pluginBuild is null)
             return NotFound();
+
+        if (pluginBuild.Value.state is not "uploaded")
+        {
+            ModelState.AddModelError("", $"Build is in '{pluginBuild.Value.state}' state and cannot be released");
+            return ValidationErrorResult(ModelState);
+        }
 
         var hasSignature = !string.IsNullOrEmpty(request?.Signature);
 
@@ -491,12 +497,14 @@ public class ApiController(
         if (buildId is null)
             return NotFound();
 
+        await using var tx = await conn.BeginTransactionAsync();
+        var fullBuildId = new FullBuildId(pluginSlug, buildId.Value);
+        await conn.UpdateBuild(fullBuildId, BuildStates.Removed, null);
         await conn.ExecuteAsync(
             "DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
             new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
+        await tx.CommitAsync();
 
-        var fullBuildId = new FullBuildId(pluginSlug, buildId.Value);
-        await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
 
         return Ok(new { version = version.ToString(), removed = true });
