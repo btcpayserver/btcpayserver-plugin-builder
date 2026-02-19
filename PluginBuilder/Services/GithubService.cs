@@ -67,7 +67,7 @@ public static class GithubService
         }
     }
 
-    public static async Task SaveSnapshotAsync(string pluginDataDir, PluginSlug pluginSlug, List<GitHubContributor> contributors)
+    public static async Task SaveSnapshot(string pluginDataDir, PluginSlug pluginSlug, List<GitHubContributor> contributors)
     {
         if (!Directory.Exists(pluginDataDir))
             Directory.CreateDirectory(pluginDataDir);

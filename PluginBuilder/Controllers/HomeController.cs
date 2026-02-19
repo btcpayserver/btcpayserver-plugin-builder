@@ -472,7 +472,11 @@ public class HomeController(
         var githubClient = httpClientFactory.CreateClient(HttpClientNames.GitHub);
         var pluginContributors = GithubService.LoadSnapshot(options.PluginDataDir, pluginSlug);
         if (pluginContributors.Count == 0)
+        {
             pluginContributors = await GithubService.GetContributorsAsync(githubClient, plugin.gitRepository, plugin.pluginDir);
+            if (pluginContributors.Count > 0)
+                await GithubService.SaveSnapshot(options.PluginDataDir, pluginSlug, pluginContributors);
+        }
 
         var vm = new PluginDetailsViewModel
         {

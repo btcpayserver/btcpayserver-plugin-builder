@@ -191,7 +191,7 @@ public class BuildService
         { 
             var githubClient = _httpClientFactory.CreateClient(HttpClientNames.GitHub);
             var contributors = await GithubService.GetContributorsAsync(githubClient, buildInfo.GitRepository, buildInfo.PluginDir);
-            await GithubService.SaveSnapshotAsync(_options.PluginDataDir, pluginSlug, contributors);
+            await GithubService.SaveSnapshot(_options.PluginDataDir, pluginSlug, contributors);
         }
         catch (Exception) { }
     }
