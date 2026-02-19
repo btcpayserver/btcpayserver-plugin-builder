@@ -19,6 +19,7 @@ public static class PluginSettingExtensions
             PluginDirectory = viewModel.PluginDirectory ?? string.Empty,
             BuildConfig = viewModel.BuildConfig ?? string.Empty,
             Logo = viewModel.LogoUrl,
+            VideoUrl = viewModel.VideoUrl,
             RequireGPGSignatureForRelease = viewModel.RequireGPGSignatureForRelease
         };
     }
@@ -35,6 +36,7 @@ public static class PluginSettingExtensions
             PluginDirectory = settings.PluginDirectory ?? string.Empty,
             BuildConfig = settings.BuildConfig ?? string.Empty,
             LogoUrl = settings.Logo,
+            VideoUrl = settings.VideoUrl,
             RequireGPGSignatureForRelease = settings.RequireGPGSignatureForRelease
         };
     }

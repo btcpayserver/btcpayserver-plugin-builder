@@ -114,6 +114,57 @@
                             <p>@Model.Plugin.Description</p>
                         </div>
                     </div>
+
+                    @{
+                        var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
+                    }
+                    @if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
+                    {
+                        <div class="card mt-4">
+                            <div class="card-body">
+                                <h4 class="mb-3">Video</h4>
+                                <div class="ratio ratio-16x9 rounded overflow-hidden" style="border-radius: 0.5rem;">
+                                    <!-- default "allow" settings by youtube -->
+                                    <iframe src="@videoEmbedUrl"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                            allowfullscreen
+                                            loading="lazy"
+                                            style="border: none;">
+                                    </iframe>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    @if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())
+                    {
+                        <div class="card mt-4">
+                            <div class="card-body">
+                                <h4>Contributors & Developers</h4>
+                                <div class="row">
+                                    @foreach (var user in contributors)
+                                    {
+                                        <div class="col-md-6 d-flex align-items-center mb-3">
+                                            <div class="me-3">
+                                                <img src="@user.AvatarUrl"
+                                                     class="rounded-circle"
+                                                     style="width: 48px; height: 48px;"
+                                                     alt="@user.Login avatar"
+                                                     loading="lazy" />
+                                            </div>
+                                            <div>
+                                                <a href="@user.HtmlUrl"
+                                                   class="text-decoration-none"
+                                                   target="_blank"
+                                                   rel="noopener noreferrer">@user.Login</a>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+
                     <div class="card mt-4" id="reviews">
                         <div class="card-body">
                             <div class="d-flex align-items-center mb-3">
@@ -507,29 +558,6 @@
                             </div>
                         </div>
                     </div>
-
-					@if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())
-					{
-						<div class="card mt-4">
-							<div class="card-body">
-								<h4>Contributors</h4>
-								<div class="row">
-									@foreach (var user in contributors)
-									{
-										<div class="col-md-6 d-flex align-items-center mb-3">
-											<div class="me-3">
-												<img src="@user.AvatarUrl" class="rounded-circle" style="width: 48px; height: 48px;"
-													 alt="@user.Login avatar" loading="lazy" />
-											</div>
-											<div>
-												<a href="@user.HtmlUrl" class="text-decoration-none" target="_blank" rel="noopener noreferrer">@user.Login</a>
-											</div>
-										</div>
-									}
-								</div>
-							</div>
-						</div>
-					}
                 </div>
             </div>
         </div>

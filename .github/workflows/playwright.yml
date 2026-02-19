@@ -55,7 +55,14 @@ jobs:
           COMPOSE_DOCKER_CLI_BUILD: 1
         run: docker compose -f PluginBuilder.Tests/docker-compose.yml up -d --build
 
+      - name: Build plugin-builder image once
+        env:
+          DOCKER_BUILDKIT: 1
+        run: docker build -f PluginBuilder/PluginBuilder.Dockerfile -t plugin-builder PluginBuilder
+
       - name: Run tests
+        env:
+          DOCKER_STARTUP_SKIP_BUILD: "true"
         run: dotnet test PluginBuilder.Tests --verbosity normal
 
       - name: Cleanup Docker

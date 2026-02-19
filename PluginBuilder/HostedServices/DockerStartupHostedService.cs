@@ -9,6 +9,8 @@ public class DockerStartupException : Exception
 
 public class DockerStartupHostedService : IHostedService
 {
+    private const string SkipBuildEnvVar = "DOCKER_STARTUP_SKIP_BUILD";
+
     public DockerStartupHostedService(ILogger<DockerStartupHostedService> logger, IWebHostEnvironment env, ProcessRunner processRunner)
     {
         Logger = logger;
@@ -22,23 +24,35 @@ public class DockerStartupHostedService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        Logger.LogInformation("Building the PluginBuilder docker image");
+        var skipBuildValue = Environment.GetEnvironmentVariable(SkipBuildEnvVar);
+        var skipBuild = string.Equals(skipBuildValue, "1", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(skipBuildValue, "true", StringComparison.OrdinalIgnoreCase);
 
-        var result = await ProcessRunner.RunAsync(new ProcessSpec
+        if (skipBuild)
         {
-            Executable = "docker",
-            EnvironmentVariables =
+            Logger.LogInformation("Skipping docker image build because {SkipBuildEnvVar}=true", SkipBuildEnvVar);
+        }
+        else
+        {
+            Logger.LogInformation("Building the PluginBuilder docker image");
+
+            var buildResult = await ProcessRunner.RunAsync(new ProcessSpec
             {
-                // Somehow we get permission problem when buildkit isn't used
-                ["DOCKER_BUILDKIT"] = "1"
-            },
-            Arguments = new[] { "build", "-f", "PluginBuilder.Dockerfile", "-t", "plugin-builder", "." },
-            WorkingDirectory = ContentRootPath
-        }, cancellationToken);
-        if (result != 0)
-            throw new DockerStartupException("The build of PluginBuilder.Dockerfile failed");
+                Executable = "docker",
+                EnvironmentVariables =
+                {
+                    // Somehow we get permission problem when buildkit isn't used
+                    ["DOCKER_BUILDKIT"] = "1"
+                },
+                Arguments = new[] { "build", "-f", "PluginBuilder.Dockerfile", "-t", "plugin-builder", "." },
+                WorkingDirectory = ContentRootPath
+            }, cancellationToken);
+            if (buildResult != 0)
+                throw new DockerStartupException("The build of PluginBuilder.Dockerfile failed");
+        }
+
         OutputCapture output = new();
-        await ProcessRunner.RunAsync(
+        var result = await ProcessRunner.RunAsync(
             new ProcessSpec
             {
                 Executable = "docker",
@@ -50,13 +64,16 @@ public class DockerStartupHostedService : IHostedService
         if (output.Lines.Any())
         {
             Logger.LogInformation("Cleaning dangling volumes");
-            List<string> args = new();
-            args.Add("volume");
-            args.Add("rm");
-            args.AddRange(output.Lines);
-            await ProcessRunner.RunAsync(new ProcessSpec { Executable = "docker", Arguments = args.ToArray() }, cancellationToken);
-            if (result != 0)
-                throw new DockerStartupException("docker volume rm failed");
+            foreach (var volume in output.Lines)
+            {
+                result = await ProcessRunner.RunAsync(new ProcessSpec
+                {
+                    Executable = "docker",
+                    Arguments = new[] { "volume", "rm", volume }
+                }, cancellationToken);
+                if (result != 0)
+                    Logger.LogWarning("Failed to remove dangling docker volume {Volume}", volume);
+            }
         }
     }
 
