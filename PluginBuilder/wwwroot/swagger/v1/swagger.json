@@ -15,8 +15,12 @@
   },
   "servers": [
     {
+      "url": "https://plugin-builder.btcpayserver.org/api/v1",
+      "description": "Production"
+    },
+    {
       "url": "/api/v1",
-      "description": "Plugin Builder API v1"
+      "description": "Current instance"
     }
   ],
   "tags": [
@@ -396,7 +400,7 @@
           }
         },
         "responses": {
-          "200": {
+          "201": {
             "description": "Build created successfully",
             "content": {
               "application/json": {
@@ -521,7 +525,7 @@
       "Basic": {
         "type": "http",
         "scheme": "basic",
-        "description": "HTTP Basic Authentication using your Plugin Builder login email and password. Format: `Authorization: Basic {base64(email:password)}`."
+        "description": "HTTP Basic Authentication using your Plugin Builder login email and password. Format: `Authorization: Basic {base64(email:password)}`. Requires HTTPS in production."
       }
     },
     "schemas": {
