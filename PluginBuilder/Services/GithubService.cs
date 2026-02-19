@@ -19,10 +19,9 @@ public static class GithubService
         var contributors = new Dictionary<string, GitHubContributor>(StringComparer.OrdinalIgnoreCase);
         int page = 1;
         const int perPage = 100;
-        const int maxPages = 50;
         try
         {
-            while (page <= maxPages)
+            while (true)
             {
                 var apiPath = $"repos/{repo.Value.Owner}/{repo.Value.RepoName}/commits?per_page={perPage}&page={page}{pathQuery}";
                 using var response = await githubClient.GetAsync(apiPath);
@@ -55,7 +54,7 @@ public static class GithubService
                         };
                     }
                 }
-                if (commits.Count < perPage)
+                if (!response.Headers.TryGetValues("Link", out var linkHeaders) || !linkHeaders.Any(l => l.Contains("rel=\"next\"")))
                     break;
 
                 page++;
