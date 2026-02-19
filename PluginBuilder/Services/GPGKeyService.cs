@@ -97,19 +97,26 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
 
     public async Task<SignatureProofResponse> VerifyDetachedSignature(string pluginslug, string userId, byte[] rawSignedBytes, IFormFile? signatureFile)
     {
+        if (signatureFile is not { Length: > 0 })
+            return new SignatureProofResponse(false, "Please upload a valid GPG signature file (.asc or .sig)");
+
+        using var ms = new MemoryStream((int)signatureFile.Length);
+        await signatureFile.CopyToAsync(ms);
+        return await VerifyDetachedSignature(pluginslug, userId, rawSignedBytes, ms.ToArray());
+    }
+
+    public async Task<SignatureProofResponse> VerifyDetachedSignature(string pluginslug, string userId, byte[] rawSignedBytes, byte[] signatureBytes)
+    {
         try
         {
-            if (signatureFile is not { Length: > 0 })
-                return new SignatureProofResponse(false, "Please upload a valid GPG signature file (.asc or .sig)");
+            if (signatureBytes is not { Length: > 0 })
+                return new SignatureProofResponse(false, "Signature data is required");
 
             var publicKey = await GetPluginOwnerPublicKeys(pluginslug, userId);
             if (string.IsNullOrEmpty(publicKey))
-                return new SignatureProofResponse(false, "No public keys found for this user.  Kindly update your account profile with your GPG public key");
+                return new SignatureProofResponse(false, "No public keys found for this user. Kindly update your account profile with your GPG public key");
 
-            using var ms = new MemoryStream((int)signatureFile.Length);
-            await signatureFile.CopyToAsync(ms);
-            var sigBytes = ms.ToArray();
-            var decodedStream = PgpUtilities.GetDecoderStream(new MemoryStream(sigBytes));
+            using var decodedStream = PgpUtilities.GetDecoderStream(new MemoryStream(signatureBytes));
 
             var sigFact = new PgpObjectFactory(decodedStream);
             PgpSignatureList? sigList = null;
@@ -132,14 +139,14 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
             }
 
             if (sigList == null || sigList.Count == 0)
-                return new SignatureProofResponse(false, "No signature found in uploaded file");
+                return new SignatureProofResponse(false, "No signature found in the provided data");
 
             var signature = sigList[0];
             using var pubKeyStream = new MemoryStream(Encoding.ASCII.GetBytes(publicKey));
             var pubBundle = new PgpPublicKeyRingBundle(PgpUtilities.GetDecoderStream(pubKeyStream));
             var signingKey = pubBundle.GetPublicKey(signature.KeyId);
             if (signingKey == null)
-                return new SignatureProofResponse(false, "File was signed with a key not associated with the user's public key");
+                return new SignatureProofResponse(false, "Signature was created with a key not associated with the user's public key");
 
             signature.InitVerify(signingKey);
             signature.Update(rawSignedBytes);
@@ -148,7 +155,7 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
 
             var signatureProof = new SignatureProof
             {
-                Armour = Convert.ToBase64String(sigBytes),
+                Armour = Convert.ToBase64String(signatureBytes),
                 KeyId = signature.KeyId.ToString("X"),
                 Fingerprint = BitConverter.ToString(signingKey.GetFingerprint()).Replace("-", ""),
                 SignedAt = signature.CreationTime,

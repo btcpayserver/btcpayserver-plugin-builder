@@ -7,6 +7,7 @@ public class BuildData
 {
     public string ProjectSlug { get; set; }
     public long BuildId { get; set; }
+    public string State { get; set; }
     public BuildInfo BuildInfo { get; set; }
     public PluginManifest ManifestInfo { get; set; }
     public DateTimeOffset CreatedDate { get; set; }

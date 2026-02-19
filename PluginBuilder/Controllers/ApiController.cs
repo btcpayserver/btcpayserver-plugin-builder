@@ -1,12 +1,15 @@
 using System.Reflection;
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Authentication;
+using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
@@ -20,7 +23,10 @@ namespace PluginBuilder.Controllers;
 [Authorize(Policy = Policies.OwnPlugin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.BasicAuth)]
 public class ApiController(
     DBConnectionFactory connectionFactory,
-    BuildService buildService)
+    BuildService buildService,
+    GPGKeyService gpgKeyService,
+    IOutputCacheStore outputCacheStore,
+    UserManager<IdentityUser> userManager)
     : ControllerBase
 {
     [AllowAnonymous]
@@ -300,8 +306,8 @@ public class ApiController(
     {
         await using var conn = await connectionFactory.Open();
         var row =
-            await conn.QueryFirstOrDefaultAsync<(string manifest_info, string build_info, DateTimeOffset created_at, bool published, bool pre_release)>(
-                "SELECT manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
+            await conn.QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release)>(
+                "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
                 "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                 "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
                 "LIMIT 1",
@@ -313,18 +319,195 @@ public class ApiController(
         {
             BuildId = buildId,
             ProjectSlug = pluginSlug.ToString(),
+            State = row.state,
             ManifestInfo = manifest,
             BuildInfo = buildInfo,
             CreatedDate = row.created_at,
             DownloadLink = buildInfo?.Url,
             Published = row.published,
             Prerelease = row.pre_release,
-            Commit = buildInfo?.GitCommit?[..8],
+            Commit = buildInfo?.GitCommit is { Length: >= 8 } gc ? gc[..8] : buildInfo?.GitCommit,
             Repository = buildInfo?.GitRepository,
             GitRef = buildInfo?.GitRef
         };
 
         return Ok(vm);
+    }
+
+    [HttpGet("plugins/{pluginSlug}/builds")]
+    public async Task<IActionResult> ListBuilds(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug)
+    {
+        await using var conn = await connectionFactory.Open();
+        var rows = await conn
+            .QueryAsync<(long id, string state, string? manifest_info, string? build_info,
+                DateTimeOffset created_at, bool published, bool pre_release)>(
+                "SELECT id, state, manifest_info, build_info, created_at, " +
+                "v.ver IS NOT NULL, v.pre_release " +
+                "FROM builds b " +
+                "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
+                "WHERE b.plugin_slug = @pluginSlug " +
+                "ORDER BY id DESC " +
+                "LIMIT 50",
+                new { pluginSlug = pluginSlug.ToString() });
+
+        var builds = rows.Select(row =>
+        {
+            var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
+            var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
+            return new BuildData
+            {
+                BuildId = row.id,
+                ProjectSlug = pluginSlug.ToString(),
+                State = row.state,
+                ManifestInfo = manifest,
+                BuildInfo = buildInfo,
+                CreatedDate = row.created_at,
+                DownloadLink = buildInfo?.Url,
+                Published = row.published,
+                Prerelease = row.pre_release,
+                Commit = buildInfo?.GitCommit is { Length: >= 8 } gc ? gc[..8] : buildInfo?.GitCommit,
+                Repository = buildInfo?.GitRepository,
+                GitRef = buildInfo?.GitRef
+            };
+        }).ToList();
+
+        return Ok(builds);
+    }
+
+    [HttpPost("plugins/{pluginSlug}/versions/{version}/release")]
+    public async Task<IActionResult> ReleaseVersion(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion version,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)]
+        ReleaseVersionRequest? request = null)
+    {
+        await using var conn = await connectionFactory.Open();
+
+        var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string state)?>(
+            "SELECT v.build_id, b.state FROM versions v " +
+            "JOIN builds b ON v.plugin_slug = b.plugin_slug AND v.build_id = b.id " +
+            "WHERE v.plugin_slug=@pluginSlug AND v.ver=@version",
+            new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
+
+        if (pluginBuild is null)
+            return NotFound();
+
+        if (pluginBuild.Value.state is not "uploaded")
+        {
+            ModelState.AddModelError("", $"Build is in '{pluginBuild.Value.state}' state and cannot be released");
+            return ValidationErrorResult(ModelState);
+        }
+
+        var hasSignature = !string.IsNullOrEmpty(request?.Signature);
+
+        if (hasSignature)
+        {
+            var manifest_info = await conn.QueryFirstOrDefaultAsync<string>(
+                "SELECT manifest_info FROM builds b " +
+                "WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
+                new { pluginSlug = pluginSlug.ToString(), pluginBuild.Value.buildId });
+
+            var niceManifest = ManifestHelper.NiceJson(manifest_info);
+            var manifestHash = ManifestHelper.GetManifestHash(niceManifest, true);
+            if (string.IsNullOrEmpty(manifestHash))
+            {
+                ModelState.AddModelError("", "Manifest information for plugin not available");
+                return ValidationErrorResult(ModelState);
+            }
+
+            byte[] signatureBytes;
+            try
+            {
+                signatureBytes = Convert.FromBase64String(request!.Signature!);
+            }
+            catch (FormatException)
+            {
+                ModelState.AddModelError(nameof(request.Signature), "Signature must be valid base64");
+                return ValidationErrorResult(ModelState);
+            }
+
+            var userId = userManager.GetUserId(User)!;
+            var signatureVerification = await gpgKeyService.VerifyDetachedSignature(
+                pluginSlug.ToString(), userId,
+                Encoding.UTF8.GetBytes(manifestHash), signatureBytes);
+
+            if (!signatureVerification.valid)
+            {
+                ModelState.AddModelError(nameof(request.Signature), signatureVerification.message);
+                return ValidationErrorResult(ModelState);
+            }
+
+            await conn.UpdateVersionReleaseStatus(pluginSlug, "sign_release", version, signatureVerification.proof);
+        }
+        else
+        {
+            var pluginSettings = await conn.GetSettings(pluginSlug);
+            if (pluginSettings?.RequireGPGSignatureForRelease == true)
+            {
+                ModelState.AddModelError("", "A verified GPG signature is required to release this version");
+                return ValidationErrorResult(ModelState);
+            }
+
+            await conn.UpdateVersionReleaseStatus(pluginSlug, "release", version);
+        }
+
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+        return Ok(new { version = version.ToString(), released = true });
+    }
+
+    [HttpPost("plugins/{pluginSlug}/versions/{version}/unrelease")]
+    public async Task<IActionResult> UnreleaseVersion(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion version)
+    {
+        await using var conn = await connectionFactory.Open();
+
+        var exists = await conn.ExecuteScalarAsync<bool>(
+            "SELECT EXISTS(SELECT 1 FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version)",
+            new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
+
+        if (!exists)
+            return NotFound();
+
+        await conn.UpdateVersionReleaseStatus(pluginSlug, "unrelease", version);
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+
+        return Ok(new { version = version.ToString(), released = false });
+    }
+
+    [HttpDelete("plugins/{pluginSlug}/versions/{version}")]
+    public async Task<IActionResult> RemoveVersion(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion version)
+    {
+        await using var conn = await connectionFactory.Open();
+
+        var buildId = await conn.QueryFirstOrDefaultAsync<long?>(
+            "SELECT build_id FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
+            new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
+
+        if (buildId is null)
+            return NotFound();
+
+        await using var tx = await conn.BeginTransactionAsync();
+        var fullBuildId = new FullBuildId(pluginSlug, buildId.Value);
+        await conn.UpdateBuild(fullBuildId, BuildStates.Removed, null);
+        await conn.ExecuteAsync(
+            "DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
+            new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
+        await tx.CommitAsync();
+
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+
+        return Ok(new { version = version.ToString(), removed = true });
     }
 
     [AllowAnonymous]
