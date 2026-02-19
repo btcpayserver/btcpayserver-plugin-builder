@@ -116,7 +116,7 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
             if (string.IsNullOrEmpty(publicKey))
                 return new SignatureProofResponse(false, "No public keys found for this user. Kindly update your account profile with your GPG public key");
 
-            var decodedStream = PgpUtilities.GetDecoderStream(new MemoryStream(signatureBytes));
+            using var decodedStream = PgpUtilities.GetDecoderStream(new MemoryStream(signatureBytes));
 
             var sigFact = new PgpObjectFactory(decodedStream);
             PgpSignatureList? sigList = null;
