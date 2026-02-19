@@ -27,6 +27,6 @@ public class CreatePluginViewModel
     public string LogoUrl { get; set; }
 
     [MaxLength(200)]
-    [Display(Name = "Video URL")]
+    [Display(Name = "Plugin Demo Video URL")]
     public string VideoUrl { get; set; }
 }

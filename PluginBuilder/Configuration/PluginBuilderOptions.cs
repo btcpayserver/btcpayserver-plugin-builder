@@ -8,7 +8,7 @@ public sealed class PluginBuilderOptions
     public string? DebugLogFile { get; init; }
     public LogEventLevel? DebugLogLevel { get; init; }
     public int LogRetainCount { get; init; } = 1;
-
+    public string PluginDataDir => Path.Combine(DataDir, "PluginData");
     public static PluginBuilderOptions ConfigureDataDirAndDebugLog(IConfiguration conf, IHostEnvironment env)
     {
         var dataDir =

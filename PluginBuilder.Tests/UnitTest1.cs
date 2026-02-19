@@ -28,7 +28,7 @@ public class UnitTest1 : UnitTestBase
     [InlineData("test-6", true)]
     [InlineData("test-6-", false)]
     [InlineData("6test-6", false)]
-    [InlineData("-test-6", false)]
+    [InlineData("-test-6", false)] 
     [InlineData("te", false)]
     [InlineData("teqoeteqoeteqoeteqoeteqoeteqoee", false)]
     [InlineData("teqoeteqoeteqoeteqoeteqoet", true)]

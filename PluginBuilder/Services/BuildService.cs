@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using System.Xml.Linq;
 using Dapper;
 using Newtonsoft.Json.Linq;
+using PluginBuilder.Configuration;
 using PluginBuilder.DataModels;
 using PluginBuilder.Events;
 using PluginBuilder.JsonConverters;
@@ -16,9 +17,11 @@ public class BuildService
 {
     private static readonly SemaphoreSlim _semaphore = new(5);
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly PluginBuilderOptions _options;
 
     public BuildService(
         ILogger<BuildService> logger,
+        PluginBuilderOptions options,
         ProcessRunner processRunner,
         DBConnectionFactory connectionFactory,
         EventAggregator eventAggregator,
@@ -26,6 +29,7 @@ public class BuildService
         IHttpClientFactory httpClientFactory)
     {
         Logger = logger;
+        _options = options;
         ProcessRunner = processRunner;
         ConnectionFactory = connectionFactory;
         EventAggregator = eventAggregator;
@@ -46,12 +50,13 @@ public class BuildService
 
     public async Task Build(FullBuildId fullBuildId)
     {
+        BuildInfo buildParameters;
         await _semaphore.WaitAsync();
         try
         {
             using BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory);
             List<string> args = new();
-            var buildParameters = await GetBuildInfo(fullBuildId);
+            buildParameters = await GetBuildInfo(fullBuildId);
             // Create the volumes where the artifacts will be stored
             args.AddRange(new[] { "volume", "create" });
             args.AddRange(new[] { "--label", $"BTCPAY_PLUGIN_BUILD={fullBuildId}" });
@@ -177,6 +182,18 @@ public class BuildService
         {
             _semaphore.Release();
         }
+        await SavePluginContributorSnapshot(fullBuildId.PluginSlug, buildParameters);
+    }
+
+    private async Task SavePluginContributorSnapshot(PluginSlug pluginSlug, BuildInfo buildInfo)
+    {
+        try
+        { 
+            var githubClient = _httpClientFactory.CreateClient(HttpClientNames.GitHub);
+            var contributors = await GithubService.GetContributorsAsync(githubClient, buildInfo.GitRepository, buildInfo.PluginDir);
+            await GithubService.SaveSnapshot(_options.PluginDataDir, pluginSlug, contributors);
+        }
+        catch (Exception) { }
     }
 
     private async Task<BuildInfo> GetBuildInfo(FullBuildId fullBuildId)

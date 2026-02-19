@@ -47,43 +47,6 @@ public class PublishedPlugin : PublishedVersion
         return new GithubRepository(match.Groups[2].Value, match.Groups[3].Value);
     }
 
-    public async Task<List<GitHubContributor>> GetContributorsAsync(HttpClient githubClient, string pluginDir)
-    {
-        var repo = GetGithubRepository();
-        if (repo == null)
-            return new List<GitHubContributor>();
-
-        var pathQuery = string.IsNullOrEmpty(pluginDir) ? "" : $"?path={Uri.EscapeDataString(pluginDir)}";
-
-        var apiPath = $"repos/{repo.Owner}/{repo.RepositoryName}/commits{pathQuery}";
-        try
-        {
-            using var response = await githubClient.GetAsync(apiPath);
-            if (!response.IsSuccessStatusCode)
-                return new List<GitHubContributor>();
-
-            var json = await response.Content.ReadAsStringAsync();
-            var commits = JArray.Parse(json);
-
-            return commits
-                .Select(c => c["author"])
-                .Where(a => a?["login"] != null)
-                .GroupBy(a => a["login"]!.ToString())
-                .Select(g => new GitHubContributor
-                {
-                    Login = g.Key,
-                    AvatarUrl = g.First()?["avatar_url"]?.ToString(),
-                    HtmlUrl = g.First()?["html_url"]?.ToString(),
-                    Contributions = g.Count()
-                })
-                .ToList();
-        }
-        catch (Exception)
-        {
-            return new List<GitHubContributor>();
-        }
-    }
-
     public record GithubRepository(string Owner, string RepositoryName)
     {
         public string GetSourceUrl(string commit, string pluginDir)
@@ -93,6 +56,12 @@ public class PublishedPlugin : PublishedVersion
             return $"https://github.com/{Owner}/{RepositoryName}/tree/{commit}/{pluginDir}";
         }
     }
+}
+
+public class GitHubCommit
+{
+    [JsonProperty("author")]
+    public GitHubContributor Author { get; set; }
 }
 
 public class GitHubContributor

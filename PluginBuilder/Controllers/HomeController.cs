@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
+using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
@@ -24,10 +25,11 @@ namespace PluginBuilder.Controllers;
 public class HomeController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
+    IHttpClientFactory httpClientFactory,
     SignInManager<IdentityUser> signInManager,
     EmailService emailService,
-    IHttpClientFactory httpClientFactory,
     UserVerifiedLogic userVerifiedLogic,
+    PluginBuilderOptions options,
     ServerEnvironment env,
     NostrService nostrService,
     ILogger<HomeController> logger)
@@ -468,6 +470,13 @@ public class HomeController(
             ownerNostrUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(ownerNpub));
 
         var githubClient = httpClientFactory.CreateClient(HttpClientNames.GitHub);
+        var pluginContributors = GithubService.LoadSnapshot(options.PluginDataDir, pluginSlug);
+        if (pluginContributors.Count == 0)
+        {
+            pluginContributors = await GithubService.GetContributorsAsync(githubClient, plugin.gitRepository, plugin.pluginDir);
+            if (pluginContributors.Count > 0)
+                await GithubService.SaveSnapshot(options.PluginDataDir, pluginSlug, pluginContributors);
+        }
 
         var vm = new PluginDetailsViewModel
         {
@@ -479,7 +488,7 @@ public class HomeController(
             IsOwner = userId != null && userId == primaryOwnerId,
             PluginVersions = versions.ToList(),
             ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
-            Contributors = await plugin.GetContributorsAsync(githubClient, plugin.pluginDir),
+            Contributors = pluginContributors,
             RatingFilter = model.RatingFilter,
             OwnerGithubUrl = ownerGithubUrl,
             OwnerNostrUrl = ownerNostrUrl
