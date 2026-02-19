@@ -57,10 +57,7 @@
                         @if (!string.IsNullOrWhiteSpace(owner))
                         {
                             <span class="d-inline-flex align-items-center flex-wrap">
-                                by<a href="@Model.OwnerGithubUrl"
-                                     rel="noreferrer noopener"
-                                     target="_blank"
-                                     class="ms-1">@owner</a>
+                                by<a href="@Model.OwnerGithubUrl" rel="noreferrer noopener" target="_blank" class="ms-1">@owner</a>
 
                                 <span class="d-inline-flex align-items-center gap-2 ms-2 mb-1">
                                     @if (!string.IsNullOrWhiteSpace(Model.OwnerGithubUrl))
@@ -75,7 +72,6 @@
                                             </span>
                                         </a>
                                     }
-
 
                                     @if (!string.IsNullOrWhiteSpace(Model.OwnerNostrUrl))
                                     {
@@ -122,7 +118,7 @@
                     {
                         <div class="card mt-4">
                             <div class="card-body">
-                                <h4 class="mb-3">Video</h4>
+								<h4 class="mb-3">Demo</h4>
                                 <div class="ratio ratio-16x9 rounded overflow-hidden" style="border-radius: 0.5rem;">
                                     <!-- default "allow" settings by youtube -->
                                     <iframe src="@videoEmbedUrl"
@@ -131,35 +127,6 @@
                                             loading="lazy"
                                             style="border: none;">
                                     </iframe>
-                                </div>
-                            </div>
-                        </div>
-                    }
-
-                    @if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())
-                    {
-                        <div class="card mt-4">
-                            <div class="card-body">
-                                <h4>Contributors & Developers</h4>
-                                <div class="row">
-                                    @foreach (var user in contributors)
-                                    {
-                                        <div class="col-md-6 d-flex align-items-center mb-3">
-                                            <div class="me-3">
-                                                <img src="@user.AvatarUrl"
-                                                     class="rounded-circle"
-                                                     style="width: 48px; height: 48px;"
-                                                     alt="@user.Login avatar"
-                                                     loading="lazy" />
-                                            </div>
-                                            <div>
-                                                <a href="@user.HtmlUrl"
-                                                   class="text-decoration-none"
-                                                   target="_blank"
-                                                   rel="noopener noreferrer">@user.Login</a>
-                                            </div>
-                                        </div>
-                                    }
                                 </div>
                             </div>
                         </div>
@@ -558,6 +525,29 @@
                             </div>
                         </div>
                     </div>
+
+					@if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())
+					{
+						<div class="card mt-4">
+							<div class="card-body">
+								<h4>Contributors</h4>
+								<div class="row">
+									@foreach (var user in contributors)
+									{
+										<div class="col-md-6 d-flex align-items-center mb-3">
+											<div class="me-3">
+												<img src="@user.AvatarUrl" class="rounded-circle" style="width: 48px; height: 48px;"
+													 alt="@user.Login avatar" loading="lazy" />
+											</div>
+											<div>
+												<a href="@user.HtmlUrl" class="text-decoration-none" target="_blank" rel="noopener noreferrer">@user.Login</a>
+											</div>
+										</div>
+									}
+								</div>
+							</div>
+						</div>
+					}
                 </div>
             </div>
         </div>
