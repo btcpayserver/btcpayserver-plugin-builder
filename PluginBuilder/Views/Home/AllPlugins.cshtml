@@ -110,20 +110,24 @@
                                                asp-route-pluginSlug="@plugin.ProjectSlug">@plugin.PluginTitle</a>
                                         </h3>
 
-                                        @if (plugin.Description.Length > 300)
-                                        {
-                                            var shortDesc = plugin.Description[..300];
-                                            var lastSpace = shortDesc.LastIndexOf(" ", StringComparison.Ordinal);
-                                            <p style="margin-bottom: 5px;">
-                                                @((lastSpace > 0 ? shortDesc[..lastSpace] : shortDesc) + "...")
-                                            </p>
-                                        }
-                                        else
-                                        {
-                                            <p style="margin-bottom: 5px;">
-                                                @plugin.Description
-                                            </p>
-                                        }
+                                        <p style="margin-bottom: 5px;">
+                                            @{
+                                                var pluginDesc = plugin.Description ?? string.Empty;
+                                                string displayDesc;
+
+                                                if (pluginDesc.Length > 300)
+                                                {
+                                                    var lastSpace = pluginDesc.LastIndexOf(' ', 300);
+                                                    var cutAt = lastSpace > 0 ? lastSpace : 300;
+                                                    displayDesc = string.Concat(pluginDesc.AsSpan(0, cutAt), " ...");
+                                                }
+                                                else
+                                                {
+                                                    displayDesc = pluginDesc;
+                                                }
+                                            }
+                                            @displayDesc
+                                        </p>
 
                                         <div style="font-size: 0.875em; color: #6c757d;">
                                             <div style="margin-bottom: 3px;">
