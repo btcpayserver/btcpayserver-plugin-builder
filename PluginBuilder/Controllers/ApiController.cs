@@ -284,7 +284,7 @@ public class ApiController(
 
         _ = buildService.Build(new FullBuildId(pluginSlug, buildId));
 
-        return Ok(new JObject
+        return CreatedAtAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId }, new JObject
         {
             ["pluginSlug"] = pluginSlug.ToString(),
             ["buildId"] = buildId,
