@@ -111,22 +111,7 @@
                                         </h3>
 
                                         <p style="margin-bottom: 5px;">
-                                            @{
-                                                var pluginDesc = plugin.Description ?? string.Empty;
-                                                string displayDesc;
-
-                                                if (pluginDesc.Length > 300)
-                                                {
-                                                    var lastSpace = pluginDesc.LastIndexOf(' ', 300);
-                                                    var cutAt = lastSpace > 0 ? lastSpace : 300;
-                                                    displayDesc = string.Concat(pluginDesc.AsSpan(0, cutAt), " ...");
-                                                }
-                                                else
-                                                {
-                                                    displayDesc = pluginDesc;
-                                                }
-                                            }
-                                            @displayDesc
+                                            @plugin.Description.Truncate(300)
                                         </p>
 
                                         <div style="font-size: 0.875em; color: #6c757d;">

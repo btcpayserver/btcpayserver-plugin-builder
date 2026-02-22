@@ -60,7 +60,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await tester.Page.WaitForSelectorAsync(".plugin-card");
         var displayedDesc = (await tester.Page.Locator(".plugin-card p").First.InnerTextAsync()).Trim();
         Assert.EndsWith("...", displayedDesc);
-        Assert.True(displayedDesc.Length <= longDescription.Length);
+        Assert.True(displayedDesc.Length <= 304); // 300 truncation limit + 4 characters -> " ..."
         Assert.DoesNotContain(new string('b', 20), displayedDesc, StringComparison.Ordinal);
 
         // Unlisted shouldn't be visible
