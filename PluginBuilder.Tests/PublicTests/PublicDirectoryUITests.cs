@@ -53,6 +53,16 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         var contentListed = await tester.Page.ContentAsync();
         Assert.Contains(slugString, contentListed, StringComparison.OrdinalIgnoreCase);
 
+        // Plugin description with more than 300 characters should be truncated
+        var longDescription = new string('a', 290) + " " + new string('b', 20);
+        await conn.SetPluginSettings(slug, new PluginSettings { Description = longDescription, PluginTitle = "Rockstar Stylist" }, PluginVisibilityEnum.Listed);
+        await tester.GoToUrl("/public/plugins");
+        await tester.Page.WaitForSelectorAsync(".plugin-card");
+        var displayedDesc = (await tester.Page.Locator(".plugin-card p").First.InnerTextAsync()).Trim();
+        Assert.EndsWith("…", displayedDesc);
+        Assert.True(displayedDesc.Length <= 301); // 300 truncation limit + 1 character ellipsis
+        Assert.DoesNotContain(new string('b', 20), displayedDesc, StringComparison.Ordinal);
+
         // Unlisted shouldn't be visible
         await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Unlisted);
         await tester.GoToUrl("/public/plugins");
