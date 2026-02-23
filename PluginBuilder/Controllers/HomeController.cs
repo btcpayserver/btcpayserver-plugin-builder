@@ -208,6 +208,8 @@ public class HomeController(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion? btcpayVersion = null, string? searchPluginName = null, string sort = "smart")
     {
+        searchPluginName = searchPluginName.StripControlCharacters();
+
         await using var conn = await connectionFactory.Open();
 
         var query = $"""
