@@ -8,6 +8,6 @@ public static class StringExtensions
 
         var lastSpace = value.LastIndexOf(' ', maxLength);
         var cutAt = lastSpace > 0 ? lastSpace : maxLength;
-        return string.Concat(value.AsSpan(0, cutAt), " ...");
+        return string.Concat(value.AsSpan(0, cutAt), "…");
     }
 }
