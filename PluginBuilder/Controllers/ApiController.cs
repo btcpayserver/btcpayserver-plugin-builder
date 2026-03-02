@@ -44,6 +44,8 @@ public class ApiController(
         bool? includeAllVersions = null,
         string? searchPluginName = null)
     {
+        searchPluginName = searchPluginName.StripControlCharacters();
+
         includePreRelease ??= false;
         includeAllVersions ??= false;
         var getVersions = includeAllVersions switch
