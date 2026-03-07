@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
@@ -204,6 +205,7 @@ public class HomeController(
 
     [AllowAnonymous]
     [HttpGet("public/plugins")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> AllPlugins(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion? btcpayVersion = null, string? searchPluginName = null, string sort = "smart")
@@ -311,6 +313,7 @@ public class HomeController(
 
     [AllowAnonymous]
     [HttpGet("public/plugins/{pluginSlug}")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> GetPluginDetails(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,

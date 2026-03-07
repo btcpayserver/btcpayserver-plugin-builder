@@ -9,4 +9,6 @@ public static class SettingsKeys
     public const string VerifiedGithub = nameof(VerifiedGithub);
     public const string VerifiedNostr = nameof(VerifiedNostr);
     public const string NostrRelays = nameof(NostrRelays);
+    public const string RateLimitPermitLimit = nameof(RateLimitPermitLimit);
+    public const string RateLimitWindowSeconds = nameof(RateLimitWindowSeconds);
 }

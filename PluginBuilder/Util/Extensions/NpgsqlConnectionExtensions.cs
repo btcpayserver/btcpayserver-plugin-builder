@@ -453,6 +453,14 @@ public static class NpgsqlConnectionExtensions
                 "INSERT INTO settings (key, value) VALUES (@key, @value)",
                 new { key = SettingsKeys.NostrRelays, value = json });
         }
+
+        if (result.All(r => r.key != SettingsKeys.RateLimitPermitLimit))
+            await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.RateLimitPermitLimit, value = "30" });
+
+        if (result.All(r => r.key != SettingsKeys.RateLimitWindowSeconds))
+            await connection.ExecuteAsync("INSERT INTO settings (key, value) VALUES (@key, @value)",
+                new { key = SettingsKeys.RateLimitWindowSeconds, value = "60" });
     }
 
     public static async Task<bool> GetVerifiedEmailForPluginPublishSetting(this NpgsqlConnection connection)
@@ -499,6 +507,18 @@ public static class NpgsqlConnectionExtensions
 
         var relays = JsonConvert.DeserializeObject<string[]?>(raw ?? string.Empty);
         return relays is { Length: > 0 } ? relays : NostrService.DefaultRelays.ToArray();
+    }
+
+    public static async Task<int> GetRateLimitPermitLimitSetting(this NpgsqlConnection connection)
+    {
+        var v = await connection.SettingsGetAsync(SettingsKeys.RateLimitPermitLimit);
+        return int.TryParse(v, out var limit) && limit > 0 ? limit : 30;
+    }
+
+    public static async Task<int> GetRateLimitWindowSecondsSetting(this NpgsqlConnection connection)
+    {
+        var v = await connection.SettingsGetAsync(SettingsKeys.RateLimitWindowSeconds);
+        return int.TryParse(v, out var seconds) && seconds > 0 ? seconds : 60;
     }
 
     #endregion

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.OutputCaching;
+using Microsoft.AspNetCore.RateLimiting;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Authentication;
@@ -37,6 +38,7 @@ public class ApiController(
     [AllowAnonymous]
     [HttpGet("plugins")]
     [OutputCache(PolicyName = "PluginsList")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> Plugins(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion? btcpayVersion = null,
@@ -132,6 +134,7 @@ public class ApiController(
 
     [AllowAnonymous]
     [HttpGet("plugins/{identifier}")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> GetPluginVersionsForDownload(
         string identifier,
         [ModelBinder(typeof(PluginVersionModelBinder))]
@@ -196,6 +199,7 @@ public class ApiController(
 
     [AllowAnonymous]
     [HttpGet("plugins/{pluginSlug}/versions/{version}")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> GetPlugin(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
@@ -237,6 +241,7 @@ public class ApiController(
 
     [AllowAnonymous]
     [HttpGet("plugins/{pluginSlug}/versions/{version}/download")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> Download(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
@@ -331,6 +336,7 @@ public class ApiController(
 
     [AllowAnonymous]
     [HttpPost("plugins/updates")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> GetInstalledPluginsUpdates(
         [FromBody] InstalledPluginRequest[] plugins,
         [ModelBinder(typeof(PluginVersionModelBinder))]
