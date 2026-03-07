@@ -23,6 +23,15 @@ public class ApiController(
     BuildService buildService)
     : ControllerBase
 {
+    private sealed class BuildRow
+    {
+        public string? ManifestInfo { get; init; }
+        public string? BuildInfo { get; init; }
+        public DateTimeOffset CreatedAt { get; init; }
+        public bool Published { get; init; }
+        public bool? PreRelease { get; init; }
+    }
+
     [AllowAnonymous]
     [HttpGet("version")]
     public IActionResult GetVersion()
@@ -302,25 +311,28 @@ public class ApiController(
     {
         await using var conn = await connectionFactory.Open();
         var row =
-            await conn.QueryFirstOrDefaultAsync<(string manifest_info, string build_info, DateTimeOffset created_at, bool published, bool pre_release)>(
-                "SELECT manifest_info, build_info, created_at, v.ver IS NOT NULL, v.pre_release FROM builds b " +
+            await conn.QueryFirstOrDefaultAsync<BuildRow>(
+                "SELECT manifest_info AS ManifestInfo, build_info AS BuildInfo, created_at AS CreatedAt, v.ver IS NOT NULL AS Published, v.pre_release AS PreRelease FROM builds b " +
                 "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                 "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
                 "LIMIT 1",
                 new { pluginSlug = pluginSlug.ToString(), buildId });
 
-        var buildInfo = BuildInfo.Parse(row.build_info);
-        var manifest = PluginManifest.Parse(row.manifest_info);
+        if (row is null)
+            return NotFound();
+
+        var buildInfo = row.BuildInfo is null ? null : BuildInfo.Parse(row.BuildInfo);
+        var manifest = row.ManifestInfo is null ? null : PluginManifest.Parse(row.ManifestInfo);
         BuildData vm = new()
         {
             BuildId = buildId,
             ProjectSlug = pluginSlug.ToString(),
             ManifestInfo = manifest,
             BuildInfo = buildInfo,
-            CreatedDate = row.created_at,
+            CreatedDate = row.CreatedAt,
             DownloadLink = buildInfo?.Url,
-            Published = row.published,
-            Prerelease = row.pre_release,
+            Published = row.Published,
+            Prerelease = row.PreRelease ?? false,
             Commit = buildInfo?.GitCommit?[..8],
             Repository = buildInfo?.GitRepository,
             GitRef = buildInfo?.GitRef
