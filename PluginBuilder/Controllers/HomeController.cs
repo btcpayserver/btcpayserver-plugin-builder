@@ -108,6 +108,7 @@ public class HomeController(
 
     [AllowAnonymous]
     [HttpPost("/login")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
     {
         ViewData["ReturnUrl"] = returnUrl;
@@ -163,6 +164,7 @@ public class HomeController(
 
     [AllowAnonymous]
     [HttpPost("/register")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> Register(RegisterViewModel model, string? returnUrl = null)
     {
         ViewData["ReturnUrl"] = returnUrl;
@@ -721,6 +723,7 @@ public class HomeController(
 
     [AllowAnonymous]
     [HttpPost("/passwordreset")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> PasswordReset(PasswordResetViewModel model)
     {
         if (!ModelState.IsValid)
@@ -754,6 +757,7 @@ public class HomeController(
 
     [AllowAnonymous]
     [HttpPost("/forgotpassword")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
     {
