@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Npgsql;
@@ -120,6 +122,7 @@ public class Program
         app.UseDefaultFiles();
         app.UseStaticFiles();
         app.UseRouting();
+        app.UseRateLimiter();
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseOutputCache();
@@ -211,6 +214,31 @@ public class Program
         });
         services.AddScoped<PluginOwnershipService>();
 
+        services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.OnRejected = async (context, cancellationToken) =>
+            {
+                context.HttpContext.Response.ContentType = "application/json";
+                await context.HttpContext.Response.WriteAsJsonAsync(new
+                {
+                    code = "429",
+                    message = "Too many requests. Please try again later."
+                }, cancellationToken);
+            };
+            options.AddPolicy(Policies.PublicApiRateLimit, httpContext =>
+            {
+                var cache = httpContext.RequestServices.GetRequiredService<AdminSettingsCache>();
+                var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = cache.RateLimitPermitLimit,
+                    Window = TimeSpan.FromSeconds(cache.RateLimitWindowSeconds),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                });
+            });
+        });
 
         services.AddOutputCache(options =>
         {

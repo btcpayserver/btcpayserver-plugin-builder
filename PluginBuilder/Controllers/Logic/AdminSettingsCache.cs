@@ -10,6 +10,8 @@ public class AdminSettingsCache
     public bool IsGithubVerificationRequired { get; private set; }
     public bool IsNostrVerificationRequired { get; private set; }
     public string[] NostrRelays { get; private set; } = Array.Empty<string>();
+    public int RateLimitPermitLimit { get; private set; } = 30;
+    public int RateLimitWindowSeconds { get; private set; } = 60;
 
     public async Task RefreshIsVerifiedEmailRequiredForPublish(NpgsqlConnection conn)
     {
@@ -34,6 +36,7 @@ public class AdminSettingsCache
         await RefreshIsVerifiedGithubRequired(conn);
         await RefreshNostrVerified(conn);
         await RefreshNostrRelays(conn);
+        await RefreshRateLimitSettings(conn);
     }
 
     public async Task RefreshIsVerifiedGithubRequired(NpgsqlConnection conn)
@@ -49,5 +52,11 @@ public class AdminSettingsCache
     public async Task RefreshNostrRelays(NpgsqlConnection conn)
     {
         NostrRelays = await conn.GetNostrRelaysSetting();
+    }
+
+    public async Task RefreshRateLimitSettings(NpgsqlConnection conn)
+    {
+        RateLimitPermitLimit = await conn.GetRateLimitPermitLimitSetting();
+        RateLimitWindowSeconds = await conn.GetRateLimitWindowSecondsSetting();
     }
 }
