@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -25,8 +24,7 @@ namespace PluginBuilder.Controllers;
 public class ApiController(
     DBConnectionFactory connectionFactory,
     BuildService buildService,
-    GPGKeyService gpgKeyService,
-    IOutputCacheStore outputCacheStore,
+    VersionLifecycleService versionLifecycleService,
     UserManager<IdentityUser> userManager)
     : ControllerBase
 {
@@ -405,77 +403,24 @@ public class ApiController(
         [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)]
         ReleaseVersionRequest? request = null)
     {
-        await using var conn = await connectionFactory.Open();
-
-        var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string state)?>(
-            "SELECT v.build_id, b.state FROM versions v " +
-            "JOIN builds b ON v.plugin_slug = b.plugin_slug AND v.build_id = b.id " +
-            "WHERE v.plugin_slug=@pluginSlug AND v.ver=@version",
-            new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-
-        if (pluginBuild is null)
-            return NotFound();
-
-        if (pluginBuild.Value.state is not "uploaded")
+        byte[]? signatureBytes = null;
+        if (!string.IsNullOrEmpty(request?.Signature))
         {
-            ModelState.AddModelError("", $"Build is in '{pluginBuild.Value.state}' state and cannot be released");
-            return ValidationErrorResult(ModelState);
-        }
-
-        var hasSignature = !string.IsNullOrEmpty(request?.Signature);
-
-        if (hasSignature)
-        {
-            var manifest_info = await conn.QueryFirstOrDefaultAsync<string>(
-                "SELECT manifest_info FROM builds b " +
-                "WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
-                new { pluginSlug = pluginSlug.ToString(), pluginBuild.Value.buildId });
-
-            var niceManifest = ManifestHelper.NiceJson(manifest_info);
-            var manifestHash = ManifestHelper.GetManifestHash(niceManifest, true);
-            if (string.IsNullOrEmpty(manifestHash))
-            {
-                ModelState.AddModelError("", "Manifest information for plugin not available");
-                return ValidationErrorResult(ModelState);
-            }
-
-            byte[] signatureBytes;
             try
             {
-                signatureBytes = Convert.FromBase64String(request!.Signature!);
+                signatureBytes = Convert.FromBase64String(request.Signature);
             }
             catch (FormatException)
             {
                 ModelState.AddModelError(nameof(request.Signature), "Signature must be valid base64");
                 return ValidationErrorResult(ModelState);
             }
-
-            var userId = userManager.GetUserId(User)!;
-            var signatureVerification = await gpgKeyService.VerifyDetachedSignature(
-                pluginSlug.ToString(), userId,
-                Encoding.UTF8.GetBytes(manifestHash), signatureBytes);
-
-            if (!signatureVerification.valid)
-            {
-                ModelState.AddModelError(nameof(request.Signature), signatureVerification.message);
-                return ValidationErrorResult(ModelState);
-            }
-
-            await conn.UpdateVersionReleaseStatus(pluginSlug, "sign_release", version, signatureVerification.proof);
-        }
-        else
-        {
-            var pluginSettings = await conn.GetSettings(pluginSlug);
-            if (pluginSettings?.RequireGPGSignatureForRelease == true)
-            {
-                ModelState.AddModelError("", "A verified GPG signature is required to release this version");
-                return ValidationErrorResult(ModelState);
-            }
-
-            await conn.UpdateVersionReleaseStatus(pluginSlug, "release", version);
         }
 
-        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+        var result = await versionLifecycleService.ReleaseAsync(pluginSlug, version, userManager.GetUserId(User)!, signatureBytes);
+        if (!result.Success)
+            return VersionLifecycleFailureResult(result, nameof(ReleaseVersionRequest.Signature));
+
         return Ok(new { version = version.ToString(), released = true });
     }
 
@@ -486,17 +431,9 @@ public class ApiController(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion version)
     {
-        await using var conn = await connectionFactory.Open();
-
-        var exists = await conn.ExecuteScalarAsync<bool>(
-            "SELECT EXISTS(SELECT 1 FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version)",
-            new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-
-        if (!exists)
-            return NotFound();
-
-        await conn.UpdateVersionReleaseStatus(pluginSlug, "unrelease", version);
-        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+        var result = await versionLifecycleService.UnreleaseAsync(pluginSlug, version);
+        if (!result.Success)
+            return VersionLifecycleFailureResult(result);
 
         return Ok(new { version = version.ToString(), released = false });
     }
@@ -508,24 +445,9 @@ public class ApiController(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion version)
     {
-        await using var conn = await connectionFactory.Open();
-
-        var buildId = await conn.QueryFirstOrDefaultAsync<long?>(
-            "SELECT build_id FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
-            new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-
-        if (buildId is null)
-            return NotFound();
-
-        await using var tx = await conn.BeginTransactionAsync();
-        var fullBuildId = new FullBuildId(pluginSlug, buildId.Value);
-        await conn.UpdateBuild(fullBuildId, BuildStates.Removed, null);
-        await conn.ExecuteAsync(
-            "DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
-            new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-        await tx.CommitAsync();
-
-        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+        var result = await versionLifecycleService.RemoveAsync(pluginSlug, version);
+        if (!result.Success)
+            return VersionLifecycleFailureResult(result);
 
         return Ok(new { version = version.ToString(), removed = true });
     }
@@ -609,6 +531,18 @@ public class ApiController(
             select new ValidationError(error.Key, errorMessage.ErrorMessage)).ToList();
 
         return UnprocessableEntity(new { errors });
+    }
+
+    private IActionResult VersionLifecycleFailureResult(VersionLifecycleResult result, string? signaturePath = null)
+    {
+        if (result.FailureCode == VersionLifecycleFailureCode.NotFound)
+            return NotFound();
+
+        var errorPath = result.FailureCode == VersionLifecycleFailureCode.SignatureVerificationFailed
+            ? signaturePath ?? string.Empty
+            : string.Empty;
+        ModelState.AddModelError(errorPath, result.Message ?? "Version lifecycle operation failed");
+        return ValidationErrorResult(ModelState);
     }
 
     private string PluginPublicPage(string slug)

@@ -95,16 +95,6 @@ public class GPGKeyService(DBConnectionFactory connectionFactory)
         }
     }
 
-    public async Task<SignatureProofResponse> VerifyDetachedSignature(string pluginslug, string userId, byte[] rawSignedBytes, IFormFile? signatureFile)
-    {
-        if (signatureFile is not { Length: > 0 })
-            return new SignatureProofResponse(false, "Please upload a valid GPG signature file (.asc or .sig)");
-
-        using var ms = new MemoryStream((int)signatureFile.Length);
-        await signatureFile.CopyToAsync(ms);
-        return await VerifyDetachedSignature(pluginslug, userId, rawSignedBytes, ms.ToArray());
-    }
-
     public async Task<SignatureProofResponse> VerifyDetachedSignature(string pluginslug, string userId, byte[] rawSignedBytes, byte[] signatureBytes)
     {
         try
