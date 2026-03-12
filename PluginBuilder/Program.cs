@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Newtonsoft.Json;
 using Npgsql;
 using PluginBuilder.Authentication;
@@ -122,6 +123,7 @@ public class Program
         app.UseDefaultFiles();
         app.UseStaticFiles();
         app.UseRouting();
+        app.MapHealthChecks("/health");
         app.UseRateLimiter();
         app.UseAuthentication();
         app.UseAuthorization();
@@ -143,7 +145,20 @@ public class Program
             })
             .AddNewtonsoftJson(o => o.SerializerSettings.Formatting = Formatting.Indented)
             .AddApplicationPart(typeof(Program).Assembly);
+        services.AddHealthChecks().AddNpgSql(configuration.GetRequired("POSTGRES"), name: "Postgres").AddCheck("Dependencies", () =>
+        {
+            var tempProvider = services.BuildServiceProvider();
+            var docker = tempProvider.GetService<DockerStartupHostedService>();
+            var azure = tempProvider.GetService<AzureStartupHostedService>();
 
+            return (docker != null && azure != null)
+                ? HealthCheckResult.Healthy()
+                : HealthCheckResult.Unhealthy("Startup incomplete");
+        });
+
+        {
+
+        }
         var pbOptions = PluginBuilderOptions.ConfigureDataDirAndDebugLog(configuration, env);
         services.AddSingleton(pbOptions);
 
