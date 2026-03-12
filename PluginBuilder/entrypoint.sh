@@ -29,8 +29,15 @@ shopt -u nullglob
 dotnet publish "${ASSEMBLY_NAME}" -c "${BUILD_CONFIG}" -o "/tmp/publish"
 ASSEMBLY_NAME="${ASSEMBLY_NAME/.csproj/}"
 
+TARGET_FRAMEWORK=$(grep -oP '(?<=<TargetFramework>)[^<]+' "${ASSEMBLY_NAME}.csproj" | head -1)
+if [[ "$TARGET_FRAMEWORK" == net10* ]]; then
+    PACKER="/build-tools/PluginPacker-net10/BTCPayServer.PluginPacker"
+else
+    PACKER="/build-tools/PluginPacker-net8/BTCPayServer.PluginPacker"
+fi
+
 # PluginPacker crash because of no gpg, but we don't use it anyway...
-/build-tools/PluginPacker/BTCPayServer.PluginPacker "/tmp/publish" "${ASSEMBLY_NAME}" "/tmp/publish-package" || true
+$PACKER "/tmp/publish" "${ASSEMBLY_NAME}" "/tmp/publish-package" || true
 cp /tmp/publish-package/*/*/* /out
 rm /out/SHA256SUMS.asc /out/SHA256SUMS
 
@@ -50,6 +57,7 @@ jq --null-input \
 --arg buildDate "$BUILD_DATE" \
 --arg buildHash "$BUILD_HASH" \
 --arg assemblyName "$ASSEMBLY_NAME" \
+--arg targetFramework "$TARGET_FRAMEWORK" \
 '{
 "assemblyName": $assemblyName,
 "gitRepository": $gitRepository,
@@ -59,7 +67,8 @@ jq --null-input \
 "gitCommit": $gitCommit,
 "gitCommitDate": $gitCommitDate,
 "buildDate": $buildDate,
-"buildHash": $buildHash
+"buildHash": $buildHash,
+"targetFramework": $targetFramework
 }' > /out/build-env.json
 
 
