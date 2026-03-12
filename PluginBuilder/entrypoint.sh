@@ -29,7 +29,12 @@ shopt -u nullglob
 dotnet publish "${ASSEMBLY_NAME}" -c "${BUILD_CONFIG}" -o "/tmp/publish"
 ASSEMBLY_NAME="${ASSEMBLY_NAME/.csproj/}"
 
-TARGET_FRAMEWORK=$(grep -oP '(?<=<TargetFramework>)[^<]+' "${ASSEMBLY_NAME}.csproj" | head -1)
+TARGET_FRAMEWORK=$(dotnet msbuild "${ASSEMBLY_NAME}.csproj" -getProperty:TargetFramework)
+if [[ -z "$TARGET_FRAMEWORK" ]]; then
+    echo "Could not determine TargetFramework from ${ASSEMBLY_NAME}.csproj" >&2
+    exit 1
+fi
+
 if [[ "$TARGET_FRAMEWORK" == net10* ]]; then
     PACKER="/build-tools/PluginPacker-net10/BTCPayServer.PluginPacker"
 else
