@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -28,11 +26,11 @@ public class PluginController(
     UserManager<IdentityUser> userManager,
     EmailService emailService,
     BuildService buildService,
-    GPGKeyService gpgKeyService,
     AzureStorageClient azureStorageClient,
     UserVerifiedLogic userVerifiedLogic,
     IOutputCacheStore outputCacheStore,
     PluginOwnershipService ownershipService,
+    VersionLifecycleService versionLifecycleService,
     ILogger<PluginController> logger)
     : Controller
 {
@@ -400,73 +398,54 @@ public class PluginController(
     }
 
     [HttpPost("versions/{version}/release")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Release(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion version, string command, IFormFile? signatureFile)
     {
-        await using var conn = await connectionFactory.Open();
-
-        var pluginBuild = await conn.QueryFirstOrDefaultAsync<(long buildId, string identifier)>(
-            "SELECT v.build_id, p.identifier FROM versions v JOIN plugins p ON v.plugin_slug = p.slug WHERE plugin_slug=@pluginSlug AND ver=@version",
-            new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-
-        var pluginSettings = await conn.GetSettings(pluginSlug);
-
         switch (command)
         {
             case "remove":
-                FullBuildId fullBuildId = new(pluginSlug, pluginBuild.buildId);
-                await conn.ExecuteAsync("DELETE FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
-                    new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
-                await buildService.UpdateBuild(fullBuildId, BuildStates.Removed, null);
-                await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
-                return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
+                var removeResult = await versionLifecycleService.RemoveAsync(pluginSlug, version);
+                if (!removeResult.Success)
+                    return HandleVersionLifecycleFailure(pluginSlug, version, removeResult);
+
+                TempData[TempDataConstant.SuccessMessage] = $"Version {version} removed";
+                return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId = removeResult.BuildId!.Value });
 
             case "sign_release":
-                var manifest_info = await conn.QueryFirstOrDefaultAsync<string>(
-                    "SELECT manifest_info FROM builds b WHERE b.plugin_slug=@pluginSlug AND b.id=@buildId LIMIT 1",
-                    new { pluginSlug = pluginSlug.ToString(), pluginBuild.buildId });
-
-                if (signatureFile is null)
+                if (signatureFile is not { Length: > 0 })
                 {
-                    TempData[TempDataConstant.WarningMessage] = "Signature file is required";
+                    TempData[TempDataConstant.WarningMessage] = "Please upload a valid GPG signature file (.asc or .sig)";
                     return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
                 }
 
-                var message = GetManifestHash(NiceJson(manifest_info), true);
-                if (string.IsNullOrEmpty(message))
-                {
-                    TempData[TempDataConstant.WarningMessage] = "manifest information for plugin not available";
-                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
-                }
+                var signatureBytes = await ReadFormFileBytes(signatureFile);
+                var signReleaseResult = await versionLifecycleService.ReleaseAsync(pluginSlug, version, userManager.GetUserId(User)!, signatureBytes);
+                if (!signReleaseResult.Success)
+                    return HandleVersionLifecycleFailure(pluginSlug, version, signReleaseResult);
 
-                var signatureVerification = await gpgKeyService.VerifyDetachedSignature(pluginSlug.ToString(), userManager.GetUserId(User)!,
-                    Encoding.UTF8.GetBytes(message), signatureFile);
-                if (!signatureVerification.valid)
-                {
-                    TempData[TempDataConstant.WarningMessage] = signatureVerification.message;
-                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
-                }
+                TempData[TempDataConstant.SuccessMessage] = $"Version {version} released";
+                return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
 
-                await conn.UpdateVersionReleaseStatus(pluginSlug, command, version, signatureVerification.proof);
-                break;
+            case "unrelease":
+                var unreleaseResult = await versionLifecycleService.UnreleaseAsync(pluginSlug, version);
+                if (!unreleaseResult.Success)
+                    return HandleVersionLifecycleFailure(pluginSlug, version, unreleaseResult);
+
+                TempData[TempDataConstant.SuccessMessage] = $"Version {version} unreleased";
+                return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
 
             default:
-                if (pluginSettings?.RequireGPGSignatureForRelease == true && command == "release")
-                {
-                    TempData[TempDataConstant.WarningMessage] = "A verified GPG signature is required to release this version";
-                    return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
-                }
+                var releaseResult = await versionLifecycleService.ReleaseAsync(pluginSlug, version, userManager.GetUserId(User)!, null);
+                if (!releaseResult.Success)
+                    return HandleVersionLifecycleFailure(pluginSlug, version, releaseResult);
 
-                await conn.UpdateVersionReleaseStatus(pluginSlug, command, version);
-                break;
+                TempData[TempDataConstant.SuccessMessage] = $"Version {version} released";
+                return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
         }
-
-        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
-        TempData[TempDataConstant.SuccessMessage] = $"Version {version} {(command is "release" or "sign_release" ? "released" : "unreleased")}";
-        return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
     }
 
     [HttpGet("versions/{version}")]
@@ -511,7 +490,7 @@ public class PluginController(
         var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
         var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
         vm.FullBuildId = new FullBuildId(pluginSlug, buildId);
-        vm.ManifestInfo = NiceJson(row.manifest_info, signatureProof?.Fingerprint);
+        vm.ManifestInfo = ManifestHelper.NiceJson(row.manifest_info, signatureProof?.Fingerprint);
         vm.BuildInfo = buildInfo?.ToString(Formatting.Indented);
         vm.DownloadLink = buildInfo?.Url;
         vm.State = row.state;
@@ -524,7 +503,7 @@ public class PluginController(
         vm.DownloadLink = buildInfo?.Url;
         //vm.Error = buildInfo?.Error;
         vm.RequireGPGSignatureForRelease = pluginSetting?.RequireGPGSignatureForRelease ?? false;
-        vm.ManifestInfoSha256Hash = GetManifestHash(NiceJson(row.manifest_info), vm.RequireGPGSignatureForRelease);
+        vm.ManifestInfoSha256Hash = ManifestHelper.GetManifestHash(ManifestHelper.NiceJson(row.manifest_info), vm.RequireGPGSignatureForRelease);
         vm.Published = row.published;
         //var buildId = await conn.NewBuild(pluginSlug);
         //_ = buildService.Build(new FullBuildId(pluginSlug, buildId), model.ToBuildParameter());
@@ -533,27 +512,6 @@ public class PluginController(
         return View(vm);
     }
 
-
-    private string GetManifestHash(string? manifestInfo, bool requiresGPGSignature)
-    {
-        if (!requiresGPGSignature || string.IsNullOrEmpty(manifestInfo))
-            return string.Empty;
-
-        using var sha256 = SHA256.Create();
-        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(manifestInfo));
-        return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-    }
-
-    private string? NiceJson(string? json, string? fingerprint = null)
-    {
-        if (json is null)
-            return null;
-        var data = JObject.Parse(json);
-        data = new JObject(data.Properties().OrderBy(p => p.Name));
-        if (!string.IsNullOrWhiteSpace(fingerprint))
-            data["SignatureFingerprint"] = fingerprint;
-        return data.ToString(Formatting.Indented);
-    }
 
     [HttpGet("")]
     public async Task<IActionResult> Dashboard(
@@ -620,6 +578,22 @@ public class PluginController(
         }
 
         return null;
+    }
+
+    private IActionResult HandleVersionLifecycleFailure(PluginSlug pluginSlug, PluginVersion version, VersionLifecycleResult result)
+    {
+        if (result.FailureCode == VersionLifecycleFailureCode.NotFound)
+            return NotFound();
+
+        TempData[TempDataConstant.WarningMessage] = result.Message ?? "Version lifecycle operation failed";
+        return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+    }
+
+    private static async Task<byte[]> ReadFormFileBytes(IFormFile file)
+    {
+        using var ms = new MemoryStream((int)file.Length);
+        await file.CopyToAsync(ms);
+        return ms.ToArray();
     }
 
     [HttpGet("owners")]

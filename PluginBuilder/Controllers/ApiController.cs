@@ -1,6 +1,7 @@
 using System.Reflection;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.OutputCaching;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Authentication;
+using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
@@ -21,11 +23,14 @@ namespace PluginBuilder.Controllers;
 [Authorize(Policy = Policies.OwnPlugin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.BasicAuth)]
 public class ApiController(
     DBConnectionFactory connectionFactory,
-    BuildService buildService)
+    BuildService buildService,
+    VersionLifecycleService versionLifecycleService,
+    UserManager<IdentityUser> userManager)
     : ControllerBase
 {
     private sealed class BuildRow
     {
+        public string State { get; init; } = string.Empty;
         public string? ManifestInfo { get; init; }
         public string? BuildInfo { get; init; }
         public DateTimeOffset CreatedAt { get; init; }
@@ -317,7 +322,7 @@ public class ApiController(
         await using var conn = await connectionFactory.Open();
         var row =
             await conn.QueryFirstOrDefaultAsync<BuildRow>(
-                "SELECT manifest_info AS ManifestInfo, build_info AS BuildInfo, created_at AS CreatedAt, v.ver IS NOT NULL AS Published, v.pre_release AS PreRelease FROM builds b " +
+                "SELECT state AS State, manifest_info AS ManifestInfo, build_info AS BuildInfo, created_at AS CreatedAt, v.ver IS NOT NULL AS Published, v.pre_release AS PreRelease FROM builds b " +
                 "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                 "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
                 "LIMIT 1",
@@ -332,18 +337,119 @@ public class ApiController(
         {
             BuildId = buildId,
             ProjectSlug = pluginSlug.ToString(),
+            State = row.State,
             ManifestInfo = manifest,
             BuildInfo = buildInfo,
             CreatedDate = row.CreatedAt,
             DownloadLink = buildInfo?.Url,
             Published = row.Published,
             Prerelease = row.PreRelease ?? false,
-            Commit = buildInfo?.GitCommit?[..8],
+            Commit = buildInfo?.GitCommit is { Length: >= 8 } gc ? gc[..8] : buildInfo?.GitCommit,
             Repository = buildInfo?.GitRepository,
             GitRef = buildInfo?.GitRef
         };
 
         return Ok(vm);
+    }
+
+    [HttpGet("plugins/{pluginSlug}/builds")]
+    public async Task<IActionResult> ListBuilds(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug)
+    {
+        await using var conn = await connectionFactory.Open();
+        var rows = await conn
+            .QueryAsync<(long id, string state, string? manifest_info, string? build_info,
+                DateTimeOffset created_at, bool published, bool pre_release)>(
+                "SELECT id, state, manifest_info, build_info, created_at, " +
+                "v.ver IS NOT NULL, v.pre_release " +
+                "FROM builds b " +
+                "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
+                "WHERE b.plugin_slug = @pluginSlug " +
+                "ORDER BY id DESC " +
+                "LIMIT 50",
+                new { pluginSlug = pluginSlug.ToString() });
+
+        var builds = rows.Select(row =>
+        {
+            var buildInfo = row.build_info is null ? null : BuildInfo.Parse(row.build_info);
+            var manifest = row.manifest_info is null ? null : PluginManifest.Parse(row.manifest_info);
+            return new BuildData
+            {
+                BuildId = row.id,
+                ProjectSlug = pluginSlug.ToString(),
+                State = row.state,
+                ManifestInfo = manifest,
+                BuildInfo = buildInfo,
+                CreatedDate = row.created_at,
+                DownloadLink = buildInfo?.Url,
+                Published = row.published,
+                Prerelease = row.pre_release,
+                Commit = buildInfo?.GitCommit is { Length: >= 8 } gc ? gc[..8] : buildInfo?.GitCommit,
+                Repository = buildInfo?.GitRepository,
+                GitRef = buildInfo?.GitRef
+            };
+        }).ToList();
+
+        return Ok(builds);
+    }
+
+    [HttpPost("plugins/{pluginSlug}/versions/{version}/release")]
+    public async Task<IActionResult> ReleaseVersion(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion version,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)]
+        ReleaseVersionRequest? request = null)
+    {
+        byte[]? signatureBytes = null;
+        if (!string.IsNullOrEmpty(request?.Signature))
+        {
+            try
+            {
+                signatureBytes = Convert.FromBase64String(request.Signature);
+            }
+            catch (FormatException)
+            {
+                ModelState.AddModelError(nameof(request.Signature), "Signature must be valid base64");
+                return ValidationErrorResult(ModelState);
+            }
+        }
+
+        var result = await versionLifecycleService.ReleaseAsync(pluginSlug, version, userManager.GetUserId(User)!, signatureBytes);
+        if (!result.Success)
+            return VersionLifecycleFailureResult(result, nameof(ReleaseVersionRequest.Signature));
+
+        return Ok(new { version = version.ToString(), released = true });
+    }
+
+    [HttpPost("plugins/{pluginSlug}/versions/{version}/unrelease")]
+    public async Task<IActionResult> UnreleaseVersion(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion version)
+    {
+        var result = await versionLifecycleService.UnreleaseAsync(pluginSlug, version);
+        if (!result.Success)
+            return VersionLifecycleFailureResult(result);
+
+        return Ok(new { version = version.ToString(), released = false });
+    }
+
+    [HttpDelete("plugins/{pluginSlug}/versions/{version}")]
+    public async Task<IActionResult> RemoveVersion(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion version)
+    {
+        var result = await versionLifecycleService.RemoveAsync(pluginSlug, version);
+        if (!result.Success)
+            return VersionLifecycleFailureResult(result);
+
+        return Ok(new { version = version.ToString(), removed = true });
     }
 
     [AllowAnonymous]
@@ -425,6 +531,18 @@ public class ApiController(
             select new ValidationError(error.Key, errorMessage.ErrorMessage)).ToList();
 
         return UnprocessableEntity(new { errors });
+    }
+
+    private IActionResult VersionLifecycleFailureResult(VersionLifecycleResult result, string? signaturePath = null)
+    {
+        if (result.FailureCode == VersionLifecycleFailureCode.NotFound)
+            return NotFound();
+
+        var errorPath = result.FailureCode == VersionLifecycleFailureCode.SignatureVerificationFailed
+            ? signaturePath ?? string.Empty
+            : string.Empty;
+        ModelState.AddModelError(errorPath, result.Message ?? "Version lifecycle operation failed");
+        return ValidationErrorResult(ModelState);
     }
 
     private string PluginPublicPage(string slug)

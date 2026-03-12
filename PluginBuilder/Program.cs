@@ -213,6 +213,7 @@ public class Program
             return new UrlHelper(actionContext);
         });
         services.AddScoped<PluginOwnershipService>();
+        services.AddScoped<VersionLifecycleService>();
 
         services.AddRateLimiter(options =>
         {

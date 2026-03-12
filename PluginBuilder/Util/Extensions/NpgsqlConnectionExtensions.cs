@@ -242,7 +242,7 @@ public static class NpgsqlConnectionExtensions
     }
 
     public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo,
-        PluginManifest? manifestInfo = null)
+        PluginManifest? manifestInfo = null, NpgsqlTransaction? tx = null)
     {
         await connection.ExecuteAsync(
             "UPDATE builds " +
@@ -257,7 +257,7 @@ public static class NpgsqlConnectionExtensions
                 manifest_info = manifestInfo?.ToString(),
                 plugin_slug = fullBuildId.PluginSlug.ToString(),
                 buildId = fullBuildId.BuildId
-            });
+            }, tx);
     }
 
     public static async Task<bool> UpdateVersionReleaseStatus(this NpgsqlConnection connection, PluginSlug pluginSlug, string command, PluginVersion version,
