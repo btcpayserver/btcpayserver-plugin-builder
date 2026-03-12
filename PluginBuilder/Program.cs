@@ -97,7 +97,6 @@ public class Program
         ForwardedHeadersOptions forwardingOptions = new() { ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto };
         forwardingOptions.KnownNetworks.Clear();
         forwardingOptions.KnownProxies.Clear();
-        forwardingOptions.ForwardedHeaders = ForwardedHeaders.All;
         app.UseForwardedHeaders(forwardingOptions);
 
         if (!app.Environment.IsDevelopment())
