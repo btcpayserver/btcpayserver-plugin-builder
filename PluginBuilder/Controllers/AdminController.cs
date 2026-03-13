@@ -84,7 +84,7 @@ public class AdminController(
             AdminPluginViewModel plugin = new()
             {
                 PluginSlug = row.slug,
-                Visibility = row.visibility,
+                Visibility = Enum.Parse<PluginVisibilityEnum>((string)row.visibility, true),
                 PrimaryOwnerEmail = row.email,
                 HasPendingListingRequest = row.has_pending_request,
                 PluginTitle = pluginSettings?.PluginTitle
