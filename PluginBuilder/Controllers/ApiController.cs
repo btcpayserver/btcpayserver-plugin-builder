@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Authentication;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
 using PluginBuilder.ModelBinders;
@@ -25,7 +26,8 @@ public class ApiController(
     DBConnectionFactory connectionFactory,
     BuildService buildService,
     VersionLifecycleService versionLifecycleService,
-    UserManager<IdentityUser> userManager)
+    UserManager<IdentityUser> userManager,
+    UserVerifiedLogic userVerifiedLogic)
     : ControllerBase
 {
     private sealed class BuildRow
@@ -282,6 +284,10 @@ public class ApiController(
         CreateBuildRequest model)
     {
         await using var conn = await connectionFactory.Open();
+
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User) || !await userVerifiedLogic.IsUserGithubVerified(User, conn))
+            return Forbid();
+
         var settings = await conn.GetSettings(pluginSlug);
 
         // apply defaults from settings
