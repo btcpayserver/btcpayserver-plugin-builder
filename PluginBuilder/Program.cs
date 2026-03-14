@@ -255,11 +255,14 @@ public class Program
                 .Tag(CacheTags.Plugins));
         });
 
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(configuration.GetRequired("POSTGRES"));
+        dataSourceBuilder.MapEnum<PluginVisibilityEnum>("plugin_visibility_enum");
+        var dataSource = dataSourceBuilder.Build();
+
         services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
         {
-            b.UseNpgsql(configuration.GetRequired("POSTGRES"));
+            b.UseNpgsql(dataSource);
         });
-        NpgsqlConnection.GlobalTypeMapper.MapEnum<PluginVisibilityEnum>("plugin_visibility_enum");
 
         services.AddIdentity<IdentityUser, IdentityRole>(options =>
             {

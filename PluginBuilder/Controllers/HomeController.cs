@@ -494,7 +494,7 @@ public class HomeController(
             IsAdmin = isAdmin,
             IsOwner = userId != null && userId == primaryOwnerId,
             PluginVersions = versions.ToList(),
-            ShowHiddenNotice = (int)pluginDetails.visibility == (int)PluginVisibilityEnum.Hidden,
+            ShowHiddenNotice = Enum.Parse<PluginVisibilityEnum>((string)pluginDetails.visibility, true) == PluginVisibilityEnum.Hidden,
             Contributors = pluginContributors,
             RatingFilter = model.RatingFilter,
             OwnerGithubUrl = ownerGithubUrl,

@@ -105,18 +105,16 @@ public class ServerTester : IAsyncDisposable
 
         Program host = new();
         var projectDir = FindPluginBuilderDirectory();
+
         var webappBuilder = host.CreateWebApplicationBuilder(new WebApplicationOptions
         {
             ContentRootPath = projectDir,
             WebRootPath = Path.Combine(projectDir, "wwwroot"),
-            Args = ["--urls=http://127.0.0.1:0"]
-        });
-
-        // Inject configuration directly instead of using environment variables to avoid cross-test contamination
-        webappBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["POSTGRES"] = connStr,
-            ["STORAGE_CONNECTION_STRING"] = StorageConnectionString
+            Args = [
+                "--urls=http://127.0.0.1:0",
+                $"--postgres={connStr}",
+                $"--storage_connection_string={StorageConnectionString}",
+            ]
         });
 
         webappBuilder.Services.AddHttpClient();
