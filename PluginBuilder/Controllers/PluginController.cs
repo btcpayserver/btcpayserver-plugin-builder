@@ -203,9 +203,9 @@ public class PluginController(
         if (!ModelState.IsValid)
             return View(model);
         await using var conn = await connectionFactory.Open();
-        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User) || !await userVerifiedLogic.IsUserGithubVerified(User, conn))
         {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your email address in order to create and publish plugins";
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your email address and github account in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
         }
 

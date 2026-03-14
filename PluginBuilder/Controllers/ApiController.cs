@@ -285,10 +285,7 @@ public class ApiController(
     {
         await using var conn = await connectionFactory.Open();
 
-        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
-            return Forbid();
-
-        if (!await userVerifiedLogic.IsUserGithubVerified(User, conn))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User) || !await userVerifiedLogic.IsUserGithubVerified(User, conn))
             return Forbid();
 
         var settings = await conn.GetSettings(pluginSlug);
