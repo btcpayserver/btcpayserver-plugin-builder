@@ -21,6 +21,7 @@ namespace PluginBuilder.Controllers;
 
 [Authorize(Roles = Roles.ServerAdmin)]
 [Route("/admin/")]
+[AutoValidateAntiforgeryToken]
 public class AdminController(
     UserManager<IdentityUser> userManager,
     RoleManager<IdentityRole> roleManager,
