@@ -94,6 +94,12 @@ public class Program
 
     public void Configure(WebApplication app)
     {
+        // ForwardedHeaders.All + cleared KnownNetworks/KnownProxies is required because proxy IPs are dynamic
+        // in Docker (populating KnownProxies would create a circular dependency in docker-compose).
+        // This means X-Forwarded-Host is trusted from any source. Host header poisoning is mitigated by:
+        // 1. nginx explicitly setting X-Forwarded-Host (see btcpayserver-plugin-builder-infra/nginx.tmpl)
+        // 2. PB_ALLOWEDHOSTS env var restricting accepted hostnames via HostFilteringMiddleware
+        // https://github.com/btcpayserver/btcpayserver-plugin-builder-infra/pull/2
         ForwardedHeadersOptions forwardingOptions = new() { ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto };
         forwardingOptions.KnownNetworks.Clear();
         forwardingOptions.KnownProxies.Clear();
