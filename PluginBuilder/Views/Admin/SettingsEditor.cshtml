@@ -132,9 +132,13 @@
             button.addEventListener('click', function () {
                 const row = this.closest('tr');
                 const key = row.dataset.key;
+                const token = document.querySelector('#settingsForm input[name="__RequestVerificationToken"]').value;
 
                 fetch(`/admin/SettingsEditor?key=${encodeURIComponent(key)}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: {
+                        'RequestVerificationToken': token
+                    }
                 }).then(response => {
                     if (response.ok) {
                         row.remove();
