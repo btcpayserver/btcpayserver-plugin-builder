@@ -57,27 +57,20 @@ public class BuildService
             using BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory);
             List<string> args = new();
             buildParameters = await GetBuildInfo(fullBuildId);
-            // Create the volumes where the artifacts will be stored
-            args.AddRange(new[] { "volume", "create" });
-            args.AddRange(new[] { "--label", $"BTCPAY_PLUGIN_BUILD={fullBuildId}" });
-            int code;
             string volume;
             try
             {
-                OutputCapture output = new();
-                code = await ProcessRunner.RunAsync(
-                    new ProcessSpec
-                    {
-                        Executable = "docker",
-                        Arguments = args.ToArray(),
-                        OutputCapture = output
-                    },
-                    default);
-                if (code != 0)
-                    throw new BuildServiceException("docker volume create failed");
-                volume = output.ToString().Trim();
-                args.Clear();
+                // Build volumes are owned by a single build and cleaned at the end of this method.
+                volume = await CreateBuildVolume(fullBuildId);
+            }
+            catch (Exception err)
+            {
+                await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = err.Message });
+                throw;
+            }
 
+            try
+            {
                 // Then let's build by running our image plugin-builder (built in DockerStartupHostedService)
                 JObject info = new();
 
@@ -114,81 +107,132 @@ public class BuildService
                 throw;
             }
 
-            JObject buildEnv;
             try
             {
-                code = await ProcessRunner.RunAsync(new ProcessSpec
+                JObject buildEnv;
+                try
                 {
-                    Executable = "docker",
-                    Arguments = args.ToArray(),
-                    OutputCapture = buildLogCapture,
-                    ErrorCapture = buildLogCapture,
-                    OnOutput = (_, eventArgs) =>
+                    var code = await ProcessRunner.RunAsync(new ProcessSpec
                     {
-                        if (!string.IsNullOrEmpty(eventArgs.Data))
-                            EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
-                    },
-                    OnError = (_, eventArgs) =>
-                    {
-                        if (!string.IsNullOrEmpty(eventArgs.Data))
-                            EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
-                    }
-                }, default);
-                if (code != 0)
-                    throw new BuildServiceException("docker build failed");
+                        Executable = "docker",
+                        Arguments = args.ToArray(),
+                        OutputCapture = buildLogCapture,
+                        ErrorCapture = buildLogCapture,
+                        OnOutput = (_, eventArgs) =>
+                        {
+                            if (!string.IsNullOrEmpty(eventArgs.Data))
+                                EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
+                        },
+                        OnError = (_, eventArgs) =>
+                        {
+                            if (!string.IsNullOrEmpty(eventArgs.Data))
+                                EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
+                        }
+                    }, default);
+                    if (code != 0)
+                        throw new BuildServiceException("docker build failed");
 
-                var buildEnvStr = await ReadFileInVolume(volume, "build-env.json");
-                buildEnv = JObject.Parse(buildEnvStr);
-            }
-            catch (Exception err)
-            {
-                await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = err.Message });
-                throw;
-            }
+                    var buildEnvStr = await ReadFileInVolume(volume, "build-env.json");
+                    buildEnv = JObject.Parse(buildEnvStr);
+                }
+                catch (Exception err)
+                {
+                    await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = err.Message });
+                    throw;
+                }
 
-            var assemblyName = buildEnv["assemblyName"]!.Value<string>();
-            var manifestStr = await ReadFileInVolume(volume, $"{assemblyName}.btcpay.json");
+                string assemblyName;
+                PluginManifest manifest;
+                try
+                {
+                    assemblyName = buildEnv["assemblyName"]?.Value<string>()
+                        ?? throw new BuildServiceException("build-env.json missing assemblyName");
 
-            PluginManifest manifest;
-            try
-            {
-                manifest = PluginManifest.Parse(manifestStr);
-                await UpdateBuild(fullBuildId, BuildStates.WaitingUpload, buildEnv, manifest);
-            }
-            catch (Exception err)
-            {
-                await UpdateBuild(fullBuildId, BuildStates.Failed,
-                    new JObject { ["error"] = "Invalid plugin manifest: " + err.Message });
-                throw;
-            }
+                    var manifestStr = await ReadFileInVolume(volume, $"{assemblyName}.btcpay.json");
+                    manifest = PluginManifest.Parse(manifestStr);
+                    await UpdateBuild(fullBuildId, BuildStates.WaitingUpload, buildEnv, manifest);
+                }
+                catch (Exception err)
+                {
+                    await UpdateBuild(fullBuildId, BuildStates.Failed,
+                        new JObject { ["error"] = "Failed to read or parse plugin manifest: " + err.Message });
+                    throw;
+                }
 
-            await UpdateBuild(fullBuildId, BuildStates.Uploading, null);
-            string url;
-            try
-            {
-                url = await AzureStorageClient.Upload(volume, $"{assemblyName}.btcpay",
-                    $"{fullBuildId}/{assemblyName}.btcpay");
-            }
-            catch (Exception err)
-            {
-                await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = err.Message });
-                throw;
-            }
+                await UpdateBuild(fullBuildId, BuildStates.Uploading, null);
+                string url;
+                try
+                {
+                    url = await AzureStorageClient.Upload(volume, $"{assemblyName}.btcpay",
+                        $"{fullBuildId}/{assemblyName}.btcpay");
+                }
+                catch (Exception err)
+                {
+                    await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = err.Message });
+                    throw;
+                }
 
-            await UpdateBuild(fullBuildId, BuildStates.Uploaded, new JObject { ["url"] = url });
-            await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
+                await UpdateBuild(fullBuildId, BuildStates.Uploaded, new JObject { ["url"] = url });
+                await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
+            }
+            finally
+            {
+                await RemoveBuildVolume(volume);
+            }
         }
         finally
         {
             _semaphore.Release();
         }
+
         await SavePluginContributorSnapshot(fullBuildId.PluginSlug, buildParameters);
+    }
+
+    private async Task<string> CreateBuildVolume(FullBuildId fullBuildId)
+    {
+        OutputCapture output = new();
+        var code = await ProcessRunner.RunAsync(
+            new ProcessSpec
+            {
+                Executable = "docker",
+                Arguments = ["volume", "create", "--label", $"BTCPAY_PLUGIN_BUILD={fullBuildId}"],
+                OutputCapture = output
+            },
+            default);
+        if (code != 0)
+            throw new BuildServiceException("docker volume create failed");
+
+        var volume = output.ToString().Trim();
+        if (string.IsNullOrWhiteSpace(volume))
+            throw new BuildServiceException("docker volume create returned no volume name");
+
+        return volume;
+    }
+
+    private async Task RemoveBuildVolume(string volume)
+    {
+        OutputCapture error = new();
+        var code = await ProcessRunner.RunAsync(new ProcessSpec
+        {
+            Executable = "docker",
+            Arguments = ["volume", "rm", volume],
+            ErrorCapture = error
+        }, default);
+
+        if (code != 0)
+        {
+            var details = error.ToString().Trim();
+            if (string.IsNullOrEmpty(details))
+                Logger.LogWarning("Failed to remove docker build volume {Volume}", volume);
+            else
+                Logger.LogWarning("Failed to remove docker build volume {Volume}: {Error}", volume, details);
+        }
     }
 
     private async Task SavePluginContributorSnapshot(PluginSlug pluginSlug, BuildInfo buildInfo)
     {
         try
-        { 
+        {
             var githubClient = _httpClientFactory.CreateClient(HttpClientNames.GitHub);
             var contributors = await GithubService.GetContributorsAsync(githubClient, buildInfo.GitRepository, buildInfo.PluginDir);
             await GithubService.SaveSnapshot(_options.PluginDataDir, pluginSlug, contributors);
