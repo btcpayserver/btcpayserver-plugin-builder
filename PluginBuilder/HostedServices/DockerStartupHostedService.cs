@@ -31,54 +31,58 @@ public class DockerStartupHostedService : IHostedService
         if (skipBuild)
         {
             Logger.LogInformation("Skipping docker image build because {SkipBuildEnvVar}=true", SkipBuildEnvVar);
-        }
-        else
-        {
-            Logger.LogInformation("Building the PluginBuilder docker image");
-
-            var buildResult = await ProcessRunner.RunAsync(new ProcessSpec
-            {
-                Executable = "docker",
-                EnvironmentVariables =
-                {
-                    // Somehow we get permission problem when buildkit isn't used
-                    ["DOCKER_BUILDKIT"] = "1"
-                },
-                Arguments = new[] { "build", "-f", "PluginBuilder.Dockerfile", "-t", "plugin-builder", "." },
-                WorkingDirectory = ContentRootPath
-            }, cancellationToken);
-            if (buildResult != 0)
-                throw new DockerStartupException("The build of PluginBuilder.Dockerfile failed");
+            return;
         }
 
-        OutputCapture output = new();
-        var result = await ProcessRunner.RunAsync(
-            new ProcessSpec
-            {
-                Executable = "docker",
-                Arguments = new[] { "volume", "ls", "-f", "label=BTCPAY_PLUGIN_BUILD", "--format", "{{ .Name }}" },
-                OutputCapture = output
-            }, cancellationToken);
-        if (result != 0)
-            throw new DockerStartupException("docker volume ls failed");
-        if (output.Lines.Any())
+        Logger.LogInformation("Building the PluginBuilder docker image");
+
+        var buildResult = await ProcessRunner.RunAsync(new ProcessSpec
         {
-            Logger.LogInformation("Cleaning dangling volumes");
-            foreach (var volume in output.Lines)
+            Executable = "docker",
+            EnvironmentVariables =
             {
-                result = await ProcessRunner.RunAsync(new ProcessSpec
-                {
-                    Executable = "docker",
-                    Arguments = new[] { "volume", "rm", volume }
-                }, cancellationToken);
-                if (result != 0)
-                    Logger.LogWarning("Failed to remove dangling docker volume {Volume}", volume);
-            }
-        }
+                // Somehow we get permission problem when buildkit isn't used
+                ["DOCKER_BUILDKIT"] = "1"
+            },
+            Arguments = new[] { "build", "-f", "PluginBuilder.Dockerfile", "-t", "plugin-builder", "." },
+            WorkingDirectory = ContentRootPath
+        }, cancellationToken);
+        if (buildResult != 0)
+            throw new DockerStartupException("The build of PluginBuilder.Dockerfile failed");
+
+        await CleanupDanglingBuildVolumes(cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
+    }
+
+    private async Task CleanupDanglingBuildVolumes(CancellationToken cancellationToken)
+    {
+        OutputCapture output = new();
+        var result = await ProcessRunner.RunAsync(
+            new ProcessSpec
+            {
+                Executable = "docker",
+                Arguments = ["volume", "ls", "-f", "label=BTCPAY_PLUGIN_BUILD", "--format", "{{ .Name }}"],
+                OutputCapture = output
+            }, cancellationToken);
+        if (result != 0)
+            throw new DockerStartupException("docker volume ls failed");
+        if (!output.Lines.Any())
+            return;
+
+        Logger.LogInformation("Cleaning dangling build volumes");
+        foreach (var volume in output.Lines)
+        {
+            result = await ProcessRunner.RunAsync(new ProcessSpec
+            {
+                Executable = "docker",
+                Arguments = ["volume", "rm", volume]
+            }, cancellationToken);
+            if (result != 0)
+                Logger.LogWarning("Failed to remove dangling docker volume {Volume}", volume);
+        }
     }
 }
