@@ -43,7 +43,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await t.Page.FillAsync("#PluginSlug", pluginSlug);
         await t.Page!.FillAsync("#PluginTitle", pluginSlug);
         await t.Page!.FillAsync("#Description", "Test");
-        await t.Page!.FillAsync("#VideoURL", "https://www.youtube.com/watch?v=1234");
+        await t.Page!.FillAsync("#VideoUrl", "https://www.youtube.com/watch?v=1234");
         await t.Page.ClickAsync("#Create");
         await t.AssertNoError();
 
