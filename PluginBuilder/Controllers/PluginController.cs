@@ -344,8 +344,9 @@ public class PluginController(
         }
 
         var docsMissing = string.IsNullOrWhiteSpace(pluginSettings?.GitRepository) || string.IsNullOrWhiteSpace(pluginSettings?.Documentation)
-                                                                                   || string.IsNullOrWhiteSpace(pluginSettings?.Logo) ||
-                                                                                   string.IsNullOrWhiteSpace(pluginSettings?.Description);
+                                                                                        || string.IsNullOrWhiteSpace(pluginSettings?.Logo)
+                                                                                        || string.IsNullOrWhiteSpace(pluginSettings?.Description)
+                                                                                        || string.IsNullOrWhiteSpace(pluginSettings?.VideoUrl);
 
         var ownerNotVerified = false;
         foreach (var owner in owners)
