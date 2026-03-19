@@ -5,6 +5,26 @@ public class DockerStartupException : Exception
     public DockerStartupException(string message) : base(message)
     {
     }
+
+    public static bool DockerStartupCompleted { get; private set; }
+    public static Exception? DockerStartupError { get; private set; }
+
+    public static void ResetStartupState()
+    {
+        DockerStartupCompleted = false;
+        DockerStartupError = null;
+    }
+
+    public static void MarkStartupCompleted()
+    {
+        DockerStartupCompleted = true;
+    }
+
+    public static void MarkStartupFailed(Exception ex)
+    {
+        DockerStartupError = ex;
+        DockerStartupCompleted = false;
+    }
 }
 
 public class DockerStartupHostedService : IHostedService
@@ -24,6 +44,8 @@ public class DockerStartupHostedService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        DockerStartupException.ResetStartupState();
+
         var skipBuildValue = Environment.GetEnvironmentVariable(SkipBuildEnvVar);
         var skipBuild = string.Equals(skipBuildValue, "1", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(skipBuildValue, "true", StringComparison.OrdinalIgnoreCase);
@@ -31,26 +53,36 @@ public class DockerStartupHostedService : IHostedService
         if (skipBuild)
         {
             Logger.LogInformation("Skipping docker image build because {SkipBuildEnvVar}=true", SkipBuildEnvVar);
+            DockerStartupException.MarkStartupCompleted();
             return;
         }
 
-        Logger.LogInformation("Building the PluginBuilder docker image");
-
-        var buildResult = await ProcessRunner.RunAsync(new ProcessSpec
+        try
         {
-            Executable = "docker",
-            EnvironmentVariables =
-            {
-                // Somehow we get permission problem when buildkit isn't used
-                ["DOCKER_BUILDKIT"] = "1"
-            },
-            Arguments = new[] { "build", "-f", "PluginBuilder.Dockerfile", "-t", "plugin-builder", "." },
-            WorkingDirectory = ContentRootPath
-        }, cancellationToken);
-        if (buildResult != 0)
-            throw new DockerStartupException("The build of PluginBuilder.Dockerfile failed");
+            Logger.LogInformation("Building the PluginBuilder docker image");
 
-        await CleanupDanglingBuildVolumes(cancellationToken);
+            var buildResult = await ProcessRunner.RunAsync(new ProcessSpec
+            {
+                Executable = "docker",
+                EnvironmentVariables =
+                {
+                    // Somehow we get permission problem when buildkit isn't used
+                    ["DOCKER_BUILDKIT"] = "1"
+                },
+                Arguments = new[] { "build", "-f", "PluginBuilder.Dockerfile", "-t", "plugin-builder", "." },
+                WorkingDirectory = ContentRootPath
+            }, cancellationToken);
+            if (buildResult != 0)
+                throw new DockerStartupException("The build of PluginBuilder.Dockerfile failed");
+
+            await CleanupDanglingBuildVolumes(cancellationToken);
+            DockerStartupException.MarkStartupCompleted();
+        }
+        catch (Exception ex)
+        {
+            DockerStartupException.MarkStartupFailed(ex);
+            throw;
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

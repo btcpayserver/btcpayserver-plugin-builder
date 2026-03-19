@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
@@ -33,7 +34,8 @@ public class HomeController(
     PluginBuilderOptions options,
     ServerEnvironment env,
     NostrService nostrService,
-    ILogger<HomeController> logger)
+    ILogger<HomeController> logger,
+    HealthCheckService healthCheckService)
     : Controller
 {
     [AllowAnonymous]
@@ -792,5 +794,28 @@ public class HomeController(
     public IActionResult Error()
     {
         return View("Error", new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/health")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
+    public async Task<IActionResult> CheckHealth(CancellationToken cancellationToken)
+    {
+        var report = await healthCheckService.CheckHealthAsync(cancellationToken);
+
+        var result = new
+        {
+            status = report.Status == HealthStatus.Healthy ? "healthy" : "unhealthy",
+            timestamp = DateTime.UtcNow,
+            details = report.Entries.ToDictionary(
+                e => e.Key,
+                e => new
+                {
+                    status = e.Value.Status.ToString().ToLower(),
+                    description = e.Value.Description
+                })
+        };
+
+        return report.Status == HealthStatus.Unhealthy ? StatusCode(StatusCodes.Status503ServiceUnavailable, result) : Ok(result);
     }
 }

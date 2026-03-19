@@ -13,6 +13,9 @@ public class DatabaseStartupHostedService : IHostedService
 {
     private readonly AdminSettingsCache _adminSettingsCache;
 
+    public static bool DatabaseStartupCompleted { get; private set; }
+    public static Exception? DatabaseStartupError { get; private set; }
+
     public DatabaseStartupHostedService(ILogger<DatabaseStartupHostedService> logger, DBConnectionFactory connectionFactory,
         AdminSettingsCache adminSettingsCache)
     {
@@ -27,6 +30,9 @@ public class DatabaseStartupHostedService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        DatabaseStartupCompleted = false;
+        DatabaseStartupError = null;
+
         retry:
         try
         {
@@ -36,6 +42,8 @@ public class DatabaseStartupHostedService : IHostedService
 
             await conn.SettingsInitialize();
             await _adminSettingsCache.RefreshAllAdminSettings(conn);
+
+            DatabaseStartupCompleted = true;
         }
         catch (NpgsqlException pgex) when (pgex.SqlState == "3D000")
         {
@@ -51,6 +59,11 @@ public class DatabaseStartupHostedService : IHostedService
             }
 
             goto retry;
+        }
+        catch (Exception ex)
+        {
+            DatabaseStartupError = ex;
+            throw;
         }
     }
 
