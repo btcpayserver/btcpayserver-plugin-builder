@@ -466,14 +466,19 @@ public class PluginController(
     public async Task<IActionResult> Build(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        long buildId)
+        long buildId,
+        bool openCompatibilityModal = false)
     {
         await using var conn = await connectionFactory.Open();
         var row =
             await conn
                 .QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release,
-                    string signatureproof)>(
-                    "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release, v.signatureproof FROM builds b " +
+                    string signatureproof, int[]? btcpay_min_ver, bool btcpay_min_ver_override_enabled,
+                    int[]? btcpay_max_ver, bool btcpay_max_ver_override_enabled)>(
+                    "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release, v.signatureproof, v.btcpay_min_ver, " +
+                    "v.btcpay_min_ver_override_enabled AS btcpay_min_ver_override_enabled, " +
+                    "v.btcpay_max_ver, " +
+                    "v.btcpay_max_ver_override_enabled AS btcpay_max_ver_override_enabled FROM builds b " +
                     "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                     "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
                     "LIMIT 1",
@@ -506,11 +511,116 @@ public class PluginController(
         vm.RequireGPGSignatureForRelease = pluginSetting?.RequireGPGSignatureForRelease ?? false;
         vm.ManifestInfoSha256Hash = ManifestHelper.GetManifestHash(ManifestHelper.NiceJson(row.manifest_info), vm.RequireGPGSignatureForRelease);
         vm.Published = row.published;
-        //var buildId = await conn.NewBuild(pluginSlug);
-        //_ = buildService.Build(new FullBuildId(pluginSlug, buildId), model.ToBuildParameter());
+        var effectiveManifestMinVersion = (manifest?.BTCPayMinVersion ?? PluginVersion.Zero).ToString();
+        var effectiveManifestMaxVersion = manifest?.BTCPayMaxVersion?.ToString();
+        vm.BTCPayMinVersion = row.btcpay_min_ver is { Length: > 0 } ? string.Join('.', row.btcpay_min_ver) : effectiveManifestMinVersion;
+        vm.BTCPayMaxVersion = row.btcpay_max_ver is { Length: > 0 } ? string.Join('.', row.btcpay_max_ver) : effectiveManifestMaxVersion;
+        vm.HasBTCPayCompatibilityOverride = row.btcpay_min_ver_override_enabled || row.btcpay_max_ver_override_enabled;
+        vm.CanEditBTCPayCompatibility = vm.Version is not null;
+        vm.OpenBTCPayCompatibilityModal = openCompatibilityModal;
         if (logs != "")
             vm.Logs = logs;
         return View(vm);
+    }
+
+    [HttpPost("builds/{buildId}/btcpay-compatibility")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateVersionBTCPayCompatibility(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
+        long buildId,
+        [FromForm] string? btcpayMinVersion,
+        [FromForm] string? btcpayMaxVersion,
+        [FromForm] bool useManifestDefaults = false)
+    {
+        await using var conn = await connectionFactory.Open();
+        var manifestInfo = await conn.QueryFirstOrDefaultAsync<string?>(
+            """
+            SELECT b.manifest_info
+            FROM versions v
+            JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
+            WHERE v.plugin_slug = @pluginSlug AND v.build_id = @buildId
+            LIMIT 1
+            """,
+            new { pluginSlug = pluginSlug.ToString(), buildId });
+        if (manifestInfo is null)
+            return NotFound();
+        var strictManifestParsed = PluginManifest.TryParse(manifestInfo, out var strictManifest, strictBTCPayVersionCondition: true);
+        if (useManifestDefaults && !strictManifestParsed)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Cannot reset compatibility because the manifest BTCPayServer condition is unsupported.";
+            return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId, openCompatibilityModal = true });
+        }
+
+        var manifest = strictManifestParsed ? strictManifest : PluginManifest.Parse(manifestInfo);
+
+        var manifestMinVersion = manifest.BTCPayMinVersion ?? PluginVersion.Zero;
+        var manifestMaxVersion = manifest.BTCPayMaxVersion;
+        var strictManifestMinVersion = strictManifestParsed ? strictManifest.BTCPayMinVersion ?? PluginVersion.Zero : null;
+        var strictManifestMaxVersion = strictManifestParsed ? strictManifest.BTCPayMaxVersion : null;
+
+        PluginVersion candidateMinVersion;
+        PluginVersion? candidateMaxVersion;
+
+        if (useManifestDefaults)
+        {
+            candidateMinVersion = manifestMinVersion;
+            candidateMaxVersion = manifestMaxVersion;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(btcpayMinVersion) || !PluginVersion.TryParse(btcpayMinVersion.Trim(), out candidateMinVersion))
+            {
+                TempData[TempDataConstant.WarningMessage] = "BTCPay min version must be a valid version number.";
+                return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId, openCompatibilityModal = true });
+            }
+
+            if (!string.IsNullOrWhiteSpace(btcpayMaxVersion))
+            {
+                if (!PluginVersion.TryParse(btcpayMaxVersion.Trim(), out candidateMaxVersion))
+                {
+                    TempData[TempDataConstant.WarningMessage] = "BTCPay max version must be a valid version number.";
+                    return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId, openCompatibilityModal = true });
+                }
+            }
+            else
+                candidateMaxVersion = null;
+
+        }
+
+        if (candidateMaxVersion is not null && candidateMinVersion.CompareTo(candidateMaxVersion) > 0)
+        {
+            TempData[TempDataConstant.WarningMessage] = $"BTCPay max version must be greater than or equal to the minimum version {candidateMinVersion}.";
+            return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId, openCompatibilityModal = true });
+        }
+
+        var clearMinOverride = useManifestDefaults || (strictManifestParsed && VersionEquals(candidateMinVersion, strictManifestMinVersion));
+        var clearMaxOverride = useManifestDefaults || (strictManifestParsed && VersionEquals(candidateMaxVersion, strictManifestMaxVersion));
+
+        await conn.ExecuteAsync(
+            """
+            UPDATE versions
+            SET btcpay_min_ver = @btcpayMinVersion,
+                btcpay_min_ver_override_enabled = @minOverrideEnabled,
+                btcpay_max_ver = @btcpayMaxVersion,
+                btcpay_max_ver_override_enabled = @maxOverrideEnabled
+            WHERE plugin_slug = @pluginSlug AND build_id = @buildId
+            """,
+            new
+            {
+                pluginSlug = pluginSlug.ToString(),
+                buildId,
+                btcpayMinVersion = clearMinOverride ? manifestMinVersion.VersionParts : candidateMinVersion.VersionParts,
+                minOverrideEnabled = !clearMinOverride,
+                btcpayMaxVersion = clearMaxOverride ? manifestMaxVersion?.VersionParts : candidateMaxVersion?.VersionParts,
+                maxOverrideEnabled = !clearMaxOverride
+            });
+
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+        TempData[TempDataConstant.SuccessMessage] = clearMinOverride && clearMaxOverride
+            ? "Compatibility reset to the manifest defaults."
+            : "Compatibility updated successfully.";
+        return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
     }
 
 
@@ -579,6 +689,15 @@ public class PluginController(
         }
 
         return null;
+    }
+
+    private static bool VersionEquals(PluginVersion? left, PluginVersion? right)
+    {
+        if (left is null && right is null)
+            return true;
+        if (left is null || right is null)
+            return false;
+        return left.CompareTo(right) == 0;
     }
 
     private IActionResult HandleVersionLifecycleFailure(PluginSlug pluginSlug, PluginVersion version, VersionLifecycleResult result)
