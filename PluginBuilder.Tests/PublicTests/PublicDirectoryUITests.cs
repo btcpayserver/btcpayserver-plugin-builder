@@ -40,7 +40,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         var manifest = PluginManifest.Parse(manifestInfoJson);
 
         // Remove pre-release
-        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
 
         // Listed should be visible
         await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Listed);
@@ -120,7 +120,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         var popularManifestJson = await conn.QuerySingleAsync<string>("SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
             new { PluginSlug = popularSlugString, popularBuild.BuildId });
         var popularManifest = PluginManifest.Parse(popularManifestJson);
-        await conn.SetVersionBuild(popularBuild, popularManifest.Version, popularManifest.BTCPayMinVersion, false);
+        await conn.SetVersionBuild(popularBuild, popularManifest.Version, popularManifest.BTCPayMinVersion, popularManifest.BTCPayMaxVersion, false);
         await conn.SetPluginSettings(popularSlug, null, PluginVisibilityEnum.Listed);
 
         // 2) sort=alpha

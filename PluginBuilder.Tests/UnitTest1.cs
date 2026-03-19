@@ -99,16 +99,16 @@ public class UnitTest1 : UnitTestBase
         var manifest = PluginManifest.Parse(version.ManifestInfo.ToString());
 
         // Nothing changed
-        Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, true));
+        Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, true));
         // Can change BTCPayMinVersion
-        Assert.True(await conn.SetVersionBuild(fullBuildId, manifest.Version, null, true));
+        Assert.True(await conn.SetVersionBuild(fullBuildId, manifest.Version, null, manifest.BTCPayMaxVersion, true));
         // Can remove pre-release
-        Assert.True(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false));
+        Assert.True(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false));
 
         // Can't put back in pre-release
-        Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, true));
+        Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, true));
         // Can't modify pre-release
-        Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, null, false));
+        Assert.False(await conn.SetVersionBuild(fullBuildId, manifest.Version, null, manifest.BTCPayMaxVersion, false));
 
 
         // Another plugin slug try to hijack the package
@@ -128,7 +128,10 @@ public class UnitTest1 : UnitTestBase
         Assert.Equal("rockstar-stylist", version.ProjectSlug);
 
         // Let's see what happen if there is two versions of the same plugin
-        await conn.ExecuteAsync("INSERT INTO versions VALUES('rockstar-stylist', ARRAY[1,0,2,1], 0, ARRAY[1,4,6,0], 'f', CURRENT_TIMESTAMP, NULL)");
+        await conn.ExecuteAsync("""
+                                INSERT INTO versions (plugin_slug, ver, build_id, btcpay_min_ver, btcpay_max_ver, pre_release, updated_at, signatureproof)
+                                VALUES ('rockstar-stylist', ARRAY[1,0,2,1], 0, ARRAY[1,4,6,0], NULL, 'f', CURRENT_TIMESTAMP, NULL)
+                                """);
         var outputCacheStore = tester.GetService<IOutputCacheStore>();
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         versions = await client.GetPublishedVersions("1.4.6.0", true);

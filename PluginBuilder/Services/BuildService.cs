@@ -147,9 +147,8 @@ public class BuildService
                 {
                     assemblyName = buildEnv["assemblyName"]?.Value<string>()
                         ?? throw new BuildServiceException("build-env.json missing assemblyName");
-
                     var manifestStr = await ReadFileInVolume(volume, $"{assemblyName}.btcpay.json");
-                    manifest = PluginManifest.Parse(manifestStr);
+                    manifest = PluginManifest.Parse(manifestStr, strictBTCPayVersionCondition: true);
                     await UpdateBuild(fullBuildId, BuildStates.WaitingUpload, buildEnv, manifest);
                 }
                 catch (Exception err)
@@ -254,7 +253,7 @@ public class BuildService
     {
         await using var connection = await ConnectionFactory.Open();
         if (await connection.EnsureIdentifierOwnership(fullBuildId.PluginSlug, manifest.Identifier))
-            await connection.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, true);
+            await connection.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, true);
         else
             buildLogs.AddLine($"The plugin identifier {manifest.Identifier} doesn't belong to this project slug");
     }

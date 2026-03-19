@@ -105,7 +105,10 @@ public class ApiController(
 
         // This query definitely doesn't have right indexes
         var query = $"""
-                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info, v.signatureproof->>'fingerprint' AS fingerprint
+                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info,
+                            v.btcpay_min_ver,
+                            v.btcpay_max_ver,
+                            v.signatureproof->>'fingerprint' AS fingerprint
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN versions v ON v.plugin_slug = lv.plugin_slug AND v.ver = lv.ver
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
@@ -114,7 +117,8 @@ public class ApiController(
                      ORDER BY manifest_info->>'Name'
                      """;
         var rows =
-            await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, string fingerprint)>(
+            await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, int[] btcpay_min_ver,
+                int[]? btcpay_max_ver, string fingerprint)>(
                 query,
                 new
                 {
@@ -130,19 +134,8 @@ public class ApiController(
         {
             var manifestInfo = JObject.Parse(r.manifest_info);
             var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
-            return new PublishedVersion
-            {
-                PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
-                Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
-                ProjectSlug = r.plugin_slug,
-                Version = string.Join('.', r.ver),
-                BuildId = r.id,
-                BuildInfo = JObject.Parse(r.build_info),
-                ManifestInfo = manifestInfo,
-                PluginLogo = settings?.Logo,
-                Documentation = PluginPublicPage(r.plugin_slug),
-                Fingerprint = r.fingerprint
-            };
+            return CreatePublishedVersion(r.plugin_slug, r.ver, r.btcpay_min_ver, r.btcpay_max_ver, r.id, settings, manifestInfo,
+                JObject.Parse(r.build_info), r.fingerprint);
         }));
 
         return Ok(versions);
@@ -168,7 +161,10 @@ public class ApiController(
         await using var conn = await connectionFactory.Open();
 
         var query = $"""
-                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info, v.signatureproof->>'fingerprint' AS fingerprint
+                     SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info,
+                            v.btcpay_min_ver,
+                            v.btcpay_max_ver,
+                            v.signatureproof->>'fingerprint' AS fingerprint
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN versions v ON v.plugin_slug = lv.plugin_slug AND v.ver = lv.ver
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
@@ -180,7 +176,8 @@ public class ApiController(
                      """;
 
         var rows =
-            await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, string fingerprint)>(
+            await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, int[] btcpay_min_ver,
+                int[]? btcpay_max_ver, string fingerprint)>(
                 query,
                 new
                 {
@@ -195,19 +192,8 @@ public class ApiController(
         {
             var manifestInfo = JObject.Parse(r.manifest_info);
             var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
-            return new PublishedVersion
-            {
-                PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
-                Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
-                ProjectSlug = r.plugin_slug,
-                Version = string.Join('.', r.ver),
-                BuildId = r.id,
-                BuildInfo = JObject.Parse(r.build_info),
-                ManifestInfo = manifestInfo,
-                PluginLogo = settings?.Logo,
-                Documentation = PluginPublicPage(r.plugin_slug),
-                Fingerprint = r.fingerprint
-            };
+            return CreatePublishedVersion(r.plugin_slug, r.ver, r.btcpay_min_ver, r.btcpay_max_ver, r.id, settings, manifestInfo,
+                JObject.Parse(r.build_info), r.fingerprint);
         }));
 
         return Ok(versions);
@@ -224,7 +210,10 @@ public class ApiController(
     {
         await using var conn = await connectionFactory.Open();
         var query = """
-                    SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info, v.signatureproof->>'fingerprint' AS fingerprint
+                    SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info,
+                           v.btcpay_min_ver,
+                           v.btcpay_max_ver,
+                           v.signatureproof->>'fingerprint' AS fingerprint
                     FROM versions v
                     JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
                     JOIN plugins p ON b.plugin_slug = p.slug
@@ -240,19 +229,8 @@ public class ApiController(
 
         var manifestInfo = JObject.Parse((string)r.manifest_info);
         var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
-        return Ok(new PublishedVersion
-        {
-            PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
-            Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
-            ProjectSlug = pluginSlug.ToString(),
-            Version = version.Version,
-            BuildId = (long)r.build_id,
-            BuildInfo = JObject.Parse(r.build_info),
-            ManifestInfo = manifestInfo,
-            PluginLogo = settings?.Logo,
-            Documentation = PluginPublicPage(pluginSlug.ToString()),
-            Fingerprint = r.fingerprint
-        });
+        return Ok(CreatePublishedVersion(pluginSlug.ToString(), (int[])r.ver, (int[])r.btcpay_min_ver, (int[]?)r.btcpay_max_ver,
+            (long)r.build_id, settings, manifestInfo, JObject.Parse((string)r.build_info), (string?)r.fingerprint));
     }
 
     [AllowAnonymous]
@@ -484,7 +462,10 @@ public class ApiController(
         await using var conn = await connectionFactory.Open();
 
         var query = """
-                    SELECT lv.plugin_slug, lv.ver, p.identifier, p.settings, b.id, b.manifest_info, b.build_info, v.signatureproof->>'fingerprint' AS fingerprint
+                    SELECT lv.plugin_slug, lv.ver, p.identifier, p.settings, b.id, b.manifest_info, b.build_info,
+                           v.btcpay_min_ver,
+                           v.btcpay_max_ver,
+                           v.signatureproof->>'fingerprint' AS fingerprint
                     FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv
                     JOIN versions v ON v.plugin_slug = lv.plugin_slug AND v.ver = lv.ver
                     JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
@@ -496,7 +477,8 @@ public class ApiController(
                     """;
 
         var rows = await conn
-            .QueryAsync<(string plugin_slug, int[] ver, string identifier, string settings, long id, string manifest_info, string build_info, string fingerprint
+            .QueryAsync<(string plugin_slug, int[] ver, string identifier, string settings, long id, string manifest_info, string build_info,
+                int[] btcpay_min_ver, int[]? btcpay_max_ver, string fingerprint
                 )>(
                 query,
                 new
@@ -509,22 +491,10 @@ public class ApiController(
         var updates =
         (
             from row in rows
-            let latestVerString = string.Join('.', row.ver)
             let manifestInfo = JObject.Parse(row.manifest_info)
             let settings = SafeJson.Deserialize<PluginSettings>((string?)row.settings)
-            select new PublishedVersion
-            {
-                PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
-                Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
-                ProjectSlug = row.plugin_slug,
-                Version = latestVerString,
-                BuildId = row.id,
-                BuildInfo = JObject.Parse(row.build_info),
-                ManifestInfo = manifestInfo,
-                PluginLogo = settings?.Logo,
-                Documentation = PluginPublicPage(row.plugin_slug),
-                Fingerprint = row.fingerprint
-            }
+            select CreatePublishedVersion(row.plugin_slug, row.ver, row.btcpay_min_ver, row.btcpay_max_ver, row.id, settings, manifestInfo,
+                JObject.Parse(row.build_info), row.fingerprint)
         ).ToList();
 
         return Ok(updates);
@@ -554,5 +524,34 @@ public class ApiController(
     private string PluginPublicPage(string slug)
     {
         return Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = slug }, Request.Scheme, Request.Host.ToString());
+    }
+
+    private PublishedVersion CreatePublishedVersion(
+        string pluginSlug,
+        int[] version,
+        int[] btcpayMinVersion,
+        int[]? btcpayMaxVersion,
+        long buildId,
+        PluginSettings? settings,
+        JObject manifestInfo,
+        JObject buildInfo,
+        string? fingerprint)
+    {
+        return new PublishedVersion
+        {
+            PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
+            Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
+            ProjectSlug = pluginSlug,
+            Version = string.Join('.', version),
+            BTCPayMinVersion = string.Join('.', btcpayMinVersion),
+            BTCPayMaxVersion = btcpayMaxVersion is { Length: > 0 } ? string.Join('.', btcpayMaxVersion) : null,
+            BuildId = buildId,
+            BuildInfo = buildInfo,
+            ManifestInfo = manifestInfo,
+            PluginLogo = settings?.Logo,
+            Documentation = PluginPublicPage(pluginSlug),
+            VideoUrl = settings?.VideoUrl,
+            Fingerprint = fingerprint
+        };
     }
 }
