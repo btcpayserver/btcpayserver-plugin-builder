@@ -50,7 +50,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
-        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Navigate to plugin settings and add YouTube video URL
@@ -116,7 +116,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
-        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Add initial YouTube URL
@@ -177,7 +177,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
-        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Add video URL
@@ -234,7 +234,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
-        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Test invalid URL format
@@ -274,7 +274,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
-        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Create and login as admin
@@ -291,6 +291,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await Expect(videoUrlInput).ToBeVisibleAsync();
         await videoUrlInput.FillAsync(youtubeUrl);
         await t.Page.Locator("input[type='submit'][value='Save Changes']").ClickAsync();
+        await Expect(t.Page).ToHaveURLAsync(new Regex($"/admin/plugins/edit/{Regex.Escape(pluginSlug)}\\?tab=settings$", RegexOptions.IgnoreCase));
         await t.AssertNoError();
 
         // Verify VideoUrl was saved
@@ -344,7 +345,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
                 "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
                 new { PluginSlug = pluginSlug, fullBuildId.BuildId });
             var manifest = PluginManifest.Parse(manifestInfoJson);
-            await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
+            await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
             await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
             // Add video URL
@@ -382,7 +383,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
-        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, false);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Navigate to public plugin page

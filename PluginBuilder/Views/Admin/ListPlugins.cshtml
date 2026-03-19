@@ -55,13 +55,14 @@
         <table class="table">
             <thead>
             <tr>
-                <th>Project Slug</th>
-                <th>Plugin Title</th>
+                <th>Slug</th>
+                <th>Title</th>
                 <th>Version</th>
                 <th>BTCPay Min Version</th>
+                <th>BTCPay Max Version</th>
                 <th>Pre-Release</th>
                 <th>Updated At</th>
-                <th>Primary Owner</th>
+                <th>Owner</th>
                 <th>Visibility</th>
                 <th></th>
             </tr>
@@ -81,6 +82,7 @@
                     <td>@plugin.PluginTitle</td>
                     <td>@plugin.Version</td>
                     <td>@plugin.BtcPayMinVer</td>
+                    <td>@(plugin.BtcPayMaxVer ?? "None")</td>
                     <td>@plugin.PreRelease</td>
                     <td>@plugin.UpdatedAt</td>
                     <td>@plugin.PrimaryOwnerEmail</td>

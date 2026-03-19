@@ -10,6 +10,7 @@
                       asp-controller="@Model.Controller"
                       asp-action="AddOwner"
                       asp-route-pluginSlug="@Model.PluginSlug"
+                      asp-route-tab="@Model.Tab"
                       method="post">
                     @Html.AntiForgeryToken()
 
@@ -47,7 +48,7 @@
                                             data-bs-toggle="modal"
                                             data-bs-target="#ConfirmModal"
                                             data-action='@Url.EnsureLocal(
-                                                             Url.Action("TransferPrimaryOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
+                                                             Url.Action("TransferPrimaryOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = o.UserId, tab = Model.Tab }),
                                                              Context.Request
                                                          )'
                                             data-title="Transfer primary owner"
@@ -63,7 +64,7 @@
                                             data-bs-toggle="modal"
                                             data-bs-target="#ConfirmModal"
                                             data-action='@Url.EnsureLocal(
-                                                             Url.Action("RemoveOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = o.UserId }),
+                                                             Url.Action("RemoveOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = o.UserId, tab = Model.Tab }),
                                                              Context.Request
                                                          )'
                                             data-title="Remove owner"
@@ -81,7 +82,7 @@
                                             data-bs-toggle="modal"
                                             data-bs-target="#ConfirmModal"
                                             data-action='@Url.EnsureLocal(
-                                                             Url.Action("RemoveOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = Model.CurrentUserId }),
+                                                             Url.Action("RemoveOwner", Model.Controller, new { pluginSlug = Model.PluginSlug, userId = Model.CurrentUserId, tab = Model.Tab }),
                                                              Context.Request
                                                          )'
                                             data-title="Leave plugin"

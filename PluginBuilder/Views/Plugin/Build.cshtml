@@ -1,7 +1,23 @@
+@using PluginBuilder.ViewModels.Shared
 @model BuildViewModel
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(PluginNavPages.Dashboard, $"Build {Model.FullBuildId.BuildId}", Model.FullBuildId.ToString());
+    var btcpayCompatibilityModalVm = new BTCPayCompatibilityModalViewModel
+    {
+        ModalId = "btcpayCompatibilityModal",
+        ModalLabelId = "btcpayCompatibilityModalLabel",
+        Title = "Edit BTCPay compatibility",
+        PostUrl = Url.Action("UpdateVersionBTCPayCompatibility", "Plugin",
+            new { pluginSlug = Model.FullBuildId.PluginSlug.ToString(), buildId = Model.FullBuildId.BuildId })!,
+        MinInputId = "btcpayMinVersion",
+        MaxInputId = "btcpayMaxVersion",
+        MinInputClass = "compatibility-min-input",
+        MaxInputClass = "compatibility-max-input",
+        MinVersion = Model.BTCPayMinVersion,
+        MaxVersion = Model.BTCPayMaxVersion,
+        ShowResetToManifest = Model.HasBTCPayCompatibilityOverride
+    };
 }
 
 <div class="d-sm-flex align-items-center justify-content-between">
@@ -101,7 +117,12 @@
     </div>
 </div>
 
-<table class="table">
+@if (Model is { Version: not null, CanEditBTCPayCompatibility: true })
+{
+    <partial name="_BTCPayCompatibilityModal" model="btcpayCompatibilityModalVm" />
+}
+
+<table class="table build-summary-table">
     @if (Model.Version != null)
     {
         <tr>
@@ -133,6 +154,40 @@
             @Model.CreatedDate
         </td>
     </tr>
+    @if (Model.Version != null && (!string.IsNullOrEmpty(Model.BTCPayMinVersion) || !string.IsNullOrEmpty(Model.BTCPayMaxVersion)))
+    {
+        <tr>
+            <th class="fw-semibold">BTCPay compatibility</th>
+            <td>
+                <div class="d-flex flex-wrap align-items-center gap-3">
+                    <span>Min: <code>@Model.BTCPayMinVersion</code></span>
+                    <span>
+                        Max:
+                        @if (!string.IsNullOrEmpty(Model.BTCPayMaxVersion))
+                        {
+                            <code>@Model.BTCPayMaxVersion</code>
+                        }
+                        else
+                        {
+                            <span class="text-muted">None</span>
+                        }
+                    </span>
+                    @if (Model.CanEditBTCPayCompatibility)
+                    {
+                        <button type="button"
+                                class="btn btn-link btn-sm p-0 text-decoration-none d-inline-flex align-items-center justify-content-center compatibility-edit-trigger"
+                                data-bs-toggle="modal"
+                                data-bs-target="#btcpayCompatibilityModal"
+                                title="Edit compatibility"
+                                aria-label="Edit compatibility">
+                            <i class="fa fa-pencil" aria-hidden="true"></i>
+                            <span class="visually-hidden">Edit compatibility</span>
+                        </button>
+                    }
+                </div>
+            </td>
+        </tr>
+    }
 </table>
 
 <div>
@@ -174,7 +229,29 @@
     <link href="~/vendor/highlight.js/default.min.css" asp-append-version="true" rel="stylesheet" />
     <style>
         body, html {
-            overflow-x : hidden;
+            overflow-x: hidden;
+        }
+
+        .build-summary-table th,
+        .build-summary-table td {
+            vertical-align: middle;
+        }
+
+        .compatibility-max-input {
+            max-width: 12rem;
+        }
+
+        .compatibility-min-input {
+            max-width: 12rem;
+        }
+
+        .compatibility-edit-trigger {
+            color: var(--btcpay-body-text-muted, var(--bs-secondary-color));
+        }
+
+        .compatibility-edit-trigger:hover,
+        .compatibility-edit-trigger:focus {
+            color: var(--btcpay-primary);
         }
 
         #artifacts-tabs .nav-link {
@@ -196,6 +273,15 @@
     <script src="~/scripts/Build.js" asp-append-version="true"></script>
 
     <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            if (@(Model.OpenBTCPayCompatibilityModal ? "true" : "false")) {
+                const modalElement = document.getElementById("btcpayCompatibilityModal");
+                if (modalElement) {
+                    bootstrap.Modal.getOrCreateInstance(modalElement).show();
+                }
+            }
+        });
+
         function downloadHashFile() {
             const hashInput = document.getElementById('manifestHash');
             const hash = hashInput?.value?.trim();
