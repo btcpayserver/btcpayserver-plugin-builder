@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.OutputCaching;
+using Newtonsoft.Json.Linq;
+using Npgsql;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
@@ -39,6 +41,17 @@ public class AdminController(
     // settings editor
     private const string ProtectedKeys = SettingsKeys.EmailSettings;
 
+    private sealed class PluginVersionAdminRow
+    {
+        public int[] Ver { get; init; } = [];
+        public int[] BtcpayMinVer { get; init; } = [];
+        public bool BtcpayMinVerOverrideEnabled { get; init; }
+        public int[]? BtcpayMaxVer { get; init; }
+        public bool BtcpayMaxVerOverrideEnabled { get; init; }
+        public bool PreRelease { get; init; }
+        public string? ManifestInfo { get; init; }
+    }
+
     [HttpGet("plugins")]
     public async Task<IActionResult> ListPlugins(AdminPluginSettingViewModel? model = null)
     {
@@ -63,13 +76,17 @@ public class AdminController(
 
         await using var conn = await connectionFactory.Open();
         var rows = await conn.QueryAsync($"""
-                                          SELECT p.slug, p.visibility, v.ver, v.build_id, v.btcpay_min_ver, v.pre_release, v.updated_at, u."Email" as email, p.settings,
+                                          SELECT p.slug, p.visibility, v.ver, v.build_id,
+                                                 v.btcpay_min_ver,
+                                                 v.btcpay_max_ver,
+                                                 v.pre_release, v.updated_at, u."Email" as email, p.settings,
                                                  EXISTS(SELECT 1 FROM plugin_listing_requests lr WHERE lr.plugin_slug = p.slug AND lr.status = 'pending') as has_pending_request
                                           FROM plugins p
                                           LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
                                           LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
                                           LEFT JOIN (
-                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver, pre_release, updated_at
+                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver,
+                                                     btcpay_max_ver, pre_release, updated_at
                                               FROM versions
                                               ORDER BY plugin_slug, updated_at DESC
                                           ) v ON p.slug = v.plugin_slug
@@ -95,6 +112,7 @@ public class AdminController(
                 plugin.Version = string.Join('.', row.ver);
                 plugin.BuildId = row.build_id;
                 plugin.BtcPayMinVer = string.Join('.', row.btcpay_min_ver);
+                plugin.BtcPayMaxVer = row.btcpay_max_ver != null ? string.Join('.', row.btcpay_max_ver) : null;
                 plugin.PreRelease = row.pre_release;
                 plugin.UpdatedAt = row.updated_at;
             }
@@ -119,25 +137,26 @@ public class AdminController(
 
 
     [HttpGet("plugins/edit/{pluginSlug}")]
-    public async Task<IActionResult> PluginEdit(string pluginSlug)
+    public async Task<IActionResult> PluginEdit(string pluginSlug, string? tab = null, string? openCompatibilityVersion = null)
     {
         referrerNavigation.StoreReferrer();
         await using var conn = await connectionFactory.Open();
-        var pluginUsers = await conn.GetPluginOwners(pluginSlug);
-
         var plugin = await conn.GetPluginDetails(pluginSlug);
         if (plugin == null)
             return NotFound();
 
-        return View(new PluginEditViewModel
+        var model = new PluginEditViewModel
         {
             PluginSlug = plugin.PluginSlug,
             Identifier = plugin.Identifier,
             Settings = plugin.Settings,
             Visibility = plugin.Visibility,
-            PluginUsers = pluginUsers,
+            ActiveTab = PluginEditTabs.Normalize(tab),
+            OpenCompatibilityVersion = openCompatibilityVersion,
             PluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings)
-        });
+        };
+        await PopulatePluginEditActiveTabData(conn, model);
+        return View(model);
     }
 
 
@@ -145,9 +164,10 @@ public class AdminController(
     public async Task<IActionResult> PluginEdit(string pluginSlug, PluginEditViewModel model, [FromForm] bool removeLogoFile = false)
     {
         await using var conn = await connectionFactory.Open();
+        model.ActiveTab = PluginEditTabs.Settings;
         if (!ModelState.IsValid)
         {
-            model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
+            await PopulatePluginEditViewModel(conn, pluginSlug, model);
             return View(model);
         }
 
@@ -160,7 +180,7 @@ public class AdminController(
             {
                 ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.VideoUrl)}",
                     "Video URL must be a valid HTTPS URL.");
-                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
+                await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
 
@@ -168,7 +188,7 @@ public class AdminController(
             {
                 ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.VideoUrl)}",
                     "Video URL must be from a supported platform (YouTube, Vimeo).");
-                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
+                await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
         }
@@ -185,7 +205,7 @@ public class AdminController(
             {
                 ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.PluginTitle)}",
                     "This plugin title is already in use. Please choose a different title.");
-                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
+                await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
         }
@@ -203,7 +223,7 @@ public class AdminController(
             if (!model.LogoFile.ValidateUploadedImage(out var errorMessage))
             {
                 ModelState.AddModelError(nameof(model.LogoFile), $"Image upload validation failed: {errorMessage}");
-                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
+                await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
 
@@ -214,9 +234,9 @@ public class AdminController(
             }
             catch (Exception)
             {
-                ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.Logo)}",
+                ModelState.AddModelError(nameof(model.LogoFile),
                     "Could not complete settings upload. An error occurred while uploading logo");
-                model.PluginUsers = await conn.GetPluginOwners(pluginSlug);
+                await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
         }
@@ -232,7 +252,107 @@ public class AdminController(
 
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = "Plugin settings updated successfully";
-        return referrerNavigation.RedirectToReferrerOr(this, "ListPlugins");
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Settings });
+    }
+
+    [HttpPost("plugins/edit/{pluginSlug}/versions/{version}/btcpay-compatibility")]
+    public async Task<IActionResult> UpdateVersionBtcPayCompatibility(
+        string pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion version,
+        [FromForm] string? btcpayMinVersion,
+        [FromForm] string? btcpayMaxVersion,
+        [FromForm] bool useManifestDefaults = false)
+    {
+        await using var conn = await connectionFactory.Open();
+        var manifestInfo = await conn.QueryFirstOrDefaultAsync<string?>(
+            """
+            SELECT b.manifest_info
+            FROM versions v
+            JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
+            WHERE v.plugin_slug = @pluginSlug AND v.ver = @version
+            LIMIT 1
+            """,
+            new { pluginSlug, version = version.VersionParts });
+        if (manifestInfo is null)
+            return NotFound();
+        var strictManifestParsed = PluginManifest.TryParse(manifestInfo, out var strictManifest, strictBTCPayVersionCondition: true);
+        if (useManifestDefaults && !strictManifestParsed)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Cannot reset compatibility because the manifest BTCPayServer condition is unsupported.";
+            return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Versions, openCompatibilityVersion = version.ToString() });
+        }
+
+        var manifest = strictManifestParsed ? strictManifest : PluginManifest.Parse(manifestInfo);
+
+        var manifestMinVersion = manifest.BTCPayMinVersion ?? PluginVersion.Zero;
+        var manifestMaxVersion = manifest.BTCPayMaxVersion;
+        var strictManifestMinVersion = strictManifestParsed ? strictManifest.BTCPayMinVersion ?? PluginVersion.Zero : null;
+        var strictManifestMaxVersion = strictManifestParsed ? strictManifest.BTCPayMaxVersion : null;
+
+        PluginVersion candidateMinVersion;
+        PluginVersion? candidateMaxVersion;
+
+        if (useManifestDefaults)
+        {
+            candidateMinVersion = manifestMinVersion;
+            candidateMaxVersion = manifestMaxVersion;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(btcpayMinVersion) || !PluginVersion.TryParse(btcpayMinVersion.Trim(), out candidateMinVersion))
+            {
+                TempData[TempDataConstant.WarningMessage] = "BTCPay min version must be a valid version number.";
+                return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Versions, openCompatibilityVersion = version.ToString() });
+            }
+
+            if (!string.IsNullOrWhiteSpace(btcpayMaxVersion))
+            {
+                if (!PluginVersion.TryParse(btcpayMaxVersion.Trim(), out candidateMaxVersion))
+                {
+                    TempData[TempDataConstant.WarningMessage] = "BTCPay max version must be a valid version number.";
+                    return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Versions, openCompatibilityVersion = version.ToString() });
+                }
+            }
+            else
+            {
+                candidateMaxVersion = null;
+            }
+        }
+
+        if (candidateMaxVersion is not null && candidateMinVersion.CompareTo(candidateMaxVersion) > 0)
+        {
+            TempData[TempDataConstant.WarningMessage] = $"BTCPay max version must be greater than or equal to the minimum version {candidateMinVersion}.";
+            return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Versions, openCompatibilityVersion = version.ToString() });
+        }
+
+        var clearMinOverride = useManifestDefaults || (strictManifestParsed && VersionEquals(candidateMinVersion, strictManifestMinVersion));
+        var clearMaxOverride = useManifestDefaults || (strictManifestParsed && VersionEquals(candidateMaxVersion, strictManifestMaxVersion));
+
+        await conn.ExecuteAsync(
+            """
+            UPDATE versions
+            SET btcpay_min_ver = @btcpayMinVersion,
+                btcpay_min_ver_override_enabled = @minOverrideEnabled,
+                btcpay_max_ver = @btcpayMaxVersion,
+                btcpay_max_ver_override_enabled = @maxOverrideEnabled
+            WHERE plugin_slug = @pluginSlug AND ver = @version
+            """,
+            new
+            {
+                pluginSlug,
+                version = version.VersionParts,
+                btcpayMinVersion = clearMinOverride ? manifestMinVersion.VersionParts : candidateMinVersion.VersionParts,
+                minOverrideEnabled = !clearMinOverride,
+                btcpayMaxVersion = clearMaxOverride ? manifestMaxVersion?.VersionParts : candidateMaxVersion?.VersionParts,
+                maxOverrideEnabled = !clearMaxOverride
+            });
+
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+        TempData[TempDataConstant.SuccessMessage] = clearMinOverride && clearMaxOverride
+            ? $"Compatibility for version {version} reset to the manifest values."
+            : $"Compatibility for version {version} updated successfully.";
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Versions });
     }
 
 
@@ -272,16 +392,7 @@ public class AdminController(
     [HttpGet("plugins/import-review/{pluginSlug}")]
     public IActionResult ImportReview(string pluginSlug)
     {
-        var vm = new ImportReviewViewModel
-        {
-            PluginSlug = pluginSlug,
-            ExistingUsers = userManager.Users.Select(u => new SelectListItem
-            {
-                Value = u.Id,
-                Text = u.Email
-            }).ToList()
-        };
-        return View(vm);
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Reviews });
     }
 
 
@@ -291,7 +402,7 @@ public class AdminController(
         if (model.Rating is < 1 or > 5 || string.IsNullOrEmpty(model.Body))
         {
             TempData[TempDataConstant.WarningMessage] = "Invalid rating or body specified";
-            return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+            return RedirectToAction(nameof(PluginEdit), new { pluginSlug = model.PluginSlug, tab = PluginEditTabs.Reviews });
         }
 
         if (!string.IsNullOrWhiteSpace(model.SourceUrl))
@@ -310,7 +421,7 @@ public class AdminController(
             if (linkedUser == null)
             {
                 TempData[TempDataConstant.WarningMessage] = "Invalid system user";
-                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+                return RedirectToAction(nameof(PluginEdit), new { pluginSlug = model.PluginSlug, tab = PluginEditTabs.Reviews });
             }
 
             var reviewerAccountDetails = await conn.GetAccountDetailSettings(linkedUser.Id) ?? new AccountSettings();
@@ -322,7 +433,7 @@ public class AdminController(
             if (string.IsNullOrEmpty(model.ReviewerName))
             {
                 TempData[TempDataConstant.WarningMessage] = "Kindly provide the reviewer profile";
-                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+                return RedirectToAction(nameof(PluginEdit), new { pluginSlug = model.PluginSlug, tab = PluginEditTabs.Reviews });
             }
 
             model.ReviewerName = model.ReviewerName.TrimStart('/').TrimEnd();
@@ -335,7 +446,7 @@ public class AdminController(
                     if (!nostrService.TryGetPubKeyHex(nostrIdentifier, out var pubKeyHex))
                     {
                         TempData[TempDataConstant.WarningMessage] = "Invalid Nostr identifier (npub, nprofile or hex).";
-                        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+                        return RedirectToAction(nameof(PluginEdit), new { pluginSlug = model.PluginSlug, tab = PluginEditTabs.Reviews });
                     }
 
                     var nostrProfile = await nostrService.GetNostrProfileByAuthorHexAsync(pubKeyHex);
@@ -358,7 +469,7 @@ public class AdminController(
                     if (!Uri.TryCreate(wwwInput, UriKind.Absolute, out var uri))
                     {
                         TempData[TempDataConstant.WarningMessage] = "Invalid website URL.";
-                        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+                        return RedirectToAction(nameof(PluginEdit), new { pluginSlug = model.PluginSlug, tab = PluginEditTabs.Reviews });
                     }
 
                     model.ReviewerProfileUrl = wwwInput;
@@ -401,7 +512,7 @@ public class AdminController(
             if (model.ReviewerProfileUrl == null)
             {
                 TempData[TempDataConstant.WarningMessage] = "Invalid source selected";
-                return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+                return RedirectToAction(nameof(PluginEdit), new { pluginSlug = model.PluginSlug, tab = PluginEditTabs.Reviews });
             }
         }
 
@@ -412,7 +523,7 @@ public class AdminController(
         TempData[TempDataConstant.SuccessMessage] = "Review submitted successfully.";
         TempData[TempDataConstant.SuccessLinkUrl] = url;
         TempData[TempDataConstant.SuccessLinkText] = "Click here to view it";
-        return RedirectToAction(nameof(ImportReview), new { pluginSlug = model.PluginSlug });
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug = model.PluginSlug, tab = PluginEditTabs.Reviews });
     }
 
     [HttpPost("plugins/{pluginSlug}/owners/{userId}/transfer-primary")]
@@ -424,7 +535,7 @@ public class AdminController(
         TempData[result.Success ? TempDataConstant.SuccessMessage : TempDataConstant.WarningMessage] =
             result.Success ? "Primary owner assigned" : result.Error;
 
-        return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Owners });
     }
 
     [HttpPost("plugins/{pluginSlug}/owners/add")]
@@ -436,7 +547,7 @@ public class AdminController(
         TempData[result.Success ? TempDataConstant.SuccessMessage : TempDataConstant.WarningMessage] =
             result.Success ? "Owner added." : result.Error;
 
-        return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Owners });
     }
 
     [HttpPost("plugins/{pluginSlug}/owners/{userId}/remove")]
@@ -452,7 +563,7 @@ public class AdminController(
         TempData[result.Success ? TempDataConstant.SuccessMessage : TempDataConstant.WarningMessage] =
             result.Success ? "Owner removed." : result.Error;
 
-        return RedirectToAction(nameof(PluginEdit), new { pluginSlug });
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Owners });
     }
 
     // list users
@@ -485,6 +596,109 @@ public class AdminController(
 
         model.Users = usersList;
         return View(model);
+    }
+
+    private async Task PopulatePluginEditViewModel(NpgsqlConnection conn, string pluginSlug, PluginEditViewModel model)
+    {
+        var plugin = await conn.GetPluginDetails(pluginSlug);
+        if (plugin is null)
+            return;
+
+        model.PluginSlug = plugin.PluginSlug;
+        model.Identifier ??= plugin.Identifier;
+        model.Settings ??= plugin.Settings;
+        model.ActiveTab = PluginEditTabs.Normalize(model.ActiveTab);
+        model.PluginSettings ??= SafeJson.Deserialize<PluginSettings>(plugin.Settings) ?? new PluginSettings();
+        await PopulatePluginEditActiveTabData(conn, model);
+    }
+
+    private async Task PopulatePluginEditActiveTabData(NpgsqlConnection conn, PluginEditViewModel model)
+    {
+        switch (model.ActiveTab)
+        {
+            case PluginEditTabs.Owners:
+                model.PluginUsers = await conn.GetPluginOwners(model.PluginSlug);
+                break;
+            case PluginEditTabs.Versions:
+                model.PublishedVersions = await GetPublishedVersionsForAdmin(conn, model.PluginSlug);
+                break;
+            case PluginEditTabs.Reviews:
+                model.ImportReview.PluginSlug = model.PluginSlug;
+                model.ImportReview.ExistingUsers = CreateExistingUserSelectItems();
+                break;
+        }
+    }
+
+    private List<SelectListItem> CreateExistingUserSelectItems()
+    {
+        return userManager.Users.Select(u => new SelectListItem
+        {
+            Value = u.Id,
+            Text = u.Email
+        }).ToList();
+    }
+
+    private async Task<List<PublishedPluginVersionAdminViewModel>> GetPublishedVersionsForAdmin(NpgsqlConnection conn, string pluginSlug)
+    {
+        var rows = await conn.QueryAsync<PluginVersionAdminRow>(
+            """
+            SELECT v.ver AS "Ver",
+                   v.btcpay_min_ver AS "BtcpayMinVer",
+                   v.btcpay_min_ver_override_enabled AS "BtcpayMinVerOverrideEnabled",
+                   v.btcpay_max_ver AS "BtcpayMaxVer",
+                   v.btcpay_max_ver_override_enabled AS "BtcpayMaxVerOverrideEnabled",
+                   v.pre_release AS "PreRelease",
+                   b.manifest_info AS "ManifestInfo"
+            FROM versions v
+            JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
+            WHERE v.plugin_slug = @pluginSlug
+            ORDER BY v.ver DESC
+            """,
+            new { pluginSlug });
+
+        return rows.Select(row => new PublishedPluginVersionAdminViewModel
+        {
+            Version = FormatVersion(row.Ver),
+            BtcPayMinVersion = FormatVersion(row.BtcpayMinVer),
+            HasBtcPayMinVersionOverride = row.BtcpayMinVerOverrideEnabled,
+            BtcPayMaxVersion = FormatVersion(row.BtcpayMaxVer),
+            HasBtcPayMaxVersionOverride = row.BtcpayMaxVerOverrideEnabled,
+            PreRelease = row.PreRelease,
+            ManifestCondition = TryGetBtcPayDependencyCondition(row.ManifestInfo)
+        }).ToList();
+    }
+
+    private static string? TryGetBtcPayDependencyCondition(string? manifestInfo)
+    {
+        if (string.IsNullOrWhiteSpace(manifestInfo))
+            return null;
+
+        try
+        {
+            var dependencies = JObject.Parse(manifestInfo)["Dependencies"] as JArray;
+            return dependencies?
+                .OfType<JObject>()
+                .FirstOrDefault(d => string.Equals(d["Identifier"]?.ToString(), "BTCPayServer", StringComparison.Ordinal))?["Condition"]
+                ?.ToString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? FormatVersion(int[]? versionParts)
+    {
+        return versionParts is { Length: > 0 } ? string.Join('.', versionParts) : null;
+    }
+
+    private static bool VersionEquals(PluginVersion? left, PluginVersion? right)
+    {
+        if (left is null && right is null)
+            return true;
+        if (left is null || right is null)
+            return false;
+        return left.CompareTo(right) == 0;
     }
 
     // edit roles

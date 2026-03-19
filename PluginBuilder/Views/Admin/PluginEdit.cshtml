@@ -1,4 +1,8 @@
 @using PluginBuilder.DataModels
+@using PluginBuilder.ViewModels
+@using PluginBuilder.ViewModels.Admin
+@using PluginBuilder.ViewModels.Shared
+@using static PluginBuilder.ViewModels.Admin.ImportReviewViewModel
 @model PluginEditViewModel
 @{
     Layout = "_Layout";
@@ -7,112 +11,442 @@
     var ownersTableVm = new PluginOwnersTableViewModel(Model.PluginSlug)
     {
         Controller = "Admin",
+        Tab = PluginEditTabs.Owners,
         CurrentUserId = string.Empty,
         Owners = Model.PluginUsers,
         CanAddOwner = true,
         CanManageOwners = true,
         CanLeave = false
     };
+
+    var isSettingsTab = Model.ActiveTab == PluginEditTabs.Settings;
+    var isOwnersTab = Model.ActiveTab == PluginEditTabs.Owners;
+    var isVersionsTab = Model.ActiveTab == PluginEditTabs.Versions;
+    var isReviewsTab = Model.ActiveTab == PluginEditTabs.Reviews;
+    var existingUsers = Model.ImportReview.ExistingUsers ?? new List<SelectListItem>();
+    var selectedSourceValue = ((int)Model.ImportReview.Source).ToString();
+    var openCompatibilityModalId = Model.PublishedVersions
+        .FirstOrDefault(v => string.Equals(v.Version, Model.OpenCompatibilityVersion, StringComparison.Ordinal))?.CompatibilityModalId;
 }
 
-<div class="d-flex flex-column flex-md-row align-items-center justify-content-between mb-4">
-    <h2 class="mb-3 mb-md-0">@ViewData["Title"] - @Model.PluginSlug</h2>
+<div class="d-flex flex-column flex-md-row align-items-start justify-content-between gap-3 mb-4">
+    <div>
+        <h2 class="mb-2">@ViewData["Title"] - @Model.PluginSlug</h2>
 
-    <div class="d-flex flex-column flex-sm-row align-items-center gap-3">
-        <a asp-controller="Admin" asp-action="ImportReview" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-primary">
-            Import Reviews
-        </a>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-xxl-constrain col-xl-10">
         @if (!string.IsNullOrEmpty(Model.Identifier))
         {
-            <div class="mb-4">
+            <div>
                 <strong>Identifier:</strong> <code>@Model.Identifier</code>
             </div>
         }
+    </div>
+</div>
 
-        <div class="mb-2">
-            <h5 class="fw-bold mb-3">Owners</h5>
-            <partial name="_PluginOwnersTable" model="ownersTableVm" />
+<ul class="nav nav-pills gap-4 mb-4" id="plugin-edit-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <a class="nav-link @(isSettingsTab ? "active" : null)"
+           id="plugin-edit-settings-tab"
+           asp-controller="Admin"
+           asp-action="PluginEdit"
+           asp-route-pluginSlug="@Model.PluginSlug"
+           asp-route-tab="@PluginEditTabs.Settings">
+            Settings
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link @(isOwnersTab ? "active" : null)"
+           id="plugin-edit-owners-tab"
+           asp-controller="Admin"
+           asp-action="PluginEdit"
+           asp-route-pluginSlug="@Model.PluginSlug"
+           asp-route-tab="@PluginEditTabs.Owners">
+            Owners
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link @(isVersionsTab ? "active" : null)"
+           id="plugin-edit-versions-tab"
+           asp-controller="Admin"
+           asp-action="PluginEdit"
+           asp-route-pluginSlug="@Model.PluginSlug"
+           asp-route-tab="@PluginEditTabs.Versions">
+            Versions
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link @(isReviewsTab ? "active" : null)"
+           id="plugin-edit-reviews-tab"
+           asp-controller="Admin"
+           asp-action="PluginEdit"
+           asp-route-pluginSlug="@Model.PluginSlug"
+           asp-route-tab="@PluginEditTabs.Reviews">
+            Import Reviews
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content" id="plugin-edit-tab-content">
+    <div class="tab-pane fade @(isSettingsTab ? "show active" : null)"
+         id="plugin-edit-settings"
+         role="tabpanel"
+         aria-labelledby="plugin-edit-settings-tab">
+        <div class="row">
+            <div class="col-md-10 col-lg-8">
+                <h5 class="fw-bold mb-3">Settings</h5>
+
+                <form asp-action="PluginEdit" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="@nameof(Model.ActiveTab)" value="@PluginEditTabs.Settings" />
+                    <div class="mb-3">
+                        <label asp-for="PluginSettings.PluginTitle" class="form-label fw-semibold">Plugin Title</label>
+                        <input type="text" asp-for="PluginSettings.PluginTitle" class="form-control" placeholder="Enter plugin title" />
+                        <span asp-validation-for="PluginSettings.PluginTitle" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Description</label>
+                        <textarea asp-for="PluginSettings.Description" class="form-control" rows="4"
+                                  placeholder="Enter plugin description">@Model.PluginSettings?.Description</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label asp-for="PluginSettings.GitRepository" class="form-label"></label>
+                        <input asp-for="PluginSettings.GitRepository" class="form-control" placeholder="https://github.com/Kukks/btcpayserver" />
+                    </div>
+                    <div class="form-group">
+                        <label asp-for="PluginSettings.Documentation" class="form-label"></label>
+                        <input asp-for="PluginSettings.Documentation" class="form-control" placeholder="https://docs.btcpayserver.org/PodServer/" />
+                    </div>
+                    <div class="form-group">
+                        <label asp-for="PluginSettings.VideoUrl" class="form-label"></label>
+                        <input asp-for="PluginSettings.VideoUrl" class="form-control" placeholder="https://www.youtube.com/watch?v=..." />
+                        <span asp-validation-for="PluginSettings.VideoUrl" class="text-danger"></span>
+                    </div>
+                    <div class="form-group">
+                        <label asp-for="PluginSettings.GitRef" class="form-label"></label>
+                        <input asp-for="PluginSettings.GitRef" class="form-control" placeholder="plugins/collection" />
+                    </div>
+                    <div class="form-group">
+                        <label asp-for="PluginSettings.PluginDirectory" class="form-label"></label>
+                        <input asp-for="PluginSettings.PluginDirectory" class="form-control" placeholder="Plugins/BTCPayServer.Plugins.RockstarStylist" />
+                    </div>
+                    <div class="form-group">
+                        <label asp-for="PluginSettings.BuildConfig" class="form-label"></label>
+                        <input asp-for="PluginSettings.BuildConfig" class="form-control" placeholder="Release" />
+                    </div>
+                    <div class="form-group">
+                        <div class="d-flex align-items-center justify-content-between gap-2">
+                            <label asp-for="PluginSettings.Logo" class="form-label"></label>
+                            @if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
+                            {
+                                <button type="submit" class="btn btn-link p-0 text-danger" name="removeLogoFile" value="true">
+                                    <vc:icon symbol="cross" />
+                                    Remove
+                                </button>
+                            }
+                        </div>
+                        <div class="d-flex align-items-center gap-3">
+                            <input asp-for="LogoFile" type="file" class="form-control flex-grow" accept="image/*">
+                            @if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
+                            {
+                                <img src="@Model.PluginSettings.Logo" alt="Logo" style="height:2.1rem;max-width:10.5rem;" />
+                            }
+                        </div>
+                        <span asp-validation-for="LogoFile" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Visibility" class="form-label"></label>
+                        <select asp-for="Visibility" class="form-select" asp-items="Html.GetEnumSelectList<PluginVisibilityEnum>()"></select>
+                        <span asp-validation-for="Visibility" class="text-danger"></span>
+                    </div>
+                    <div class="text-end mt-4">
+                        <input type="submit" class="btn btn-primary" value="Save Changes" />
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade @(isOwnersTab ? "show active" : null)"
+         id="plugin-edit-owners"
+         role="tabpanel"
+         aria-labelledby="plugin-edit-owners-tab">
+        <div class="row">
+            <div class="col-xxl-constrain col-xl-10">
+                <h5 class="fw-bold mb-3">Owners</h5>
+                <partial name="_PluginOwnersTable" model="ownersTableVm" />
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade @(isVersionsTab ? "show active" : null)"
+         id="plugin-edit-versions"
+         role="tabpanel"
+         aria-labelledby="plugin-edit-versions-tab">
+        <div class="row">
+            <div class="col-12">
+                <h5 class="fw-bold mb-3">Published Versions</h5>
+
+                @if (Model.PublishedVersions.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead>
+                            <tr>
+                                <th>Version</th>
+                                <th>Manifest Condition</th>
+                                <th>Pre-Release</th>
+                                <th>BTCPay Compatibility</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var publishedVersion in Model.PublishedVersions)
+                            {
+                                <tr>
+                                    <td><code>@publishedVersion.Version</code></td>
+                                    <td>
+                                        @if (!string.IsNullOrWhiteSpace(publishedVersion.ManifestCondition))
+                                        {
+                                            <code>@publishedVersion.ManifestCondition</code>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">None</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (publishedVersion.PreRelease)
+                                        {
+                                            <span class="badge bg-warning text-dark">Pre-release</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-success">Released</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="d-flex flex-wrap align-items-center gap-3">
+                                            <span>Min: <code>@publishedVersion.BtcPayMinVersion</code></span>
+                                            <span>
+                                                Max:
+                                                @if (!string.IsNullOrEmpty(publishedVersion.BtcPayMaxVersion))
+                                                {
+                                                    <code>@publishedVersion.BtcPayMaxVersion</code>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">None</span>
+                                                }
+                                            </span>
+                                            <button type="button"
+                                                    class="btn btn-link btn-sm p-0 text-decoration-none d-inline-flex align-items-center justify-content-center compatibility-edit-trigger"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#@publishedVersion.CompatibilityModalId"
+                                                    title="Edit compatibility"
+                                                    aria-label="Edit compatibility for @publishedVersion.Version">
+                                                <i class="fa fa-pencil" aria-hidden="true"></i>
+                                                <span class="visually-hidden">Edit compatibility for @publishedVersion.Version</span>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @foreach (var publishedVersion in Model.PublishedVersions)
+                    {
+                        var compatibilityModalVm = new BTCPayCompatibilityModalViewModel
+                        {
+                            ModalId = publishedVersion.CompatibilityModalId,
+                            ModalLabelId = $"{publishedVersion.CompatibilityModalId}-label",
+                            Title = $"Edit BTCPay compatibility for {publishedVersion.Version}",
+                            PostUrl = Url.Action("UpdateVersionBtcPayCompatibility", "Admin",
+                                new { pluginSlug = Model.PluginSlug, version = publishedVersion.Version })!,
+                            MinInputId = $"{publishedVersion.CompatibilityModalId}-min",
+                            MaxInputId = $"{publishedVersion.CompatibilityModalId}-max",
+                            MinInputClass = "admin-compatibility-input",
+                            MaxInputClass = "admin-compatibility-input",
+                            MinVersion = publishedVersion.BtcPayMinVersion,
+                            MaxVersion = publishedVersion.BtcPayMaxVersion,
+                            ShowResetToManifest = publishedVersion.HasBtcPayMinVersionOverride || publishedVersion.HasBtcPayMaxVersionOverride
+                        };
+
+                        <partial name="_BTCPayCompatibilityModal" model="compatibilityModalVm" />
+                    }
+                }
+                else
+                {
+                    <p class="text-secondary">No published versions available for this plugin yet.</p>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade @(isReviewsTab ? "show active" : null)"
+         id="plugin-edit-reviews"
+         role="tabpanel"
+         aria-labelledby="plugin-edit-reviews-tab">
+        <div class="row">
+            <div class="col-xl-8 col-xxl-constrain">
+                <div class="d-flex align-items-center justify-content-between mb-4">
+                    <h5 class="fw-bold mb-0">Import Review</h5>
+                    <button type="submit" form="import-review-form" class="btn btn-success">Submit Review</button>
+                </div>
+
+                <form id="import-review-form" asp-action="ImportReview" asp-route-pluginSlug="@Model.PluginSlug" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="PluginSlug" value="@Model.PluginSlug" />
+                    <div class="form-group">
+                        <label class="form-label" data-required for="Body">Body</label>
+                        <partial name="_MarkdownToolbarTextArea" model="@("Body")" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="Rating">Rating</label>
+                        <input id="Rating" name="Rating" type="range" min="1" max="5" value="@Model.ImportReview.Rating" class="form-range" />
+                        <div class="form-text">Selected: <span id="starLabel">@Model.ImportReview.Rating</span> ⭐</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="SourceUrl">Review Source URL</label>
+                        <input id="SourceUrl" name="SourceUrl" class="form-control" value="@Model.ImportReview.SourceUrl" />
+                    </div>
+                    <div class="form-group d-flex align-items-center">
+                        <input id="LinkExistingUser" class="btcpay-toggle me-2" type="checkbox" name="LinkExistingUser" value="true" @(Model.ImportReview.LinkExistingUser ? "checked" : null)>
+                        <label class="form-check-label" for="LinkExistingUser">Review by an existing Plugin Builder user?</label>
+                    </div>
+                    <div id="existingUserSection" class="mb-3" style="display:none">
+                        <label class="form-label" for="SelectedUserId">Select user</label>
+                        <select id="SelectedUserId" name="SelectedUserId" class="form-select">
+                            @foreach (var userOption in existingUsers)
+                            {
+                                <option value="@userOption.Value" selected="@(string.Equals(userOption.Value, Model.ImportReview.SelectedUserId, StringComparison.Ordinal) ? "selected" : null)">@userOption.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div id="manualIdentitySection">
+                        <div class="form-group">
+                            <label class="form-label" for="platformSelect">Reviewer platform</label>
+                            <select name="Source" class="form-select" id="platformSelect">
+                                @foreach (var option in Html.GetEnumSelectList<ImportReviewSourceEnum>())
+                                {
+                                    <option value="@option.Value" selected="@(string.Equals(option.Value, selectedSourceValue, StringComparison.Ordinal) ? "selected" : null)">@option.Text</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="ReviewerName">Profile URL</label>
+                            <div class="input-group">
+                                <span class="input-group-text" id="handlePrefix">https://</span>
+                                <input id="ReviewerName" name="ReviewerName" class="form-control" value="@Model.ImportReview.ReviewerName" />
+                            </div>
+                        </div>
+                        <div id="wwwExtras" style="display:none">
+                            <div class="form-group mt-3">
+                                <label class="form-label" for="WwwDisplayName">Display name (optional)</label>
+                                <input id="WwwDisplayName" name="WwwDisplayName" class="form-control" value="@Model.ImportReview.WwwDisplayName" />
+                            </div>
+                            <div class="form-group mt-3">
+                                <label class="form-label" for="WwwAvatarUrl">Profile picture URL (optional)</label>
+                                <input id="WwwAvatarUrl" name="WwwAvatarUrl" class="form-control" value="@Model.ImportReview.WwwAvatarUrl" />
+                                <div class="form-text">
+                                    Leave empty to use the site's avatar automatically.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
 
-<div class="row">
-    <div class="col-md-10 col-lg-8">
-        <h5 class="fw-bold mb-3">Settings</h5>
+@section HeaderScripts {
+    <style>
+        #plugin-edit-tabs .nav-link {
+            background: none;
+            padding: 0;
+            font-weight: var(--btcpay-font-weight-semibold);
+            font-size: 1.125rem;
+        }
 
-        <form asp-action="PluginEdit" method="post" enctype="multipart/form-data">
-            @Html.AntiForgeryToken()
-            <div class="mb-3">
-                <label asp-for="PluginSettings.PluginTitle" class="form-label fw-semibold">Plugin Title</label>
-                <input type="text" asp-for="PluginSettings.PluginTitle" class="form-control" placeholder="Enter plugin title" />
-                <span asp-validation-for="PluginSettings.PluginTitle" class="text-danger"></span>
-            </div>
-            <div class="mb-3">
-                <label class="form-label fw-semibold">Description</label>
-                <textarea asp-for="PluginSettings.Description" class="form-control" rows="4"
-                          placeholder="Enter plugin description">@Model.PluginSettings?.Description</textarea>
-            </div>
-            <div class="form-group">
-                <label asp-for="PluginSettings.GitRepository" class="form-label"></label>
-                <input asp-for="PluginSettings.GitRepository" class="form-control" placeholder="https://github.com/Kukks/btcpayserver" />
-            </div>
-            <div class="form-group">
-                <label asp-for="PluginSettings.Documentation" class="form-label"></label>
-                <input asp-for="PluginSettings.Documentation" class="form-control" placeholder="https://docs.btcpayserver.org/PodServer/" />
-            </div>
-            <div class="form-group">
-                <label asp-for="PluginSettings.VideoUrl" class="form-label"></label>
-                <input asp-for="PluginSettings.VideoUrl" class="form-control" placeholder="https://www.youtube.com/watch?v=..." />
-                <span asp-validation-for="PluginSettings.VideoUrl" class="text-danger"></span>
-            </div>
-            <div class="form-group">
-                <label asp-for="PluginSettings.GitRef" class="form-label"></label>
-                <input asp-for="PluginSettings.GitRef" class="form-control" placeholder="plugins/collection" />
-            </div>
-            <div class="form-group">
-                <label asp-for="PluginSettings.PluginDirectory" class="form-label"></label>
-                <input asp-for="PluginSettings.PluginDirectory" class="form-control" placeholder="Plugins/BTCPayServer.Plugins.RockstarStylist" />
-            </div>
-            <div class="form-group">
-                <label asp-for="PluginSettings.BuildConfig" class="form-label"></label>
-                <input asp-for="PluginSettings.BuildConfig" class="form-control" placeholder="Release" />
-            </div>
-            <div class="form-group">
-                <div class="d-flex align-items-center justify-content-between gap-2">
-                    <label asp-for="PluginSettings.Logo" class="form-label"></label>
-                    @if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
-                    {
-                        <button type="submit" class="btn btn-link p-0 text-danger" name="removeLogoFile" value="true">
-                            <vc:icon symbol="cross" />
-                            Remove
-                        </button>
-                    }
-                </div>
-                <div class="d-flex align-items-center gap-3">
-                    <input asp-for="LogoFile" type="file" class="form-control flex-grow" accept="image/*">
-                    @if (!string.IsNullOrEmpty(Model.PluginSettings.Logo))
-                    {
-                        <img src="@Model.PluginSettings.Logo" alt="Logo" style="height:2.1rem;max-width:10.5rem;" />
-                    }
-                </div>
-                <span asp-validation-for="PluginSettings.Logo" class="text-danger"></span>
-            </div>
+        #plugin-edit-tabs .nav-link.active {
+            color: var(--btcpay-primary);
+        }
 
-            <div class="mb-3">
-                <label asp-for="Visibility" class="form-label"></label>
-                <select asp-for="Visibility" class="form-select" asp-items="Html.GetEnumSelectList<PluginVisibilityEnum>()"></select>
-                <span asp-validation-for="Visibility" class="text-danger"></span>
-            </div>
-            <div class="text-end mt-4">
-                <input type="submit" class="btn btn-primary" value="Save Changes" />
-            </div>
-        </form>
-    </div>
-</div>
+        .admin-compatibility-input {
+            max-width: 12rem;
+        }
+
+        .compatibility-edit-trigger {
+            color: var(--btcpay-body-text-muted, var(--bs-secondary-color));
+        }
+
+        .compatibility-edit-trigger:hover,
+        .compatibility-edit-trigger:focus {
+            color: var(--btcpay-primary);
+        }
+    </style>
+}
 
 <partial name="_Confirm" model="@(new ConfirmModel("Confirm action", "Are you sure?", "Confirm"))" />
+
+@section FooterScripts {
+    <script>
+        const prefixMap = {
+            1: 'https://primal.net/p/',
+            2: 'https://x.com/',
+            3: 'https://github.com/',
+            4: 'https://'
+        };
+
+        const rating = document.querySelector('input[name="Rating"]');
+        if (rating) {
+            rating.addEventListener('input', e => document.getElementById('starLabel').textContent = e.target.value);
+        }
+
+        const checkbox = document.querySelector('[name="LinkExistingUser"]');
+        const existingSection = document.getElementById('existingUserSection');
+        const manualSection = document.getElementById('manualIdentitySection');
+
+        function toggleSections() {
+            if (!checkbox || !existingSection || !manualSection)
+                return;
+
+            if (checkbox.checked) {
+                existingSection.style.display = 'block';
+                manualSection.style.display = 'none';
+            } else {
+                existingSection.style.display = 'none';
+                manualSection.style.display = 'block';
+            }
+        }
+
+        checkbox?.addEventListener('change', toggleSections);
+        toggleSections();
+
+        const platformSelect = document.getElementById('platformSelect');
+        const handlePrefix = document.getElementById('handlePrefix');
+        const wwwExtras = document.getElementById('wwwExtras');
+
+        function syncPrefix() {
+            if (!platformSelect || !handlePrefix || !wwwExtras)
+                return;
+
+            handlePrefix.textContent = prefixMap[platformSelect.value];
+            if (Number(platformSelect.value) === 4)
+                wwwExtras.style.display = 'block';
+            else
+                wwwExtras.style.display = 'none';
+        }
+
+        platformSelect?.addEventListener('change', syncPrefix);
+        syncPrefix();
+
+        const compatibilityModalId = '@openCompatibilityModalId';
+        if (compatibilityModalId) {
+            const modalElement = document.getElementById(compatibilityModalId);
+            if (modalElement)
+                bootstrap.Modal.getOrCreateInstance(modalElement).show();
+        }
+    </script>
+}
