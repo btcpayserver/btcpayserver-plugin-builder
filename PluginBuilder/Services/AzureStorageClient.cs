@@ -62,6 +62,19 @@ public class AzureStorageClient
         return ToJson(output)["created"]!.Value<bool>();
     }
 
+    public async Task<bool> IsDefaultContainerAccessible()
+    {
+        try
+        {
+            var container = blobClient.GetContainerReference(DefaultContainer);
+            return await container.ExistsAsync();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async Task<string> UploadImageFile(IFormFile file, string blobName)
     {
         var container = blobClient.GetContainerReference(DefaultContainer);

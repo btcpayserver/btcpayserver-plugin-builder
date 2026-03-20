@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Npgsql;
 using static PluginBuilder.HostedServices.AzureStartupHostedService;
 using static PluginBuilder.HostedServices.DatabaseStartupHostedService;
 using static PluginBuilder.HostedServices.DockerStartupException;
@@ -7,20 +8,71 @@ namespace PluginBuilder.Services;
 
 public class HealthService : IHealthCheck
 {
-    Task<HealthCheckResult> IHealthCheck.CheckHealthAsync(HealthCheckContext healthCheckContext, CancellationToken cancellationToken)
+    public HealthService(DBConnectionFactory dbConnectionFactory, AzureStorageClient azureStorageClient, ProcessRunner processRunner)
     {
-        if (!DatabaseStartupCompleted || !DockerStartupCompleted || !AzureStartupCompleted)
-            return Task.FromResult(HealthCheckResult.Unhealthy("Startup incomplete"));
+        DbConnectionFactory = dbConnectionFactory;
+        AzureStorageClient = azureStorageClient;
+        ProcessRunner = processRunner;
+    }
 
-        if (DatabaseStartupError is not null)
-            return Task.FromResult(HealthCheckResult.Unhealthy($"Database error: {DatabaseStartupError}"));
+    private DBConnectionFactory DbConnectionFactory { get; }
+    private AzureStorageClient AzureStorageClient { get; }
+    private ProcessRunner ProcessRunner { get; }
 
-        if (DockerStartupError is not null)
-            return Task.FromResult(HealthCheckResult.Unhealthy("Docker error: {DockerStartupError}"));
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        var startupCompleted = DatabaseStartupCompleted && DockerStartupCompleted && AzureStartupCompleted;
+        if (!startupCompleted)
+            return HealthCheckResult.Unhealthy("Startup incomplete");
 
-        if (AzureStartupError is not null)
-            return Task.FromResult(HealthCheckResult.Unhealthy("Azure error: {AzureStartupError}"));
+        var hasStartupError = DatabaseStartupError is not null || DockerStartupError is not null || AzureStartupError is not null;
+        if (hasStartupError)
+            return HealthCheckResult.Unhealthy("Startup dependency failed");
 
-        return Task.FromResult(HealthCheckResult.Healthy());
+        var dbTask = IsDatabaseHealthy(cancellationToken);
+        var dockerTask = IsDockerHealthy(cancellationToken);
+        var azureTask = AzureStorageClient.IsDefaultContainerAccessible();
+
+        await Task.WhenAll(dbTask, dockerTask, azureTask);
+
+        var isHealthy = dbTask.Result && dockerTask.Result && azureTask.Result;
+
+        return isHealthy
+            ? HealthCheckResult.Healthy()
+            : HealthCheckResult.Unhealthy("Critical dependency unavailable");
+    }
+
+    private async Task<bool> IsDatabaseHealthy(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var conn = await DbConnectionFactory.Open(cancellationToken);
+            await using var cmd = new NpgsqlCommand("SELECT 1", conn);
+            var result = await cmd.ExecuteScalarAsync(cancellationToken);
+            return result is 1;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task<bool> IsDockerHealthy(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var code = await ProcessRunner.RunAsync(new ProcessSpec
+            {
+                Executable = "docker",
+                Arguments = ["info", "--format", "{{ .ServerVersion }}"],
+                OutputCapture = new OutputCapture(),
+                ErrorCapture = new OutputCapture()
+            }, cancellationToken);
+            return code == 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
