@@ -805,17 +805,17 @@ public class HomeController(
 
         var result = new
         {
-            status = report.Status == HealthStatus.Healthy ? "healthy" : "unhealthy",
+            status = report.Status == HealthStatus.Healthy ? "UP" : "DOWN",
             timestamp = DateTime.UtcNow,
-            details = report.Entries.ToDictionary(
-                e => e.Key,
-                e => new
-                {
-                    status = e.Value.Status.ToString().ToLower(),
-                    description = e.Value.Description
-                })
+            description = report.Entries.Values.FirstOrDefault(e => e.Description is not null).Description
         };
 
+        // display page
+        var acceptHeader = Request.Headers.Accept.ToString();
+        if (acceptHeader.Contains("text/html"))
+            return View("HealthPage", new HealthCheckViewModel{Healthy = result.status,  Description = result.description ?? ""});
+
+        // send JSON result
         return report.Status == HealthStatus.Unhealthy ? StatusCode(StatusCodes.Status503ServiceUnavailable, result) : Ok(result);
     }
 }

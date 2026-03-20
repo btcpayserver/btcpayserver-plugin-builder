@@ -1,0 +1,12 @@
+﻿@model HealthCheckViewModel
+
+@{
+    Layout = null;
+    ViewData["Title"] = "Health";
+    var isHealthy = Model.Healthy == "UP";
+}
+
+<div>
+    <h1>@Model.Healthy</h1>
+    <p>@Model.Description</p>
+</div>
