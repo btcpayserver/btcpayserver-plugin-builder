@@ -813,9 +813,9 @@ public class HomeController(
         // display page
         var acceptHeader = Request.Headers.Accept.ToString();
         if (acceptHeader.Contains("text/html"))
-            return View("HealthPage", new HealthCheckViewModel{Healthy = result.status,  Description = result.description ?? ""});
+            return View("HealthPage", new HealthCheckViewModel { Healthy = result.status,  Description = result.description ?? ""});
 
         // send JSON result
-        return report.Status == HealthStatus.Unhealthy ? StatusCode(StatusCodes.Status503ServiceUnavailable, result) : Ok(result);
+        return report.Status == HealthStatus.Healthy ? Ok(result) : StatusCode(StatusCodes.Status503ServiceUnavailable, result);
     }
 }
