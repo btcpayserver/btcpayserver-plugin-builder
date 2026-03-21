@@ -62,6 +62,22 @@ public class AzureStorageClient
         return ToJson(output)["created"]!.Value<bool>();
     }
 
+    public async Task<bool> IsDefaultContainerAccessible(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(15));
+
+            var container = blobClient.GetContainerReference(DefaultContainer);
+            return await container.ExistsAsync(null, null, cts.Token);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async Task<string> UploadImageFile(IFormFile file, string blobName)
     {
         var container = blobClient.GetContainerReference(DefaultContainer);

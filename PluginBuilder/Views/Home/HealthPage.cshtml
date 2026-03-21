@@ -1,0 +1,65 @@
+﻿@model HealthCheckViewModel
+
+@{
+    Layout = "_LayoutPublicModal";
+    ViewData["Title"] = "Health";
+    var isHealthy = Model.Healthy == "UP";
+}
+
+<partial name="_PublicHeader" />
+
+<div class="container">
+     <div class="lead text-center">
+        <h1 class="text-uppercase my-3">
+            @if (isHealthy)
+            {
+                <span>All Systems Operational!</span>
+            }
+            else
+            {
+                <span>Service Disruption</span>
+            }
+        </h1>
+
+        <br />
+
+        @if (isHealthy)
+        {
+            <p class="lead">That's sweet of you to check on me, but I'm doing just fine!</p>
+
+            <br />
+
+            <img src="~/img/healthpage/up-successkid.jpg" alt="Server UP" title="" asp-append-version="true" width="350" height="350" />
+
+            <br /> <br /> <br />
+
+            <p class="lead">
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <span>Head back to the <a href="/public/plugins">public plugin page</a>.</span>
+                }
+                else
+                {
+                    <span>Nothing to see here. You can <a href="/login">log in</a> if you dare.</span>
+                }
+            </p>
+        }
+        else
+        {
+            <p class="lead">
+                Something went wrong.
+            </p>
+
+            <br />
+
+            @if (!string.IsNullOrWhiteSpace(@Model.Description))
+            {
+                <p>Error: <code>@Model.Description</code></p>
+            }
+
+            <br /><br />
+
+            <p>Please try again later or contact support <a href="https://chat.btcpayserver.org/btcpayserver/channels/support">here</a> if the issue persists.</p>
+        }
+    </div>
+</div>
