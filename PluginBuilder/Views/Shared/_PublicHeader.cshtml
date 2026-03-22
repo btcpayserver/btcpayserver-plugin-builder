@@ -11,6 +11,16 @@
         </div>
 
         <div class="d-flex align-items-center gap-3">
+            <div class="dropdown">
+                <button class="btn btn-link text-muted p-0 btcpay-theme-trigger" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Theme">
+                    <vc:icon symbol="themes-system"/>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><button type="button" class="btcpay-theme-switch dropdown-item" data-theme="light"><vc:icon symbol="themes-light"/> Light theme</button></li>
+                    <li><button type="button" class="btcpay-theme-switch dropdown-item" data-theme="dark"><vc:icon symbol="themes-dark"/> Dark theme</button></li>
+                    <li><button type="button" class="btcpay-theme-switch dropdown-item" data-theme="system"><vc:icon symbol="themes-system"/> Device default</button></li>
+                </ul>
+            </div>
             @if (!isAuth)
             {
                 <a asp-action="Login"
