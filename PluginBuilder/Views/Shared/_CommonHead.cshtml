@@ -8,19 +8,25 @@
 <link href="~/main/layout.css" asp-append-version="true" rel="stylesheet" />
 <link href="~/main/site.css" asp-append-version="true" rel="stylesheet" />
 <link href="~/main/themes/default.css" rel="stylesheet" />
-<noscript>
-    <style>.btcpay-theme-switch {
-            display: none !important;
-        }</style>
-</noscript>
+<link href="~/main/themes/default-dark.css" id="DarkThemeLinkTag" rel="stylesheet" disabled asp-append-version="true" />
+<script>
+    (function(){
+        var t = localStorage.getItem('btcpay-theme');
+        if (t) document.documentElement.setAttribute('data-btcpay-theme', t);
+        if (t === 'dark') document.getElementById('DarkThemeLinkTag').disabled = false;
+    })();
+</script>
+<script src="~/js/theme-switch.js" asp-append-version="true"></script>
 <noscript>
     <style>
-        .hide-when-js, [v-cloak] {
-            display: block !important;
+        .btcpay-theme-switch { 
+            display: none !important; 
         }
-
-        .only-for-js {
-            display: none !important;
+        .hide-when-js, [v-cloak] { 
+            display: block !important; 
+        }
+        .only-for-js { 
+            display: none !important; 
         }
     </style>
 </noscript>
