@@ -10,6 +10,7 @@ public class AdminPluginViewModel
     public string? Version { get; set; }
     public long? BuildId { get; set; }
     public string? BtcPayMinVer { get; set; }
+    public string? BtcPayMaxVer { get; set; }
     public bool PreRelease { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public string PrimaryOwnerEmail { get; set; } = null!;

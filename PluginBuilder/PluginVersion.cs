@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace PluginBuilder;
 
-public class PluginVersion
+public class PluginVersion : IComparable<PluginVersion>
 {
     public static readonly PluginVersion Zero = new(new[] { 0, 0, 0, 0 });
 
@@ -44,6 +44,24 @@ public class PluginVersion
     public override string ToString()
     {
         return Version;
+    }
+
+    public int CompareTo(PluginVersion? other)
+    {
+        if (other is null)
+            return 1;
+
+        var maxParts = Math.Max(VersionParts.Length, other.VersionParts.Length);
+        for (var i = 0; i < maxParts; i++)
+        {
+            var left = VersionParts.ElementAtOrDefault(i);
+            var right = other.VersionParts.ElementAtOrDefault(i);
+            var cmp = left.CompareTo(right);
+            if (cmp != 0)
+                return cmp;
+        }
+
+        return 0;
     }
 
     public bool IsAtLeast(int major, int minor)

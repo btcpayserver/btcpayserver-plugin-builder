@@ -6,6 +6,7 @@ public sealed class PluginOwnersTableViewModel(PluginSlug pluginSlug)
 {
     public string Controller { get; init; } = "Plugin";
     public PluginSlug PluginSlug { get; init; } = pluginSlug;
+    public string? Tab { get; init; }
     public IReadOnlyList<OwnerVm> Owners { get; init; } = Array.Empty<OwnerVm>();
     public string? CurrentUserId { get; init; }
 

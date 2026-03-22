@@ -20,4 +20,9 @@ public class BuildViewModel
     public string Logs { get; set; }
     public bool RequireGPGSignatureForRelease { get; set; }
     public string ManifestInfoSha256Hash { get; set; }
+    public string BTCPayMinVersion { get; set; }
+    public string BTCPayMaxVersion { get; set; }
+    public bool HasBTCPayCompatibilityOverride { get; set; }
+    public bool CanEditBTCPayCompatibility { get; set; }
+    public bool OpenBTCPayCompatibilityModal { get; set; }
 }

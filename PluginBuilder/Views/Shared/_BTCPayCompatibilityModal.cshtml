@@ -1,0 +1,46 @@
+@model PluginBuilder.ViewModels.Shared.BTCPayCompatibilityModalViewModel
+
+<div class="modal fade" id="@Model.ModalId" tabindex="-1" aria-labelledby="@Model.ModalLabelId" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="@Model.ModalLabelId">@Model.Title</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="@Model.PostUrl" method="post">
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="@Model.MinInputId">Min</label>
+                        <input id="@Model.MinInputId"
+                               name="btcpayMinVersion"
+                               class="form-control @Model.MinInputClass"
+                               value="@Model.MinVersion"
+                               placeholder="0.0.0.0" />
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label fw-semibold" for="@Model.MaxInputId">Max</label>
+                        <input id="@Model.MaxInputId"
+                               name="btcpayMaxVersion"
+                               class="form-control @Model.MaxInputClass"
+                               value="@Model.MaxVersion"
+                               placeholder="None" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    @if (Model.ShowResetToManifest)
+                    {
+                        <button type="submit"
+                                name="useManifestDefaults"
+                                value="true"
+                                class="btn btn-outline-secondary me-auto">
+                            Reset to manifest
+                        </button>
+                    }
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
