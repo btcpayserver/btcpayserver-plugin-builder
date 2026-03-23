@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
@@ -97,6 +98,11 @@ public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(log
         Assert.Equal(pluginSlug, version.ProjectSlug);
         Assert.Equal(manifest.BTCPayMinVersion?.ToString(), version.BTCPayMinVersion);
         Assert.Equal("2.0.0.0", version.BTCPayMaxVersion);
+        var dependencyCondition = ((JArray)version.ManifestInfo["Dependencies"]!)
+            .OfType<JObject>()
+            .Single(d => string.Equals(d["Identifier"]?.ToString(), "BTCPayServer", StringComparison.Ordinal))["Condition"]!
+            .ToString();
+        Assert.Equal($">={version.BTCPayMinVersion} && <={version.BTCPayMaxVersion}", dependencyCondition);
         Assert.Single(maxBoundary);
         Assert.Empty(incompatible);
     }
