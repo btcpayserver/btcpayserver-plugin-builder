@@ -564,7 +564,7 @@ public class ApiController(
             .OfType<JObject>()
             .FirstOrDefault(d => string.Equals(d["Identifier"]?.ToString(), "BTCPayServer", StringComparison.Ordinal));
 
-        var isUnrestricted = btcpayMaxVersion is null && btcpayMinVersion.SequenceEqual(PluginVersion.Zero.VersionParts);
+        var isUnrestricted = btcpayMaxVersion is null && btcpayMinVersion.All(part => part == 0);
         if (isUnrestricted)
         {
             btcpayDependency?.Remove();
