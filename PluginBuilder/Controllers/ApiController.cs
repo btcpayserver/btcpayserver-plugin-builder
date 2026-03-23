@@ -10,7 +10,6 @@ using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Authentication;
 using PluginBuilder.Controllers.Logic;
-using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
@@ -537,6 +536,8 @@ public class ApiController(
         JObject buildInfo,
         string? fingerprint)
     {
+        var effectiveManifestInfo = ApplyEffectiveBtcPayCompatibility(manifestInfo, btcpayMinVersion, btcpayMaxVersion);
+
         return new PublishedVersion
         {
             PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
@@ -547,11 +548,47 @@ public class ApiController(
             BTCPayMaxVersion = btcpayMaxVersion is { Length: > 0 } ? string.Join('.', btcpayMaxVersion) : null,
             BuildId = buildId,
             BuildInfo = buildInfo,
-            ManifestInfo = manifestInfo,
+            ManifestInfo = effectiveManifestInfo,
             PluginLogo = settings?.Logo,
             Documentation = PluginPublicPage(pluginSlug),
             VideoUrl = settings?.VideoUrl,
             Fingerprint = fingerprint
         };
+    }
+
+    private static JObject ApplyEffectiveBtcPayCompatibility(JObject manifestInfo, int[] btcpayMinVersion, int[]? btcpayMaxVersion)
+    {
+        var clone = (JObject)manifestInfo.DeepClone();
+        var dependencies = clone["Dependencies"] as JArray;
+        var btcpayDependency = dependencies?
+            .OfType<JObject>()
+            .FirstOrDefault(d => string.Equals(d["Identifier"]?.ToString(), "BTCPayServer", StringComparison.Ordinal));
+
+        var isUnrestricted = btcpayMaxVersion is null && btcpayMinVersion.All(part => part == 0);
+        if (isUnrestricted)
+        {
+            btcpayDependency?.Remove();
+            return clone;
+        }
+
+        var effectiveCondition = $">={string.Join('.', btcpayMinVersion)}";
+        if (btcpayMaxVersion is { Length: > 0 })
+            effectiveCondition += $" && <={string.Join('.', btcpayMaxVersion)}";
+
+        if (btcpayDependency is not null)
+        {
+            btcpayDependency["Condition"] = effectiveCondition;
+            return clone;
+        }
+
+        dependencies ??= [];
+        clone["Dependencies"] = dependencies;
+        dependencies.Add(new JObject
+        {
+            ["Identifier"] = "BTCPayServer",
+            ["Condition"] = effectiveCondition
+        });
+
+        return clone;
     }
 }
