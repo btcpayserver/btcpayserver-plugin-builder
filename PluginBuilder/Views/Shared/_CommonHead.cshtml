@@ -12,7 +12,7 @@
 <script>
     (function(){
         var theme = localStorage.getItem('btcpay-theme');
-        if (theme) document.documentElement.setAttribute('data-btcpay-theme', t);
+        if (theme) document.documentElement.setAttribute('data-btcpay-theme', theme);
         var isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
         if (isDark) document.getElementById('DarkThemeLinkTag').disabled = false;
     })();
