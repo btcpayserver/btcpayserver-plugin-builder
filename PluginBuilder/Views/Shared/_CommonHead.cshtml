@@ -11,9 +11,10 @@
 <link href="~/main/themes/default-dark.css" id="DarkThemeLinkTag" rel="stylesheet" disabled asp-append-version="true" />
 <script>
     (function(){
-        var t = localStorage.getItem('btcpay-theme');
-        if (t) document.documentElement.setAttribute('data-btcpay-theme', t);
-        if (t === 'dark') document.getElementById('DarkThemeLinkTag').disabled = false;
+        var theme = localStorage.getItem('btcpay-theme');
+        if (theme) document.documentElement.setAttribute('data-btcpay-theme', t);
+        var isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) document.getElementById('DarkThemeLinkTag').disabled = false;
     })();
 </script>
 <script src="~/js/theme-switch.js" asp-append-version="true"></script>
