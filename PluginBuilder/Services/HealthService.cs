@@ -1,19 +1,20 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
-using static PluginBuilder.HostedServices.AzureStartupHostedService;
-using static PluginBuilder.HostedServices.DatabaseStartupHostedService;
-using static PluginBuilder.HostedServices.DockerStartupException;
 
 namespace PluginBuilder.Services;
 
 public class HealthService : IHealthCheck
 {
-    public HealthService(DBConnectionFactory dbConnectionFactory, AzureStorageClient azureStorageClient, ProcessRunner processRunner)
+    public HealthService(DBConnectionFactory dbConnectionFactory, AzureStorageClient azureStorageClient, ProcessRunner processRunner, IHostApplicationLifetime lifetime)
     {
         DbConnectionFactory = dbConnectionFactory;
         AzureStorageClient = azureStorageClient;
         ProcessRunner = processRunner;
+
+        _lifetime = lifetime;
     }
+
+    private readonly IHostApplicationLifetime _lifetime;
 
     private DBConnectionFactory DbConnectionFactory { get; }
     private AzureStorageClient AzureStorageClient { get; }
@@ -21,17 +22,12 @@ public class HealthService : IHealthCheck
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        var startupCompleted = DatabaseStartupCompleted && DockerStartupCompleted && AzureStartupCompleted;
-        if (!startupCompleted)
+        if (!_lifetime.ApplicationStarted.IsCancellationRequested)
             return HealthCheckResult.Unhealthy("Startup incomplete");
-
-        var hasStartupError = DatabaseStartupError is not null || DockerStartupError is not null || AzureStartupError is not null;
-        if (hasStartupError)
-            return HealthCheckResult.Unhealthy("Startup dependency failed");
 
         var dbTask = IsDatabaseHealthy(cancellationToken);
         var dockerTask = IsDockerHealthy(cancellationToken);
-        var azureTask = AzureStorageClient.IsDefaultContainerAccessible();
+        var azureTask = AzureStorageClient.IsDefaultContainerAccessible(cancellationToken);
 
         await Task.WhenAll(dbTask, dockerTask, azureTask);
 
