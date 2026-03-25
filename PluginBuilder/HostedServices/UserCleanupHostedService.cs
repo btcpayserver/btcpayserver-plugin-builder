@@ -1,0 +1,40 @@
+using Microsoft.Extensions.DependencyInjection;
+using PluginBuilder.Services;
+
+namespace PluginBuilder.HostedServices;
+
+public class UserCleanupHostedService : BackgroundService
+{
+    private static readonly TimeSpan CleanupInterval = TimeSpan.FromDays(7);
+
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<UserCleanupHostedService> _logger;
+
+    public UserCleanupHostedService(
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserCleanupHostedService> logger)
+    {
+        _scopeFactory = scopeFactory;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        // Run indefinitely on a weekly cadence until the host stops.
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var runner = scope.ServiceProvider.GetRequiredService<UserCleanupRunner>();
+                await runner.RunOnceAsync(stoppingToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Error during user cleanup");
+            }
+
+            await Task.Delay(CleanupInterval, stoppingToken);
+        }
+    }
+}
