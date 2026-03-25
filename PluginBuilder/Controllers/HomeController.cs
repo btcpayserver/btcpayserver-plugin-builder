@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
@@ -33,7 +34,8 @@ public class HomeController(
     PluginBuilderOptions options,
     ServerEnvironment env,
     NostrService nostrService,
-    ILogger<HomeController> logger)
+    ILogger<HomeController> logger,
+    HealthCheckService healthCheckService)
     : Controller
 {
     [AllowAnonymous]
@@ -792,5 +794,37 @@ public class HomeController(
     public IActionResult Error()
     {
         return View("Error", new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/health")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
+    public async Task<IActionResult> CheckHealth(CancellationToken cancellationToken)
+    {
+        var report = await healthCheckService.CheckHealthAsync(cancellationToken);
+
+        var result = new
+        {
+            status = report.Status == HealthStatus.Healthy ? "UP" : "DOWN",
+            timestamp = DateTime.UtcNow,
+            description = report.Entries.Values.FirstOrDefault(e => e.Description is not null).Description
+        };
+
+        // display page
+        var acceptHeader = Request.Headers.Accept.ToString();
+        if (acceptHeader.Contains("text/html"))
+        {
+            var hcvm = new HealthCheckViewModel { Healthy = result.status, Description = result.description ?? "" };
+
+            var view = View("HealthPage", hcvm);
+            view.StatusCode = report.Status == HealthStatus.Unhealthy
+                ? StatusCodes.Status503ServiceUnavailable
+                : StatusCodes.Status200OK;
+
+            return view;
+        }
+
+        // send JSON result
+        return report.Status == HealthStatus.Healthy ? Ok(result) : StatusCode(StatusCodes.Status503ServiceUnavailable, result);
     }
 }

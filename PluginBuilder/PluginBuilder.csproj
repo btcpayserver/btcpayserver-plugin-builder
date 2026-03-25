@@ -123,6 +123,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="wwwroot\img\healthpage\" />
     <Folder Include="wwwroot\vendor\highlight.js\"/>
     <Folder Include="wwwroot\vendor\signalr\"/>
   </ItemGroup>

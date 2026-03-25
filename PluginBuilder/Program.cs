@@ -81,6 +81,8 @@ public class Program
         if (!verbose)
             builder.Logging.AddFilter("Events", LogLevel.Warning);
 
+        builder.Services.AddHealthChecks().AddCheck<HealthService>("Dependencies");
+
         // Uncomment this to see EF queries
         // builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Trace);
         builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Migrations", LogLevel.Information);
@@ -192,6 +194,7 @@ public class Program
         services.AddSingleton<AzureStorageClient>();
         services.AddSingleton<ServerEnvironment>();
         services.AddSingleton<EventAggregator>();
+        services.AddSingleton<HealthService>();
         services.AddHttpClient(HttpClientNames.GitHub, client =>
         {
             client.BaseAddress = new Uri("https://api.github.com/");
