@@ -9,12 +9,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.PluginTests;
 
-public class UserCleanupTests : UnitTestBase
+public class UserCleanupTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
-    public UserCleanupTests(ITestOutputHelper logs) : base(logs)
-    {
-    }
-
     [Fact]
     public async Task CleanupDeletesOnlyStaleUnconfirmedUsersWithoutLinks()
     {

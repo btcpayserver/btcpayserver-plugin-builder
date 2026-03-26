@@ -1,11 +1,10 @@
-using Microsoft.Extensions.DependencyInjection;
 using PluginBuilder.Services;
 
 namespace PluginBuilder.HostedServices;
 
 public class UserCleanupHostedService : BackgroundService
 {
-    private static readonly TimeSpan CleanupInterval = TimeSpan.FromDays(7);
+    private static readonly TimeSpan _cleanupInterval = TimeSpan.FromDays(7);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<UserCleanupHostedService> _logger;
@@ -33,7 +32,7 @@ public class UserCleanupHostedService : BackgroundService
                 _logger.LogError(ex, "Error during user cleanup");
             }
 
-            await Task.Delay(CleanupInterval, stoppingToken);
+            await Task.Delay(_cleanupInterval, stoppingToken);
         }
     }
 }

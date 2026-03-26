@@ -9,7 +9,7 @@ namespace PluginBuilder.HostedServices;
 /// </summary>
 public class PluginCleanupHostedService : BackgroundService
 {
-    private static readonly TimeSpan CleanupInterval = TimeSpan.FromDays(7);
+    private static readonly TimeSpan _cleanupInterval = TimeSpan.FromDays(7);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<PluginCleanupHostedService> _logger;
@@ -37,7 +37,7 @@ public class PluginCleanupHostedService : BackgroundService
                 _logger.LogError(ex, "Error during plugin cleanup");
             }
 
-            await Task.Delay(CleanupInterval, stoppingToken);
+            await Task.Delay(_cleanupInterval, stoppingToken);
         }
     }
 }
