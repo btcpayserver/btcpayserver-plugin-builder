@@ -185,9 +185,11 @@ public class Program
         services.AddHostedService<AzureStartupHostedService>();
         services.AddHostedService<PluginHubHostedService>();
         services.AddHostedService<PluginCleanupHostedService>();
+        services.AddHostedService<UserCleanupHostedService>();
 
         services.AddSingleton<DBConnectionFactory>();
         services.AddScoped<PluginCleanupRunner>();
+        services.AddScoped<UserCleanupRunner>();
         services.AddSingleton<BuildService>();
         services.AddSingleton<ProcessRunner>();
         services.AddSingleton<GPGKeyService>();
