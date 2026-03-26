@@ -28,7 +28,7 @@ public class UserCleanupRunner
         await using var conn = await _connectionFactory.Open(cancellationToken);
 
         var threshold = DateTimeOffset.UtcNow - StaleThreshold;
-                var deletedCount = await conn.ExecuteAsync(
+                var command = new CommandDefinition(
                         """
                         DELETE FROM "AspNetUsers" u
                         WHERE u."EmailConfirmed" = FALSE
@@ -39,7 +39,10 @@ public class UserCleanupRunner
                             AND NOT EXISTS (SELECT 1 FROM plugin_reviews pr WHERE pr.helpful_voters ? u."Id")
                             AND NOT EXISTS (SELECT 1 FROM plugin_listing_requests plr WHERE plr.reviewed_by = u."Id")
                         """,
-                        new { Threshold = threshold });
+                        new { Threshold = threshold },
+                        cancellationToken: cancellationToken);
+
+                var deletedCount = await conn.ExecuteAsync(command);
 
         _logger.LogInformation("Deleted {DeletedCount} stale unconfirmed users.", deletedCount);
 
