@@ -8,7 +8,6 @@ namespace PluginBuilder.Services;
 /// </summary>
 public class UserCleanupRunner
 {
-    // Keep stale window small so only abandoned signups are removed.
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromDays(30);
 
     private readonly DBConnectionFactory _connectionFactory;
@@ -29,7 +28,6 @@ public class UserCleanupRunner
         await using var conn = await _connectionFactory.Open(cancellationToken);
 
         var threshold = DateTimeOffset.UtcNow - StaleThreshold;
-                // Protect any unconfirmed user that has roles or owns/reviews plugins.
                 var deletedCount = await conn.ExecuteAsync(
                         """
                         DELETE FROM "AspNetUsers" u
@@ -38,7 +36,7 @@ public class UserCleanupRunner
                             AND NOT EXISTS (SELECT 1 FROM "AspNetUserRoles" ur WHERE ur."UserId" = u."Id")
                             AND NOT EXISTS (SELECT 1 FROM users_plugins up WHERE up.user_id = u."Id")
                             AND NOT EXISTS (SELECT 1 FROM plugin_reviewers pr WHERE pr.user_id = u."Id")
-                            AND NOT EXISTS (SELECT 1 FROM plugin_reviews pr WHERE pr.user_id = u."Id")
+                            AND NOT EXISTS (SELECT 1 FROM plugin_reviews pr WHERE pr.helpful_voters ? u."Id")
                             AND NOT EXISTS (SELECT 1 FROM plugin_listing_requests plr WHERE plr.reviewed_by = u."Id")
                         """,
                         new { Threshold = threshold });

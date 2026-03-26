@@ -20,7 +20,6 @@ public class UserCleanupHostedService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Run indefinitely on a weekly cadence until the host stops.
         while (!stoppingToken.IsCancellationRequested)
         {
             try

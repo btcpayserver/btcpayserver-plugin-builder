@@ -1,4 +1,3 @@
--- Track signup time for stale-account cleanup and speed lookups by confirmation state.
 ALTER TABLE "AspNetUsers"
     ADD COLUMN IF NOT EXISTS "CreatedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
 

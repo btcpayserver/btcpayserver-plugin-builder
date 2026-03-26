@@ -24,19 +24,18 @@ public class UserCleanupTests : UnitTestBase
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
 
-        // Fixture covers all keep/delete edge cases for unconfirmed accounts.
         var staleUnconfirmedDelete = await tester.CreateFakeUserAsync(confirmEmail: false, githubVerified: false);
         var recentUnconfirmedKeep = await tester.CreateFakeUserAsync(confirmEmail: false, githubVerified: false);
         var staleConfirmedKeep = await tester.CreateFakeUserAsync(confirmEmail: true, githubVerified: false);
         var staleWithRoleKeep = await tester.CreateFakeUserAsync(confirmEmail: false, githubVerified: false);
         var staleOwnerKeep = await tester.CreateFakeUserAsync(confirmEmail: false, githubVerified: false);
         var staleReviewerKeep = await tester.CreateFakeUserAsync(confirmEmail: false, githubVerified: false);
+        var staleVoteOnlyKeep = await tester.CreateFakeUserAsync(confirmEmail: false, githubVerified: false);
         var staleListingReviewerKeep = await tester.CreateFakeUserAsync(confirmEmail: false, githubVerified: false);
 
         var staleDate = DateTimeOffset.UtcNow.AddDays(-60);
         var recentDate = DateTimeOffset.UtcNow.AddDays(-5);
 
-        // Mark most accounts stale so only recency saves the fresh unconfirmed one.
         await conn.ExecuteAsync(
             "UPDATE \"AspNetUsers\" SET \"CreatedAt\" = @StaleDate WHERE \"Id\" = ANY(@StaleIds)",
             new
@@ -49,6 +48,7 @@ public class UserCleanupTests : UnitTestBase
                     staleWithRoleKeep,
                     staleOwnerKeep,
                     staleReviewerKeep,
+                    staleVoteOnlyKeep,
                     staleListingReviewerKeep
                 }
             });
@@ -74,6 +74,9 @@ public class UserCleanupTests : UnitTestBase
         await conn.ExecuteAsync(
             "INSERT INTO plugin_reviews (plugin_slug, reviewer_id, rating, body) VALUES (@PluginSlug, @ReviewerId, 5, 'ok')",
             new { PluginSlug = reviewPlugin, ReviewerId = reviewerId });
+        await conn.ExecuteAsync(
+            "UPDATE plugin_reviews SET helpful_voters = jsonb_build_object(@UserId, true) WHERE plugin_slug = @PluginSlug AND reviewer_id = @ReviewerId",
+            new { UserId = staleVoteOnlyKeep, PluginSlug = reviewPlugin, ReviewerId = reviewerId });
 
         const string listingPlugin = "listing-linked-plugin";
         await conn.NewPlugin(listingPlugin, staleOwnerKeep);
@@ -95,6 +98,7 @@ public class UserCleanupTests : UnitTestBase
         var roleExists = await UserExists(conn, staleWithRoleKeep);
         var ownerExists = await UserExists(conn, staleOwnerKeep);
         var reviewerExists = await UserExists(conn, staleReviewerKeep);
+        var voteOnlyExists = await UserExists(conn, staleVoteOnlyKeep);
         var listingReviewerExists = await UserExists(conn, staleListingReviewerKeep);
 
         Assert.Equal(1, deletedCount);
@@ -104,6 +108,7 @@ public class UserCleanupTests : UnitTestBase
         Assert.True(roleExists);
         Assert.True(ownerExists);
         Assert.True(reviewerExists);
+        Assert.True(voteOnlyExists);
         Assert.True(listingReviewerExists);
     }
 
