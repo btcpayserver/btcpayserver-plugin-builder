@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using Microsoft.Playwright.Xunit;
 using Xunit;
 using Xunit.Abstractions;
