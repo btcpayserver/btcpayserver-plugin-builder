@@ -209,7 +209,6 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         PluginReviewViewModel reviewViewModel = new()
         {
             PluginSlug = pluginSlug,
-            UserId = userId,
             Rating = 5,
             Body = "This is a good plugin"
         };

@@ -539,9 +539,9 @@ public static class NpgsqlConnectionExtensions
     {
         const string sql = """
                                INSERT INTO plugin_reviews
-                                   (plugin_slug, user_id, rating, body, plugin_version, reviewer_id, created_at, updated_at)
+                                   (plugin_slug, rating, body, plugin_version, reviewer_id, created_at, updated_at)
                                VALUES
-                                   (@plugin_slug, @user_id, @rating, NULLIF(@body,''), @plugin_version, @reviewer_id, NOW(), NOW())
+                                   (@plugin_slug, @rating, NULLIF(@body,''), @plugin_version, @reviewer_id, NOW(), NOW())
                                ON CONFLICT (plugin_slug, reviewer_id)
                                DO UPDATE SET
                                    rating         = EXCLUDED.rating,
@@ -559,7 +559,6 @@ public static class NpgsqlConnectionExtensions
         return connection.ExecuteAsync(sql, new
         {
             plugin_slug = model.PluginSlug,
-            user_id = model.UserId,
             rating = model.Rating,
             body = model.Body,
             reviewer_id = model.ReviewerId,
