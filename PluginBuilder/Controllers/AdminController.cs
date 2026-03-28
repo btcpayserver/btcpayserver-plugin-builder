@@ -220,7 +220,6 @@ public class AdminController(
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
         pluginSettings.Screenshots = model.PluginSettings.Screenshots ?? [];
 
-        // TODO : valider pour tout les screenshots (pareil que plugincontroller)
         if (model.LogoFile != null)
         {
             if (!model.LogoFile.ValidateUploadedImage(out var errorMessage))
@@ -247,6 +246,26 @@ public class AdminController(
         {
             model.LogoFile = null;
             pluginSettings.Logo = null;
+        }
+
+        if (model.ScreenshotFiles is { Count: > 0 })
+        {
+            foreach (var screenshot in model.ScreenshotFiles.Where(s => s.Length > 0))
+            {
+                try
+                {
+                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(screenshot.FileName)}";
+                    var screenshotUrl = await azureStorageClient.UploadImageFile(screenshot, uniqueBlobName);
+                    pluginSettings.Screenshots.Add(screenshotUrl);
+                }
+                catch (Exception)
+                {
+                    ModelState.AddModelError(nameof(model.ScreenshotFiles),
+                        "Could not complete settings upload. An error occurred while uploading screenshots");
+                    await PopulatePluginEditViewModel(conn, pluginSlug, model);
+                    return View(model);
+                }
+            }
         }
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
