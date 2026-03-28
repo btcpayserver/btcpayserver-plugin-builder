@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using PluginBuilder.Services;
 
 namespace PluginBuilder.HostedServices;

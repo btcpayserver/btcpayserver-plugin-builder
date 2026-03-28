@@ -1,8 +1,4 @@
-using System;
-using System.IO;
-using System.Linq;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright.Xunit;
