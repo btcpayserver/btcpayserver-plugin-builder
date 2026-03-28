@@ -43,4 +43,10 @@ public class PluginSettingViewModel
     [MaxLength(200)]
     [Display(Name = "Video URL")]
     public string? VideoUrl { get; set; }
+
+    [Display(Name = "Screenshots")]
+    public List<string> ScreenshotsUrl { get; set; } = [];
+
+    [Display(Name = "Screenshots")]
+    public List<IFormFile?> Screenshots { get; set; } = [];
 }

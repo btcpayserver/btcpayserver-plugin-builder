@@ -218,6 +218,9 @@ public class AdminController(
         pluginSettings.Documentation = model.PluginSettings.Documentation;
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
+        pluginSettings.Screenshots = model.PluginSettings.Screenshots ?? [];
+
+        // TODO : valider pour tout les screenshots (pareil que plugincontroller)
         if (model.LogoFile != null)
         {
             if (!model.LogoFile.ValidateUploadedImage(out var errorMessage))

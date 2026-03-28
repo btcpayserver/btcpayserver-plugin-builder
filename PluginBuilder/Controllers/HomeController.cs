@@ -461,6 +461,7 @@ public class HomeController(
             PluginLogo = settings?.Logo,
             Documentation = settings?.Documentation,
             VideoUrl = settings?.VideoUrl,
+            Screenshots = settings?.Screenshots,
             Version = (string)pluginDetails.ver_str,
             BTCPayMinVersion = (string?)pluginDetails.btcpay_min_ver is { Length: > 0 } min ? min.Trim() : null,
             BTCPayMaxVersion = (string?)pluginDetails.btcpay_max_ver is { Length: > 0 } max ? max.Trim() : null,

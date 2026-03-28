@@ -93,6 +93,7 @@ public class DashboardController(
             return View(model);
         }
 
+        // TODO : faire pour toutes les images de screenshot
         if (model.Logo != null)
         {
             string errorMessage;
@@ -119,7 +120,8 @@ public class DashboardController(
             Logo = model.LogoUrl,
             PluginTitle = model.PluginTitle,
             Description = model.Description,
-            VideoUrl = model.VideoUrl
+            VideoUrl = model.VideoUrl,
+            Screenshots = model.ScreenshotsUrl
         });
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }
