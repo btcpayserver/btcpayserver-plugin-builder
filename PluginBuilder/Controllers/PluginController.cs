@@ -97,6 +97,7 @@ public class PluginController(
         var existingSetting = await conn.GetSettings(pluginSlug);
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
         settingViewModel.LogoUrl = existingSetting?.Logo;
+        settingViewModel.ScreenshotsUrl = existingSetting?.Screenshots ?? [];
         settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
         if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
         {
@@ -117,6 +118,7 @@ public class PluginController(
             }
         }
 
+        // TODO : valider pour tout les screenshots (pareil que admincontroller)
         if (settingViewModel.Logo != null)
         {
             if (!settingViewModel.Logo.ValidateUploadedImage(out var errorMessage))

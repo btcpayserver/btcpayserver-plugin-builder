@@ -460,6 +460,7 @@ public class HomeController(
             PluginLogo = settings?.Logo,
             Documentation = settings?.Documentation,
             VideoUrl = settings?.VideoUrl,
+            Screenshots = settings?.Screenshots,
             Version = (string)pluginDetails.ver_str,
             BuildInfo = JObject.Parse((string)pluginDetails.build_info),
             CreatedDate = (DateTimeOffset)pluginDetails.created_at,

@@ -26,6 +26,12 @@ public class CreatePluginViewModel
     [Display(Name = "Logo")]
     public string LogoUrl { get; set; }
 
+    [Display(Name = "Screenshots")]
+    public List<string> ScreenshotsUrl { get; set; } = [];
+
+    [Display(Name = "Screenshots")]
+    public List<IFormFile> Screenshots { get; set; } = [];
+
     [MaxLength(200)]
     [Display(Name = "Plugin Demo Video URL")]
     public string VideoUrl { get; set; }
