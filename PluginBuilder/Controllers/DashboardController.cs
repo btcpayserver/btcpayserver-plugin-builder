@@ -93,7 +93,6 @@ public class DashboardController(
             return View(model);
         }
 
-        // TODO : faire pour toutes les images de screenshot
         if (model.Logo != null)
         {
             string errorMessage;
@@ -112,6 +111,25 @@ public class DashboardController(
             {
                 ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. An error occurred while uploading logo image");
                 return View(model);
+            }
+        }
+
+        if (model.Screenshots is { Count: > 0 })
+        {
+            foreach (var screenshot in model.Screenshots.Where(s => s is { Length: > 0 }))
+            {
+                try
+                {
+                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(screenshot!.FileName)}";
+                    var screenshotUrl = await azureStorageClient.UploadImageFile(screenshot, uniqueBlobName);
+                    model.ScreenshotsUrl.Add(screenshotUrl);
+                }
+                catch (Exception)
+                {
+                    ModelState.AddModelError(nameof(model.Screenshots),
+                        "Could not complete plugin creation. An error occurred while uploading screenshots");
+                    return View(model);
+                }
             }
         }
 

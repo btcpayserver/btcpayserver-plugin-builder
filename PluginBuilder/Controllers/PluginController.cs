@@ -118,7 +118,6 @@ public class PluginController(
             }
         }
 
-        // TODO : valider pour tout les screenshots (pareil que admincontroller)
         if (settingViewModel.Logo != null)
         {
             if (!settingViewModel.Logo.ValidateUploadedImage(out var errorMessage))
@@ -143,6 +142,26 @@ public class PluginController(
         {
             settingViewModel.Logo = null;
             settingViewModel.LogoUrl = null;
+        }
+
+        if (settingViewModel.Screenshots is { Count: > 0 })
+        {
+            foreach (var screenshot in settingViewModel.Screenshots.Where(s => s is { Length: > 0 }))
+            {
+                try
+                {
+                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(screenshot!.FileName)}";
+                    var screenshotUrl = await azureStorageClient.UploadImageFile(screenshot, uniqueBlobName);
+                    settingViewModel.ScreenshotsUrl.Add(screenshotUrl);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to upload screenshot for plugin {PluginSlug}", pluginSlug);
+                    ModelState.AddModelError(nameof(settingViewModel.Screenshots),
+                        "Could not complete settings upload. An error occurred while uploading screenshots");
+                    return View(settingViewModel);
+                }
+            }
         }
 
         if (!settingViewModel.IsPluginPrimaryOwner && existingSetting is not null)
