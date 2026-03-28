@@ -1254,6 +1254,13 @@ public class AdminController(
         };
 
         var emails = await GetAllPrimaryOwnerEmails(model);
+
+        if (emails == null || !emails.Any())
+        {
+            TempData[TempDataConstant.WarningMessage] = "No primary owner emails found for the selected filters.";
+            return RedirectToAction("ListPlugins", new { searchText, status });
+        }
+
         var emailList = string.Join(",", emails);
 
         return RedirectToAction("EmailSender", new { to = emailList });
