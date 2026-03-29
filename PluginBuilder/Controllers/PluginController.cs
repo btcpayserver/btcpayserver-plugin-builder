@@ -153,6 +153,14 @@ public class PluginController(
 
         if (settingViewModel.Screenshots is { Count: > 0 })
         {
+            var screenshotsToUploadCount = settingViewModel.Screenshots.Count(s => s is { Length: > 0 });
+            if (screenshotsToUploadCount > 0 && settingViewModel.ScreenshotsUrl.Count + screenshotsToUploadCount > 10)
+            {
+                ModelState.AddModelError(nameof(settingViewModel.Screenshots),
+                    "A maximum of 10 screenshots is allowed per plugin.");
+                return View(settingViewModel);
+            }
+
             foreach (var screenshot in settingViewModel.Screenshots.Where(s => s is { Length: > 0 }))
             {
                 try

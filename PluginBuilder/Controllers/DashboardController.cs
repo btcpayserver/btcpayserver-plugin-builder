@@ -116,6 +116,14 @@ public class DashboardController(
 
         if (model.Screenshots is { Count: > 0 })
         {
+            var screenshotsToUploadCount = model.Screenshots.Count(s => s is { Length: > 0 });
+            if (screenshotsToUploadCount > 10)
+            {
+                ModelState.AddModelError(nameof(model.Screenshots),
+                    "A maximum of 10 screenshots is allowed per plugin.");
+                return View(model);
+            }
+
             foreach (var screenshot in model.Screenshots.Where(s => s is { Length: > 0 }))
             {
                 try

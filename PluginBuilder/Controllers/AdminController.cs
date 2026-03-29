@@ -250,6 +250,15 @@ public class AdminController(
 
         if (model.ScreenshotFiles is { Count: > 0 })
         {
+            var screenshotsToUploadCount = model.ScreenshotFiles.Count(s => s.Length > 0);
+            if (screenshotsToUploadCount > 0 && pluginSettings.Screenshots.Count + screenshotsToUploadCount > 10)
+            {
+                ModelState.AddModelError(nameof(model.ScreenshotFiles),
+                    "A maximum of 10 screenshots is allowed per plugin.");
+                await PopulatePluginEditViewModel(conn, pluginSlug, model);
+                return View(model);
+            }
+
             foreach (var screenshot in model.ScreenshotFiles.Where(s => s.Length > 0))
             {
                 try
