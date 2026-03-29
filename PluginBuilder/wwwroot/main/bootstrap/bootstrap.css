@@ -6690,6 +6690,77 @@ fieldset:disabled .btn {
     height: 1rem;
 }
 
+.screenshots-order-list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    padding-bottom: 0.25rem;
+}
+
+.screenshots-order-list .screenshot-item {
+    position: relative;
+    flex: 0 0 auto;
+    width: 10rem;
+    padding: 0.25rem;
+}
+
+.screenshots-order-list .screenshot-preview {
+    width: 100%;
+    height: 6rem;
+    object-fit: cover;
+    border-radius: 0.25rem;
+    display: block;
+}
+
+.screenshots-order-list .screenshot-controls {
+    position: absolute;
+    inset: 0.25rem;
+    pointer-events: none;
+}
+
+.screenshots-order-list .screenshot-move-controls {
+    position: absolute;
+    bottom: 0.35rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.25rem;
+    pointer-events: auto;
+}
+
+.screenshots-order-list .screenshot-control-btn {
+    width: 1.4rem;
+    height: 1.4rem;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    pointer-events: auto;
+}
+
+.screenshots-order-list .screenshot-control-btn:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.screenshots-order-list .screenshot-control-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.screenshots-order-list .screenshot-remove-btn {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.35rem;
+    width: 1.3rem;
+    height: 1.3rem;
+}
+
 .offcanvas {
     position: fixed;
     bottom: 0;
