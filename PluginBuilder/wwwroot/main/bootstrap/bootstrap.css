@@ -5372,6 +5372,100 @@ fieldset:disabled .btn {
     animation: 1s linear infinite progress-bar-stripes;
 }
 
+
+.plugin-media-carousel .plugin-media-stage {
+    position: relative;
+    background: #0f131a;
+}
+
+.plugin-media-carousel .plugin-media-slide {
+    width: 100%;
+    height: 100%;
+}
+
+.plugin-media-carousel .plugin-media-image,
+.plugin-media-carousel iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    object-fit: cover;
+    display: block;
+}
+
+.plugin-media-carousel .plugin-media-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.plugin-media-carousel .plugin-media-nav:hover {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.plugin-media-carousel .plugin-media-nav-prev {
+    left: 0.75rem;
+    right: auto;
+}
+
+.plugin-media-carousel .plugin-media-nav-next {
+    right: 0.75rem;
+    left: auto;
+}
+
+.plugin-media-carousel .plugin-media-thumbs {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-top: 0.75rem;
+    scrollbar-width: thin;
+}
+
+.plugin-media-carousel .plugin-media-thumb {
+    flex: 0 0 auto;
+    width: 8rem;
+    height: 4.5rem;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 0.35rem;
+    background: transparent;
+    overflow: hidden;
+    opacity: 0.75;
+}
+
+.plugin-media-carousel .plugin-media-thumb:hover {
+    opacity: 1;
+}
+
+.plugin-media-carousel .plugin-media-thumb.is-active {
+    border-color: var(--btcpay-primary, #0d6efd);
+    opacity: 1;
+}
+
+.plugin-media-carousel .plugin-media-thumb img,
+.plugin-media-carousel .plugin-media-video-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: #fff;
+    background: linear-gradient(135deg, #1e2a38 0%, #0f131a 100%);
+}
+
+
 .list-group {
     display: flex;
     flex-direction: column;
