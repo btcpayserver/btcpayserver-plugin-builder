@@ -154,8 +154,9 @@
                     </div>
                     <div class="form-group">
                         <label asp-for="ScreenshotFiles" class="form-label"></label>
-                        <input asp-for="ScreenshotFiles" type="file" class="form-control" accept="image/*" multiple>
+                        <input asp-for="ScreenshotFiles" id="admin-screenshots-input" type="file" class="form-control" accept="image/*" multiple>
                         <span asp-validation-for="ScreenshotFiles" class="text-danger"></span>
+                        <div id="admin-screenshots-limit-error" class="text-danger small mt-1 d-none"></div>
                         @if (Model.PluginSettings.Screenshots is { Count: > 0 })
                         {
                             var screenshots = Model.PluginSettings.Screenshots.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
@@ -484,6 +485,40 @@
 
         (() => {
             const list = document.getElementById('screenshots-order-list');
+            const input = document.getElementById('admin-screenshots-input');
+            const limitError = document.getElementById('admin-screenshots-limit-error');
+            const maxScreenshots = 10;
+
+            const setLimitMessage = (message) => {
+                if (!limitError)
+                    return;
+
+                if (message) {
+                    limitError.textContent = message;
+                    limitError.classList.remove('d-none');
+                }
+                else {
+                    limitError.textContent = '';
+                    limitError.classList.add('d-none');
+                }
+            };
+
+            if (input) {
+                input.addEventListener('change', () => {
+                    const existingCount = list ? list.querySelectorAll('[data-screenshot-item]').length : 0;
+                    const selectedCount = input.files?.length ?? 0;
+                    const remaining = maxScreenshots - existingCount;
+
+                    if (selectedCount > remaining) {
+                        setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin. You can add ${Math.max(remaining, 0)} more.`);
+                        input.value = '';
+                    }
+                    else {
+                        setLimitMessage('');
+                    }
+                });
+            }
+
             if (!list)
                 return;
 
@@ -533,6 +568,10 @@
             });
 
             refreshMoveButtonsState();
+
+            const existingCount = list.querySelectorAll('[data-screenshot-item]').length;
+            if (existingCount >= maxScreenshots)
+                setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin.`);
         })();
     </script>
 }

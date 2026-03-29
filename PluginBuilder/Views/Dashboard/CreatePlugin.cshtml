@@ -34,6 +34,7 @@
                 <label asp-for="Screenshots" class="form-label"></label>
                 <input asp-for="Screenshots" id="create-screenshots-input" type="file" class="form-control" accept="image/*" multiple>
                 <span asp-validation-for="Screenshots" class="text-danger"></span>
+                <div id="create-screenshots-limit-error" class="text-danger small mt-1 d-none"></div>
                 <div id="create-screenshots-list" class="d-flex gap-3 mt-2 screenshots-order-list d-none"></div>
             </div>
             <div class="form-group">
@@ -53,11 +54,27 @@
         (() => {
             const input = document.getElementById('create-screenshots-input');
             const list = document.getElementById('create-screenshots-list');
+            const limitError = document.getElementById('create-screenshots-limit-error');
             const form = input?.closest('form');
             if (!input || !list || !form)
                 return;
 
+            const maxScreenshots = 10;
             const selectedScreenshots = [];
+
+            const setLimitMessage = (message) => {
+                if (!limitError)
+                    return;
+
+                if (message) {
+                    limitError.textContent = message;
+                    limitError.classList.remove('d-none');
+                }
+                else {
+                    limitError.textContent = '';
+                    limitError.classList.add('d-none');
+                }
+            };
 
             const buildFileList = () => {
                 const dataTransfer = new DataTransfer();
@@ -83,6 +100,7 @@
                 if (selectedScreenshots.length === 0) {
                     list.classList.add('d-none');
                     buildFileList();
+                    setLimitMessage('');
                     return;
                 }
 
@@ -115,15 +133,36 @@
 
                 refreshMoveButtonsState();
                 buildFileList();
+
+                if (selectedScreenshots.length >= maxScreenshots)
+                    setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin.`);
+                else
+                    setLimitMessage('');
             };
 
             input.addEventListener('change', () => {
-                Array.from(input.files || []).forEach(file => {
+                const files = Array.from(input.files || []);
+                const availableSlots = maxScreenshots - selectedScreenshots.length;
+
+                if (availableSlots <= 0) {
+                    setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin.`);
+                    input.value = '';
+                    return;
+                }
+
+                const acceptedFiles = files.slice(0, availableSlots);
+                const droppedCount = files.length - acceptedFiles.length;
+
+                acceptedFiles.forEach(file => {
                     selectedScreenshots.push({
                         file,
                         previewUrl: URL.createObjectURL(file)
                     });
                 });
+
+                if (droppedCount > 0)
+                    setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin. ${droppedCount} file(s) were ignored.`);
+
                 input.value = '';
                 render();
             });
