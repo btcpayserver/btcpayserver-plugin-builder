@@ -96,8 +96,15 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         var existingSetting = await conn.GetSettings(pluginSlug);
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
+        var submittedScreenshots = settingViewModel.ScreenshotsUrl
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
         settingViewModel.LogoUrl = existingSetting?.Logo;
-        settingViewModel.ScreenshotsUrl = existingSetting?.Screenshots ?? [];
+        settingViewModel.ScreenshotsUrl = submittedScreenshots;
+        if (settingViewModel.ScreenshotsUrl.Count == 0 &&
+            !Request.Form.ContainsKey("ScreenshotsUrlSubmitted") &&
+            existingSetting?.Screenshots is { Count: > 0 })
+            settingViewModel.ScreenshotsUrl = [..existingSetting.Screenshots];
         settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
         if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
         {
