@@ -109,10 +109,10 @@ public class Program
         app.UseForwardedHeaders(forwardingOptions);
 
         if (!app.Environment.IsDevelopment())
-        {
-            app.UseExceptionHandler("/Home/Error");
             app.UseHsts();
-        }
+
+        app.UseStatusCodePagesWithReExecute("/errors/{0}");
+        app.UseExceptionHandler("/errors/{0}");
 
         // Capture base URL once on first request for FirstBuildEvents
         app.Use(async (ctx, next) =>

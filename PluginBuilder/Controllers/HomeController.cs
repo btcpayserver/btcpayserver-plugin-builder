@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -786,13 +785,6 @@ public class HomeController(
             return Redirect(returnUrl);
 
         return RedirectToAction(nameof(HomePage), "Home");
-    }
-
-    [AllowAnonymous]
-    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-    public IActionResult Error()
-    {
-        return View("Error", new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
     }
 
     [AllowAnonymous]
