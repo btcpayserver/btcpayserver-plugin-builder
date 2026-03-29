@@ -150,9 +150,26 @@ public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(log
         var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId, pluginSlug);
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
-        var version = string.Join('.',
-            await conn.QuerySingleAsync<int[]>("SELECT ver FROM versions WHERE plugin_slug=@pluginSlug", new { pluginSlug }));
-
+        
+        int maxRetries = 5;
+        int[] versionParts = null;
+        
+        for (int i = 0; i < maxRetries; i++)
+        {
+            versionParts = await conn.QuerySingleOrDefaultAsync<int[]>(
+                "SELECT ver FROM versions WHERE plugin_slug=@pluginSlug", 
+                new { pluginSlug });
+            
+            if (versionParts != null)
+                break;
+                
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+        }
+        
+        if (versionParts == null)
+            throw new InvalidOperationException($"Version not found for plugin slug: {pluginSlug}");
+        
+        var version = string.Join('.', versionParts);
         var client = tester.CreateHttpClient().SetBasicAuth(email, password);
         return new TestScenario(pluginSlug, version, fullBuildId, client);
     }

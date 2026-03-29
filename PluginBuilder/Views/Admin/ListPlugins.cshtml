@@ -19,11 +19,13 @@
             </form>
         </div>
 
-        @if (Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Any())
+        @if (Model.Plugins.Any())
         {
-            <a asp-controller="Admin" asp-action="EmailSender"
-               asp-route-to="@string.Join(",", Model.Plugins.Where(m => !m.PreRelease && !string.IsNullOrEmpty(m.Version)).Select(m => m.PrimaryOwnerEmail))"
-               class="btn btn-primary">
+            <a asp-controller="Admin"
+            asp-action="EmailPrimaryOwners"
+            asp-route-searchText="@Model.SearchText"
+            asp-route-status="@Model.Status"
+            class="btn btn-primary">
                 Email Primary Owners
             </a>
         }

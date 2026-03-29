@@ -1212,5 +1212,60 @@ public class AdminController(
         return RedirectToAction(nameof(ListingRequests));
     }
 
+    private async Task<List<string>> GetAllPrimaryOwnerEmails(AdminPluginSettingViewModel model)
+    {
+        var whereConditions = new List<string>();
+        var parameters = new DynamicParameters();
+
+        if (!string.IsNullOrEmpty(model.SearchText))
+        {
+            whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText OR p.settings->>'pluginTitle' ILIKE @searchText)");
+            parameters.Add("searchText", $"%{model.SearchText}%");
+        }
+
+        if (!string.IsNullOrEmpty(model.Status) && Enum.TryParse<PluginVisibilityEnum>(model.Status, true, out var statusEnum))
+        {
+            whereConditions.Add("p.visibility = CAST(@status AS plugin_visibility_enum)");
+            parameters.Add("status", statusEnum.ToString().ToLower());
+        }
+
+        var whereClause = whereConditions.Count > 0 ? "WHERE " + string.Join(" AND ", whereConditions) : "";
+
+        await using var conn = await connectionFactory.Open();
+
+        var emails = await conn.QueryAsync<string>($"""
+            SELECT DISTINCT u."Email"
+            FROM plugins p
+            LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
+            LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
+            {whereClause}
+        """, parameters);
+
+        return emails.Where(e => !string.IsNullOrEmpty(e)).ToList();
+    }
+
+    [HttpGet("plugins/email-primary-owners")]
+    public async Task<IActionResult> EmailPrimaryOwners(string? searchText, string? status)
+    {
+        var model = new AdminPluginSettingViewModel
+        {
+            SearchText = searchText,
+            Status = status
+        };
+
+        var emails = await GetAllPrimaryOwnerEmails(model);
+
+        if (emails == null || !emails.Any())
+        {
+            TempData[TempDataConstant.WarningMessage] = "No primary owner emails found for the selected filters.";
+            return RedirectToAction("ListPlugins", new { searchText, status });
+        }
+
+        var emailList = string.Join(",", emails);
+
+        return RedirectToAction("EmailSender", new { to = emailList });
+    }
+    
+
     #endregion
 }
