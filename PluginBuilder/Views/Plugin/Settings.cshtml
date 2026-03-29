@@ -93,6 +93,96 @@
                 </div>
                 <span asp-validation-for="LogoUrl" class="text-danger"></span>
             </div>
+            <div class="form-group">
+                <label asp-for="Screenshots" class="form-label"></label>
+                <input asp-for="Screenshots" type="file" class="form-control" accept="image/*" multiple>
+                <span asp-validation-for="Screenshots" class="text-danger"></span>
+                @if (Model.ScreenshotsUrl is { Count: > 0 })
+                {
+                    var screenshots = Model.ScreenshotsUrl.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+                    <input type="hidden" name="ScreenshotsUrlSubmitted" value="true" />
+                    <div id="screenshots-order-list" class="d-flex gap-3 mt-2 screenshots-order-list">
+                        @for (var i = 0; i < screenshots.Count; i++)
+                        {
+                            <div class="screenshot-item border rounded p-2" data-screenshot-item>
+                                @{ var screenshotUrl = screenshots[i]; }
+                                <input type="hidden" name="ScreenshotsUrl" value="@screenshotUrl" />
+                                <img src="@screenshotUrl" alt="Screenshot" class="screenshot-preview" />
+                                <div class="screenshot-controls">
+                                    <div class="screenshot-move-controls">
+                                        <button type="button" class="screenshot-control-btn" data-move="left" aria-label="Move screenshot left" title="Move left">
+                                            <i class="fa fa-chevron-left" aria-hidden="true"></i>
+                                        </button>
+                                        <button type="button" class="screenshot-control-btn" data-move="right" aria-label="Move screenshot right" title="Move right">
+                                            <i class="fa fa-chevron-right" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <button type="button" class="screenshot-control-btn screenshot-remove-btn" data-remove-screenshot aria-label="Remove screenshot" title="Remove">
+                                        <span aria-hidden="true">&times;</span>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
         </form>
     </div>
 </div>
+
+@section FooterScripts {
+    <script>
+        (() => {
+            const list = document.getElementById('screenshots-order-list');
+            if (!list)
+                return;
+
+            const refreshMoveButtonsState = () => {
+                const items = Array.from(list.querySelectorAll('[data-screenshot-item]'));
+                items.forEach((item, index) => {
+                    const leftBtn = item.querySelector('button[data-move="left"]');
+                    const rightBtn = item.querySelector('button[data-move="right"]');
+                    if (leftBtn)
+                        leftBtn.disabled = index === 0;
+                    if (rightBtn)
+                        rightBtn.disabled = index === items.length - 1;
+                });
+            };
+
+            list.addEventListener('click', (evt) => {
+                const target = evt.target.closest('button');
+                if (!target)
+                    return;
+
+                if (target.disabled) return;
+
+                const item = target.closest('[data-screenshot-item]');
+                if (!item)
+                    return;
+
+                if (target.hasAttribute('data-remove-screenshot')) {
+                    item.remove();
+                    refreshMoveButtonsState();
+                    return;
+                }
+
+                const move = target.getAttribute('data-move');
+                if (move === 'left') {
+                    const prev = item.previousElementSibling;
+                    if (prev)
+                        list.insertBefore(item, prev);
+                }
+                else if (move === 'right') {
+                    const next = item.nextElementSibling;
+                    if (next)
+                        list.insertBefore(next, item);
+                }
+
+                item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                refreshMoveButtonsState();
+            });
+
+            refreshMoveButtonsState();
+        })();
+    </script>
+}
