@@ -24,4 +24,9 @@ public class UnitTestBase
     {
         return new ServerTester(caller ?? "Default", Log);
     }
+
+    public ScriptMigrationTester CreateMigrationTester([CallerMemberName] string? caller = null)
+    {
+        return new ScriptMigrationTester(caller ?? "Default", Log);
+    }
 }
