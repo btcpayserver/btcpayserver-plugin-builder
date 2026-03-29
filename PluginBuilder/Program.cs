@@ -112,7 +112,7 @@ public class Program
             app.UseHsts();
 
         app.UseStatusCodePagesWithReExecute("/errors/{0}");
-        app.UseExceptionHandler("/errors/{0}");
+        app.UseExceptionHandler("/errors/500");
 
         // Capture base URL once on first request for FirstBuildEvents
         app.Use(async (ctx, next) =>
