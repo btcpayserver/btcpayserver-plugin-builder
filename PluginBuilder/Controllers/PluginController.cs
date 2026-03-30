@@ -96,9 +96,11 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         var existingSetting = await conn.GetSettings(pluginSlug);
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-        var submittedScreenshots = settingViewModel.ScreenshotsUrl
+        var submittedScreenshots = Request.Form["ScreenshotsUrl"]
             .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!)
             .ToList();
+        var submittedScreenshotsOrder = Request.Form["ScreenshotsOrder"].ToList();
         settingViewModel.LogoUrl = existingSetting?.Logo;
         settingViewModel.ScreenshotsUrl = submittedScreenshots;
         if (settingViewModel.ScreenshotsUrl.Count == 0 &&
@@ -151,6 +153,7 @@ public class PluginController(
             settingViewModel.LogoUrl = null;
         }
 
+        var uploadedScreenshots = new List<string>();
         if (settingViewModel.Screenshots is { Count: > 0 })
         {
             var screenshotsToUploadCount = settingViewModel.Screenshots.Count(s => s is { Length: > 0 });
@@ -167,7 +170,7 @@ public class PluginController(
                 {
                     var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(screenshot!.FileName)}";
                     var screenshotUrl = await azureStorageClient.UploadImageFile(screenshot, uniqueBlobName);
-                    settingViewModel.ScreenshotsUrl.Add(screenshotUrl);
+                    uploadedScreenshots.Add(screenshotUrl);
                 }
                 catch (Exception ex)
                 {
@@ -177,6 +180,28 @@ public class PluginController(
                     return View(settingViewModel);
                 }
             }
+        }
+
+        if (submittedScreenshotsOrder.Count > 0)
+        {
+            var existingQueue = new Queue<string>(settingViewModel.ScreenshotsUrl);
+            var uploadedQueue = new Queue<string>(uploadedScreenshots);
+            var orderedScreenshots = new List<string>(settingViewModel.ScreenshotsUrl.Count + uploadedScreenshots.Count);
+            foreach (var marker in submittedScreenshotsOrder)
+            {
+                if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
+                    orderedScreenshots.Add(existingQueue.Dequeue());
+                else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
+                    orderedScreenshots.Add(uploadedQueue.Dequeue());
+            }
+
+            orderedScreenshots.AddRange(existingQueue);
+            orderedScreenshots.AddRange(uploadedQueue);
+            settingViewModel.ScreenshotsUrl = orderedScreenshots;
+        }
+        else
+        {
+            settingViewModel.ScreenshotsUrl.AddRange(uploadedScreenshots);
         }
 
         if (!settingViewModel.IsPluginPrimaryOwner && existingSetting is not null)

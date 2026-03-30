@@ -218,7 +218,12 @@ public class AdminController(
         pluginSettings.Documentation = model.PluginSettings.Documentation;
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
-        pluginSettings.Screenshots = model.PluginSettings.Screenshots ?? [];
+        var submittedScreenshots = Request.Form["ScreenshotsUrl"]
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!)
+            .ToList();
+        var submittedScreenshotsOrder = Request.Form["ScreenshotsOrder"].ToList();
+        pluginSettings.Screenshots = submittedScreenshots;
 
         if (model.LogoFile != null)
         {
@@ -248,6 +253,7 @@ public class AdminController(
             pluginSettings.Logo = null;
         }
 
+        var uploadedScreenshots = new List<string>();
         if (model.ScreenshotFiles is { Count: > 0 })
         {
             var screenshotsToUploadCount = model.ScreenshotFiles.Count(s => s.Length > 0);
@@ -265,7 +271,7 @@ public class AdminController(
                 {
                     var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(screenshot.FileName)}";
                     var screenshotUrl = await azureStorageClient.UploadImageFile(screenshot, uniqueBlobName);
-                    pluginSettings.Screenshots.Add(screenshotUrl);
+                    uploadedScreenshots.Add(screenshotUrl);
                 }
                 catch (Exception)
                 {
@@ -275,6 +281,28 @@ public class AdminController(
                     return View(model);
                 }
             }
+        }
+
+        if (submittedScreenshotsOrder.Count > 0)
+        {
+            var existingQueue = new Queue<string>(pluginSettings.Screenshots);
+            var uploadedQueue = new Queue<string>(uploadedScreenshots);
+            var orderedScreenshots = new List<string>(pluginSettings.Screenshots.Count + uploadedScreenshots.Count);
+            foreach (var marker in submittedScreenshotsOrder)
+            {
+                if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
+                    orderedScreenshots.Add(existingQueue.Dequeue());
+                else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
+                    orderedScreenshots.Add(uploadedQueue.Dequeue());
+            }
+
+            orderedScreenshots.AddRange(existingQueue);
+            orderedScreenshots.AddRange(uploadedQueue);
+            pluginSettings.Screenshots = orderedScreenshots;
+        }
+        else
+        {
+            pluginSettings.Screenshots.AddRange(uploadedScreenshots);
         }
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
