@@ -157,16 +157,17 @@
                         <input asp-for="ScreenshotFiles" id="admin-screenshots-input" type="file" class="form-control" accept="image/*" multiple>
                         <span asp-validation-for="ScreenshotFiles" class="text-danger"></span>
                         <div id="admin-screenshots-limit-error" class="text-danger small mt-1 d-none"></div>
-                        @if (Model.PluginSettings.Screenshots is { Count: > 0 })
-                        {
-                            var screenshots = Model.PluginSettings.Screenshots.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-                            <input type="hidden" name="ScreenshotsUrlSubmitted" value="true" />
-                            <div id="screenshots-order-list" class="d-flex gap-3 mt-2 screenshots-order-list">
+                        <input type="hidden" name="ScreenshotsUrlSubmitted" value="true" />
+                        <div id="screenshots-order-list" class="d-flex gap-3 mt-2 screenshots-order-list">
+                            @if (Model.PluginSettings.Screenshots is { Count: > 0 })
+                            {
+                                var screenshots = Model.PluginSettings.Screenshots.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
                                 @for (var i = 0; i < screenshots.Count; i++)
                                 {
                                     <div class="screenshot-item border rounded p-2" data-screenshot-item>
                                         @{ var screenshotUrl = screenshots[i]; }
-                                        <input type="hidden" name="ScreenshotsUrl" value="@screenshotUrl" />
+                                        <input type="hidden" name="ScreenshotsOrder" value="existing" data-order-input />
+                                        <input type="hidden" name="ScreenshotsUrl" value="@screenshotUrl" data-existing-input />
                                         <img src="@screenshotUrl" alt="Screenshot" class="screenshot-preview" />
                                         <div class="screenshot-controls">
                                             <div class="screenshot-move-controls">
@@ -183,8 +184,8 @@
                                         </div>
                                     </div>
                                 }
-                            </div>
-                        }
+                            }
+                        </div>
                     </div>
 
                     <div class="mb-3">
@@ -488,6 +489,8 @@
             const input = document.getElementById('admin-screenshots-input');
             const limitError = document.getElementById('admin-screenshots-limit-error');
             const maxScreenshots = 10;
+            let newScreenshotIndex = 0;
+            const newScreenshots = new Map();
 
             const setLimitMessage = (message) => {
                 if (!limitError)
@@ -505,17 +508,58 @@
 
             if (input) {
                 input.addEventListener('change', () => {
-                    const existingCount = list ? list.querySelectorAll('[data-screenshot-item]').length : 0;
-                    const selectedCount = input.files?.length ?? 0;
-                    const remaining = maxScreenshots - existingCount;
+                    if (!list)
+                        return;
 
-                    if (selectedCount > remaining) {
-                        setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin. You can add ${Math.max(remaining, 0)} more.`);
-                        input.value = '';
-                    }
-                    else {
+                    const selectedFiles = Array.from(input.files || []);
+                    const currentCount = list.querySelectorAll('[data-screenshot-item]').length;
+                    const remaining = Math.max(maxScreenshots - currentCount, 0);
+                    const acceptedFiles = selectedFiles.slice(0, remaining);
+                    const droppedCount = selectedFiles.length - acceptedFiles.length;
+
+                    acceptedFiles.forEach(file => {
+                        const screenshotId = `new-${newScreenshotIndex++}`;
+                        const previewUrl = URL.createObjectURL(file);
+                        newScreenshots.set(screenshotId, { file, previewUrl });
+
+                        const card = document.createElement('div');
+                        card.className = 'screenshot-item border rounded p-2';
+                        card.setAttribute('data-screenshot-item', 'true');
+                        card.setAttribute('data-new-id', screenshotId);
+                        card.innerHTML = `
+                            <input type="hidden" name="ScreenshotsOrder" value="new" data-order-input />
+                            <img src="${previewUrl}" alt="Screenshot" class="screenshot-preview" />
+                            <div class="screenshot-controls">
+                                <div class="screenshot-move-controls">
+                                    <button type="button" class="screenshot-control-btn" data-move="left" aria-label="Move screenshot left" title="Move left">
+                                        <i class="fa fa-chevron-left" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" class="screenshot-control-btn" data-move="right" aria-label="Move screenshot right" title="Move right">
+                                        <i class="fa fa-chevron-right" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <button type="button" class="screenshot-control-btn screenshot-remove-btn" data-remove-screenshot aria-label="Remove screenshot" title="Remove">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>`;
+                        list.appendChild(card);
+                    });
+
+                    if (droppedCount > 0)
+                        setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin. ${droppedCount} file(s) were ignored.`);
+                    else
                         setLimitMessage('');
-                    }
+
+                    const dataTransfer = new DataTransfer();
+                    Array.from(list.querySelectorAll('[data-screenshot-item][data-new-id]')).forEach(item => {
+                        const screenshotId = item.getAttribute('data-new-id');
+                        const screenshot = screenshotId ? newScreenshots.get(screenshotId) : null;
+                        if (screenshot)
+                            dataTransfer.items.add(screenshot.file);
+                    });
+                    input.files = dataTransfer.files;
+                    input.value = '';
+                    refreshMoveButtonsState();
                 });
             }
 
@@ -546,7 +590,25 @@
                     return;
 
                 if (target.hasAttribute('data-remove-screenshot')) {
+                    const screenshotId = item.getAttribute('data-new-id');
+                    if (screenshotId && newScreenshots.has(screenshotId)) {
+                        URL.revokeObjectURL(newScreenshots.get(screenshotId).previewUrl);
+                        newScreenshots.delete(screenshotId);
+                    }
                     item.remove();
+
+                    if (input) {
+                        const dataTransfer = new DataTransfer();
+                        Array.from(list.querySelectorAll('[data-screenshot-item][data-new-id]')).forEach(entry => {
+                            const id = entry.getAttribute('data-new-id');
+                            const screenshot = id ? newScreenshots.get(id) : null;
+                            if (screenshot)
+                                dataTransfer.items.add(screenshot.file);
+                        });
+                        input.files = dataTransfer.files;
+                    }
+
+                    setLimitMessage('');
                     refreshMoveButtonsState();
                     return;
                 }
@@ -564,6 +626,18 @@
                 }
 
                 item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+
+                if (input) {
+                    const dataTransfer = new DataTransfer();
+                    Array.from(list.querySelectorAll('[data-screenshot-item][data-new-id]')).forEach(entry => {
+                        const id = entry.getAttribute('data-new-id');
+                        const screenshot = id ? newScreenshots.get(id) : null;
+                        if (screenshot)
+                            dataTransfer.items.add(screenshot.file);
+                    });
+                    input.files = dataTransfer.files;
+                }
+
                 refreshMoveButtonsState();
             });
 
