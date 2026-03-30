@@ -483,95 +483,42 @@
                                     </div>
                                 </div>
                             }
-                            @{
-                                var btcpayMin = Model.Plugin.BTCPayMinVersion;
-                                var btcpayMax = Model.Plugin.BTCPayMaxVersion;
-
-                                if ((string.IsNullOrWhiteSpace(btcpayMin) || string.IsNullOrWhiteSpace(btcpayMax)) && dependencies != null)
-                                {
-                                    var btcpayDependency = dependencies.FirstOrDefault(d =>
-                                        string.Equals(d?["Identifier"]?.ToString(), "BTCPayServer", StringComparison.OrdinalIgnoreCase));
-                                    if (btcpayDependency is not null)
-                                    {
-                                        var condition = btcpayDependency["Condition"]?.ToString() ?? string.Empty;
-                                        var match = Regex.Match(
-                                            condition,
-                                            @"^\s*>=\s*(?<min>\d+(?:\.\d+){0,3})\s*(?:&&\s*<=\s*(?<max>\d+(?:\.\d+){0,3})\s*)?$",
-                                            RegexOptions.CultureInvariant);
-                                        if (match.Success)
-                                        {
-                                            if (string.IsNullOrWhiteSpace(btcpayMin) && !string.IsNullOrWhiteSpace(match.Groups["min"].Value))
-                                                btcpayMin = match.Groups["min"].Value.Trim();
-
-                                            if (string.IsNullOrWhiteSpace(btcpayMax) && !string.IsNullOrWhiteSpace(match.Groups["max"].Value))
-                                                btcpayMax = match.Groups["max"].Value.Trim();
-                                        }
-                                    }
-                                }
-
-                                if (!string.IsNullOrEmpty(btcpayMin) || !string.IsNullOrEmpty(btcpayMax))
-                                {
-                                    @if (!string.IsNullOrEmpty(btcpayMin))
-                                    {
-                                        <div class="row mb-3">
-                                            <div class="col-6">
-                                                <strong>Min. BTCPay Version</strong>
-                                            </div>
-                                            <div class="col-6 text-end">
-                                                @btcpayMin
-                                            </div>
-                                        </div>
-                                    }
-
-                                    @if (!string.IsNullOrEmpty(btcpayMax))
-                                    {
-                                        <div class="row mb-3">
-                                            <div class="col-6">
-                                                <strong>Max. BTCPay Version</strong>
-                                            </div>
-                                            <div class="col-6 text-end">
-                                                @btcpayMax
-                                            </div>
-                                        </div>
-                                    }
-                                }
-                            }
+							@if (!string.IsNullOrEmpty(Model.Plugin.BTCPayMinVersion))
+							{
+								<div class="row mb-3">
+									<div class="col-6">
+										<strong>Min. BTCPay Version</strong>
+									</div>
+									<div class="col-6 text-end">
+										@Model.Plugin.BTCPayMinVersion
+									</div>
+								</div>
+							}
+							@if (!string.IsNullOrEmpty(Model.Plugin.BTCPayMaxVersion))
+							{
+								<div class="row mb-3">
+									<div class="col-6">
+										<strong>Max. BTCPay Version</strong>
+									</div>
+									<div class="col-6 text-end">
+										@Model.Plugin.BTCPayMaxVersion
+									</div>
+								</div>
+							}
 
                             @if (dependencies != null && dependencies.Count > 0)
                             {
                                 foreach (var dependency in dependencies)
                                 {
-                                    var identifier = dependency["Identifier"]?.ToString();
-                                    if (string.Equals(identifier, "BTCPayServer", StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        continue;
-                                    }
-
-                                    var condition = dependency["Condition"]?.ToString() ?? string.Empty;
-                                    var formattedCondition = condition;
-
-                                    var rangeMatch = Regex.Match(
-                                        condition,
-                                        @"^\s*>=\s*(?<min>\d+(?:\.\d+){0,3})\s*(?:&&\s*<=\s*(?<max>\d+(?:\.\d+){0,3})\s*)?$",
-                                        RegexOptions.CultureInvariant);
-
-                                    if (rangeMatch.Success)
-                                    {
-                                        var min = rangeMatch.Groups["min"].Value.Trim();
-                                        var hasMax = rangeMatch.Groups["max"].Success &&
-                                                     !string.IsNullOrWhiteSpace(rangeMatch.Groups["max"].Value);
-
-                                        formattedCondition = hasMax
-                                            ? $"{min} - {rangeMatch.Groups["max"].Value.Trim()}"
-                                            : min;
-                                    }
+									if (string.Equals(dependency["Identifier"]?.ToString(), "BTCPayServer", StringComparison.OrdinalIgnoreCase))
+										continue;
 
                                     <div class="row mb-3">
                                         <div class="col-6">
                                             <strong>@dependency["Identifier"]</strong>
                                         </div>
                                         <div class="col-6 text-end">
-                                            @formattedCondition
+											@dependency["Condition"]
                                         </div>
                                     </div>
                                 }
