@@ -23,7 +23,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
     private readonly XUnitLogger _log = new("VideoUrlUITests", output);
 
     [Fact]
-    public async Task Owner_Can_Add_VideoUrl_And_It_Renders_On_PluginDetails()
+    public async Task OwnerCanAddVideoUrlAndItRendersOnPluginDetails()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
@@ -91,7 +91,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
-    public async Task Owner_Can_Update_VideoUrl_From_YouTube_To_Vimeo()
+    public async Task OwnerCanUpdateVideoUrlFromYouTubeToVimeo()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
@@ -152,7 +152,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
-    public async Task Owner_Can_Remove_VideoUrl()
+    public async Task OwnerCanRemoveVideoUrl()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
@@ -210,7 +210,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
-    public async Task VideoUrl_Validation_Rejects_Invalid_URLs()
+    public async Task VideoUrlValidationRejectsInvalidURLs()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
@@ -257,7 +257,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
-    public async Task Admin_Can_Edit_VideoUrl_For_Any_Plugin()
+    public async Task AdminCanEditVideoUrlForAnyPlugin()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
@@ -309,7 +309,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
-    public async Task VideoUrl_Supports_Various_YouTube_URL_Formats()
+    public async Task VideoUrlSupportsVariousYouTubeURLFormats()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
@@ -366,7 +366,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
-    public async Task VideoUrl_Does_Not_Display_When_Plugin_Has_No_Video()
+    public async Task VideoUrlDoesNotDisplayWhenPluginHasNoVideo()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
