@@ -111,6 +111,9 @@
                                 <input type="hidden" name="ScreenshotsUrl" value="@screenshotUrl" data-existing-input />
                                 <img src="@screenshotUrl" alt="Screenshot" class="screenshot-preview" />
                                 <div class="screenshot-controls">
+                                    <button type="button" class="screenshot-control-btn screenshot-drag-handle" data-drag-handle aria-label="Drag to reorder" title="Drag to reorder">
+                                        <i class="fa fa-bars" aria-hidden="true"></i>
+                                    </button>
                                     <div class="screenshot-move-controls">
                                         <button type="button" class="screenshot-control-btn" data-move="left" aria-label="Move screenshot left" title="Move left">
                                             <i class="fa fa-chevron-left" aria-hidden="true"></i>
@@ -180,6 +183,9 @@
                             <input type="hidden" name="ScreenshotsOrder" value="new" data-order-input />
                             <img src="${previewUrl}" alt="Screenshot" class="screenshot-preview" />
                             <div class="screenshot-controls">
+                                <button type="button" class="screenshot-control-btn screenshot-drag-handle" data-drag-handle aria-label="Drag to reorder" title="Drag to reorder">
+                                    <i class="fa fa-bars" aria-hidden="true"></i>
+                                </button>
                                 <div class="screenshot-move-controls">
                                     <button type="button" class="screenshot-control-btn" data-move="left" aria-label="Move screenshot left" title="Move left">
                                         <i class="fa fa-chevron-left" aria-hidden="true"></i>
@@ -201,14 +207,7 @@
                         setLimitMessage('');
                     }
 
-                    const dataTransfer = new DataTransfer();
-                    Array.from(list.querySelectorAll('[data-screenshot-item][data-new-id]')).forEach(item => {
-                        const screenshotId = item.getAttribute('data-new-id');
-                        const screenshot = screenshotId ? newScreenshots.get(screenshotId) : null;
-                        if (screenshot)
-                            dataTransfer.items.add(screenshot.file);
-                    });
-                    input.files = dataTransfer.files;
+                    rebuildInputFileList();
                     input.value = '';
                     refreshMoveButtonsState();
                 });
@@ -216,6 +215,20 @@
 
             if (!list)
                 return;
+
+            const rebuildInputFileList = () => {
+                if (!input)
+                    return;
+
+                const dataTransfer = new DataTransfer();
+                Array.from(list.querySelectorAll('[data-screenshot-item][data-new-id]')).forEach(entry => {
+                    const id = entry.getAttribute('data-new-id');
+                    const screenshot = id ? newScreenshots.get(id) : null;
+                    if (screenshot)
+                        dataTransfer.items.add(screenshot.file);
+                });
+                input.files = dataTransfer.files;
+            };
 
             const refreshMoveButtonsState = () => {
                 const items = Array.from(list.querySelectorAll('[data-screenshot-item]'));
@@ -229,12 +242,80 @@
                 });
             };
 
+            let draggedItem = null;
+
+            list.addEventListener('mousedown', evt => {
+                const handle = evt.target.closest('[data-drag-handle]');
+                if (!handle)
+                    return;
+
+                const item = handle.closest('[data-screenshot-item]');
+                if (!item)
+                    return;
+
+                item.setAttribute('draggable', 'true');
+            });
+
+            list.addEventListener('mouseup', () => {
+                Array.from(list.querySelectorAll('[data-screenshot-item]')).forEach(item => item.setAttribute('draggable', 'false'));
+            });
+
+            list.addEventListener('dragstart', evt => {
+                const item = evt.target.closest('[data-screenshot-item]');
+                if (!item || item.getAttribute('draggable') !== 'true') {
+                    evt.preventDefault();
+                    return;
+                }
+
+                draggedItem = item;
+                item.classList.add('is-dragging');
+                if (evt.dataTransfer) {
+                    evt.dataTransfer.effectAllowed = 'move';
+                    evt.dataTransfer.setData('text/plain', 'screenshot');
+                }
+            });
+
+            list.addEventListener('dragover', evt => {
+                if (!draggedItem)
+                    return;
+
+                evt.preventDefault();
+                const listRect = list.getBoundingClientRect();
+                const edgeThreshold = 56;
+                const scrollStep = 6;
+                if (evt.clientX < listRect.left + edgeThreshold)
+                    list.scrollLeft -= scrollStep;
+                else if (evt.clientX > listRect.right - edgeThreshold)
+                    list.scrollLeft += scrollStep;
+
+                const target = evt.target.closest('[data-screenshot-item]');
+                if (!target || target === draggedItem)
+                    return;
+
+                const rect = target.getBoundingClientRect();
+                const placeBefore = evt.clientX < rect.left + (rect.width / 2);
+                list.insertBefore(draggedItem, placeBefore ? target : target.nextElementSibling);
+            });
+
+            list.addEventListener('dragend', () => {
+                if (draggedItem) {
+                    draggedItem.classList.remove('is-dragging');
+                    draggedItem = null;
+                }
+
+                Array.from(list.querySelectorAll('[data-screenshot-item]')).forEach(item => item.setAttribute('draggable', 'false'));
+                rebuildInputFileList();
+                refreshMoveButtonsState();
+            });
+
             list.addEventListener('click', (evt) => {
                 const target = evt.target.closest('button');
                 if (!target)
                     return;
 
                 if (target.disabled) return;
+                if (target.hasAttribute('data-drag-handle'))
+                    return;
 
                 const item = target.closest('[data-screenshot-item]');
                 if (!item)
@@ -248,16 +329,7 @@
                     }
                     item.remove();
 
-                    if (input) {
-                        const dataTransfer = new DataTransfer();
-                        Array.from(list.querySelectorAll('[data-screenshot-item][data-new-id]')).forEach(entry => {
-                            const id = entry.getAttribute('data-new-id');
-                            const screenshot = id ? newScreenshots.get(id) : null;
-                            if (screenshot)
-                                dataTransfer.items.add(screenshot.file);
-                        });
-                        input.files = dataTransfer.files;
-                    }
+                    rebuildInputFileList();
 
                     setLimitMessage('');
                     refreshMoveButtonsState();
@@ -278,16 +350,7 @@
 
                 item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
 
-                if (input) {
-                    const dataTransfer = new DataTransfer();
-                    Array.from(list.querySelectorAll('[data-screenshot-item][data-new-id]')).forEach(entry => {
-                        const id = entry.getAttribute('data-new-id');
-                        const screenshot = id ? newScreenshots.get(id) : null;
-                        if (screenshot)
-                            dataTransfer.items.add(screenshot.file);
-                    });
-                    input.files = dataTransfer.files;
-                }
+                rebuildInputFileList();
 
                 refreshMoveButtonsState();
             });

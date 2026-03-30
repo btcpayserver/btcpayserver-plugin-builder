@@ -6813,6 +6813,19 @@ fieldset:disabled .btn {
     pointer-events: none;
 }
 
+.screenshots-order-list .screenshot-drag-handle {
+    position: absolute;
+    top: 0.35rem;
+    left: 0.35rem;
+    width: 1.3rem;
+    height: 1.3rem;
+    cursor: grab;
+}
+
+.screenshots-order-list .screenshot-drag-handle:active {
+    cursor: grabbing;
+}
+
 .screenshots-order-list .screenshot-move-controls {
     position: absolute;
     bottom: 0.35rem;
@@ -6853,6 +6866,14 @@ fieldset:disabled .btn {
     right: 0.35rem;
     width: 1.3rem;
     height: 1.3rem;
+}
+
+.screenshots-order-list .screenshot-item[draggable="true"] {
+    user-select: none;
+}
+
+.screenshots-order-list .screenshot-item.is-dragging {
+    opacity: 0.55;
 }
 
 .offcanvas {
