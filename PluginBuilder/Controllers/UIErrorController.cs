@@ -8,7 +8,7 @@ namespace PluginBuilder.Controllers;
 [IgnoreAntiforgeryToken]
 public class UIErrorController : Controller
 {
-    [Route("/errors/{statusCode:int}")]
+    [Route("/errors/{statusCode:int:range(400,599)}")]
     public IActionResult Handle(int statusCode)
     {
         var acceptHeader = Request.Headers.Accept.ToString();

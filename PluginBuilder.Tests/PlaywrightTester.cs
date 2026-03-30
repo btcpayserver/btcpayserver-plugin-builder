@@ -93,9 +93,12 @@ public class PlaywrightTester : IAsyncDisposable
             }
         }
 
-        var currentUri = new Uri(Page.Url);
-        Assert.False(currentUri.AbsolutePath.StartsWith("/errors/", StringComparison.OrdinalIgnoreCase),
-            $"Expected not to be on an error route, but current URL is {Page.Url}");
+        var errorPageMarker = Page.Locator("[data-testid='ui-error-page']");
+        if (await errorPageMarker.CountAsync() > 0)
+        {
+            var title = await Page.TitleAsync();
+            Assert.Fail($"Expected not to be on an error page, but found the UI error marker on {Page.Url} (title: {title})");
+        }
     }
 
     public async Task<string> CreateServerAdminAsync(string emailPrefix = "admin")
@@ -105,7 +108,14 @@ public class PlaywrightTester : IAsyncDisposable
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
         if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
-            await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
+        {
+            var roleCreateResult = await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
+            if (!roleCreateResult.Succeeded)
+            {
+                var errors = string.Join(", ", roleCreateResult.Errors.Select(e => e.Description));
+                throw new InvalidOperationException($"Failed to create server admin role: {errors}");
+            }
+        }
 
         var email = $"{emailPrefix}-{Guid.NewGuid():N}@test.com";
         const string password = "123456";
@@ -123,7 +133,12 @@ public class PlaywrightTester : IAsyncDisposable
             throw new InvalidOperationException($"Failed to create admin user: {errors}");
         }
 
-        await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
+        var addToRoleResult = await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
+        if (!addToRoleResult.Succeeded)
+        {
+            var errors = string.Join(", ", addToRoleResult.Errors.Select(e => e.Description));
+            throw new InvalidOperationException($"Failed to assign admin role to user {email}: {errors}");
+        }
         return email;
     }
 
