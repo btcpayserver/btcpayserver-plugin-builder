@@ -234,9 +234,12 @@ public class HomeController(
                        b.id,
                        b.manifest_info,
                        b.build_info,
+                       v.btcpay_min_ver,
+                       v.btcpay_max_ver,
                        COALESCE(rs.avg_rating, 0.0) AS avg_rating,
                        COALESCE(rs.total_reviews, 0) AS total_reviews
                      FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv
+                     JOIN versions v ON v.plugin_slug = lv.plugin_slug AND v.ver = lv.ver
                      JOIN builds  b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
                      JOIN plugins p ON b.plugin_slug = p.slug
                      LEFT JOIN review_stats rs ON rs.plugin_slug = lv.plugin_slug
@@ -279,7 +282,7 @@ public class HomeController(
         }
 
         var rows = await conn
-            .QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, decimal avg_rating, int total_reviews
+            .QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, int[] btcpay_min_ver, int[]? btcpay_max_ver, decimal avg_rating, int total_reviews
                 )>(
                 query,
                 new
@@ -302,6 +305,8 @@ public class HomeController(
                 Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
                 ProjectSlug = r.plugin_slug,
                 Version = string.Join('.', r.ver),
+                BTCPayMinVersion = string.Join('.', r.btcpay_min_ver),
+                BTCPayMaxVersion = r.btcpay_max_ver is { Length: > 0 } ? string.Join('.', r.btcpay_max_ver) : null,
                 BuildInfo = JObject.Parse(r.build_info),
                 ManifestInfo = manifestInfo,
                 PluginLogo = settings?.Logo,
@@ -357,6 +362,8 @@ public class HomeController(
                          SELECT
                            v.plugin_slug,
                            array_to_string(v.ver, '.') AS ver_str,
+                           array_to_string(v.btcpay_min_ver, '.') AS btcpay_min_ver,
+                           array_to_string(v.btcpay_max_ver, '.') AS btcpay_max_ver,
                            p.settings,
                            b.manifest_info,
                            b.build_info,
@@ -461,6 +468,8 @@ public class HomeController(
             Documentation = settings?.Documentation,
             VideoUrl = settings?.VideoUrl,
             Version = (string)pluginDetails.ver_str,
+            BTCPayMinVersion = string.IsNullOrWhiteSpace((string?)pluginDetails.btcpay_min_ver) ? null : (string)pluginDetails.btcpay_min_ver,
+            BTCPayMaxVersion = string.IsNullOrWhiteSpace((string?)pluginDetails.btcpay_max_ver) ? null : (string)pluginDetails.btcpay_max_ver,
             BuildInfo = JObject.Parse((string)pluginDetails.build_info),
             CreatedDate = (DateTimeOffset)pluginDetails.created_at,
             RatingSummary = summary
