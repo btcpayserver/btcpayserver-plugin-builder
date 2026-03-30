@@ -542,7 +542,6 @@ public class HomeController(
         PluginReviewViewModel reviewViewModel = new()
         {
             PluginSlug = pluginSlug.ToString(),
-            UserId = userId,
             Rating = rating,
             Body = body,
             PluginVersion = pluginVersionParts

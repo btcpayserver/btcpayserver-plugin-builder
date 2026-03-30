@@ -1,7 +1,4 @@
-using System;
-using System.IO;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using Microsoft.Playwright.Xunit;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
