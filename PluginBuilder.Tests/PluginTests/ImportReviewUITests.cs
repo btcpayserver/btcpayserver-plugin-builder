@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
-using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
@@ -22,9 +21,7 @@ public class ImportReviewUITests(ITestOutputHelper output) : PageTest
         t.Server.ReuseDatabase = false;
         await t.StartAsync();
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
+        await t.EnableGithubVerificationAsync(conn);
 
         await t.GoToUrl("/register");
         var user = await t.RegisterNewUser();

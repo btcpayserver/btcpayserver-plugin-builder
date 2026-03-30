@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Dapper;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright.Xunit;
 using PluginBuilder;
@@ -28,9 +27,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
 
         // Create user and plugin with a released version
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
+        await t.EnableGithubVerificationAsync(conn);
 
         await t.GoToUrl("/register");
         var user = await t.RegisterNewUser();
@@ -96,9 +93,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
 
         // Setup
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
+        await t.EnableGithubVerificationAsync(conn);
 
         await t.GoToUrl("/register");
         var user = await t.RegisterNewUser();
@@ -157,9 +152,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
 
         // Setup
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
+        await t.EnableGithubVerificationAsync(conn);
 
         await t.GoToUrl("/register");
         var user = await t.RegisterNewUser();
@@ -215,9 +208,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
 
         // Setup
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
+        await t.EnableGithubVerificationAsync(conn);
 
         await t.GoToUrl("/register");
         var user = await t.RegisterNewUser();
@@ -275,7 +266,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
 
         // Create and login as admin
-        var adminEmail = await CreateServerAdminAsync(t);
+        var adminEmail = await t.CreateServerAdminAsync("admin-video");
         await t.LogIn(adminEmail);
 
         // Navigate to admin plugin edit page
@@ -314,9 +305,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
 
         // Setup
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
+        await t.EnableGithubVerificationAsync(conn);
 
         await t.GoToUrl("/register");
         var user = await t.RegisterNewUser();
@@ -394,34 +383,5 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         // Verify video section/container is not visible
         var videoContainer = t.Page.Locator(".ratio.ratio-16x9");
         await Expect(videoContainer).ToHaveCountAsync(0);
-    }
-
-    private static async Task<string> CreateServerAdminAsync(PlaywrightTester tester)
-    {
-        using var scope = tester.Server.WebApp.Services.CreateScope();
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-
-        if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
-            await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
-
-        var email = $"admin-video-{Guid.NewGuid():N}@test.com";
-        const string password = "123456";
-        var user = new IdentityUser
-        {
-            UserName = email,
-            Email = email,
-            EmailConfirmed = true
-        };
-
-        var result = await userManager.CreateAsync(user, password);
-        if (!result.Succeeded)
-        {
-            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-            throw new InvalidOperationException($"Failed to create admin user: {errors}");
-        }
-
-        await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
-        return email;
     }
 }

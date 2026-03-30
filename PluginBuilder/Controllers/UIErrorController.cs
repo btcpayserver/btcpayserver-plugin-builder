@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace PluginBuilder.Controllers;
 
@@ -14,13 +15,21 @@ public class UIErrorController : Controller
         if (acceptHeader.Contains("text/html", StringComparison.OrdinalIgnoreCase))
         {
             var viewResult = new ViewResult { StatusCode = statusCode };
-            if (statusCode is 404 or 500)
-                viewResult.ViewName = statusCode.ToString();
-            else
-                viewResult.ViewName = statusCode.ToString();
+            viewResult.ViewName = statusCode is 404 or 500 ? statusCode.ToString() : "Handle";
+            if (viewResult.ViewName == "Handle")
+                viewResult.ViewData = new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary<int?>(
+                    metadataProvider: new Microsoft.AspNetCore.Mvc.ModelBinding.EmptyModelMetadataProvider(),
+                    modelState: ModelState)
+                {
+                    Model = statusCode
+                };
             return viewResult;
         }
 
-        return StatusCode(statusCode);
+        return StatusCode(statusCode, new
+        {
+            status = statusCode,
+            title = ReasonPhrases.GetReasonPhrase(statusCode)
+        });
     }
 }

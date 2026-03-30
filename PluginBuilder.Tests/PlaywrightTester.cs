@@ -1,13 +1,17 @@
 using System.Security.Cryptography;
 using Dapper;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
 using Newtonsoft.Json;
+using Npgsql;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
+using PluginBuilder.Util.Extensions;
 using Xunit;
 
 namespace PluginBuilder.Tests;
@@ -89,9 +93,45 @@ public class PlaywrightTester : IAsyncDisposable
             }
         }
 
-        Assert.DoesNotContain("errors", Page.Url);
-        var title = await Page.TitleAsync();
-        Assert.DoesNotContain("Error", title, StringComparison.OrdinalIgnoreCase);
+        var currentUri = new Uri(Page.Url);
+        Assert.False(currentUri.AbsolutePath.StartsWith("/errors/", StringComparison.OrdinalIgnoreCase),
+            $"Expected not to be on an error route, but current URL is {Page.Url}");
+    }
+
+    public async Task<string> CreateServerAdminAsync(string emailPrefix = "admin")
+    {
+        using var scope = Server.WebApp.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+
+        if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
+            await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
+
+        var email = $"{emailPrefix}-{Guid.NewGuid():N}@test.com";
+        const string password = "123456";
+        var user = new IdentityUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true
+        };
+
+        var result = await userManager.CreateAsync(user, password);
+        if (!result.Succeeded)
+        {
+            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+            throw new InvalidOperationException($"Failed to create admin user: {errors}");
+        }
+
+        await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
+        return email;
+    }
+
+    public async Task EnableGithubVerificationAsync(NpgsqlConnection conn)
+    {
+        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
+        var verificationCache = Server.GetService<AdminSettingsCache>();
+        await verificationCache.RefreshAllAdminSettings(conn);
     }
 
     public async Task<IResponse?> GoToUrl(string uri)

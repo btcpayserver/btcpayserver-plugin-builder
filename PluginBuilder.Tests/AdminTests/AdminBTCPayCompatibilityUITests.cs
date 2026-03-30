@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Dapper;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
@@ -136,7 +135,7 @@ public class AdminBTCPayCompatibilityUITests(ITestOutputHelper output) : PageTes
                 manifestInfo = unsupportedManifest.ToString()
             });
 
-        var adminEmail = await CreateServerAdminAsync(tester);
+        var adminEmail = await tester.CreateServerAdminAsync("admin-compat");
         await tester.LogIn(adminEmail);
         await tester.GoToUrl($"/admin/plugins/edit/{pluginSlug}?tab=versions");
         var page = Assert.IsAssignableFrom<IPage>(tester.Page);
@@ -167,35 +166,6 @@ public class AdminBTCPayCompatibilityUITests(ITestOutputHelper output) : PageTes
         Assert.True(savedCompatibility.max_override_enabled);
     }
 
-    private static async Task<string> CreateServerAdminAsync(PlaywrightTester tester)
-    {
-        using var scope = tester.Server.WebApp.Services.CreateScope();
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-
-        if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
-            await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
-
-        var email = $"admin-compat-{Guid.NewGuid():N}@test.com";
-        const string password = "123456";
-        var user = new IdentityUser
-        {
-            UserName = email,
-            Email = email,
-            EmailConfirmed = true
-        };
-
-        var result = await userManager.CreateAsync(user, password);
-        if (!result.Succeeded)
-        {
-            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-            throw new InvalidOperationException($"Failed to create admin user: {errors}");
-        }
-
-        await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
-        return email;
-    }
-
     private async Task<CompatibilityContext> CreateCompatibilityContext(
         string ownerEmail,
         string pluginSlugPrefix,
@@ -224,7 +194,7 @@ public class AdminBTCPayCompatibilityUITests(ITestOutputHelper output) : PageTes
             GitRepository = ServerTester.RepoUrl
         }, PluginVisibilityEnum.Listed);
 
-        var adminEmail = await CreateServerAdminAsync(tester);
+        var adminEmail = await tester.CreateServerAdminAsync("admin-compat");
         await tester.LogIn(adminEmail);
         await tester.GoToUrl($"/admin/plugins/edit/{pluginSlug}?tab=versions");
         var page = Assert.IsAssignableFrom<IPage>(tester.Page);
