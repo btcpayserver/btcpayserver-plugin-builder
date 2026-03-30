@@ -6876,6 +6876,12 @@ fieldset:disabled .btn {
     opacity: 0.55;
 }
 
+@media (max-width: 767.98px) {
+    .screenshots-order-list .screenshot-drag-handle {
+        display: none !important;
+    }
+}
+
 .offcanvas {
     position: fixed;
     bottom: 0;

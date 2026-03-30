@@ -170,7 +170,8 @@
                     const acceptedFiles = selectedFiles.slice(0, remaining);
                     const droppedCount = selectedFiles.length - acceptedFiles.length;
 
-                    acceptedFiles.forEach(file => {
+                    for (let i = acceptedFiles.length - 1; i >= 0; i--) {
+                        const file = acceptedFiles[i];
                         const screenshotId = `new-${newScreenshotIndex++}`;
                         const previewUrl = URL.createObjectURL(file);
                         newScreenshots.set(screenshotId, { file, previewUrl });
@@ -198,8 +199,8 @@
                                     <span aria-hidden="true">&times;</span>
                                 </button>
                             </div>`;
-                        list.appendChild(card);
-                    });
+                        list.prepend(card);
+                    }
 
                     if (droppedCount > 0) {
                         setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin. ${droppedCount} file(s) were ignored.`);
