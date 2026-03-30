@@ -40,6 +40,7 @@ public class ServerTester : IAsyncDisposable
     public XUnitLogger Logs { get; }
 
     public Action<IServiceCollection>? ConfigureServices { get; set; }
+    public Action<WebApplication>? ConfigureApplication { get; set; }
 
     public WebApplication WebApp => _WebApp ?? throw new InvalidOperationException("Webapp not initialized");
 
@@ -117,6 +118,7 @@ public class ServerTester : IAsyncDisposable
 
         var webapp = webappBuilder.Build();
         host.Configure(webapp);
+        ConfigureApplication?.Invoke(webapp);
 
         disposables.Add(webapp);
         await webapp.StartAsync();

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -39,12 +41,14 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [Fact]
     public async Task ExceptionHandler_WithHtmlAccept_ReturnsCustom500Page()
     {
-        await using var tester = await Start();
+        await using var tester = Create();
+        tester.ConfigureApplication = app => app.MapGet("/throw/500", (HttpContext _) => throw new InvalidOperationException("Test 500"));
+        await tester.Start();
+
         var client = tester.CreateHttpClient();
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
 
-        // Directly call the error handler route to verify 500 page renders with HTML accept
-        var response = await client.GetAsync("/errors/500");
+        var response = await client.GetAsync("/throw/500");
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
@@ -55,12 +59,14 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [Fact]
     public async Task ExceptionHandler_WithJsonAccept_ReturnsPlain500()
     {
-        await using var tester = await Start();
+        await using var tester = Create();
+        tester.ConfigureApplication = app => app.MapGet("/throw/500", (HttpContext _) => throw new InvalidOperationException("Test 500"));
+        await tester.Start();
+
         var client = tester.CreateHttpClient();
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        // Directly call the error handler route to verify plain status with JSON accept
-        var response = await client.GetAsync("/errors/500");
+        var response = await client.GetAsync("/throw/500");
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
