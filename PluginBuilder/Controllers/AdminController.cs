@@ -218,12 +218,15 @@ public class AdminController(
         pluginSettings.Documentation = model.PluginSettings.Documentation;
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
+        var existingScreenshots = pluginSettings.Screenshots ?? [];
         var submittedScreenshots = Request.Form["ScreenshotsUrl"]
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => s!)
             .ToList();
         var submittedScreenshotsOrder = Request.Form["ScreenshotsOrder"].ToList();
-        pluginSettings.Screenshots = submittedScreenshots;
+        pluginSettings.Screenshots = Request.Form.ContainsKey("ScreenshotsUrl")
+            ? submittedScreenshots
+            : [..existingScreenshots];
 
         if (model.LogoFile != null)
         {

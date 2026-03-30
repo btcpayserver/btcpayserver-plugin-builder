@@ -157,13 +157,12 @@
                 const acceptedFiles = files.slice(0, availableSlots);
                 const droppedCount = files.length - acceptedFiles.length;
 
-                acceptedFiles.forEach(file => {
-                    selectedScreenshots.push({
-                        id: nextScreenshotId++,
-                        file,
-                        previewUrl: URL.createObjectURL(file)
-                    });
-                });
+                const newScreenshots = acceptedFiles.map(file => ({
+                    id: nextScreenshotId++,
+                    file,
+                    previewUrl: URL.createObjectURL(file)
+                }));
+                selectedScreenshots.unshift(...newScreenshots);
 
                 if (droppedCount > 0)
                     setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin. ${droppedCount} file(s) were ignored.`);
