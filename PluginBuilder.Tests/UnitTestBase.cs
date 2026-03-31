@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests;
@@ -24,5 +23,10 @@ public class UnitTestBase
     public ServerTester Create([CallerMemberName] string? caller = null)
     {
         return new ServerTester(caller ?? "Default", Log);
+    }
+
+    public ScriptMigrationTester CreateMigrationTester([CallerMemberName] string? caller = null)
+    {
+        return new ScriptMigrationTester(caller ?? "Default", Log);
     }
 }

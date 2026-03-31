@@ -2,6 +2,7 @@
 @using PluginBuilder.APIModels
 @using PluginBuilder.Controllers
 @using PluginBuilder.DataModels
+@using System.Text.RegularExpressions
 @model PluginDetailsViewModel
 @{
     Layout = "_LayoutPublicModal";
@@ -103,7 +104,7 @@
     <div class="tab-content" id="pluginTabsContent">
         <div class="tab-pane fade show active" id="details" role="tabpanel">
             <div class="row">
-                <div class="col-md-8">
+                <div class="col-12 col-lg-8">
                     <div class="card">
                         <div class="card-body">
                             <h4>Description</h4>
@@ -439,8 +440,8 @@
                     </div>
                 </div>
 
-                <div class="col-md-4">
-                    <div class="card">
+                <div class="col-12 col-lg-4 mt-4 mt-lg-0">
+                    <div class="card plugin-details-metadata">
                         <div class="card-body">
                             <div class="row mb-3">
                                 <div class="col-6">
@@ -466,12 +467,11 @@
                                         <strong>Repository</strong>
                                     </div>
                                     <div class="col-6 text-end">
-                                        <a href="@sourceUrl" target="_blank" rel="noopener noreferrer">
-                                            View Source
-                                        </a>
+                                        <a href="@sourceUrl" target="_blank" rel="noopener noreferrer">View Source</a>
                                     </div>
                                 </div>
                             }
+
                             @if (!string.IsNullOrEmpty(Model.Plugin.Documentation))
                             {
                                 <div class="row mb-3">
@@ -479,22 +479,46 @@
                                         <strong>Documentation</strong>
                                     </div>
                                     <div class="col-6 text-end">
-                                        <a href="@Model.Plugin.Documentation" target="_blank" rel="noopener noreferrer">
-                                            View Documentation
-                                        </a>
+                                        <a href="@Model.Plugin.Documentation" target="_blank" rel="noopener noreferrer">View Documentation</a>
                                     </div>
                                 </div>
                             }
+							@if (!string.IsNullOrEmpty(Model.Plugin.BTCPayMinVersion))
+							{
+								<div class="row mb-3">
+									<div class="col-6">
+										<strong>Min. BTCPay Version</strong>
+									</div>
+									<div class="col-6 text-end">
+										@Model.Plugin.BTCPayMinVersion
+									</div>
+								</div>
+							}
+							@if (!string.IsNullOrEmpty(Model.Plugin.BTCPayMaxVersion))
+							{
+								<div class="row mb-3">
+									<div class="col-6">
+										<strong>Max. BTCPay Version</strong>
+									</div>
+									<div class="col-6 text-end">
+										@Model.Plugin.BTCPayMaxVersion
+									</div>
+								</div>
+							}
+
                             @if (dependencies != null && dependencies.Count > 0)
                             {
                                 foreach (var dependency in dependencies)
                                 {
+									if (string.Equals(dependency["Identifier"]?.ToString(), "BTCPayServer", StringComparison.OrdinalIgnoreCase))
+										continue;
+
                                     <div class="row mb-3">
                                         <div class="col-6">
                                             <strong>@dependency["Identifier"]</strong>
                                         </div>
                                         <div class="col-6 text-end">
-                                            @dependency["Condition"]
+											@dependency["Condition"]
                                         </div>
                                     </div>
                                 }
@@ -534,13 +558,14 @@
 								<div class="row">
 									@foreach (var user in contributors)
 									{
-										<div class="col-md-6 d-flex align-items-center mb-3">
-											<div class="me-3">
-												<img src="@user.AvatarUrl" class="rounded-circle" style="width: 48px; height: 48px;"
+											<div class="col-12 col-lg-6 d-flex align-items-center mb-3">
+												<div class="me-3 flex-shrink-0">
+													<img src="@user.AvatarUrl" class="rounded-circle"
+													 style="width: 48px; height: 48px;"
 													 alt="@user.Login avatar" loading="lazy" />
-											</div>
-											<div>
-												<a href="@user.HtmlUrl" class="text-decoration-none" target="_blank" rel="noopener noreferrer">@user.Login</a>
+												</div>
+												<div class="text-break">
+													<a href="@user.HtmlUrl" class="text-decoration-none text-break" target="_blank" rel="noopener noreferrer">@user.Login</a>
 											</div>
 										</div>
 									}
