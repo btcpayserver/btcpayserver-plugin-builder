@@ -16,6 +16,8 @@ public class UIErrorController : Controller
         if (Request.Headers.TryGetValue("Accept", out var acceptValues) &&
             acceptValues.Any(v => !string.IsNullOrEmpty(v) && v.Contains("text/html", StringComparison.OrdinalIgnoreCase)))
         {
+            Response.StatusCode = statusCode;
+
             if (SpecialPages.Contains(statusCode))
                 return View(statusCode.ToString());
 

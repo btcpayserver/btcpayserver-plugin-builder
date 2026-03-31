@@ -817,6 +817,7 @@ public class PluginController(
         try
         {
             var currentUserId = userManager.GetUserId(User);
+            var isSelfRemoval = string.Equals(currentUserId, userId, StringComparison.Ordinal);
 
             var result = await ownershipService.RemoveOwnerAsync(
                 pluginSlug,
@@ -830,7 +831,11 @@ public class PluginController(
                 return RedirectToAction(nameof(Owners), new { pluginSlug });
             }
 
-            TempData[TempDataConstant.SuccessMessage] = "Owner removed.";
+            TempData[TempDataConstant.SuccessMessage] = isSelfRemoval ? "You have left plugin ownership." : "Owner removed.";
+
+            if (isSelfRemoval)
+                return RedirectToAction(nameof(HomeController.Dashboard), "Home");
+
             return RedirectToAction(nameof(Owners), new { pluginSlug });
         }
         catch (Exception ex)
