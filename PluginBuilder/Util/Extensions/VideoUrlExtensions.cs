@@ -31,15 +31,32 @@ public static partial class VideoUrlExtensions
             ?? TryGetVimeoEmbedUrl(uri);
     }
 
-    private static string? TryGetYoutubeEmbedUrl(Uri uri)
+    public static string? GetVideoThumbnailUrl(this string? videoUrl)
     {
-        if (!IsHost(uri, "youtube.com"))
+        if (string.IsNullOrWhiteSpace(videoUrl))
             return null;
 
-        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-        var videoId = query["v"];
+        if (!Uri.TryCreate(videoUrl, UriKind.Absolute, out var uri))
+            return null;
 
-        if (string.IsNullOrWhiteSpace(videoId) || !YoutubeIdRegex().IsMatch(videoId))
+        if (uri.Scheme != Uri.UriSchemeHttps)
+            return null;
+
+        var youtubeId = TryGetYoutubeVideoId(uri);
+        if (!string.IsNullOrEmpty(youtubeId))
+            return $"https://i.ytimg.com/vi/{youtubeId}/hqdefault.jpg";
+
+        var vimeoId = TryGetVimeoVideoId(uri);
+        if (!string.IsNullOrEmpty(vimeoId))
+            return $"https://vumbnail.com/{vimeoId}.jpg";
+
+        return null;
+    }
+
+    private static string? TryGetYoutubeEmbedUrl(Uri uri)
+    {
+        var videoId = TryGetYoutubeVideoId(uri);
+        if (string.IsNullOrWhiteSpace(videoId))
             return null;
 
         return $"https://www.youtube.com/embed/{videoId}";
@@ -47,11 +64,8 @@ public static partial class VideoUrlExtensions
 
     private static string? TryGetYoutubeShortEmbedUrl(Uri uri)
     {
-        if (!IsHost(uri, "youtu.be"))
-            return null;
-
-        var videoId = uri.AbsolutePath.TrimStart('/');
-        if (string.IsNullOrWhiteSpace(videoId) || !YoutubeIdRegex().IsMatch(videoId))
+        var videoId = TryGetYoutubeShortVideoId(uri);
+        if (string.IsNullOrWhiteSpace(videoId))
             return null;
 
         return $"https://www.youtube.com/embed/{videoId}";
@@ -59,14 +73,46 @@ public static partial class VideoUrlExtensions
 
     private static string? TryGetVimeoEmbedUrl(Uri uri)
     {
+        var videoId = TryGetVimeoVideoId(uri);
+        if (string.IsNullOrWhiteSpace(videoId))
+            return null;
+
+        return $"https://player.vimeo.com/video/{videoId}";
+    }
+
+    private static string? TryGetYoutubeVideoId(Uri uri)
+    {
+        if (!IsHost(uri, "youtube.com"))
+            return null;
+
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var videoId = query["v"];
+
+        return string.IsNullOrWhiteSpace(videoId) || !YoutubeIdRegex().IsMatch(videoId)
+            ? null
+            : videoId;
+    }
+
+    private static string? TryGetYoutubeShortVideoId(Uri uri)
+    {
+        if (!IsHost(uri, "youtu.be"))
+            return null;
+
+        var videoId = uri.AbsolutePath.TrimStart('/');
+        return string.IsNullOrWhiteSpace(videoId) || !YoutubeIdRegex().IsMatch(videoId)
+            ? null
+            : videoId;
+    }
+
+    private static string? TryGetVimeoVideoId(Uri uri)
+    {
         if (!IsHost(uri, "vimeo.com"))
             return null;
 
         var videoId = uri.AbsolutePath.TrimStart('/').Split('/')[0];
-        if (string.IsNullOrWhiteSpace(videoId) || !VimeoIdRegex().IsMatch(videoId))
-            return null;
-
-        return $"https://player.vimeo.com/video/{videoId}";
+        return string.IsNullOrWhiteSpace(videoId) || !VimeoIdRegex().IsMatch(videoId)
+            ? null
+            : videoId;
     }
 
     private static bool IsHost(Uri uri, string host)
