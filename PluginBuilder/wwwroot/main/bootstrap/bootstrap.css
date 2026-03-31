@@ -5465,6 +5465,30 @@ fieldset:disabled .btn {
     background: linear-gradient(135deg, #1e2a38 0%, #0f131a 100%);
 }
 
+.plugin-media-carousel .plugin-media-video-thumb-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.plugin-media-carousel .plugin-media-video-thumb-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.plugin-media-carousel .plugin-media-video-play {
+    position: absolute;
+    inset: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.35);
+}
+
 
 .list-group {
     display: flex;

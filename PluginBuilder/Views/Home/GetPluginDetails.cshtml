@@ -113,6 +113,7 @@
 
                     @{
                         var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
+                        var videoThumbUrl = Model.Plugin.VideoUrl.GetVideoThumbnailUrl();
                         var screenshots = Model.Plugin.Screenshots?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList() ?? new List<string>();
                         var hasMedia = !string.IsNullOrWhiteSpace(videoEmbedUrl) || screenshots.Count > 0;
                     }
@@ -159,10 +160,22 @@
                                         @if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
                                         {
                                             <button type="button" class="plugin-media-thumb @(mediaIndex == 0 ? "is-active" : "")" data-media-thumb data-media-index="@mediaIndex" aria-label="Show video" aria-current="@(mediaIndex == 0 ? "true" : "false")">
-                                                <span class="plugin-media-video-thumb">
-                                                    <i class="fa fa-play" aria-hidden="true"></i>
-                                                    Video
-                                                </span>
+                                                @if (!string.IsNullOrWhiteSpace(videoThumbUrl))
+                                                {
+                                                    <span class="plugin-media-video-thumb-wrap">
+                                                        <img src="@videoThumbUrl" alt="Video thumbnail" loading="lazy" class="plugin-media-video-thumb-image" />
+                                                        <span class="plugin-media-video-play">
+                                                            <i class="fa fa-play" aria-hidden="true"></i>
+                                                        </span>
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="plugin-media-video-thumb">
+                                                        <i class="fa fa-play" aria-hidden="true"></i>
+                                                        Video
+                                                    </span>
+                                                }
                                             </button>
                                             mediaIndex++;
                                         }
