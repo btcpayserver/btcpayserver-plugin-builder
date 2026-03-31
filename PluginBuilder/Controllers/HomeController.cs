@@ -357,6 +357,8 @@ public class HomeController(
                          SELECT
                            v.plugin_slug,
                            array_to_string(v.ver, '.') AS ver_str,
+                           array_to_string(v.btcpay_min_ver, '.') AS btcpay_min_ver,
+                           array_to_string(v.btcpay_max_ver, '.') AS btcpay_max_ver,
                            p.settings,
                            b.manifest_info,
                            b.build_info,
@@ -462,6 +464,8 @@ public class HomeController(
             VideoUrl = settings?.VideoUrl,
             Screenshots = settings?.Screenshots,
             Version = (string)pluginDetails.ver_str,
+            BTCPayMinVersion = (string?)pluginDetails.btcpay_min_ver is { Length: > 0 } min ? min.Trim() : null,
+            BTCPayMaxVersion = (string?)pluginDetails.btcpay_max_ver is { Length: > 0 } max ? max.Trim() : null,
             BuildInfo = JObject.Parse((string)pluginDetails.build_info),
             CreatedDate = (DateTimeOffset)pluginDetails.created_at,
             RatingSummary = summary
