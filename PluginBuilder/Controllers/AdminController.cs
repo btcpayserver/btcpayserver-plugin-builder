@@ -224,7 +224,7 @@ public class AdminController(
             .Select(s => s!)
             .ToList();
         var submittedImagesOrder = Request.Form["ImagesOrder"].ToList();
-        pluginSettings.Images = Request.Form.ContainsKey("ImagesUrl")
+        pluginSettings.Images = Request.Form.ContainsKey("ImagesUrlSubmitted")
             ? submittedImages
             : [..existingImages];
 

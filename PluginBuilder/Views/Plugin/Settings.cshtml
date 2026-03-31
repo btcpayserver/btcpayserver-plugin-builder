@@ -99,30 +99,22 @@
                 <span asp-validation-for="Images" class="text-danger"></span>
                 <div id="settings-images-limit-error" class="text-danger small mt-1 d-none"></div>
                 <input type="hidden" name="ImagesUrlSubmitted" value="true" />
-                <div id="images-order-list" class="d-flex gap-3 mt-2 images-order-list">
+                <div id="images-order-list" class="images-grid mt-2">
                     @if (Model.ImagesUrl is { Count: > 0 })
                     {
                         var images = Model.ImagesUrl.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
                         @for (var i = 0; i < images.Count; i++)
                         {
-                            <div class="image-item border rounded p-2" data-image-item>
+                            <div class="image-item" data-image-item draggable="true">
                                 @{ var imageUrl = images[i]; }
                                 <input type="hidden" name="ImagesOrder" value="existing" data-order-input />
                                 <input type="hidden" name="ImagesUrl" value="@imageUrl" data-existing-input />
-                                <img src="@imageUrl" alt="Image" class="image-preview" />
-                                <div class="image-controls">
-                                    <button type="button" class="image-control-btn image-drag-handle" data-drag-handle aria-label="Drag to reorder" title="Drag to reorder">
-                                        <i class="fa fa-bars" aria-hidden="true"></i>
-                                    </button>
-                                    <div class="image-move-controls">
-                                        <button type="button" class="image-control-btn" data-move="left" aria-label="Move image left" title="Move left">
-                                            <i class="fa fa-chevron-left" aria-hidden="true"></i>
-                                        </button>
-                                        <button type="button" class="image-control-btn" data-move="right" aria-label="Move image right" title="Move right">
-                                            <i class="fa fa-chevron-right" aria-hidden="true"></i>
-                                        </button>
-                                    </div>
-                                    <button type="button" class="image-control-btn image-remove-btn" data-remove-image aria-label="Remove image" title="Remove">
+                                <button type="button" class="image-preview-btn" data-preview-trigger>
+                                    <img src="@imageUrl" alt="Image" class="image-preview" />
+                                </button>
+                                <div class="image-actions">
+                                    <span class="text-muted small">Drag to reorder</span>
+                                    <button type="button" class="image-remove-action" data-remove-image aria-label="Remove image">
                                         <span aria-hidden="true">&times;</span>
                                     </button>
                                 </div>
@@ -135,12 +127,29 @@
     </div>
 </div>
 
+<div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content bg-transparent border-0 shadow-none">
+            <div class="d-flex justify-content-end mb-2">
+                <button type="button" class="image-modal-close" data-bs-dismiss="modal" aria-label="Close preview">
+                    <span class="image-close-glyph" aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <img id="imagePreviewModalImg" src="" alt="Image preview" class="w-100 rounded" style="max-height:85vh;object-fit:contain;background:rgba(0,0,0,0.35);" />
+        </div>
+    </div>
+</div>
+
 @section FooterScripts {
     <script>
         (() => {
             const list = document.getElementById('images-order-list');
             const input = document.getElementById('settings-images-input');
+            const form = document.getElementById('plugin-setting-form');
             const limitError = document.getElementById('settings-images-limit-error');
+            const modalElement = document.getElementById('imagePreviewModal');
+            const modalImage = document.getElementById('imagePreviewModalImg');
+            const modal = modalElement ? bootstrap.Modal.getOrCreateInstance(modalElement) : null;
             const maxImages = 10;
             let newImageIndex = 0;
             const newImages = new Map();
@@ -177,26 +186,19 @@
                         newImages.set(imageId, { file, previewUrl });
 
                         const card = document.createElement('div');
-                        card.className = 'image-item border rounded p-2';
+                        card.className = 'image-item';
                         card.setAttribute('data-image-item', 'true');
+                        card.setAttribute('draggable', 'true');
                         card.setAttribute('data-new-id', imageId);
                         card.innerHTML = `
                             <input type="hidden" name="ImagesOrder" value="new" data-order-input />
-                            <img src="${previewUrl}" alt="Image" class="image-preview" />
-                            <div class="image-controls">
-                                <button type="button" class="image-control-btn image-drag-handle" data-drag-handle aria-label="Drag to reorder" title="Drag to reorder">
-                                    <i class="fa fa-bars" aria-hidden="true"></i>
-                                </button>
-                                <div class="image-move-controls">
-                                    <button type="button" class="image-control-btn" data-move="left" aria-label="Move image left" title="Move left">
-                                        <i class="fa fa-chevron-left" aria-hidden="true"></i>
-                                    </button>
-                                    <button type="button" class="image-control-btn" data-move="right" aria-label="Move image right" title="Move right">
-                                        <i class="fa fa-chevron-right" aria-hidden="true"></i>
-                                    </button>
-                                </div>
-                                <button type="button" class="image-control-btn image-remove-btn" data-remove-image aria-label="Remove image" title="Remove">
-                                    <span aria-hidden="true">&times;</span>
+                            <button type="button" class="image-preview-btn" data-preview-trigger>
+                                <img src="${previewUrl}" alt="Image" class="image-preview" />
+                            </button>
+                            <div class="image-actions">
+                                <span class="text-muted small">Drag to reorder</span>
+                                <button type="button" class="image-remove-action" data-remove-image aria-label="Remove image" title="Remove">
+                                    <span class="image-close-glyph" aria-hidden="true">&times;</span>
                                 </button>
                             </div>`;
                         list.prepend(card);
@@ -210,7 +212,6 @@
 
                     input.value = '';
                     rebuildInputFileList();
-                    refreshMoveButtonsState();
                 });
             }
 
@@ -231,39 +232,11 @@
                 input.files = dataTransfer.files;
             };
 
-            const refreshMoveButtonsState = () => {
-                const items = Array.from(list.querySelectorAll('[data-image-item]'));
-                items.forEach((item, index) => {
-                    const leftBtn = item.querySelector('button[data-move="left"]');
-                    const rightBtn = item.querySelector('button[data-move="right"]');
-                    if (leftBtn)
-                        leftBtn.disabled = index === 0;
-                    if (rightBtn)
-                        rightBtn.disabled = index === items.length - 1;
-                });
-            };
-
             let draggedItem = null;
-
-            list.addEventListener('mousedown', evt => {
-                const handle = evt.target.closest('[data-drag-handle]');
-                if (!handle)
-                    return;
-
-                const item = handle.closest('[data-image-item]');
-                if (!item)
-                    return;
-
-                item.setAttribute('draggable', 'true');
-            });
-
-            list.addEventListener('mouseup', () => {
-                Array.from(list.querySelectorAll('[data-image-item]')).forEach(item => item.setAttribute('draggable', 'false'));
-            });
 
             list.addEventListener('dragstart', evt => {
                 const item = evt.target.closest('[data-image-item]');
-                if (!item || item.getAttribute('draggable') !== 'true') {
+                if (!item) {
                     evt.preventDefault();
                     return;
                 }
@@ -281,21 +254,19 @@
                     return;
 
                 evt.preventDefault();
-                const listRect = list.getBoundingClientRect();
-                const edgeThreshold = 56;
-                const scrollStep = 6;
-                if (evt.clientX < listRect.left + edgeThreshold)
-                    list.scrollLeft -= scrollStep;
-                else if (evt.clientX > listRect.right - edgeThreshold)
-                    list.scrollLeft += scrollStep;
-
                 const target = evt.target.closest('[data-image-item]');
                 if (!target || target === draggedItem)
                     return;
-
                 const rect = target.getBoundingClientRect();
-                const placeBefore = evt.clientX < rect.left + (rect.width / 2);
+                const placeBefore = evt.clientY < rect.top + (rect.height / 2);
                 list.insertBefore(draggedItem, placeBefore ? target : target.nextElementSibling);
+            });
+
+            list.addEventListener('drop', evt => {
+                if (!draggedItem)
+                    return;
+                evt.preventDefault();
+                rebuildInputFileList();
             });
 
             list.addEventListener('dragend', () => {
@@ -303,10 +274,7 @@
                     draggedItem.classList.remove('is-dragging');
                     draggedItem = null;
                 }
-
-                Array.from(list.querySelectorAll('[data-image-item]')).forEach(item => item.setAttribute('draggable', 'false'));
                 rebuildInputFileList();
-                refreshMoveButtonsState();
             });
 
             list.addEventListener('click', (evt) => {
@@ -314,15 +282,24 @@
                 if (!target)
                     return;
 
-                if (target.disabled) return;
-                if (target.hasAttribute('data-drag-handle'))
-                    return;
-
                 const item = target.closest('[data-image-item]');
                 if (!item)
                     return;
 
+                if (target.hasAttribute('data-preview-trigger')) {
+                    if (modal && modalImage) {
+                        const img = item.querySelector('.image-preview');
+                        if (img) {
+                            modalImage.src = img.getAttribute('src') || '';
+                            modalImage.alt = img.getAttribute('alt') || 'Image preview';
+                            modal.show();
+                        }
+                    }
+                    return;
+                }
+
                 if (target.hasAttribute('data-remove-image')) {
+                    const isExistingImage = !!item.querySelector('[data-existing-input]');
                     const imageId = item.getAttribute('data-new-id');
                     if (imageId && newImages.has(imageId)) {
                         URL.revokeObjectURL(newImages.get(imageId).previewUrl);
@@ -333,30 +310,11 @@
                     rebuildInputFileList();
 
                     setLimitMessage('');
-                    refreshMoveButtonsState();
-                    return;
+
+                    if (isExistingImage && form)
+                        form.requestSubmit();
                 }
-
-                const move = target.getAttribute('data-move');
-                if (move === 'left') {
-                    const prev = item.previousElementSibling;
-                    if (prev)
-                        list.insertBefore(item, prev);
-                }
-                else if (move === 'right') {
-                    const next = item.nextElementSibling;
-                    if (next)
-                        list.insertBefore(next, item);
-                }
-
-                item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-
-                rebuildInputFileList();
-
-                refreshMoveButtonsState();
             });
-
-            refreshMoveButtonsState();
 
             const existingCount = list.querySelectorAll('[data-image-item]').length;
             if (existingCount >= maxImages)
