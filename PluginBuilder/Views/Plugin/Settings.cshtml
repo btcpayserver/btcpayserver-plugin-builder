@@ -112,13 +112,13 @@
                                 <button type="button" class="image-preview-btn" data-preview-trigger>
                                     <img src="@imageUrl" alt="Image" class="image-preview" />
                                 </button>
-                                <div class="image-actions">
-                                    <span class="text-muted small">Drag to reorder</span>
-                                    <button type="button" class="image-remove-action" data-remove-image aria-label="Remove image">
-                                        <span aria-hidden="true">&times;</span>
-                                    </button>
+                                    <div class="image-actions">
+                                        <span class="text-muted small">Drag to reorder</span>
+                                        <button type="submit" class="image-remove-action" name="removeImageUrl" value="@imageUrl" aria-label="Remove image">
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
                         }
                     }
                 </div>
@@ -141,184 +141,15 @@
 </div>
 
 @section FooterScripts {
+    <script src="~/scripts/plugin-images-manager.js" asp-append-version="true"></script>
     <script>
-        (() => {
-            const list = document.getElementById('images-order-list');
-            const input = document.getElementById('settings-images-input');
-            const form = document.getElementById('plugin-setting-form');
-            const limitError = document.getElementById('settings-images-limit-error');
-            const modalElement = document.getElementById('imagePreviewModal');
-            const modalImage = document.getElementById('imagePreviewModalImg');
-            const modal = modalElement ? bootstrap.Modal.getOrCreateInstance(modalElement) : null;
-            const maxImages = 10;
-            let newImageIndex = 0;
-            const newImages = new Map();
-
-            const setLimitMessage = (message) => {
-                if (!limitError)
-                    return;
-
-                if (message) {
-                    limitError.textContent = message;
-                    limitError.classList.remove('d-none');
-                }
-                else {
-                    limitError.textContent = '';
-                    limitError.classList.add('d-none');
-                }
-            };
-
-            if (input) {
-                input.addEventListener('change', () => {
-                    if (!list)
-                        return;
-
-                    const selectedFiles = Array.from(input.files || []);
-                    const currentCount = list.querySelectorAll('[data-image-item]').length;
-                    const remaining = Math.max(maxImages - currentCount, 0);
-                    const acceptedFiles = selectedFiles.slice(0, remaining);
-                    const droppedCount = selectedFiles.length - acceptedFiles.length;
-
-                    for (let i = acceptedFiles.length - 1; i >= 0; i--) {
-                        const file = acceptedFiles[i];
-                        const imageId = `new-${newImageIndex++}`;
-                        const previewUrl = URL.createObjectURL(file);
-                        newImages.set(imageId, { file, previewUrl });
-
-                        const card = document.createElement('div');
-                        card.className = 'image-item';
-                        card.setAttribute('data-image-item', 'true');
-                        card.setAttribute('draggable', 'true');
-                        card.setAttribute('data-new-id', imageId);
-                        card.innerHTML = `
-                            <input type="hidden" name="ImagesOrder" value="new" data-order-input />
-                            <button type="button" class="image-preview-btn" data-preview-trigger>
-                                <img src="${previewUrl}" alt="Image" class="image-preview" />
-                            </button>
-                            <div class="image-actions">
-                                <span class="text-muted small">Drag to reorder</span>
-                                <button type="button" class="image-remove-action" data-remove-image aria-label="Remove image" title="Remove">
-                                    <span class="image-close-glyph" aria-hidden="true">&times;</span>
-                                </button>
-                            </div>`;
-                        list.prepend(card);
-                    }
-
-                    if (droppedCount > 0) {
-                        setLimitMessage(`Maximum ${maxImages} images per plugin. ${droppedCount} file(s) were ignored.`);
-                    } else {
-                        setLimitMessage('');
-                    }
-
-                    input.value = '';
-                    rebuildInputFileList();
-                });
-            }
-
-            if (!list)
-                return;
-
-            const rebuildInputFileList = () => {
-                if (!input)
-                    return;
-
-                const dataTransfer = new DataTransfer();
-                Array.from(list.querySelectorAll('[data-image-item][data-new-id]')).forEach(entry => {
-                    const id = entry.getAttribute('data-new-id');
-                    const image = id ? newImages.get(id) : null;
-                    if (image)
-                        dataTransfer.items.add(image.file);
-                });
-                input.files = dataTransfer.files;
-            };
-
-            let draggedItem = null;
-
-            list.addEventListener('dragstart', evt => {
-                const item = evt.target.closest('[data-image-item]');
-                if (!item) {
-                    evt.preventDefault();
-                    return;
-                }
-
-                draggedItem = item;
-                item.classList.add('is-dragging');
-                if (evt.dataTransfer) {
-                    evt.dataTransfer.effectAllowed = 'move';
-                    evt.dataTransfer.setData('text/plain', 'image');
-                }
-            });
-
-            list.addEventListener('dragover', evt => {
-                if (!draggedItem)
-                    return;
-
-                evt.preventDefault();
-                const target = evt.target.closest('[data-image-item]');
-                if (!target || target === draggedItem)
-                    return;
-                const rect = target.getBoundingClientRect();
-                const placeBefore = evt.clientY < rect.top + (rect.height / 2);
-                list.insertBefore(draggedItem, placeBefore ? target : target.nextElementSibling);
-            });
-
-            list.addEventListener('drop', evt => {
-                if (!draggedItem)
-                    return;
-                evt.preventDefault();
-                rebuildInputFileList();
-            });
-
-            list.addEventListener('dragend', () => {
-                if (draggedItem) {
-                    draggedItem.classList.remove('is-dragging');
-                    draggedItem = null;
-                }
-                rebuildInputFileList();
-            });
-
-            list.addEventListener('click', (evt) => {
-                const target = evt.target.closest('button');
-                if (!target)
-                    return;
-
-                const item = target.closest('[data-image-item]');
-                if (!item)
-                    return;
-
-                if (target.hasAttribute('data-preview-trigger')) {
-                    if (modal && modalImage) {
-                        const img = item.querySelector('.image-preview');
-                        if (img) {
-                            modalImage.src = img.getAttribute('src') || '';
-                            modalImage.alt = img.getAttribute('alt') || 'Image preview';
-                            modal.show();
-                        }
-                    }
-                    return;
-                }
-
-                if (target.hasAttribute('data-remove-image')) {
-                    const isExistingImage = !!item.querySelector('[data-existing-input]');
-                    const imageId = item.getAttribute('data-new-id');
-                    if (imageId && newImages.has(imageId)) {
-                        URL.revokeObjectURL(newImages.get(imageId).previewUrl);
-                        newImages.delete(imageId);
-                    }
-                    item.remove();
-
-                    rebuildInputFileList();
-
-                    setLimitMessage('');
-
-                    if (isExistingImage && form)
-                        form.requestSubmit();
-                }
-            });
-
-            const existingCount = list.querySelectorAll('[data-image-item]').length;
-            if (existingCount >= maxImages)
-                setLimitMessage(`Maximum ${maxImages} images per plugin.`);
-        })();
+        window.PluginImagesManager?.init({
+            listId: 'images-order-list',
+            inputId: 'settings-images-input',
+            limitErrorId: 'settings-images-limit-error',
+            modalId: 'imagePreviewModal',
+            modalImageId: 'imagePreviewModalImg',
+            maxImages: 10
+        });
     </script>
 }
