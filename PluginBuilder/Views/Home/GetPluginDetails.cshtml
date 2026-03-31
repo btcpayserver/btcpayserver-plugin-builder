@@ -552,19 +552,20 @@
 
 					@if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())
 					{
-						<div class="card mt-4 plugin-details-contributors">
+						<div class="card mt-4">
 							<div class="card-body">
 								<h4>Contributors</h4>
 								<div class="row">
 									@foreach (var user in contributors)
 									{
 											<div class="col-12 col-lg-6 d-flex align-items-center mb-3">
-												<div class="me-2">
-													<img src="@user.AvatarUrl" class="rounded-circle user-avatar"
+												<div class="me-3 flex-shrink-0">
+													<img src="@user.AvatarUrl" class="rounded-circle"
+													 style="width: 48px; height: 48px;"
 													 alt="@user.Login avatar" loading="lazy" />
 												</div>
-												<div>
-													<a href="@user.HtmlUrl" class="text-decoration-none text-break user-name" target="_blank" rel="noopener noreferrer">@user.Login</a>
+												<div class="text-break">
+													<a href="@user.HtmlUrl" class="text-decoration-none text-break" target="_blank" rel="noopener noreferrer">@user.Login</a>
 											</div>
 										</div>
 									}
@@ -633,18 +634,5 @@
 
     .btn.vote-down.text-danger:hover {
         color: var(--btcpay-neutral-600, #6c757d) !important;
-    }
-    .user-avatar{
-        height: 48px;
-        width: 48px;
-    }
-    @@media (min-width: 992px) {
-        .user-name{
-            font-size: 12px;
-        }
-        .user-avatar{
-            height: 32px;
-            width: 32px;
-        }
     }
 </style>
