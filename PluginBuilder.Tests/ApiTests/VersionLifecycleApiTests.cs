@@ -15,6 +15,8 @@ using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 using Xunit;
 using Xunit.Abstractions;
+using Microsoft.AspNetCore.Identity;
+using PluginBuilder.Configuration;
 
 namespace PluginBuilder.Tests.ApiTests;
 
@@ -156,24 +158,10 @@ public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(log
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         
-        int maxRetries = 5;
-        int[] versionParts = null;
-        
-        for (int i = 0; i < maxRetries; i++)
-        {
-            versionParts = await conn.QuerySingleOrDefaultAsync<int[]>(
-                "SELECT ver FROM versions WHERE plugin_slug=@pluginSlug", 
-                new { pluginSlug });
-            
-            if (versionParts != null)
-                break;
-                
-            await Task.Delay(TimeSpan.FromMilliseconds(500));
-        }
-        
-        if (versionParts == null)
-            throw new InvalidOperationException($"Version not found for plugin slug: {pluginSlug}");
-        
+        var versionParts = await conn.QuerySingleAsync<int[]>(
+            "SELECT ver FROM versions WHERE plugin_slug=@pluginSlug", 
+            new { pluginSlug });
+
         var version = string.Join('.', versionParts);
         var client = tester.CreateHttpClient().SetBasicAuth(email, password);
         return new TestScenario(pluginSlug, version, fullBuildId, client);
@@ -184,4 +172,79 @@ public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(log
         string Version,
         FullBuildId FullBuildId,
         HttpClient Client);
+
+    [Fact]
+    public async Task EmailPrimaryOwners_RedirectsToEmailSender_WithoutEmailsInQueryString()
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        await tester.Start();
+
+        // Create a plugin and release it as stable
+        var scenario = await CreateBuiltPluginScenarioAsync(tester);
+        var releaseResponse = await scenario.Client.PostAsync(
+            $"/api/v1/plugins/{scenario.PluginSlug}/versions/{scenario.Version}/release",
+            JsonBody(new { }));
+        Assert.Equal(HttpStatusCode.OK, releaseResponse.StatusCode);
+
+        // Create an admin user
+        var adminEmail = $"admin-{Guid.NewGuid():N}@example.com";
+        const string adminPassword = "123456";
+        await tester.CreateFakeUserAsync(adminEmail, adminPassword);
+
+        var roleManager = tester.GetService<RoleManager<IdentityRole>>();
+        var userManager = tester.GetService<UserManager<IdentityUser>>();
+
+        if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
+            await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
+
+        var adminUser = await userManager.FindByEmailAsync(adminEmail);
+        await userManager.AddToRoleAsync(adminUser!, Roles.ServerAdmin);
+
+        // Hit the endpoint as admin
+        var adminClient = tester.CreateHttpClient().SetBasicAuth(adminEmail, adminPassword);
+        var response = await adminClient.GetAsync("/admin/plugins/email-primary-owners");
+
+        // Should redirect to EmailSender
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var location = response.Headers.Location?.ToString() ?? "";
+        Assert.Contains("emailsender", location, StringComparison.OrdinalIgnoreCase);
+
+        // Emails must NOT be in the query string
+        Assert.DoesNotContain("to=", location, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task EmailPrimaryOwners_RedirectsToListPlugins_WhenNoStableVersionExists()
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        await tester.Start();
+
+        // Plugin exists but never released (still pre-release)
+        var scenario = await CreateBuiltPluginScenarioAsync(tester);
+
+        // Create an admin user
+        var adminEmail = $"admin-{Guid.NewGuid():N}@example.com";
+        const string adminPassword = "123456";
+        await tester.CreateFakeUserAsync(adminEmail, adminPassword);
+
+        var roleManager = tester.GetService<RoleManager<IdentityRole>>();
+        var userManager = tester.GetService<UserManager<IdentityUser>>();
+
+        if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
+            await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
+
+        var adminUser = await userManager.FindByEmailAsync(adminEmail);
+        await userManager.AddToRoleAsync(adminUser!, Roles.ServerAdmin);
+
+        // Hit the endpoint as admin
+        var adminClient = tester.CreateHttpClient().SetBasicAuth(adminEmail, adminPassword);
+        var response = await adminClient.GetAsync("/admin/plugins/email-primary-owners");
+
+        // No stable versions exist, so should redirect back to ListPlugins
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var location = response.Headers.Location?.ToString() ?? "";
+        Assert.Contains("listplugins", location, StringComparison.OrdinalIgnoreCase);
+    }
 }

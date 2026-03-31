@@ -886,6 +886,7 @@ public class AdminController(
     [HttpGet("emailsender")]
     public async Task<IActionResult> EmailSender(string to, string subject, string message)
     {
+        to ??= TempData["EmailRecipients"] as string ?? string.Empty;
         if (!string.IsNullOrEmpty(to) && !emailService.IsValidEmailList(to))
         {
             ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
@@ -1238,7 +1239,11 @@ public class AdminController(
             FROM plugins p
             LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
             LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
-            {whereClause}
+            WHERE EXISTS (
+                SELECT 1 FROM versions v
+                WHERE v.plugin_slug = p.slug AND v.pre_release = FALSE
+            )
+            {(whereConditions.Count > 0 ? "AND " + string.Join(" AND ", whereConditions) : "")}
         """, parameters);
 
         return emails.Where(e => !string.IsNullOrEmpty(e)).ToList();
@@ -1261,9 +1266,8 @@ public class AdminController(
             return RedirectToAction("ListPlugins", new { searchText, status });
         }
 
-        var emailList = string.Join(",", emails);
-
-        return RedirectToAction("EmailSender", new { to = emailList });
+        TempData["EmailRecipients"] = string.Join(",", emails);
+        return RedirectToAction("EmailSender");
     }
     
 
