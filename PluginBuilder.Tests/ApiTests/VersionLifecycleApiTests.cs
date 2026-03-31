@@ -17,6 +17,7 @@ using Xunit;
 using Xunit.Abstractions;
 using Microsoft.AspNetCore.Identity;
 using PluginBuilder.Configuration;
+using PluginBuilder.Util;
 
 namespace PluginBuilder.Tests.ApiTests;
 
