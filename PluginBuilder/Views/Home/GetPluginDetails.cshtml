@@ -115,7 +115,7 @@
                     @{
                         var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
                         var videoThumbUrl = Model.Plugin.VideoUrl.GetVideoThumbnailUrl();
-                        var screenshots = Model.Plugin.Screenshots?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList() ?? new List<string>();
+                        var screenshots = Model.Plugin.Images?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList() ?? new List<string>();
                         var hasMedia = !string.IsNullOrWhiteSpace(videoEmbedUrl) || screenshots.Count > 0;
                     }
                     @if (hasMedia)

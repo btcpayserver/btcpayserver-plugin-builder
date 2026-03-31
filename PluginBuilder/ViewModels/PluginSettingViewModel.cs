@@ -44,9 +44,9 @@ public class PluginSettingViewModel
     [Display(Name = "Video URL")]
     public string? VideoUrl { get; set; }
 
-    [Display(Name = "Screenshots")]
-    public List<string> ScreenshotsUrl { get; set; } = [];
+    [Display(Name = "Images")]
+    public List<string> ImagesUrl { get; set; } = [];
 
-    [Display(Name = "Screenshots")]
-    public List<IFormFile?> Screenshots { get; set; } = [];
+    [Display(Name = "Images")]
+    public List<IFormFile?> Images { get; set; } = [];
 }

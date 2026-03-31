@@ -218,15 +218,15 @@ public class AdminController(
         pluginSettings.Documentation = model.PluginSettings.Documentation;
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
-        var existingScreenshots = pluginSettings.Screenshots ?? [];
-        var submittedScreenshots = Request.Form["ScreenshotsUrl"]
+        var existingImages = pluginSettings.Images ?? [];
+        var submittedImages = Request.Form["ImagesUrl"]
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => s!)
             .ToList();
-        var submittedScreenshotsOrder = Request.Form["ScreenshotsOrder"].ToList();
-        pluginSettings.Screenshots = Request.Form.ContainsKey("ScreenshotsUrl")
-            ? submittedScreenshots
-            : [..existingScreenshots];
+        var submittedImagesOrder = Request.Form["ImagesOrder"].ToList();
+        pluginSettings.Images = Request.Form.ContainsKey("ImagesUrl")
+            ? submittedImages
+            : [..existingImages];
 
         if (model.LogoFile != null)
         {
@@ -256,56 +256,56 @@ public class AdminController(
             pluginSettings.Logo = null;
         }
 
-        var uploadedScreenshots = new List<string>();
-        if (model.ScreenshotFiles is { Count: > 0 })
+        var uploadedImages = new List<string>();
+        if (model.ImagesFiles is { Count: > 0 })
         {
-            var screenshotsToUploadCount = model.ScreenshotFiles.Count(s => s.Length > 0);
-            if (screenshotsToUploadCount > 0 && pluginSettings.Screenshots.Count + screenshotsToUploadCount > 10)
+            var imagesToUploadCount = model.ImagesFiles.Count(s => s.Length > 0);
+            if (imagesToUploadCount > 0 && pluginSettings.Images.Count + imagesToUploadCount > 10)
             {
-                ModelState.AddModelError(nameof(model.ScreenshotFiles),
-                    "A maximum of 10 screenshots is allowed per plugin.");
+                ModelState.AddModelError(nameof(model.ImagesFiles),
+                    "A maximum of 10 images is allowed per plugin.");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
 
-            foreach (var screenshot in model.ScreenshotFiles.Where(s => s.Length > 0))
+            foreach (var image in model.ImagesFiles.Where(s => s.Length > 0))
             {
                 try
                 {
-                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(screenshot.FileName)}";
-                    var screenshotUrl = await azureStorageClient.UploadImageFile(screenshot, uniqueBlobName);
-                    uploadedScreenshots.Add(screenshotUrl);
+                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+                    var imageUrl = await azureStorageClient.UploadImageFile(image, uniqueBlobName);
+                    uploadedImages.Add(imageUrl);
                 }
                 catch (Exception)
                 {
-                    ModelState.AddModelError(nameof(model.ScreenshotFiles),
-                        "Could not complete settings upload. An error occurred while uploading screenshots");
+                    ModelState.AddModelError(nameof(model.ImagesFiles),
+                        "Could not complete settings upload. An error occurred while uploading images");
                     await PopulatePluginEditViewModel(conn, pluginSlug, model);
                     return View(model);
                 }
             }
         }
 
-        if (submittedScreenshotsOrder.Count > 0)
+        if (submittedImagesOrder.Count > 0)
         {
-            var existingQueue = new Queue<string>(pluginSettings.Screenshots);
-            var uploadedQueue = new Queue<string>(uploadedScreenshots);
-            var orderedScreenshots = new List<string>(pluginSettings.Screenshots.Count + uploadedScreenshots.Count);
-            foreach (var marker in submittedScreenshotsOrder)
+            var existingQueue = new Queue<string>(pluginSettings.Images);
+            var uploadedQueue = new Queue<string>(uploadedImages);
+            var orderedImages = new List<string>(pluginSettings.Images.Count + uploadedImages.Count);
+            foreach (var marker in submittedImagesOrder)
             {
                 if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
-                    orderedScreenshots.Add(existingQueue.Dequeue());
+                    orderedImages.Add(existingQueue.Dequeue());
                 else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
-                    orderedScreenshots.Add(uploadedQueue.Dequeue());
+                    orderedImages.Add(uploadedQueue.Dequeue());
             }
 
-            orderedScreenshots.AddRange(existingQueue);
-            orderedScreenshots.AddRange(uploadedQueue);
-            pluginSettings.Screenshots = orderedScreenshots;
+            orderedImages.AddRange(existingQueue);
+            orderedImages.AddRange(uploadedQueue);
+            pluginSettings.Images = orderedImages;
         }
         else
         {
-            pluginSettings.Screenshots.AddRange(uploadedScreenshots);
+            pluginSettings.Images.AddRange(uploadedImages);
         }
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
