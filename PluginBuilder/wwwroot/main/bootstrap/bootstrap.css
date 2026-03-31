@@ -6808,102 +6808,104 @@ fieldset:disabled .btn {
     height: 1rem;
 }
 
-.images-order-list {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-    padding-bottom: 0.25rem;
+.images-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
 }
 
-.images-order-list .image-item {
-    position: relative;
-    flex: 0 0 auto;
-    width: 10rem;
-    padding: 0.25rem;
-}
-
-.images-order-list .image-preview {
-    width: 100%;
-    height: 6rem;
-    object-fit: cover;
-    border-radius: 0.25rem;
-    display: block;
-}
-
-.images-order-list .image-controls {
-    position: absolute;
-    inset: 0.25rem;
-    pointer-events: none;
-}
-
-.images-order-list .image-drag-handle {
-    position: absolute;
-    top: 0.35rem;
-    left: 0.35rem;
-    width: 1.3rem;
-    height: 1.3rem;
+.images-grid .image-item {
+    border: 1px solid var(--btcpay-body-border-light, var(--bs-border-color));
+    border-radius: 0.5rem;
+    background: var(--btcpay-bg-tile, var(--btcpay-body-bg, #fff));
+    padding: 0.5rem;
     cursor: grab;
 }
 
-.images-order-list .image-drag-handle:active {
-    cursor: grabbing;
-}
-
-.images-order-list .image-move-controls {
-    position: absolute;
-    bottom: 0.35rem;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 0.25rem;
-    pointer-events: auto;
-}
-
-.images-order-list .image-control-btn {
-    width: 1.4rem;
-    height: 1.4rem;
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.55);
-    color: #fff;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    line-height: 1;
-    pointer-events: auto;
-}
-
-.images-order-list .image-control-btn:hover:not(:disabled) {
-    background: rgba(0, 0, 0, 0.75);
-}
-
-.images-order-list .image-control-btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-}
-
-.images-order-list .image-remove-btn {
-    position: absolute;
-    top: 0.35rem;
-    right: 0.35rem;
-    width: 1.3rem;
-    height: 1.3rem;
-}
-
-.images-order-list .image-item[draggable="true"] {
-    user-select: none;
-}
-
-.images-order-list .image-item.is-dragging {
+.images-grid .image-item.is-dragging {
     opacity: 0.55;
 }
 
-@media (max-width: 767.98px) {
-    .images-order-list .image-drag-handle {
-        display: none !important;
-    }
+.images-grid .image-preview-btn {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    display: block;
+}
+
+.images-grid .image-preview {
+    width: 100%;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 0.35rem;
+    display: block;
+}
+
+.images-grid .image-actions {
+    margin-top: 0.35rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.image-remove-action {
+    width: 1.6rem;
+    height: 1.6rem;
+    border: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--btcpay-danger, var(--bs-danger));
+    padding: 0;
+}
+
+.image-remove-action:hover {
+    background: rgba(220, 53, 69, 0.12);
+    color: var(--btcpay-danger, var(--bs-danger));
+}
+
+.image-remove-action:focus-visible {
+    outline: 2px solid rgba(220, 53, 69, 0.35);
+    outline-offset: 2px;
+}
+
+.image-close-glyph {
+    font-size: 1.25rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    transform: translateY(-0.06em);
+}
+
+.image-modal-close {
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 18, 24, 0.78);
+    color: #fff;
+    backdrop-filter: blur(3px);
+    transition: transform .12s ease, background-color .12s ease;
+}
+
+.image-modal-close:hover {
+    transform: scale(1.06);
+    background: rgba(15, 18, 24, 0.92);
+}
+
+.image-modal-close:focus-visible {
+    outline: 2px solid rgba(255,255,255,.75);
+    outline-offset: 2px;
 }
 
 .offcanvas {
