@@ -15,7 +15,7 @@ using Xunit.Abstractions;
 namespace PluginBuilder.Tests.PluginTests;
 
 [Collection("Playwright Tests")]
-public class ScreensUITests(ITestOutputHelper output) : PageTest
+public class ImagesUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("ScreensUITests", output);
 
@@ -80,7 +80,7 @@ public class ScreensUITests(ITestOutputHelper output) : PageTest
             PluginTitle = pluginSlug,
             Description = "Screens settings test",
             GitRepository = ServerTester.RepoUrl,
-            Screenshots = [old1, old2]
+            Images = [old1, old2]
         });
 
         await t.GoToUrl($"/plugins/{pluginSlug}/settings");
@@ -142,7 +142,7 @@ public class ScreensUITests(ITestOutputHelper output) : PageTest
             Description = "Carousel test",
             GitRepository = ServerTester.RepoUrl,
             VideoUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            Screenshots = [screenshot1, screenshot2]
+            Images = [screenshot1, screenshot2]
         }, PluginVisibilityEnum.Listed);
 
         await t.GoToUrl($"/public/plugins/{pluginSlug}");

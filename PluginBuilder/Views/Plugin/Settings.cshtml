@@ -94,35 +94,35 @@
                 <span asp-validation-for="LogoUrl" class="text-danger"></span>
             </div>
             <div class="form-group">
-                <label asp-for="Screenshots" class="form-label"></label>
-                <input asp-for="Screenshots" id="settings-screenshots-input" type="file" class="form-control" accept="image/*" multiple>
-                <span asp-validation-for="Screenshots" class="text-danger"></span>
-                <div id="settings-screenshots-limit-error" class="text-danger small mt-1 d-none"></div>
-                <input type="hidden" name="ScreenshotsUrlSubmitted" value="true" />
-                <div id="screenshots-order-list" class="d-flex gap-3 mt-2 screenshots-order-list">
-                    @if (Model.ScreenshotsUrl is { Count: > 0 })
+                <label asp-for="Images" class="form-label"></label>
+                <input asp-for="Images" id="settings-images-input" type="file" class="form-control" accept="image/*" multiple>
+                <span asp-validation-for="Images" class="text-danger"></span>
+                <div id="settings-images-limit-error" class="text-danger small mt-1 d-none"></div>
+                <input type="hidden" name="ImagesUrlSubmitted" value="true" />
+                <div id="images-order-list" class="d-flex gap-3 mt-2 images-order-list">
+                    @if (Model.ImagesUrl is { Count: > 0 })
                     {
-                        var screenshots = Model.ScreenshotsUrl.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-                        @for (var i = 0; i < screenshots.Count; i++)
+                        var images = Model.ImagesUrl.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+                        @for (var i = 0; i < images.Count; i++)
                         {
-                            <div class="screenshot-item border rounded p-2" data-screenshot-item>
-                                @{ var screenshotUrl = screenshots[i]; }
-                                <input type="hidden" name="ScreenshotsOrder" value="existing" data-order-input />
-                                <input type="hidden" name="ScreenshotsUrl" value="@screenshotUrl" data-existing-input />
-                                <img src="@screenshotUrl" alt="Screenshot" class="screenshot-preview" />
-                                <div class="screenshot-controls">
-                                    <button type="button" class="screenshot-control-btn screenshot-drag-handle" data-drag-handle aria-label="Drag to reorder" title="Drag to reorder">
+                            <div class="image-item border rounded p-2" data-image-item>
+                                @{ var imageUrl = images[i]; }
+                                <input type="hidden" name="ImagesOrder" value="existing" data-order-input />
+                                <input type="hidden" name="ImagesUrl" value="@imageUrl" data-existing-input />
+                                <img src="@imageUrl" alt="Image" class="image-preview" />
+                                <div class="image-controls">
+                                    <button type="button" class="image-control-btn image-drag-handle" data-drag-handle aria-label="Drag to reorder" title="Drag to reorder">
                                         <i class="fa fa-bars" aria-hidden="true"></i>
                                     </button>
-                                    <div class="screenshot-move-controls">
-                                        <button type="button" class="screenshot-control-btn" data-move="left" aria-label="Move screenshot left" title="Move left">
+                                    <div class="image-move-controls">
+                                        <button type="button" class="image-control-btn" data-move="left" aria-label="Move image left" title="Move left">
                                             <i class="fa fa-chevron-left" aria-hidden="true"></i>
                                         </button>
-                                        <button type="button" class="screenshot-control-btn" data-move="right" aria-label="Move screenshot right" title="Move right">
+                                        <button type="button" class="image-control-btn" data-move="right" aria-label="Move image right" title="Move right">
                                             <i class="fa fa-chevron-right" aria-hidden="true"></i>
                                         </button>
                                     </div>
-                                    <button type="button" class="screenshot-control-btn screenshot-remove-btn" data-remove-screenshot aria-label="Remove screenshot" title="Remove">
+                                    <button type="button" class="image-control-btn image-remove-btn" data-remove-image aria-label="Remove image" title="Remove">
                                         <span aria-hidden="true">&times;</span>
                                     </button>
                                 </div>
@@ -138,12 +138,12 @@
 @section FooterScripts {
     <script>
         (() => {
-            const list = document.getElementById('screenshots-order-list');
-            const input = document.getElementById('settings-screenshots-input');
-            const limitError = document.getElementById('settings-screenshots-limit-error');
-            const maxScreenshots = 10;
-            let newScreenshotIndex = 0;
-            const newScreenshots = new Map();
+            const list = document.getElementById('images-order-list');
+            const input = document.getElementById('settings-images-input');
+            const limitError = document.getElementById('settings-images-limit-error');
+            const maxImages = 10;
+            let newImageIndex = 0;
+            const newImages = new Map();
 
             const setLimitMessage = (message) => {
                 if (!limitError)
@@ -165,37 +165,37 @@
                         return;
 
                     const selectedFiles = Array.from(input.files || []);
-                    const currentCount = list.querySelectorAll('[data-screenshot-item]').length;
-                    const remaining = Math.max(maxScreenshots - currentCount, 0);
+                    const currentCount = list.querySelectorAll('[data-image-item]').length;
+                    const remaining = Math.max(maxImages - currentCount, 0);
                     const acceptedFiles = selectedFiles.slice(0, remaining);
                     const droppedCount = selectedFiles.length - acceptedFiles.length;
 
                     for (let i = acceptedFiles.length - 1; i >= 0; i--) {
                         const file = acceptedFiles[i];
-                        const screenshotId = `new-${newScreenshotIndex++}`;
+                        const imageId = `new-${newImageIndex++}`;
                         const previewUrl = URL.createObjectURL(file);
-                        newScreenshots.set(screenshotId, { file, previewUrl });
+                        newImages.set(imageId, { file, previewUrl });
 
                         const card = document.createElement('div');
-                        card.className = 'screenshot-item border rounded p-2';
-                        card.setAttribute('data-screenshot-item', 'true');
-                        card.setAttribute('data-new-id', screenshotId);
+                        card.className = 'image-item border rounded p-2';
+                        card.setAttribute('data-image-item', 'true');
+                        card.setAttribute('data-new-id', imageId);
                         card.innerHTML = `
-                            <input type="hidden" name="ScreenshotsOrder" value="new" data-order-input />
-                            <img src="${previewUrl}" alt="Screenshot" class="screenshot-preview" />
-                            <div class="screenshot-controls">
-                                <button type="button" class="screenshot-control-btn screenshot-drag-handle" data-drag-handle aria-label="Drag to reorder" title="Drag to reorder">
+                            <input type="hidden" name="ImagesOrder" value="new" data-order-input />
+                            <img src="${previewUrl}" alt="Image" class="image-preview" />
+                            <div class="image-controls">
+                                <button type="button" class="image-control-btn image-drag-handle" data-drag-handle aria-label="Drag to reorder" title="Drag to reorder">
                                     <i class="fa fa-bars" aria-hidden="true"></i>
                                 </button>
-                                <div class="screenshot-move-controls">
-                                    <button type="button" class="screenshot-control-btn" data-move="left" aria-label="Move screenshot left" title="Move left">
+                                <div class="image-move-controls">
+                                    <button type="button" class="image-control-btn" data-move="left" aria-label="Move image left" title="Move left">
                                         <i class="fa fa-chevron-left" aria-hidden="true"></i>
                                     </button>
-                                    <button type="button" class="screenshot-control-btn" data-move="right" aria-label="Move screenshot right" title="Move right">
+                                    <button type="button" class="image-control-btn" data-move="right" aria-label="Move image right" title="Move right">
                                         <i class="fa fa-chevron-right" aria-hidden="true"></i>
                                     </button>
                                 </div>
-                                <button type="button" class="screenshot-control-btn screenshot-remove-btn" data-remove-screenshot aria-label="Remove screenshot" title="Remove">
+                                <button type="button" class="image-control-btn image-remove-btn" data-remove-image aria-label="Remove image" title="Remove">
                                     <span aria-hidden="true">&times;</span>
                                 </button>
                             </div>`;
@@ -203,7 +203,7 @@
                     }
 
                     if (droppedCount > 0) {
-                        setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin. ${droppedCount} file(s) were ignored.`);
+                        setLimitMessage(`Maximum ${maxImages} images per plugin. ${droppedCount} file(s) were ignored.`);
                     } else {
                         setLimitMessage('');
                     }
@@ -222,17 +222,17 @@
                     return;
 
                 const dataTransfer = new DataTransfer();
-                Array.from(list.querySelectorAll('[data-screenshot-item][data-new-id]')).forEach(entry => {
+                Array.from(list.querySelectorAll('[data-image-item][data-new-id]')).forEach(entry => {
                     const id = entry.getAttribute('data-new-id');
-                    const screenshot = id ? newScreenshots.get(id) : null;
-                    if (screenshot)
-                        dataTransfer.items.add(screenshot.file);
+                    const image = id ? newImages.get(id) : null;
+                    if (image)
+                        dataTransfer.items.add(image.file);
                 });
                 input.files = dataTransfer.files;
             };
 
             const refreshMoveButtonsState = () => {
-                const items = Array.from(list.querySelectorAll('[data-screenshot-item]'));
+                const items = Array.from(list.querySelectorAll('[data-image-item]'));
                 items.forEach((item, index) => {
                     const leftBtn = item.querySelector('button[data-move="left"]');
                     const rightBtn = item.querySelector('button[data-move="right"]');
@@ -250,7 +250,7 @@
                 if (!handle)
                     return;
 
-                const item = handle.closest('[data-screenshot-item]');
+                const item = handle.closest('[data-image-item]');
                 if (!item)
                     return;
 
@@ -258,11 +258,11 @@
             });
 
             list.addEventListener('mouseup', () => {
-                Array.from(list.querySelectorAll('[data-screenshot-item]')).forEach(item => item.setAttribute('draggable', 'false'));
+                Array.from(list.querySelectorAll('[data-image-item]')).forEach(item => item.setAttribute('draggable', 'false'));
             });
 
             list.addEventListener('dragstart', evt => {
-                const item = evt.target.closest('[data-screenshot-item]');
+                const item = evt.target.closest('[data-image-item]');
                 if (!item || item.getAttribute('draggable') !== 'true') {
                     evt.preventDefault();
                     return;
@@ -272,7 +272,7 @@
                 item.classList.add('is-dragging');
                 if (evt.dataTransfer) {
                     evt.dataTransfer.effectAllowed = 'move';
-                    evt.dataTransfer.setData('text/plain', 'screenshot');
+                    evt.dataTransfer.setData('text/plain', 'image');
                 }
             });
 
@@ -289,7 +289,7 @@
                 else if (evt.clientX > listRect.right - edgeThreshold)
                     list.scrollLeft += scrollStep;
 
-                const target = evt.target.closest('[data-screenshot-item]');
+                const target = evt.target.closest('[data-image-item]');
                 if (!target || target === draggedItem)
                     return;
 
@@ -304,7 +304,7 @@
                     draggedItem = null;
                 }
 
-                Array.from(list.querySelectorAll('[data-screenshot-item]')).forEach(item => item.setAttribute('draggable', 'false'));
+                Array.from(list.querySelectorAll('[data-image-item]')).forEach(item => item.setAttribute('draggable', 'false'));
                 rebuildInputFileList();
                 refreshMoveButtonsState();
             });
@@ -318,15 +318,15 @@
                 if (target.hasAttribute('data-drag-handle'))
                     return;
 
-                const item = target.closest('[data-screenshot-item]');
+                const item = target.closest('[data-image-item]');
                 if (!item)
                     return;
 
-                if (target.hasAttribute('data-remove-screenshot')) {
-                    const screenshotId = item.getAttribute('data-new-id');
-                    if (screenshotId && newScreenshots.has(screenshotId)) {
-                        URL.revokeObjectURL(newScreenshots.get(screenshotId).previewUrl);
-                        newScreenshots.delete(screenshotId);
+                if (target.hasAttribute('data-remove-image')) {
+                    const imageId = item.getAttribute('data-new-id');
+                    if (imageId && newImages.has(imageId)) {
+                        URL.revokeObjectURL(newImages.get(imageId).previewUrl);
+                        newImages.delete(imageId);
                     }
                     item.remove();
 
@@ -358,9 +358,9 @@
 
             refreshMoveButtonsState();
 
-            const existingCount = list.querySelectorAll('[data-screenshot-item]').length;
-            if (existingCount >= maxScreenshots)
-                setLimitMessage(`Maximum ${maxScreenshots} screenshots per plugin.`);
+            const existingCount = list.querySelectorAll('[data-image-item]').length;
+            if (existingCount >= maxImages)
+                setLimitMessage(`Maximum ${maxImages} images per plugin.`);
         })();
     </script>
 }

@@ -6808,7 +6808,7 @@ fieldset:disabled .btn {
     height: 1rem;
 }
 
-.screenshots-order-list {
+.images-order-list {
     flex-wrap: nowrap;
     overflow-x: auto;
     overflow-y: hidden;
@@ -6816,14 +6816,14 @@ fieldset:disabled .btn {
     padding-bottom: 0.25rem;
 }
 
-.screenshots-order-list .screenshot-item {
+.images-order-list .image-item {
     position: relative;
     flex: 0 0 auto;
     width: 10rem;
     padding: 0.25rem;
 }
 
-.screenshots-order-list .screenshot-preview {
+.images-order-list .image-preview {
     width: 100%;
     height: 6rem;
     object-fit: cover;
@@ -6831,13 +6831,13 @@ fieldset:disabled .btn {
     display: block;
 }
 
-.screenshots-order-list .screenshot-controls {
+.images-order-list .image-controls {
     position: absolute;
     inset: 0.25rem;
     pointer-events: none;
 }
 
-.screenshots-order-list .screenshot-drag-handle {
+.images-order-list .image-drag-handle {
     position: absolute;
     top: 0.35rem;
     left: 0.35rem;
@@ -6846,11 +6846,11 @@ fieldset:disabled .btn {
     cursor: grab;
 }
 
-.screenshots-order-list .screenshot-drag-handle:active {
+.images-order-list .image-drag-handle:active {
     cursor: grabbing;
 }
 
-.screenshots-order-list .screenshot-move-controls {
+.images-order-list .image-move-controls {
     position: absolute;
     bottom: 0.35rem;
     left: 50%;
@@ -6860,7 +6860,7 @@ fieldset:disabled .btn {
     pointer-events: auto;
 }
 
-.screenshots-order-list .screenshot-control-btn {
+.images-order-list .image-control-btn {
     width: 1.4rem;
     height: 1.4rem;
     border: 1px solid rgba(255, 255, 255, 0.6);
@@ -6875,16 +6875,16 @@ fieldset:disabled .btn {
     pointer-events: auto;
 }
 
-.screenshots-order-list .screenshot-control-btn:hover:not(:disabled) {
+.images-order-list .image-control-btn:hover:not(:disabled) {
     background: rgba(0, 0, 0, 0.75);
 }
 
-.screenshots-order-list .screenshot-control-btn:disabled {
+.images-order-list .image-control-btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }
 
-.screenshots-order-list .screenshot-remove-btn {
+.images-order-list .image-remove-btn {
     position: absolute;
     top: 0.35rem;
     right: 0.35rem;
@@ -6892,16 +6892,16 @@ fieldset:disabled .btn {
     height: 1.3rem;
 }
 
-.screenshots-order-list .screenshot-item[draggable="true"] {
+.images-order-list .image-item[draggable="true"] {
     user-select: none;
 }
 
-.screenshots-order-list .screenshot-item.is-dragging {
+.images-order-list .image-item.is-dragging {
     opacity: 0.55;
 }
 
 @media (max-width: 767.98px) {
-    .screenshots-order-list .screenshot-drag-handle {
+    .images-order-list .image-drag-handle {
         display: none !important;
     }
 }

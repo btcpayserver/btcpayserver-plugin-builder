@@ -114,28 +114,28 @@ public class DashboardController(
             }
         }
 
-        if (model.Screenshots is { Count: > 0 })
+        if (model.Images is { Count: > 0 })
         {
-            var screenshotsToUploadCount = model.Screenshots.Count(s => s is { Length: > 0 });
-            if (screenshotsToUploadCount > 10)
+            var imagesToUploadCount = model.Images.Count(s => s is { Length: > 0 });
+            if (imagesToUploadCount > 10)
             {
-                ModelState.AddModelError(nameof(model.Screenshots),
-                    "A maximum of 10 screenshots is allowed per plugin.");
+                ModelState.AddModelError(nameof(model.Images),
+                    "A maximum of 10 images is allowed per plugin.");
                 return View(model);
             }
 
-            foreach (var screenshot in model.Screenshots.Where(s => s is { Length: > 0 }))
+            foreach (var image in model.Images.Where(s => s is { Length: > 0 }))
             {
                 try
                 {
-                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(screenshot!.FileName)}";
-                    var screenshotUrl = await azureStorageClient.UploadImageFile(screenshot, uniqueBlobName);
-                    model.ScreenshotsUrl.Add(screenshotUrl);
+                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image!.FileName)}";
+                    var imageUrl = await azureStorageClient.UploadImageFile(image, uniqueBlobName);
+                    model.ImagesUrl.Add(imageUrl);
                 }
                 catch (Exception)
                 {
-                    ModelState.AddModelError(nameof(model.Screenshots),
-                        "Could not complete plugin creation. An error occurred while uploading screenshots");
+                    ModelState.AddModelError(nameof(model.Images),
+                        "Could not complete plugin creation. An error occurred while uploading images");
                     return View(model);
                 }
             }
@@ -147,7 +147,7 @@ public class DashboardController(
             PluginTitle = model.PluginTitle,
             Description = model.Description,
             VideoUrl = model.VideoUrl,
-            Screenshots = model.ScreenshotsUrl
+            Images = model.ImagesUrl
         });
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }

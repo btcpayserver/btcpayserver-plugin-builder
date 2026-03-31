@@ -96,17 +96,17 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         var existingSetting = await conn.GetSettings(pluginSlug);
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-        var submittedScreenshots = Request.Form["ScreenshotsUrl"]
+        var submittedImages = Request.Form["ImagesUrl"]
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => s!)
             .ToList();
-        var submittedScreenshotsOrder = Request.Form["ScreenshotsOrder"].ToList();
+        var submittedImagesOrder = Request.Form["ImagesOrder"].ToList();
         settingViewModel.LogoUrl = existingSetting?.Logo;
-        settingViewModel.ScreenshotsUrl = submittedScreenshots;
-        if (settingViewModel.ScreenshotsUrl.Count == 0 &&
-            !Request.Form.ContainsKey("ScreenshotsUrlSubmitted") &&
-            existingSetting?.Screenshots is { Count: > 0 })
-            settingViewModel.ScreenshotsUrl = [..existingSetting.Screenshots];
+        settingViewModel.ImagesUrl = submittedImages;
+        if (settingViewModel.ImagesUrl.Count == 0 &&
+            !Request.Form.ContainsKey("ImagesUrlSubmitted") &&
+            existingSetting?.Images is { Count: > 0 })
+            settingViewModel.ImagesUrl = [..existingSetting.Images];
         settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
         if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
         {
@@ -153,55 +153,55 @@ public class PluginController(
             settingViewModel.LogoUrl = null;
         }
 
-        var uploadedScreenshots = new List<string>();
-        if (settingViewModel.Screenshots is { Count: > 0 })
+        var uploadedImages = new List<string>();
+        if (settingViewModel.Images is { Count: > 0 })
         {
-            var screenshotsToUploadCount = settingViewModel.Screenshots.Count(s => s is { Length: > 0 });
-            if (screenshotsToUploadCount > 0 && settingViewModel.ScreenshotsUrl.Count + screenshotsToUploadCount > 10)
+            var imagesToUploadCount = settingViewModel.Images.Count(s => s is { Length: > 0 });
+            if (imagesToUploadCount > 0 && settingViewModel.ImagesUrl.Count + imagesToUploadCount > 10)
             {
-                ModelState.AddModelError(nameof(settingViewModel.Screenshots),
-                    "A maximum of 10 screenshots is allowed per plugin.");
+                ModelState.AddModelError(nameof(settingViewModel.Images),
+                    "A maximum of 10 images is allowed per plugin.");
                 return View(settingViewModel);
             }
 
-            foreach (var screenshot in settingViewModel.Screenshots.Where(s => s is { Length: > 0 }))
+            foreach (var images in settingViewModel.Images.Where(s => s is { Length: > 0 }))
             {
                 try
                 {
-                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(screenshot!.FileName)}";
-                    var screenshotUrl = await azureStorageClient.UploadImageFile(screenshot, uniqueBlobName);
-                    uploadedScreenshots.Add(screenshotUrl);
+                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(images!.FileName)}";
+                    var imagesUrl = await azureStorageClient.UploadImageFile(images, uniqueBlobName);
+                    uploadedImages.Add(imagesUrl);
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Failed to upload screenshot for plugin {PluginSlug}", pluginSlug);
-                    ModelState.AddModelError(nameof(settingViewModel.Screenshots),
-                        "Could not complete settings upload. An error occurred while uploading screenshots");
+                    logger.LogError(ex, "Failed to upload images for plugin {PluginSlug}", pluginSlug);
+                    ModelState.AddModelError(nameof(settingViewModel.Images),
+                        "Could not complete settings upload. An error occurred while uploading images");
                     return View(settingViewModel);
                 }
             }
         }
 
-        if (submittedScreenshotsOrder.Count > 0)
+        if (submittedImagesOrder.Count > 0)
         {
-            var existingQueue = new Queue<string>(settingViewModel.ScreenshotsUrl);
-            var uploadedQueue = new Queue<string>(uploadedScreenshots);
-            var orderedScreenshots = new List<string>(settingViewModel.ScreenshotsUrl.Count + uploadedScreenshots.Count);
-            foreach (var marker in submittedScreenshotsOrder)
+            var existingQueue = new Queue<string>(settingViewModel.ImagesUrl);
+            var uploadedQueue = new Queue<string>(uploadedImages);
+            var orderedImages = new List<string>(settingViewModel.ImagesUrl.Count + uploadedImages.Count);
+            foreach (var marker in submittedImagesOrder)
             {
                 if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
-                    orderedScreenshots.Add(existingQueue.Dequeue());
+                    orderedImages.Add(existingQueue.Dequeue());
                 else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
-                    orderedScreenshots.Add(uploadedQueue.Dequeue());
+                    orderedImages.Add(uploadedQueue.Dequeue());
             }
 
-            orderedScreenshots.AddRange(existingQueue);
-            orderedScreenshots.AddRange(uploadedQueue);
-            settingViewModel.ScreenshotsUrl = orderedScreenshots;
+            orderedImages.AddRange(existingQueue);
+            orderedImages.AddRange(uploadedQueue);
+            settingViewModel.ImagesUrl = orderedImages;
         }
         else
         {
-            settingViewModel.ScreenshotsUrl.AddRange(uploadedScreenshots);
+            settingViewModel.ImagesUrl.AddRange(uploadedImages);
         }
 
         if (!settingViewModel.IsPluginPrimaryOwner && existingSetting is not null)
