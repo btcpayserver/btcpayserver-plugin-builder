@@ -1,0 +1,37 @@
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>@ViewData["Title"]</title>
+    <partial name="_CommonHead"></partial>
+    <style>
+        .main-logo {
+            height: 4.5rem;
+            max-width: 18rem;
+        }
+
+        .lead img {
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body class="d-flex flex-column min-vh-100">
+<section class="content-wrapper flex-grow-1">
+    <div class="container py-5">
+        <div class="text-center" data-testid="ui-error-page">
+            <a href="/" class="d-inline-block navbar-brand mx-0 mb-5">
+                <img class="main-logo" src="~/img/btcpay-logo.svg" alt="BTCPay Server - Plugin Builder" asp-append-version="true" />
+            </a>
+
+            <h1 class="text-uppercase my-3">@ViewData["Title"]</h1>
+
+            <div class="lead text-center">
+                @RenderBody()
+            </div>
+        </div>
+    </div>
+</section>
+</body>
+</html>

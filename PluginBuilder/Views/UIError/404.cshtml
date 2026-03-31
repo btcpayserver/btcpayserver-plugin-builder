@@ -1,9 +1,14 @@
 @{
-    ViewData["Title"] = "404 - Page Not Found";
+    Layout = "_LayoutError";
+    ViewData["Title"] = "404 - Page not found";
 }
 
-<div class="container py-5 text-center" data-testid="ui-error-page">
-    <h1 class="mb-3">404</h1>
-    <p class="lead mb-4">The page you requested could not be found.</p>
-    <a class="btn btn-primary" href="/">Navigate back to home</a>
-</div>
+This is like searching for a person more beautiful than <a href="https://twitter.com/NicolasDorier" target="_blank" rel="noreferrer noopener">Nicolas Dorier</a>.
+<br /><br />
+<a href="https://twitter.com/NicolasDorier" target="_blank" rel="noreferrer noopener">
+    <img src="~/img/errorpages/404_nicolas.jpg" alt="Nicolas Dorier beauty" title="Slowly stroke the image" asp-append-version="true" />
+</a>
+<br /><br />
+It doesn't exist.
+<br /><br />
+You can always try <a href="/">navigating back to home</a>.

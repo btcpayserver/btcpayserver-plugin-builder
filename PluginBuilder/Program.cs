@@ -287,7 +287,7 @@ public class Program
         services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, opt =>
         {
             opt.LoginPath = "/login";
-            opt.AccessDeniedPath = null;
+            opt.AccessDeniedPath = "/errors/403";
             opt.LogoutPath = "/logout";
         });
         services.AddAuthentication()

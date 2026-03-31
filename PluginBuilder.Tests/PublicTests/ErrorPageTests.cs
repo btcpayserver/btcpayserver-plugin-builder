@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Xunit;
@@ -22,8 +21,8 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Contains("404", body, StringComparison.Ordinal);
-        Assert.Contains("could not be found", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("404 - Page not found", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("It doesn't exist", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -37,10 +36,7 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.False(string.IsNullOrWhiteSpace(body));
-        using var json = JsonDocument.Parse(body);
-        Assert.Equal(404, json.RootElement.GetProperty("status").GetInt32());
-        Assert.Equal("Not Found", json.RootElement.GetProperty("title").GetString());
+        Assert.Equal(string.Empty, body);
     }
 
     [Fact]
@@ -57,8 +53,8 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.Contains("500", body, StringComparison.Ordinal);
-        Assert.Contains("An unexpected server error occurred", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("500 - Internal Server Error", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Whoops, something really went wrong", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -75,10 +71,7 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.False(string.IsNullOrWhiteSpace(body));
-        using var json = JsonDocument.Parse(body);
-        Assert.Equal(500, json.RootElement.GetProperty("status").GetInt32());
-        Assert.Equal("Internal Server Error", json.RootElement.GetProperty("title").GetString());
+        Assert.Equal(string.Empty, body);
     }
 
     [Fact]
@@ -95,8 +88,8 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Contains("503", body, StringComparison.Ordinal);
-        Assert.Contains("An error occurred while processing your request", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("503 - Service Unavailable", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("A generic error occurred (HTTP Code: 503)", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -114,7 +107,69 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.Contains("500", body, StringComparison.Ordinal);
-        Assert.Contains("An unexpected server error occurred", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("500 - Internal Server Error", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Whoops, something really went wrong", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SpecialRoute_WithHtmlAccept_ReturnsDedicated406Page()
+    {
+        await using var tester = await Start();
+        var client = tester.CreateHttpClient();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+
+        var response = await client.GetAsync("/errors/406");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+        Assert.Contains("406 - Not Acceptable", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("can't serve you", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(403, HttpStatusCode.Forbidden, "403 - Denied", "It's not your business")]
+    [InlineData(429, HttpStatusCode.TooManyRequests, "429 - Too Many Requests", "Please send requests slower")]
+    [InlineData(502, HttpStatusCode.BadGateway, "502 - Bad Gateway", "found a bad one")]
+    public async Task SpecialRoute_WithHtmlAccept_ReturnsDedicatedPages(int statusCode, HttpStatusCode expectedStatus, string expectedTitle, string expectedCopy)
+    {
+        await using var tester = await Start();
+        var client = tester.CreateHttpClient();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+
+        var response = await client.GetAsync($"/errors/{statusCode}");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(expectedStatus, response.StatusCode);
+        Assert.Contains(expectedTitle, body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(expectedCopy, body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SpecialRoute_WithJsonAccept_ReturnsPlain406()
+    {
+        await using var tester = await Start();
+        var client = tester.CreateHttpClient();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        var response = await client.GetAsync("/errors/406");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+        Assert.Equal(string.Empty, body);
+    }
+
+    [Fact]
+    public async Task OutOfRangeErrorRoute_WithHtmlAccept_DoesNotHitErrorControllerAction()
+    {
+        await using var tester = await Start();
+        var client = tester.CreateHttpClient();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+
+        var response = await client.GetAsync("/errors/399");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains("404 - Page not found", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("399 -", body, StringComparison.OrdinalIgnoreCase);
     }
 }

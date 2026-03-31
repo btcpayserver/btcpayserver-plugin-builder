@@ -1,12 +1,23 @@
+@using System.Net
+@using System.Text.RegularExpressions
+@using PluginBuilder.Controllers
 @model int?
 @{
-    ViewData["Title"] = Model.HasValue
-        ? $"{Model} - Error"
-        : "Error";
+    Layout = "_LayoutError";
+    ViewData["Title"] = "Generic Error Occurred";
+    if (Model.HasValue)
+    {
+        var httpCode = (HttpStatusCode)Model.Value;
+        var name = Regex.Replace(httpCode.ToString(), @"(\B[A-Z])", @" $1");
+        ViewData["Title"] = $"{(int)httpCode} - {name}";
+    }
+    Context.Items.TryGetValue(UIErrorController.ErrorDetailsKey, out var errorDetails);
 }
 
-<div class="container py-5 text-center" data-testid="ui-error-page">
-    <h1 class="mb-3">@Model</h1>
-    <p class="lead mb-4">An error occurred while processing your request.</p>
-    <a class="btn btn-primary" href="/">Navigate back to home</a>
-</div>
+<p class="mt-4">A generic error occurred (HTTP Code: @Model)</p>
+@if (errorDetails != null)
+{
+    <pre>@errorDetails</pre>
+}
+<p>Please consult the server log for more details.</p>
+<a href="/">Navigate back to home</a>

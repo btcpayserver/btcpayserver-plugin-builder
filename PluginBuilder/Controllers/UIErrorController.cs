@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.WebUtilities;
 
 namespace PluginBuilder.Controllers;
 
@@ -8,28 +7,22 @@ namespace PluginBuilder.Controllers;
 [IgnoreAntiforgeryToken]
 public class UIErrorController : Controller
 {
+    public const string ErrorDetailsKey = "ERROR_DETAILS";
+    private static readonly HashSet<int> SpecialPages = new() { 403, 404, 406, 417, 429, 500, 502 };
+
     [Route("/errors/{statusCode:int:range(400,599)}")]
     public IActionResult Handle(int statusCode)
     {
-        var acceptHeader = Request.Headers.Accept.ToString();
-        if (acceptHeader.Contains("text/html", StringComparison.OrdinalIgnoreCase))
+        if (Request.Headers.TryGetValue("Accept", out var acceptValues) &&
+            acceptValues.Any(v => !string.IsNullOrEmpty(v) && v.Contains("text/html", StringComparison.OrdinalIgnoreCase)))
         {
-            var viewResult = new ViewResult { StatusCode = statusCode };
-            viewResult.ViewName = statusCode is 404 or 500 ? statusCode.ToString() : "Handle";
-            if (viewResult.ViewName == "Handle")
-                viewResult.ViewData = new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary<int?>(
-                    metadataProvider: new Microsoft.AspNetCore.Mvc.ModelBinding.EmptyModelMetadataProvider(),
-                    modelState: ModelState)
-                {
-                    Model = statusCode
-                };
-            return viewResult;
+            if (SpecialPages.Contains(statusCode))
+                return View(statusCode.ToString());
+
+            return View("Handle", statusCode);
         }
 
-        return StatusCode(statusCode, new
-        {
-            status = statusCode,
-            title = ReasonPhrases.GetReasonPhrase(statusCode)
-        });
+        // Keep non-HTML responses bodyless to match BTCPay's status-only contract.
+        return StatusCode(statusCode);
     }
 }
