@@ -56,7 +56,9 @@ public class PluginController(
     public async Task<IActionResult> Settings(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        PluginSettingViewModel settingViewModel, [FromForm] bool removeLogoFile = false)
+        PluginSettingViewModel settingViewModel,
+        [FromForm] bool removeLogoFile = false,
+        [FromForm] string? removeImageUrl = null)
     {
         if (settingViewModel is null)
             return NotFound();
@@ -100,6 +102,9 @@ public class PluginController(
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => s!)
             .ToList();
+        if (!string.IsNullOrWhiteSpace(removeImageUrl))
+            submittedImages.RemoveAll(s => string.Equals(s, removeImageUrl, StringComparison.Ordinal));
+
         var submittedImagesOrder = Request.Form["ImagesOrder"].ToList();
         settingViewModel.LogoUrl = existingSetting?.Logo;
         settingViewModel.ImagesUrl = submittedImages;

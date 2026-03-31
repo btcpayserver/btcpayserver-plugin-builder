@@ -161,7 +161,7 @@ public class AdminController(
 
 
     [HttpPost("plugins/edit/{pluginSlug}")]
-    public async Task<IActionResult> PluginEdit(string pluginSlug, PluginEditViewModel model, [FromForm] bool removeLogoFile = false)
+    public async Task<IActionResult> PluginEdit(string pluginSlug, PluginEditViewModel model, [FromForm] bool removeLogoFile = false, [FromForm] string? removeImageUrl = null)
     {
         await using var conn = await connectionFactory.Open();
         model.ActiveTab = PluginEditTabs.Settings;
@@ -223,6 +223,9 @@ public class AdminController(
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => s!)
             .ToList();
+        if (!string.IsNullOrWhiteSpace(removeImageUrl))
+            submittedImages.RemoveAll(s => string.Equals(s, removeImageUrl, StringComparison.Ordinal));
+
         var submittedImagesOrder = Request.Form["ImagesOrder"].ToList();
         pluginSettings.Images = Request.Form.ContainsKey("ImagesUrlSubmitted")
             ? submittedImages
