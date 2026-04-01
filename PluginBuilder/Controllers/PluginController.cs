@@ -169,12 +169,17 @@ public class PluginController(
                 return View(settingViewModel);
             }
 
-            foreach (var images in settingViewModel.Images.Where(s => s is { Length: > 0 }))
+            foreach (var image in settingViewModel.Images.Where(s => s is { Length: > 0 }))
             {
+                if (!image.ValidateUploadedImage(out var errorMessage))
+                {
+                    ModelState.AddModelError(nameof(settingViewModel.Images), $"Image upload validation failed: {errorMessage}");
+                    return View(settingViewModel);
+                }
                 try
                 {
-                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(images!.FileName)}";
-                    var imagesUrl = await azureStorageClient.UploadImageFile(images, uniqueBlobName);
+                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image!.FileName)}";
+                    var imagesUrl = await azureStorageClient.UploadImageFile(image, uniqueBlobName);
                     uploadedImages.Add(imagesUrl);
                 }
                 catch (Exception ex)

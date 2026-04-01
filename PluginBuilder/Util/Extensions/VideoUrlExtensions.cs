@@ -82,15 +82,24 @@ public static partial class VideoUrlExtensions
 
     private static string? TryGetYoutubeVideoId(Uri uri)
     {
-        if (!IsHost(uri, "youtube.com"))
-            return null;
+        if (IsHost(uri, "youtube.com"))
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var videoId = query["v"];
+            return string.IsNullOrWhiteSpace(videoId) || !YoutubeIdRegex().IsMatch(videoId)
+                ? null
+                : videoId;
+        }
 
-        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-        var videoId = query["v"];
+        if (IsHost(uri, "youtu.be"))
+        {
+            var videoId = uri.AbsolutePath.TrimStart('/');
+            return string.IsNullOrWhiteSpace(videoId) || !YoutubeIdRegex().IsMatch(videoId)
+                ? null
+                : videoId;
+        }
 
-        return string.IsNullOrWhiteSpace(videoId) || !YoutubeIdRegex().IsMatch(videoId)
-            ? null
-            : videoId;
+        return null;
     }
 
     private static string? TryGetYoutubeShortVideoId(Uri uri)

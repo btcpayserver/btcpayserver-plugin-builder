@@ -5383,12 +5383,18 @@ fieldset:disabled .btn {
     height: 100%;
 }
 
-.plugin-media-carousel .plugin-media-image,
+.plugin-media-carousel .plugin-media-image {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    object-fit: contain;
+    display: block;
+}
+
 .plugin-media-carousel iframe {
     width: 100%;
     height: 100%;
     border: 0;
-    object-fit: cover;
     display: block;
 }
 

@@ -273,6 +273,11 @@ public class AdminController(
 
             foreach (var image in model.ImagesFiles.Where(s => s.Length > 0))
             {
+                if (!image.ValidateUploadedImage(out var errorMessage))
+                {
+                    ModelState.AddModelError(nameof(model.ImagesFiles), $"Image upload validation failed: {errorMessage}");
+                    return View(model);
+                }
                 try
                 {
                     var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";

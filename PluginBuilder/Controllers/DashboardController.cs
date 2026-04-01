@@ -87,12 +87,6 @@ public class DashboardController(
             }
         }
 
-        if (!await conn.NewPlugin(pluginSlug, userId))
-        {
-            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
-            return View(model);
-        }
-
         if (model.Logo != null)
         {
             string errorMessage;
@@ -126,6 +120,11 @@ public class DashboardController(
 
             foreach (var image in model.Images.Where(s => s is { Length: > 0 }))
             {
+                if (!image.ValidateUploadedImage(out var errorMessage))
+                {
+                    ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
+                    return View(model);
+                }
                 try
                 {
                     var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image!.FileName)}";
@@ -139,6 +138,12 @@ public class DashboardController(
                     return View(model);
                 }
             }
+        }
+
+        if (!await conn.NewPlugin(pluginSlug, userId))
+        {
+            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+            return View(model);
         }
 
         await conn.SetPluginSettings(pluginSlug, new PluginSettings
