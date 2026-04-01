@@ -17,10 +17,10 @@ namespace PluginBuilder.Tests.PluginTests;
 [Collection("Playwright Tests")]
 public class ImagesUITests(ITestOutputHelper output) : PageTest
 {
-    private readonly XUnitLogger _log = new("ScreensUITests", output);
+    private readonly XUnitLogger _log = new("ImagesUITests", output);
 
     [Fact]
-    public async Task CreatePageShowsPreviewsAndEnforcesMax10Screenshots()
+    public async Task CreatePageEnforcesMax10Images()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
@@ -38,14 +38,16 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
 
         await t.GoToUrl("/plugins/create");
 
-        var files = CreateTempImages(t, 11, "create-screens");
+        var files = CreateTempImages(t, 11, "create-images");
         try
         {
-            await t.Page!.Locator("#create-screenshots-input").SetInputFilesAsync(files);
+            await t.Page!.Locator("#create-images-input").SetInputFilesAsync(files);
+            await t.Page.Locator("#PluginSlug").FillAsync("images-create-" + PlaywrightTester.GetRandomUInt256()[..8]);
+            await t.Page.Locator("#PluginTitle").FillAsync("Images create test");
+            await t.Page.Locator("#Description").FillAsync("Create page max images validation.");
+            await t.Page.Locator("#Create").ClickAsync();
 
-            var previews = t.Page.Locator("#create-screenshots-list [data-screenshot-item]");
-            await Expect(previews).ToHaveCountAsync(10);
-            await Expect(t.Page.Locator("#create-screenshots-limit-error")).ToContainTextAsync("Maximum 10 screenshots");
+            await Expect(t.Page.Locator("span[data-valmsg-for='Images']")).ToContainTextAsync("A maximum of 10 images is allowed per plugin.");
         }
         finally
         {
@@ -54,7 +56,7 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
-    public async Task SettingsCanAddRemoveAndKeepNewScreenshotsFirst()
+    public async Task SettingsCanAddRemoveAndKeepNewImagesFirst()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
@@ -69,7 +71,7 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
         var user = await t.RegisterNewUser();
         await t.VerifyUserAccounts(user);
 
-        var pluginSlug = "screens-settings-" + PlaywrightTester.GetRandomUInt256()[..8];
+        var pluginSlug = "images-settings-" + PlaywrightTester.GetRandomUInt256()[..8];
         var userId = await conn.QuerySingleAsync<string>("SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"Email\" = @Email", new { Email = user });
         await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
 
@@ -78,37 +80,35 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
         await conn.SetPluginSettings(pluginSlug, new PluginSettings
         {
             PluginTitle = pluginSlug,
-            Description = "Screens settings test",
+            Description = "Images settings test",
             GitRepository = ServerTester.RepoUrl,
             Images = [old1, old2]
         });
 
         await t.GoToUrl($"/plugins/{pluginSlug}/settings");
-        await Expect(t.Page!.Locator("#screenshots-order-list [data-screenshot-item]")).ToHaveCountAsync(2);
+        await Expect(t.Page!.Locator("#images-order-list [data-image-item]")).ToHaveCountAsync(2);
 
-        var files = CreateTempImages(t, 2, "settings-screens");
+        var files = CreateTempImages(t, 2, "settings-images");
         try
         {
-            await t.Page.Locator("#settings-screenshots-input").SetInputFilesAsync(files);
-            await Expect(t.Page.Locator("#screenshots-order-list [data-screenshot-item]")).ToHaveCountAsync(4);
+            await t.Page.Locator("#settings-images-input").SetInputFilesAsync(files);
+            await Expect(t.Page.Locator("#images-order-list [data-image-item]")).ToHaveCountAsync(4);
 
-            var firstNewCard = t.Page.Locator("#screenshots-order-list [data-screenshot-item]").First;
+            var firstNewCard = t.Page.Locator("#images-order-list [data-image-item][data-new-id]").First;
             var newId = await firstNewCard.GetAttributeAsync("data-new-id");
             Assert.False(string.IsNullOrWhiteSpace(newId));
 
-            var old1Card = t.Page.Locator($"#screenshots-order-list [data-existing-input][value='{old1}']").Locator("xpath=ancestor::*[@data-screenshot-item][1]");
-            await old1Card.Locator("button[data-remove-screenshot]").ClickAsync();
-
-            await t.Page.Locator("button[type='submit'][form='plugin-setting-form']").ClickAsync();
+            var old1Card = t.Page.Locator($"#images-order-list [data-existing-input][value='{old1}']").Locator("xpath=ancestor::*[@data-image-item][1]");
+            await old1Card.Locator("button[name='removeImageUrl']").ClickAsync();
             await t.AssertNoError();
 
-            var savedScreenshots = await conn.QuerySingleAsync<string[]>(
-                "SELECT COALESCE(ARRAY(SELECT jsonb_array_elements_text(settings->'screenshots')), ARRAY[]::text[]) FROM plugins WHERE slug = @Slug",
+            var savedImages = await conn.QuerySingleAsync<string[]>(
+                "SELECT COALESCE(ARRAY(SELECT jsonb_array_elements_text(settings->'images')), ARRAY[]::text[]) FROM plugins WHERE slug = @Slug",
                 new { Slug = pluginSlug });
 
-            Assert.Equal(3, savedScreenshots.Length);
-            Assert.DoesNotContain(old1, savedScreenshots);
-            Assert.Equal(old2, savedScreenshots[^1]);
+            Assert.Equal(3, savedImages.Length);
+            Assert.DoesNotContain(old1, savedImages);
+            Assert.Equal(old2, savedImages[^1]);
         }
         finally
         {
@@ -117,7 +117,7 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
-    public async Task PluginDetailsMediaCarouselNavigatesBetweenVideoAndScreenshots()
+    public async Task PluginDetailsMediaCarouselNavigatesBetweenVideoAndImages()
     {
         await using var t = new PlaywrightTester(_log);
         t.Server.ReuseDatabase = false;
@@ -125,7 +125,7 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
 
         var ownerId = await t.Server.CreateFakeUserAsync(confirmEmail: true, githubVerified: true);
-        var pluginSlug = "screens-carousel-" + PlaywrightTester.GetRandomUInt256()[..8];
+        var pluginSlug = "images-carousel-" + PlaywrightTester.GetRandomUInt256()[..8];
         var fullBuildId = await t.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
 
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
@@ -134,15 +134,15 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
         var manifest = PluginManifest.Parse(manifestInfoJson);
         await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
 
-        const string screenshot1 = "https://example.com/carousel-1.png";
-        const string screenshot2 = "https://example.com/carousel-2.png";
+        const string image1 = "https://example.com/carousel-1.png";
+        const string image2 = "https://example.com/carousel-2.png";
         await conn.SetPluginSettings(pluginSlug, new PluginSettings
         {
             PluginTitle = pluginSlug,
             Description = "Carousel test",
             GitRepository = ServerTester.RepoUrl,
             VideoUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            Images = [screenshot1, screenshot2]
+            Images = [image1, image2]
         }, PluginVisibilityEnum.Listed);
 
         await t.GoToUrl($"/public/plugins/{pluginSlug}");
@@ -154,10 +154,10 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
 
         await thumbs.Nth(2).ClickAsync();
         await Expect(thumbs.Nth(2)).ToHaveClassAsync(new Regex("is-active"));
-        await Expect(t.Page.Locator("#plugin-media-carousel .plugin-media-slide.is-active img")).ToHaveAttributeAsync("src", screenshot2);
+        await Expect(t.Page.Locator("#plugin-media-carousel .plugin-media-slide.is-active img")).ToHaveAttributeAsync("src", image2);
 
         await t.Page.Locator("#plugin-media-carousel [data-media-nav='prev']").ClickAsync();
-        await Expect(t.Page.Locator("#plugin-media-carousel .plugin-media-slide.is-active img")).ToHaveAttributeAsync("src", screenshot1);
+        await Expect(t.Page.Locator("#plugin-media-carousel .plugin-media-slide.is-active img")).ToHaveAttributeAsync("src", image1);
     }
 
     private static string[] CreateTempImages(PlaywrightTester tester, int count, string prefix)
