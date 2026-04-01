@@ -1,0 +1,23 @@
+@using System.Net
+@using System.Text.RegularExpressions
+@using PluginBuilder.Controllers
+@model int?
+@{
+    Layout = "_LayoutError";
+    ViewData["Title"] = "Generic Error Occurred";
+    if (Model.HasValue)
+    {
+        var httpCode = (HttpStatusCode)Model.Value;
+        var name = Regex.Replace(httpCode.ToString(), @"(\B[A-Z])", @" $1");
+        ViewData["Title"] = $"{(int)httpCode} - {name}";
+    }
+    Context.Items.TryGetValue(UIErrorController.ErrorDetailsKey, out var errorDetails);
+}
+
+<p class="mt-4">A generic error occurred (HTTP Code: @Model)</p>
+@if (errorDetails != null)
+{
+    <pre>@errorDetails</pre>
+}
+<p>Please consult the server log for more details.</p>
+<a href="/">Navigate back to home</a>

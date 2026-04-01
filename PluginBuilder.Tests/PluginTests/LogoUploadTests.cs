@@ -2,7 +2,6 @@ using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright.Xunit;
-using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
@@ -24,9 +23,7 @@ public class LogoUploadTests(ITestOutputHelper output) : PageTest
         await t.StartAsync();
 
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
+        await t.EnableGithubVerificationAsync(conn);
 
         // Register user
         await t.GoToUrl("/register");
