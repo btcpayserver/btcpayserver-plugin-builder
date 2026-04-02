@@ -1,6 +1,11 @@
+using System.Net;
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.OutputCaching;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
+using PluginBuilder.APIModels;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
@@ -11,6 +16,8 @@ namespace PluginBuilder.Tests;
 
 public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
+    private static readonly JsonSerializerSettings SerializerSettings = new() { ContractResolver = new CamelCasePropertyNamesContractResolver() };
+
     private sealed class MinOverrideRow
     {
         public int[] EffectiveMin { get; init; } = [];
@@ -56,6 +63,61 @@ public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(log
     {
         Assert.Throws<FormatException>(() =>
             PluginManifest.Parse(CreateManifest(">= 2.0.0 && <= 1.9.9"), strictBTCPayVersionCondition: true));
+    }
+
+    [Fact]
+    public async Task ApiCompatibilityFilters_NormalizePrereleaseHostVersions_AndKeepPluginVersionRoutesStrict()
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        await tester.Start();
+
+        var ownerId = await tester.CreateFakeUserAsync();
+        var pluginSlug = "btcpay-rc-" + Guid.NewGuid().ToString("N")[..8];
+        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        var buildRow = await conn.QuerySingleAsync<(string manifest_info, string build_info)>(
+            "SELECT manifest_info, build_info FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
+            new { pluginSlug, buildId = fullBuildId.BuildId });
+        var manifest = PluginManifest.Parse(buildRow.manifest_info);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, PluginVersion.Parse("2.3.7"), false);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings
+        {
+            PluginTitle = pluginSlug,
+            Description = "RC compatibility test plugin",
+            GitRepository = ServerTester.RepoUrl
+        }, PluginVisibilityEnum.Listed);
+        var identifier = manifest.Identifier;
+
+        var outputCacheStore = tester.GetService<IOutputCacheStore>();
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+
+        var client = tester.CreateHttpClient();
+
+        await AssertJsonResponseEquals(
+            client,
+            "/api/v1/plugins?btcpayVersion=2.3.7",
+            "/api/v1/plugins?btcpayVersion=2.3.7-rc2");
+
+        await AssertJsonResponseEquals(
+            client,
+            $"/api/v1/plugins/{identifier}?btcpayVersion=2.3.7",
+            $"/api/v1/plugins/{identifier}?btcpayVersion=2.3.7-rc2");
+
+        await AssertJsonResponseEquals(
+            client,
+            "/api/v1/plugins/updates?btcpayVersion=2.3.7",
+            "/api/v1/plugins/updates?btcpayVersion=2.3.7-rc2",
+            new[] { new InstalledPluginRequest(identifier, "0.0.1") });
+
+        var invalidHostVersion = await client.GetAsync("/api/v1/plugins?btcpayVersion=2.3.x-rc1");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidHostVersion.StatusCode);
+        Assert.Contains("Invalid BTCPay version", await invalidHostVersion.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        var invalidPluginVersion = await client.GetAsync($"/api/v1/plugins/{pluginSlug}/versions/1.0.0-rc1");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPluginVersion.StatusCode);
+        Assert.Contains("Invalid plugin version", await invalidPluginVersion.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -312,5 +374,31 @@ public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(log
                    ]
                  }
                  """;
+    }
+
+    private static async Task AssertJsonResponseEquals(HttpClient client, string expectedUrl, string actualUrl, object? body = null)
+    {
+        var expected = await SendAsync(client, expectedUrl, body);
+        var actual = await SendAsync(client, actualUrl, body);
+
+        Assert.Equal(HttpStatusCode.OK, expected.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, actual.StatusCode);
+
+        var expectedJson = JToken.Parse(await expected.Content.ReadAsStringAsync());
+        var actualJson = JToken.Parse(await actual.Content.ReadAsStringAsync());
+        Assert.True(JToken.DeepEquals(expectedJson, actualJson), $"Expected JSON from '{actualUrl}' to match '{expectedUrl}'.");
+    }
+
+    private static Task<HttpResponseMessage> SendAsync(HttpClient client, string url, object? body)
+    {
+        if (body is null)
+            return client.GetAsync(url);
+
+        return client.PostAsync(url, JsonBody(body));
+    }
+
+    private static StringContent JsonBody(object body)
+    {
+        return new StringContent(JsonConvert.SerializeObject(body, SerializerSettings), Encoding.UTF8, "application/json");
     }
 }
