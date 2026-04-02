@@ -122,7 +122,21 @@ public class UIControllerAntiforgeryTokenAttributeTests
         List<IFilterMetadata> filters = new();
         filters.Add(filter);
         filters.AddRange(extraFilters);
-        return new AuthorizationFilterContext(actionContext, filters);
+
+        // Match MVC's ordered execution so IAntiforgeryPolicy precedence is realistic in tests.
+        var orderedFilters = filters
+            .Select((metadata, index) => new
+            {
+                Metadata = metadata,
+                Order = (metadata as IOrderedFilter)?.Order ?? 0,
+                Index = index
+            })
+            .OrderBy(x => x.Order)
+            .ThenBy(x => x.Index)
+            .Select(x => x.Metadata)
+            .ToList();
+
+        return new AuthorizationFilterContext(actionContext, orderedFilters);
     }
 
     private sealed class DummyUiController : Controller;

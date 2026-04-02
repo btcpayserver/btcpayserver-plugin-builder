@@ -16,7 +16,7 @@ public class UIControllerAntiforgeryTokenAttribute :
     IAsyncAuthorizationFilter,
     IOrderedFilter
 {
-    public int Order => int.MaxValue;
+    public int Order => 1000;
 
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
