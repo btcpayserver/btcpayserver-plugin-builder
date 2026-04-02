@@ -17,6 +17,7 @@ using PluginBuilder.Authentication;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
+using PluginBuilder.Filters;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Hubs;
 using PluginBuilder.Services;
@@ -143,7 +144,10 @@ public class Program
 
     public void AddServices(IConfiguration configuration, IServiceCollection services, IHostEnvironment env)
     {
-        services.AddControllersWithViews()
+        services.AddControllersWithViews(options =>
+            {
+                options.Filters.Add(new UIControllerAntiforgeryTokenAttribute());
+            })
             .AddRazorRuntimeCompilation()
             .AddRazorOptions(options =>
             {
