@@ -22,7 +22,7 @@
         @if (Model.Plugins.Any())
         {
             <a asp-controller="Admin"
-            asp-action="EmailPrimaryOwners"
+            asp-action="EmailSender"
             asp-route-searchText="@Model.SearchText"
             asp-route-status="@Model.Status"
             class="btn btn-primary">
