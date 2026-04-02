@@ -8,6 +8,7 @@ using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
+using PluginBuilder.DataModels;
 
 namespace PluginBuilder.Util.Extensions;
 
@@ -221,6 +222,44 @@ public static class NpgsqlConnectionExtensions
             tx);
 
         return owners.ToList();
+    }
+
+    public static async Task<List<string>> GetPrimaryOwnerEmailsForStablePlugins(
+    this NpgsqlConnection connection,
+    string? searchText = null,
+    string? status = null)
+{
+    var whereConditions = new List<string>();
+    var parameters = new DynamicParameters();
+
+    whereConditions.Add(@"EXISTS (
+        SELECT 1 FROM versions v
+        WHERE v.plugin_slug = p.slug AND v.pre_release = FALSE
+    )");
+
+    if (!string.IsNullOrEmpty(searchText))
+    {
+        whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText OR p.settings->>'pluginTitle' ILIKE @searchText)");
+        parameters.Add("searchText", $"%{searchText}%");
+    }
+
+    if (!string.IsNullOrEmpty(status) && Enum.TryParse<PluginVisibilityEnum>(status, true, out var statusEnum))
+    {
+        whereConditions.Add("p.visibility = CAST(@status AS plugin_visibility_enum)");
+        parameters.Add("status", statusEnum.ToString().ToLower());
+    }
+
+    var whereClause = "WHERE " + string.Join(" AND ", whereConditions);
+
+    var emails = await connection.QueryAsync<string>($"""
+        SELECT DISTINCT u."Email"
+        FROM plugins p
+        LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
+        LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
+        {whereClause}
+    """, parameters);
+
+    return emails.Where(e => !string.IsNullOrEmpty(e)).ToList();
     }
 
     #endregion
