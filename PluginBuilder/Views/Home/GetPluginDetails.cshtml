@@ -116,7 +116,34 @@
                         var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
                         var videoThumbUrl = Model.Plugin.VideoUrl.GetVideoThumbnailUrl();
                         var screenshots = Model.Plugin.Images?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList() ?? new List<string>();
-                        var hasMedia = !string.IsNullOrWhiteSpace(videoEmbedUrl) || screenshots.Count > 0;
+                        var mediaItems = new List<(bool IsVideo, string MediaUrl, string? ThumbUrl, string SlideAlt, string ThumbAriaLabel, string ThumbAlt)>();
+
+                        if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
+                        {
+                            mediaItems.Add((
+                                true,
+                                videoEmbedUrl,
+                                videoThumbUrl,
+                                "Plugin video",
+                                "Show video",
+                                "Video thumbnail"
+                            ));
+                        }
+
+                        for (var i = 0; i < screenshots.Count; i++)
+                        {
+                            var screenshot = screenshots[i];
+                            mediaItems.Add((
+                                false,
+                                screenshot,
+                                screenshot,
+                                $"{Model.Plugin.PluginTitle} screenshot {i + 1}",
+                                $"Show screenshot {i + 1}",
+                                $"Screenshot thumbnail {i + 1}"
+                            ));
+                        }
+
+                        var hasMedia = mediaItems.Count > 0;
                     }
                     @if (hasMedia)
                     {
@@ -132,63 +159,57 @@
                                             <i class="fa fa-chevron-right" aria-hidden="true"></i>
                                         </button>
 
-                                        @{ var mediaIndex = 0; }
-                                        @if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
+                                        @for (var i = 0; i < mediaItems.Count; i++)
                                         {
-                                            <div class="plugin-media-slide @(mediaIndex == 0 ? "is-active" : "d-none")" data-media-slide data-media-index="@mediaIndex" aria-hidden="@(mediaIndex == 0 ? "false" : "true")">
-                                                <iframe data-video-embed data-video-src="@videoEmbedUrl"
-                                                        title="Plugin video"
-                                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                        allowfullscreen
-                                                        loading="lazy"
-                                                        style="border: none;">
-                                                </iframe>
+                                            var mediaItem = mediaItems[i];
+                                            <div class="plugin-media-slide @(i == 0 ? "is-active" : "d-none")" data-media-slide data-media-index="@i" aria-hidden="@(i == 0 ? "false" : "true")">
+                                                @if (mediaItem.IsVideo)
+                                                {
+                                                    <iframe data-video-embed data-video-src="@mediaItem.MediaUrl"
+                                                            title="Plugin video"
+                                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                            allowfullscreen
+                                                            loading="lazy"
+                                                            style="border: none;">
+                                                    </iframe>
+                                                }
+                                                else
+                                                {
+                                                    <img src="@mediaItem.MediaUrl" alt="@mediaItem.SlideAlt" loading="lazy" class="plugin-media-image" />
+                                                }
                                             </div>
-                                            mediaIndex++;
-                                        }
-
-                                        @for (var i = 0; i < screenshots.Count; i++)
-                                        {
-                                            var screenshot = screenshots[i];
-                                            <div class="plugin-media-slide @(mediaIndex == 0 ? "is-active" : "d-none")" data-media-slide data-media-index="@mediaIndex" aria-hidden="@(mediaIndex == 0 ? "false" : "true")">
-                                                <img src="@screenshot" alt="@Model.Plugin.PluginTitle screenshot @(i + 1)" loading="lazy" class="plugin-media-image" />
-                                            </div>
-                                            mediaIndex++;
                                         }
                                     </div>
 
                                     <div class="plugin-media-thumbs" data-media-thumbs>
-                                        @{ mediaIndex = 0; }
-                                        @if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
+                                        @for (var i = 0; i < mediaItems.Count; i++)
                                         {
-                                            <button type="button" class="plugin-media-thumb @(mediaIndex == 0 ? "is-active" : "")" data-media-thumb data-media-index="@mediaIndex" aria-label="Show video" aria-current="@(mediaIndex == 0 ? "true" : "false")">
-                                                @if (!string.IsNullOrWhiteSpace(videoThumbUrl))
+                                            var mediaItem = mediaItems[i];
+                                            <button type="button" class="plugin-media-thumb @(i == 0 ? "is-active" : "")" data-media-thumb data-media-index="@i" aria-label="@mediaItem.ThumbAriaLabel" aria-current="@(i == 0 ? "true" : "false")">
+                                                @if (mediaItem.IsVideo)
                                                 {
-                                                    <span class="plugin-media-video-thumb-wrap">
-                                                        <img src="@videoThumbUrl" alt="Video thumbnail" loading="lazy" class="plugin-media-video-thumb-image" />
-                                                        <span class="plugin-media-video-play">
-                                                            <i class="fa fa-play" aria-hidden="true"></i>
+                                                    @if (!string.IsNullOrWhiteSpace(mediaItem.ThumbUrl))
+                                                    {
+                                                        <span class="plugin-media-video-thumb-wrap">
+                                                            <img src="@mediaItem.ThumbUrl" alt="@mediaItem.ThumbAlt" loading="lazy" class="plugin-media-video-thumb-image" />
+                                                            <span class="plugin-media-video-play">
+                                                                <i class="fa fa-play" aria-hidden="true"></i>
+                                                            </span>
                                                         </span>
-                                                    </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="plugin-media-video-thumb">
+                                                            <i class="fa fa-play" aria-hidden="true"></i>
+                                                            Video
+                                                        </span>
+                                                    }
                                                 }
                                                 else
                                                 {
-                                                    <span class="plugin-media-video-thumb">
-                                                        <i class="fa fa-play" aria-hidden="true"></i>
-                                                        Video
-                                                    </span>
+                                                    <img src="@mediaItem.ThumbUrl" alt="@mediaItem.ThumbAlt" loading="lazy" />
                                                 }
                                             </button>
-                                            mediaIndex++;
-                                        }
-
-                                        @for (var i = 0; i < screenshots.Count; i++)
-                                        {
-                                            var screenshot = screenshots[i];
-                                            <button type="button" class="plugin-media-thumb @(mediaIndex == 0 ? "is-active" : "")" data-media-thumb data-media-index="@mediaIndex" aria-label="Show screenshot @(i + 1)" aria-current="@(mediaIndex == 0 ? "true" : "false")">
-                                                <img src="@screenshot" alt="Screenshot thumbnail @(i + 1)" loading="lazy" />
-                                            </button>
-                                            mediaIndex++;
                                         }
                                     </div>
                                 </div>
@@ -673,7 +694,7 @@
             }
         };
 
-        const setActive = (index) => {
+        const setActive = (index, shouldScrollThumb = false) => {
             activeIndex = (index + slides.length) % slides.length;
 
             slides.forEach((slide, i) => {
@@ -688,26 +709,26 @@
                 const isActive = i === activeIndex;
                 thumb.classList.toggle('is-active', isActive);
                 thumb.setAttribute('aria-current', isActive ? 'true' : 'false');
-                if (isActive)
+                if (isActive && shouldScrollThumb)
                     thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
             });
         };
 
-        prevBtn?.addEventListener('click', () => setActive(activeIndex - 1));
-        nextBtn?.addEventListener('click', () => setActive(activeIndex + 1));
+        prevBtn?.addEventListener('click', () => setActive(activeIndex - 1, true));
+        nextBtn?.addEventListener('click', () => setActive(activeIndex + 1, true));
 
         thumbs.forEach((thumb, i) => {
-            thumb.addEventListener('click', () => setActive(i));
+            thumb.addEventListener('click', () => setActive(i, true));
         });
 
         carousel.addEventListener('keydown', (evt) => {
             if (evt.key === 'ArrowLeft') {
                 evt.preventDefault();
-                setActive(activeIndex - 1);
+                setActive(activeIndex - 1, true);
             }
             else if (evt.key === 'ArrowRight') {
                 evt.preventDefault();
-                setActive(activeIndex + 1);
+                setActive(activeIndex + 1, true);
             }
         });
 
