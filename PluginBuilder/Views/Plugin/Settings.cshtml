@@ -1,7 +1,9 @@
 @model PluginSettingViewModel
+@using PluginBuilder.ViewModels.Shared
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(PluginNavPages.Settings, "Plugin settings");
+    var editImagesVm = EditImagesViewModel.Create(Model.ImagesUrl);
 }
 <div class="d-flex align-items-center justify-content-between mb-4">
     <h2 class="mb-0">
@@ -93,63 +95,7 @@
                 </div>
                 <span asp-validation-for="LogoUrl" class="text-danger"></span>
             </div>
-            <div class="form-group">
-                <label asp-for="Images" class="form-label"></label>
-                <input asp-for="Images" id="settings-images-input" type="file" class="form-control" accept="image/*" multiple>
-                <span asp-validation-for="Images" class="text-danger"></span>
-                <div id="settings-images-limit-error" class="text-danger small mt-1 d-none"></div>
-                <input type="hidden" name="ImagesUrlSubmitted" value="true" />
-                <div id="images-order-list" class="images-grid mt-2">
-                    @if (Model.ImagesUrl is { Count: > 0 })
-                    {
-                        var images = Model.ImagesUrl.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-                        @for (var i = 0; i < images.Count; i++)
-                        {
-                            <div class="image-item" data-image-item draggable="true">
-                                @{ var imageUrl = images[i]; }
-                                <input type="hidden" name="ImagesOrder" value="existing" data-order-input />
-                                <input type="hidden" name="ImagesUrl" value="@imageUrl" data-existing-input />
-                                <button type="button" class="image-preview-btn" data-preview-trigger>
-                                    <img src="@imageUrl" alt="Image" class="image-preview" />
-                                </button>
-                                    <div class="image-actions">
-                                        <span class="text-muted small">Drag to reorder</span>
-                                        <button type="submit" class="image-remove-action" name="removeImageUrl" value="@imageUrl" aria-label="Remove image">
-                                            <span aria-hidden="true">&times;</span>
-                                        </button>
-                                    </div>
-                                </div>
-                        }
-                    }
-                </div>
-            </div>
+            <partial name="_EditImages" model="editImagesVm"></partial>
         </form>
     </div>
 </div>
-
-<div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-xl">
-        <div class="modal-content bg-transparent border-0 shadow-none">
-            <div class="d-flex justify-content-end mb-2">
-                <button type="button" class="image-modal-close" data-bs-dismiss="modal" aria-label="Close preview">
-                    <span class="image-close-glyph" aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <img id="imagePreviewModalImg" src="" alt="Image preview" class="w-100 rounded" style="max-height:85vh;object-fit:contain;background:rgba(0,0,0,0.35);" />
-        </div>
-    </div>
-</div>
-
-@section FooterScripts {
-    <script src="~/scripts/plugin-images-manager.js" asp-append-version="true"></script>
-    <script>
-        window.PluginImagesManager?.init({
-            listId: 'images-order-list',
-            inputId: 'settings-images-input',
-            limitErrorId: 'settings-images-limit-error',
-            modalId: 'imagePreviewModal',
-            modalImageId: 'imagePreviewModalImg',
-            maxImages: 10
-        });
-    </script>
-}
