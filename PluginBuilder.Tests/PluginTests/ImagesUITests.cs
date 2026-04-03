@@ -91,7 +91,7 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
         var files = CreateTempImages(t, 2, "settings-images");
         try
         {
-            await t.Page.Locator("#settings-images-input").SetInputFilesAsync(files);
+            await t.Page.Locator("#images-input").SetInputFilesAsync(files);
             await Expect(t.Page.Locator("#images-order-list [data-image-item]")).ToHaveCountAsync(4);
 
             var firstNewCard = t.Page.Locator("#images-order-list [data-image-item][data-new-id]").First;

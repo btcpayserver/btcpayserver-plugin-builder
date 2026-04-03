@@ -270,7 +270,7 @@ public class AdminController(
         if (model.Images is { Count: > 0 })
         {
             var imagesToUploadCount = model.Images.Count(s => s.Length > 0);
-            if (imagesToUploadCount > 0 && pluginSettings.Images.Count + imagesToUploadCount > 10)
+            if (imagesToUploadCount > 0 && (pluginSettings.Images?.Count ?? 0) + imagesToUploadCount > 10)
             {
                 ModelState.AddModelError(nameof(model.Images),
                     "A maximum of 10 images is allowed per plugin.");
