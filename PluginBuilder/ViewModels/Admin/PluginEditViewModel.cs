@@ -42,7 +42,7 @@ public class PluginEditViewModel : PluginViewModel
     public IFormFile? LogoFile { get; set; }
 
     [Display(Name = "Images")]
-    public List<IFormFile> ImagesFiles { get; set; } = [];
+    public List<IFormFile> Images { get; set; } = [];
 }
 
 public static class PluginEditTabs

@@ -16,7 +16,13 @@
         const limitError = document.getElementById(limitErrorId);
         const modalElement = document.getElementById(modalId);
         const modalImage = document.getElementById(modalImageId);
-        const modal = modalElement ? bootstrap.Modal.getOrCreateInstance(modalElement) : null;
+
+        const getModal = () => {
+            if (!modalElement || !window.bootstrap?.Modal)
+                return null;
+
+            return window.bootstrap.Modal.getOrCreateInstance(modalElement);
+        };
 
         if (!list || !input) {
             return;
@@ -159,9 +165,13 @@
                 return;
 
             if (target.hasAttribute('data-preview-trigger')) {
-                if (modal && modalImage) {
+                if (modalImage) {
                     const img = item.querySelector('.image-preview');
                     if (img) {
+                        const modal = getModal();
+                        if (!modal)
+                            return;
+
                         modalImage.src = img.getAttribute('src') || '';
                         modalImage.alt = img.getAttribute('alt') || 'Image preview';
                         modal.show();

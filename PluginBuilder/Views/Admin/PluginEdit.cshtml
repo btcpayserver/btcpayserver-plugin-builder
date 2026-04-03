@@ -27,6 +27,7 @@
     var selectedSourceValue = ((int)Model.ImportReview.Source).ToString();
     var openCompatibilityModalId = Model.PublishedVersions
         .FirstOrDefault(v => string.Equals(v.Version, Model.OpenCompatibilityVersion, StringComparison.Ordinal))?.CompatibilityModalId;
+    var editImagesVm = EditImagesViewModel.Create(Model.PluginSettings.Images);
 }
 
 <div class="d-flex flex-column flex-md-row align-items-start justify-content-between gap-3 mb-4">
@@ -152,36 +153,7 @@
                         </div>
                         <span asp-validation-for="LogoFile" class="text-danger"></span>
                     </div>
-                    <div class="form-group">
-                        <label asp-for="ImagesFiles" class="form-label"></label>
-                        <input asp-for="ImagesFiles" id="admin-images-input" type="file" class="form-control" accept="image/*" multiple>
-                        <span asp-validation-for="ImagesFiles" class="text-danger"></span>
-                        <div id="admin-images-limit-error" class="text-danger small mt-1 d-none"></div>
-                        <input type="hidden" name="ImagesUrlSubmitted" value="true" />
-                        <div id="images-order-list" class="images-grid mt-2">
-                            @if (Model.PluginSettings.Images is { Count: > 0 })
-                            {
-                                var images = Model.PluginSettings.Images.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-                                @for (var i = 0; i < images.Count; i++)
-                                {
-                                    <div class="image-item" data-image-item draggable="true">
-                                        @{ var imageUrl = images[i]; }
-                                        <input type="hidden" name="ImagesOrder" value="existing" data-order-input />
-                                        <input type="hidden" name="ImagesUrl" value="@imageUrl" data-existing-input />
-                                        <button type="button" class="image-preview-btn" data-preview-trigger>
-                                            <img src="@imageUrl" alt="Image" class="image-preview" />
-                                        </button>
-                                        <div class="image-actions">
-                                            <span class="text-muted small">Drag to reorder</span>
-                                            <button type="submit" class="image-remove-action" name="removeImageUrl" value="@imageUrl" aria-label="Remove image" title="Remove">
-                                                <span aria-hidden="true">&times;</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                }
-                            }
-                        </div>
-                    </div>
+                    <partial name="_EditImages" model="editImagesVm"></partial>
 
                     <div class="mb-3">
                         <label asp-for="Visibility" class="form-label"></label>
@@ -390,19 +362,6 @@
     </div>
 </div>
 
-<div class="modal fade" id="adminImagePreviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-xl">
-        <div class="modal-content bg-transparent border-0 shadow-none">
-            <div class="d-flex justify-content-end mb-2">
-                <button type="button" class="image-modal-close" data-bs-dismiss="modal" aria-label="Close preview">
-                    <span class="image-close-glyph" aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <img id="adminImagePreviewModalImg" src="" alt="Image preview" class="w-100 rounded" style="max-height:85vh;object-fit:contain;background:rgba(0,0,0,0.35);" />
-        </div>
-    </div>
-</div>
-
 @section HeaderScripts {
     <style>
         #plugin-edit-tabs .nav-link {
@@ -434,7 +393,6 @@
 <partial name="_Confirm" model="@(new ConfirmModel("Confirm action", "Are you sure?", "Confirm"))" />
 
 @section FooterScripts {
-    <script src="~/scripts/plugin-images-manager.js" asp-append-version="true"></script>
     <script>
         const prefixMap = {
             1: 'https://primal.net/p/',
@@ -493,13 +451,5 @@
                 bootstrap.Modal.getOrCreateInstance(modalElement).show();
         }
 
-        window.PluginImagesManager?.init({
-            listId: 'images-order-list',
-            inputId: 'admin-images-input',
-            limitErrorId: 'admin-images-limit-error',
-            modalId: 'adminImagePreviewModal',
-            modalImageId: 'adminImagePreviewModalImg',
-            maxImages: 10
-        });
     </script>
 }

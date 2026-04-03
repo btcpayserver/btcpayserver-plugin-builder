@@ -260,22 +260,22 @@ public class AdminController(
         }
 
         var uploadedImages = new List<string>();
-        if (model.ImagesFiles is { Count: > 0 })
+        if (model.Images is { Count: > 0 })
         {
-            var imagesToUploadCount = model.ImagesFiles.Count(s => s.Length > 0);
+            var imagesToUploadCount = model.Images.Count(s => s.Length > 0);
             if (imagesToUploadCount > 0 && pluginSettings.Images.Count + imagesToUploadCount > 10)
             {
-                ModelState.AddModelError(nameof(model.ImagesFiles),
+                ModelState.AddModelError(nameof(model.Images),
                     "A maximum of 10 images is allowed per plugin.");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
 
-            foreach (var image in model.ImagesFiles.Where(s => s.Length > 0))
+            foreach (var image in model.Images.Where(s => s.Length > 0))
             {
                 if (!image.ValidateUploadedImage(out var errorMessage))
                 {
-                    ModelState.AddModelError(nameof(model.ImagesFiles), $"Image upload validation failed: {errorMessage}");
+                    ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
                     return View(model);
                 }
                 try
@@ -286,7 +286,7 @@ public class AdminController(
                 }
                 catch (Exception)
                 {
-                    ModelState.AddModelError(nameof(model.ImagesFiles),
+                    ModelState.AddModelError(nameof(model.Images),
                         "Could not complete settings upload. An error occurred while uploading images");
                     await PopulatePluginEditViewModel(conn, pluginSlug, model);
                     return View(model);
