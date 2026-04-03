@@ -4,6 +4,7 @@
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(PluginNavPages.Owners, "Plugin Owners");
+    var pluginSlug = Context.GetRouteValue("pluginSlug")?.ToString();
 
     var ownersTableVm = new PluginOwnersTableViewModel(Model.PluginSlug)
     {
@@ -16,8 +17,10 @@
     };
 }
 
-<div class="d-sm-flex align-items-center justify-content-between mb-4">
-    <h2 class="mb-0">
+<partial name="_PluginPageTabs" model="pluginSlug" />
+
+<div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4">
+    <h2 class="mb-3 mb-md-0">
         @ViewData["Title"]
     </h2>
 </div>
