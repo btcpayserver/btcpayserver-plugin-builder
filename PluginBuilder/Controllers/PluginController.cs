@@ -58,7 +58,10 @@ public class PluginController(
         PluginSlug pluginSlug,
         PluginSettingViewModel settingViewModel,
         [FromForm] bool removeLogoFile = false,
-        [FromForm] string? removeImageUrl = null)
+        [FromForm] string? removeImageUrl = null,
+        [FromForm] List<string>? imagesUrl = null,
+        [FromForm] bool imagesUrlSubmitted = false,
+        [FromForm] List<string>? imagesOrder = null)
     {
         if (settingViewModel is null)
             return NotFound();
@@ -98,18 +101,18 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         var existingSetting = await conn.GetSettings(pluginSlug);
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-        var submittedImages = Request.Form["ImagesUrl"]
+        var submittedImages = (imagesUrl ?? [])
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => s!)
             .ToList();
         if (!string.IsNullOrWhiteSpace(removeImageUrl))
             submittedImages.RemoveAll(s => string.Equals(s, removeImageUrl, StringComparison.Ordinal));
 
-        var submittedImagesOrder = Request.Form["ImagesOrder"].ToList();
+        var submittedImagesOrder = imagesOrder ?? [];
         settingViewModel.LogoUrl = existingSetting?.Logo;
         settingViewModel.ImagesUrl = submittedImages;
         if (settingViewModel.ImagesUrl.Count == 0 &&
-            !Request.Form.ContainsKey("ImagesUrlSubmitted") &&
+            !imagesUrlSubmitted &&
             existingSetting?.Images is { Count: > 0 })
             settingViewModel.ImagesUrl = [..existingSetting.Images];
         settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
@@ -179,8 +182,8 @@ public class PluginController(
                 try
                 {
                     var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image!.FileName)}";
-                    var imagesUrl = await azureStorageClient.UploadImageFile(image, uniqueBlobName);
-                    uploadedImages.Add(imagesUrl);
+                    var imageUrl = await azureStorageClient.UploadImageFile(image, uniqueBlobName);
+                    uploadedImages.Add(imageUrl);
                 }
                 catch (Exception ex)
                 {
