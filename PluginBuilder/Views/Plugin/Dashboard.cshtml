@@ -31,7 +31,9 @@
     }
 }
 
-<div class="d-flex flex-column flex-md-row align-items-center justify-content-between mb-4">
+<partial name="_PluginPageTabs" model="pluginSlug" />
+
+<div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4">
     <h2 class="mb-3 mb-md-0">@ViewData["Title"]</h2>
 
     @if (!string.IsNullOrEmpty(pluginSlug))
@@ -121,9 +123,9 @@
 }
 else
 {
-    <p class="text-secondary mt-3">
-        There are no builds yet.
-    </p>
+    <div class="border rounded p-4 mt-2 bg-body-tertiary">
+        <p class="text-secondary mb-0">There are no builds yet.</p>
+    </div>
 }
 
 @section FooterScripts {

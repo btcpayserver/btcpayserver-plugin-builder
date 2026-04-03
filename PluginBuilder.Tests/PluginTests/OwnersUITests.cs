@@ -41,6 +41,10 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await t.Page.ClickAsync("#Create");
         await t.GoToUrl($"/plugins/{slug}/owners");
         await t.AssertNoError();
+        await Expect(t.Page.Locator("#plugin-page-tabs")).ToBeVisibleAsync();
+        await Expect(t.Page.Locator("#plugin-page-owners-tab")).ToHaveClassAsync(new Regex("active", RegexOptions.IgnoreCase));
+        await Expect(t.Page.Locator("#plugin-page-builds-tab")).ToBeVisibleAsync();
+        await Expect(t.Page.Locator("#plugin-page-settings-tab")).ToBeVisibleAsync();
         await Expect(t.Page.Locator("table tbody tr")).ToContainTextAsync(userA);
         await Expect(t.Page.Locator("table tbody tr")).ToContainTextAsync("Primary Owner");
 

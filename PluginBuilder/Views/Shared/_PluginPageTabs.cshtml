@@ -1,0 +1,58 @@
+@model string
+
+@if (!string.IsNullOrWhiteSpace(Model))
+{
+    var buildsActive = ViewData.IsActivePage(PluginNavPages.Dashboard);
+    var settingsActive = ViewData.IsActivePage(PluginNavPages.Settings);
+    var ownersActive = ViewData.IsActivePage(PluginNavPages.Owners);
+
+    <style>
+        #plugin-page-tabs {
+            border-bottom: 1px solid var(--btcpay-body-border-color, #dee2e6);
+        }
+        #plugin-page-tabs .nav-link {
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            border-radius: 0;
+            padding: 0.5rem 1rem;
+            margin-bottom: -1px;
+        }
+        #plugin-page-tabs .nav-link.active {
+            border-bottom-color: var(--btcpay-primary, #51b13e);
+        }
+    </style>
+
+    <ul class="nav flex-nowrap overflow-auto mb-4" id="plugin-page-tabs" role="navigation" aria-label="Plugin pages">
+        <li class="nav-item" role="presentation">
+            <a class="nav-link @buildsActive"
+               id="plugin-page-builds-tab"
+               asp-controller="Plugin"
+               asp-action="Dashboard"
+               asp-route-pluginSlug="@Model"
+               aria-current="@(string.IsNullOrEmpty(buildsActive) ? null : "page")">
+                Builds
+            </a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link @settingsActive"
+               id="plugin-page-settings-tab"
+               asp-controller="Plugin"
+               asp-action="Settings"
+               asp-route-pluginSlug="@Model"
+               aria-current="@(string.IsNullOrEmpty(settingsActive) ? null : "page")">
+                Settings
+            </a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link @ownersActive"
+               id="plugin-page-owners-tab"
+               asp-controller="Plugin"
+               asp-action="Owners"
+               asp-route-pluginSlug="@Model"
+               aria-current="@(string.IsNullOrEmpty(ownersActive) ? null : "page")">
+                Owners
+            </a>
+        </li>
+    </ul>
+}

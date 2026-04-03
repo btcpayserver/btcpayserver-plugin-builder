@@ -2,16 +2,20 @@
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(PluginNavPages.Settings, "Plugin settings");
+    var pluginSlug = Context.GetRouteValue("pluginSlug")?.ToString();
 }
-<div class="d-flex align-items-center justify-content-between mb-4">
-    <h2 class="mb-0">
+
+<partial name="_PluginPageTabs" model="pluginSlug" />
+
+<div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4">
+    <h2 class="mb-3 mb-md-0">
         @ViewData["Title"]
         @if (Model.IsPluginPrimaryOwner)
         {
             <span class="badge bg-success fs-6 px-2 py-1 align-middle" style="font-size: 0.75rem;">Owner</span>
         }
     </h2>
-    <div class="d-flex gap-3 mt-3 mt-sm-0">
+    <div class="d-flex gap-3 mt-0">
         <button type="submit" form="plugin-setting-form" class="btn btn-success">Update</button>
     </div>
 </div>
