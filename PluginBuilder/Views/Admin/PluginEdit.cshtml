@@ -27,6 +27,7 @@
     var selectedSourceValue = ((int)Model.ImportReview.Source).ToString();
     var openCompatibilityModalId = Model.PublishedVersions
         .FirstOrDefault(v => string.Equals(v.Version, Model.OpenCompatibilityVersion, StringComparison.Ordinal))?.CompatibilityModalId;
+    var editImagesVm = EditImagesViewModel.Create(Model.PluginSettings.Images);
 }
 
 <div class="d-flex flex-column flex-md-row align-items-start justify-content-between gap-3 mb-4">
@@ -94,7 +95,7 @@
             <div class="col-md-10 col-lg-8">
                 <h5 class="fw-bold mb-3">Settings</h5>
 
-                <form asp-action="PluginEdit" method="post" enctype="multipart/form-data">
+                <form id="plugin-edit-form" asp-action="PluginEdit" method="post" enctype="multipart/form-data">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="@nameof(Model.ActiveTab)" value="@PluginEditTabs.Settings" />
                     <div class="mb-3">
@@ -152,6 +153,7 @@
                         </div>
                         <span asp-validation-for="LogoFile" class="text-danger"></span>
                     </div>
+                    <partial name="_EditImages" model="editImagesVm"></partial>
 
                     <div class="mb-3">
                         <label asp-for="Visibility" class="form-label"></label>
@@ -448,5 +450,6 @@
             if (modalElement)
                 bootstrap.Modal.getOrCreateInstance(modalElement).show();
         }
+
     </script>
 }

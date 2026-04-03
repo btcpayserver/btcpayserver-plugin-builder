@@ -5372,6 +5372,130 @@ fieldset:disabled .btn {
     animation: 1s linear infinite progress-bar-stripes;
 }
 
+
+.plugin-media-carousel .plugin-media-stage {
+    position: relative;
+    background: #0f131a;
+}
+
+.plugin-media-carousel .plugin-media-slide {
+    width: 100%;
+    height: 100%;
+}
+
+.plugin-media-carousel .plugin-media-image {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    object-fit: contain;
+    display: block;
+}
+
+.plugin-media-carousel iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+}
+
+.plugin-media-carousel .plugin-media-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.plugin-media-carousel .plugin-media-nav:hover {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.plugin-media-carousel .plugin-media-nav-prev {
+    left: 0.75rem;
+    right: auto;
+}
+
+.plugin-media-carousel .plugin-media-nav-next {
+    right: 0.75rem;
+    left: auto;
+}
+
+.plugin-media-carousel .plugin-media-thumbs {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-top: 0.75rem;
+    scrollbar-width: thin;
+}
+
+.plugin-media-carousel .plugin-media-thumb {
+    flex: 0 0 auto;
+    width: 8rem;
+    height: 4.5rem;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 0.35rem;
+    background: transparent;
+    overflow: hidden;
+    opacity: 0.75;
+}
+
+.plugin-media-carousel .plugin-media-thumb:hover {
+    opacity: 1;
+}
+
+.plugin-media-carousel .plugin-media-thumb.is-active {
+    border-color: var(--btcpay-primary, #0d6efd);
+    opacity: 1;
+}
+
+.plugin-media-carousel .plugin-media-thumb img,
+.plugin-media-carousel .plugin-media-video-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: #fff;
+    background: linear-gradient(135deg, #1e2a38 0%, #0f131a 100%);
+}
+
+.plugin-media-carousel .plugin-media-video-thumb-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.plugin-media-carousel .plugin-media-video-thumb-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.plugin-media-carousel .plugin-media-video-play {
+    position: absolute;
+    inset: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+
 .list-group {
     display: flex;
     flex-direction: column;
@@ -6688,6 +6812,116 @@ fieldset:disabled .btn {
 .spinner-grow-sm {
     width: 1rem;
     height: 1rem;
+}
+
+.images-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
+}
+
+.images-grid .image-item {
+    border: 1px solid var(--btcpay-body-border-light, var(--bs-border-color));
+    border-radius: 0.5rem;
+    background: var(--btcpay-bg-tile, var(--btcpay-body-bg, #fff));
+    padding: 0.5rem;
+    cursor: grab;
+}
+
+.images-grid .image-item.is-dragging {
+    opacity: 0.82;
+    cursor: grabbing;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.28), 0 0.5rem 1.1rem rgba(0, 0, 0, 0.18);
+}
+
+.images-grid .image-preview-btn {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    display: block;
+}
+
+.images-grid .image-preview {
+    width: 100%;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 0.35rem;
+    display: block;
+}
+
+.images-grid .image-actions {
+    margin-top: 0.35rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.image-remove-action {
+    width: 1.6rem;
+    height: 1.6rem;
+    border: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--btcpay-danger, var(--bs-danger));
+    padding: 0;
+}
+
+.image-remove-action:hover {
+    background: rgba(220, 53, 69, 0.12);
+    color: var(--btcpay-danger, var(--bs-danger));
+}
+
+.image-remove-action:focus-visible {
+    outline: 2px solid rgba(220, 53, 69, 0.35);
+    outline-offset: 2px;
+}
+
+.image-close-glyph {
+    font-size: 1.25rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    transform: translateY(-0.06em);
+}
+
+.image-modal-close {
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 18, 24, 0.78);
+    color: #fff;
+    backdrop-filter: blur(3px);
+    transition: transform .12s ease, background-color .12s ease;
+}
+
+.image-modal-close:hover {
+    transform: scale(1.06);
+    background: rgba(15, 18, 24, 0.92);
+}
+
+.image-modal-close:focus-visible {
+    outline: 2px solid rgba(255,255,255,.75);
+    outline-offset: 2px;
+}
+
+.image-preview-modal-image {
+    width: 100%;
+    border-radius: 0.375rem;
+    max-height: 85vh;
+    object-fit: contain;
+    background: rgba(0, 0, 0, 0.35);
 }
 
 .offcanvas {

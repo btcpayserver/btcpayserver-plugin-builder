@@ -28,11 +28,12 @@ public class PluginSettings
     public string PluginTitle { get; set; }
     public string Description { get; set; }
     public string Logo { get; set; }
-    
+
     [MaxLength(200)]
     [Display(Name = "Video URL")]
     public string VideoUrl { get; set; }
-    
+
+    public List<string> Images { get; set; } = [];
     public bool RequireGPGSignatureForRelease { get; set; }
     public PluginRequestListingRecord RequestListing { get; set; }
 }

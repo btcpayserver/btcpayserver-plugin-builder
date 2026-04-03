@@ -161,7 +161,14 @@ public class AdminController(
 
 
     [HttpPost("plugins/edit/{pluginSlug}")]
-    public async Task<IActionResult> PluginEdit(string pluginSlug, PluginEditViewModel model, [FromForm] bool removeLogoFile = false)
+    public async Task<IActionResult> PluginEdit(
+        string pluginSlug,
+        PluginEditViewModel model,
+        [FromForm] bool removeLogoFile = false,
+        [FromForm] string? removeImageUrl = null,
+        [FromForm] List<string>? imagesUrl = null,
+        [FromForm] bool imagesUrlSubmitted = false,
+        [FromForm] List<string>? imagesOrder = null)
     {
         await using var conn = await connectionFactory.Open();
         model.ActiveTab = PluginEditTabs.Settings;
@@ -218,6 +225,19 @@ public class AdminController(
         pluginSettings.Documentation = model.PluginSettings.Documentation;
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
+        var existingImages = pluginSettings.Images ?? [];
+        var submittedImages = (imagesUrl ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!)
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(removeImageUrl))
+            submittedImages.RemoveAll(s => string.Equals(s, removeImageUrl, StringComparison.Ordinal));
+
+        var submittedImagesOrder = imagesOrder ?? [];
+        pluginSettings.Images = imagesUrlSubmitted
+            ? submittedImages
+            : [..existingImages];
+
         if (model.LogoFile != null)
         {
             if (!model.LogoFile.ValidateUploadedImage(out var errorMessage))
@@ -244,6 +264,63 @@ public class AdminController(
         {
             model.LogoFile = null;
             pluginSettings.Logo = null;
+        }
+
+        var uploadedImages = new List<string>();
+        if (model.Images is { Count: > 0 })
+        {
+            var imagesToUploadCount = model.Images.Count(s => s.Length > 0);
+            if (imagesToUploadCount > 0 && (pluginSettings.Images?.Count ?? 0) + imagesToUploadCount > 10)
+            {
+                ModelState.AddModelError(nameof(model.Images),
+                    "A maximum of 10 images is allowed per plugin.");
+                await PopulatePluginEditViewModel(conn, pluginSlug, model);
+                return View(model);
+            }
+
+            foreach (var image in model.Images.Where(s => s.Length > 0))
+            {
+                if (!image.ValidateUploadedImage(out var errorMessage))
+                {
+                    ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
+                    return View(model);
+                }
+                try
+                {
+                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+                    var imageUrl = await azureStorageClient.UploadImageFile(image, uniqueBlobName);
+                    uploadedImages.Add(imageUrl);
+                }
+                catch (Exception)
+                {
+                    ModelState.AddModelError(nameof(model.Images),
+                        "Could not complete settings upload. An error occurred while uploading images");
+                    await PopulatePluginEditViewModel(conn, pluginSlug, model);
+                    return View(model);
+                }
+            }
+        }
+
+        if (submittedImagesOrder.Count > 0)
+        {
+            var existingQueue = new Queue<string>(pluginSettings.Images);
+            var uploadedQueue = new Queue<string>(uploadedImages);
+            var orderedImages = new List<string>(pluginSettings.Images.Count + uploadedImages.Count);
+            foreach (var marker in submittedImagesOrder)
+            {
+                if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
+                    orderedImages.Add(existingQueue.Dequeue());
+                else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
+                    orderedImages.Add(uploadedQueue.Dequeue());
+            }
+
+            orderedImages.AddRange(existingQueue);
+            orderedImages.AddRange(uploadedQueue);
+            pluginSettings.Images = orderedImages;
+        }
+        else
+        {
+            pluginSettings.Images.AddRange(uploadedImages);
         }
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);

@@ -31,6 +31,14 @@
                 <span asp-validation-for="Logo" class="text-danger"></span>
             </div>
             <div class="form-group">
+                <label asp-for="Images" class="form-label"></label>
+                <input asp-for="Images" id="create-images-input" type="file" class="form-control" accept="image/*" multiple>
+                @{
+                    var hasImagesError = ViewData.ModelState.TryGetValue(nameof(Model.Images), out var imagesState) && imagesState?.Errors.Count > 0;
+                }
+                <span asp-validation-for="Images" class="@(hasImagesError ? "text-danger" : "form-text")">A maximum of 10 images is allowed per plugin.</span>
+            </div>
+            <div class="form-group">
                 <label asp-for="VideoUrl" class="form-label"></label>
                 <input asp-for="VideoUrl" type="url" class="form-control" />
                 <span asp-validation-for="VideoUrl" class="text-danger"></span>

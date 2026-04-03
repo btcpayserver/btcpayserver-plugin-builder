@@ -87,12 +87,6 @@ public class DashboardController(
             }
         }
 
-        if (!await conn.NewPlugin(pluginSlug, userId))
-        {
-            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
-            return View(model);
-        }
-
         if (model.Logo != null)
         {
             string errorMessage;
@@ -114,12 +108,51 @@ public class DashboardController(
             }
         }
 
+        if (model.Images is { Count: > 0 })
+        {
+            var imagesToUploadCount = model.Images.Count(s => s is { Length: > 0 });
+            if (imagesToUploadCount > 10)
+            {
+                ModelState.AddModelError(nameof(model.Images),
+                    "A maximum of 10 images is allowed per plugin.");
+                return View(model);
+            }
+
+            foreach (var image in model.Images.Where(s => s is { Length: > 0 }))
+            {
+                if (!image.ValidateUploadedImage(out var errorMessage))
+                {
+                    ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
+                    return View(model);
+                }
+                try
+                {
+                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image!.FileName)}";
+                    var imageUrl = await azureStorageClient.UploadImageFile(image, uniqueBlobName);
+                    model.ImagesUrl.Add(imageUrl);
+                }
+                catch (Exception)
+                {
+                    ModelState.AddModelError(nameof(model.Images),
+                        "Could not complete plugin creation. An error occurred while uploading images");
+                    return View(model);
+                }
+            }
+        }
+
+        if (!await conn.NewPlugin(pluginSlug, userId))
+        {
+            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+            return View(model);
+        }
+
         await conn.SetPluginSettings(pluginSlug, new PluginSettings
         {
             Logo = model.LogoUrl,
             PluginTitle = model.PluginTitle,
             Description = model.Description,
-            VideoUrl = model.VideoUrl
+            VideoUrl = model.VideoUrl,
+            Images = model.ImagesUrl
         });
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }
