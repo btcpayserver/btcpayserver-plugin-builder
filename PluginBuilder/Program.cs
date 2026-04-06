@@ -72,6 +72,11 @@ public class Program
 
     private void ConfigureBuilder(WebApplicationBuilder builder)
     {
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.Limits.MaxRequestBodySize = 104857600;
+        });
+
         builder.Configuration.AddEnvironmentVariables("PB_");
 
 #if DEBUG
