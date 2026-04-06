@@ -38,7 +38,6 @@ public class DashboardController(
     }
 
     [HttpPost("/plugins/create")]
-    [RequestSizeLimit(104857600)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
     {
