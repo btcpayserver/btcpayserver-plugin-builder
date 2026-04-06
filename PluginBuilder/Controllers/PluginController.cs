@@ -104,9 +104,21 @@ public class PluginController(
         settingViewModel.LogoUrl = existingSetting?.Logo;
         settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
 
-        settingViewModel.ImagesUrl = imagesUrlSubmitted  ? (imagesUrl ?? [])
-            .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
-            .ToList() : [..existingSetting?.Images ?? []];
+        var existingImages = existingSetting?.Images ?? [];
+        var existingImagesSet = new HashSet<string>(existingImages, StringComparer.Ordinal);
+        settingViewModel.ImagesUrl = imagesUrlSubmitted
+            ? (imagesUrl ?? [])
+                .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .Where(existingImagesSet.Contains)
+                .ToList()
+            : [..existingImages];
+
+        if (settingViewModel.ImagesUrl.Count > 10)
+        {
+            ModelState.AddModelError(nameof(settingViewModel.Images), "A maximum of 10 images is allowed per plugin.");
+            return View(settingViewModel);
+        }
 
         if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
         {
@@ -198,6 +210,13 @@ public class PluginController(
         }
         orderedImages.AddRange(existingQueue);
         orderedImages.AddRange(uploadedQueue);
+
+        if (orderedImages.Count > 10)
+        {
+            ModelState.AddModelError(nameof(settingViewModel.Images), "A maximum of 10 images is allowed per plugin.");
+            return View(settingViewModel);
+        }
+
         settingViewModel.ImagesUrl = orderedImages;
 
         if (!settingViewModel.IsPluginPrimaryOwner && existingSetting is not null)

@@ -226,9 +226,22 @@ public class AdminController(
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
 
-        pluginSettings.Images = imagesUrlSubmitted ? (imagesUrl ?? [])
-            .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
-            .ToList() : [..pluginSettings.Images ?? []];
+        var existingImages = pluginSettings.Images ?? [];
+        var existingImagesSet = new HashSet<string>(existingImages, StringComparer.Ordinal);
+        pluginSettings.Images = imagesUrlSubmitted
+            ? (imagesUrl ?? [])
+                .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .Where(existingImagesSet.Contains)
+                .ToList()
+            : [..existingImages];
+
+        if (pluginSettings.Images.Count > 10)
+        {
+            ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
+            await PopulatePluginEditViewModel(conn, pluginSlug, model);
+            return View(model);
+        }
 
         if (model.LogoFile != null)
         {
@@ -305,6 +318,14 @@ public class AdminController(
         }
         orderedImages.AddRange(existingQueue);
         orderedImages.AddRange(uploadedQueue);
+
+        if (orderedImages.Count > 10)
+        {
+            ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
+            await PopulatePluginEditViewModel(conn, pluginSlug, model);
+            return View(model);
+        }
+
         pluginSettings.Images = orderedImages;
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
