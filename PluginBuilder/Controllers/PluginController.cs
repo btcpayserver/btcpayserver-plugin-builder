@@ -214,6 +214,7 @@ public class PluginController(
         if (orderedImages.Count > 10)
         {
             ModelState.AddModelError(nameof(settingViewModel.Images), "A maximum of 10 images is allowed per plugin.");
+            settingViewModel.ImagesUrl = orderedImages;
             return View(settingViewModel);
         }
 

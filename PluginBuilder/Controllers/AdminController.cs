@@ -235,6 +235,7 @@ public class AdminController(
                 .Where(existingImagesSet.Contains)
                 .ToList()
             : [..existingImages];
+        model.PluginSettings.Images = [..pluginSettings.Images];
 
         if (pluginSettings.Images.Count > 10)
         {
@@ -322,11 +323,13 @@ public class AdminController(
         if (orderedImages.Count > 10)
         {
             ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
+            model.PluginSettings.Images = orderedImages;
             await PopulatePluginEditViewModel(conn, pluginSlug, model);
             return View(model);
         }
 
         pluginSettings.Images = orderedImages;
+        model.PluginSettings.Images = orderedImages;
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
         if (!setPluginSettings)
