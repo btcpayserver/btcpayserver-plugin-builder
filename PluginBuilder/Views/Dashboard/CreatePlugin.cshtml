@@ -49,3 +49,26 @@
         </form>
     </div>
 </div>
+
+
+@section FooterScripts {
+	<script>
+		document.getElementById('create-images-input').addEventListener('change', function () {
+			const maxTotal = 10 * 1024 * 1024;
+			const errorSpan = document.querySelector('span[data-valmsg-for="Images"]');
+			const totalSize = Array.from(this.files).reduce((sum, file) => sum + file.size, 0);
+
+			if (totalSize > maxTotal) {
+				errorSpan.textContent = `Total size of images cannot exceed 10MB.`;
+				errorSpan.classList.add('text-danger');
+				errorSpan.classList.remove('form-text');
+				this.value = '';
+				return;
+			}
+
+			errorSpan.textContent = 'A maximum of 10 images is allowed per plugin.';
+			errorSpan.classList.remove('text-danger');
+			errorSpan.classList.add('form-text');
+		});
+	</script>
+}
