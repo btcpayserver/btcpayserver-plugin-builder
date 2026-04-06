@@ -108,35 +108,35 @@ public class DashboardController(
             }
         }
 
-        if (model.Images is { Count: > 0 })
+        var imagesToUpload = (model.Images ?? []).Where(s => s is { Length: > 0 }).ToList();
+        if (imagesToUpload.Count > 0)
         {
-            var imagesToUploadCount = model.Images.Count(s => s is { Length: > 0 });
-            if (imagesToUploadCount > 10)
+            if (imagesToUpload.Count > 10)
             {
-                ModelState.AddModelError(nameof(model.Images),
-                    "A maximum of 10 images is allowed per plugin.");
+                ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
                 return View(model);
             }
-
-            foreach (var image in model.Images.Where(s => s is { Length: > 0 }))
+            foreach (var image in imagesToUpload)
             {
                 if (!image.ValidateUploadedImage(out var errorMessage))
                 {
                     ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
                     return View(model);
                 }
-                try
+            }
+            try
+            {
+                var uploadedUrls = await Task.WhenAll(imagesToUpload.Select(async image =>
                 {
-                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image!.FileName)}";
-                    var imageUrl = await azureStorageClient.UploadImageFile(image, uniqueBlobName);
-                    model.ImagesUrl.Add(imageUrl);
-                }
-                catch (Exception)
-                {
-                    ModelState.AddModelError(nameof(model.Images),
-                        "Could not complete plugin creation. An error occurred while uploading images");
-                    return View(model);
-                }
+                    var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+                    return await azureStorageClient.UploadImageFile(image, blobName);
+                }));
+                model.ImagesUrl.AddRange(uploadedUrls);
+            }
+            catch (Exception)
+            {
+                ModelState.AddModelError(nameof(model.Images), "Could not complete plugin creation. An error occurred while uploading images");
+                return View(model);
             }
         }
 

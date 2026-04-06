@@ -101,21 +101,13 @@ public class PluginController(
         await using var conn = await connectionFactory.Open();
         var existingSetting = await conn.GetSettings(pluginSlug);
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
-        var submittedImages = (imagesUrl ?? [])
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Select(s => s!)
-            .ToList();
-        if (!string.IsNullOrWhiteSpace(removeImageUrl))
-            submittedImages.RemoveAll(s => string.Equals(s, removeImageUrl, StringComparison.Ordinal));
-
-        var submittedImagesOrder = imagesOrder ?? [];
         settingViewModel.LogoUrl = existingSetting?.Logo;
-        settingViewModel.ImagesUrl = submittedImages;
-        if (settingViewModel.ImagesUrl.Count == 0 &&
-            !imagesUrlSubmitted &&
-            existingSetting?.Images is { Count: > 0 })
-            settingViewModel.ImagesUrl = [..existingSetting.Images];
         settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
+
+        settingViewModel.ImagesUrl = imagesUrlSubmitted  ? (imagesUrl ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
+            .ToList() : [..existingSetting?.Images ?? []];
+
         if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
         {
             ModelState.AddModelError(nameof(settingViewModel.PluginTitle), "Plugin title and description are required");
@@ -162,60 +154,51 @@ public class PluginController(
         }
 
         var uploadedImages = new List<string>();
-        if (settingViewModel.Images is { Count: > 0 })
+        var imagesToUpload = (settingViewModel.Images ?? []).OfType<IFormFile>().Where(s => s.Length > 0).ToList();
+        if (imagesToUpload.Count > 0)
         {
-            var imagesToUploadCount = settingViewModel.Images.Count(s => s is { Length: > 0 });
-            if (imagesToUploadCount > 0 && settingViewModel.ImagesUrl.Count + imagesToUploadCount > 10)
+            if (settingViewModel.ImagesUrl.Count + imagesToUpload.Count > 10)
             {
-                ModelState.AddModelError(nameof(settingViewModel.Images),
-                    "A maximum of 10 images is allowed per plugin.");
+                ModelState.AddModelError(nameof(settingViewModel.Images), "A maximum of 10 images is allowed per plugin.");
                 return View(settingViewModel);
             }
-
-            foreach (var image in settingViewModel.Images.Where(s => s is { Length: > 0 }))
+            foreach (var image in imagesToUpload)
             {
                 if (!image.ValidateUploadedImage(out var errorMessage))
                 {
                     ModelState.AddModelError(nameof(settingViewModel.Images), $"Image upload validation failed: {errorMessage}");
                     return View(settingViewModel);
                 }
-                try
-                {
-                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image!.FileName)}";
-                    var imageUrl = await azureStorageClient.UploadImageFile(image, uniqueBlobName);
-                    uploadedImages.Add(imageUrl);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Failed to upload images for plugin {PluginSlug}", pluginSlug);
-                    ModelState.AddModelError(nameof(settingViewModel.Images),
-                        "Could not complete settings upload. An error occurred while uploading images");
-                    return View(settingViewModel);
-                }
             }
-        }
-
-        if (submittedImagesOrder.Count > 0)
-        {
-            var existingQueue = new Queue<string>(settingViewModel.ImagesUrl);
-            var uploadedQueue = new Queue<string>(uploadedImages);
-            var orderedImages = new List<string>(settingViewModel.ImagesUrl.Count + uploadedImages.Count);
-            foreach (var marker in submittedImagesOrder)
+            try
             {
-                if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
-                    orderedImages.Add(existingQueue.Dequeue());
-                else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
-                    orderedImages.Add(uploadedQueue.Dequeue());
+                uploadedImages = (await Task.WhenAll(imagesToUpload.Select(async image =>
+                {
+                    var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+                    return await azureStorageClient.UploadImageFile(image, blobName);
+                }))).ToList();
             }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to upload images for plugin {PluginSlug}", pluginSlug);
+                ModelState.AddModelError(nameof(settingViewModel.Images), "Could not complete settings upload. An error occurred while uploading images");
+                return View(settingViewModel);
+            }
+        }
 
-            orderedImages.AddRange(existingQueue);
-            orderedImages.AddRange(uploadedQueue);
-            settingViewModel.ImagesUrl = orderedImages;
-        }
-        else
+        var existingQueue = new Queue<string>(settingViewModel.ImagesUrl);
+        var uploadedQueue = new Queue<string>(uploadedImages);
+        var orderedImages = new List<string>(settingViewModel.ImagesUrl.Count + uploadedImages.Count);
+        foreach (var marker in imagesOrder ?? [])
         {
-            settingViewModel.ImagesUrl.AddRange(uploadedImages);
+            if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
+                orderedImages.Add(existingQueue.Dequeue());
+            else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
+                orderedImages.Add(uploadedQueue.Dequeue());
         }
+        orderedImages.AddRange(existingQueue);
+        orderedImages.AddRange(uploadedQueue);
+        settingViewModel.ImagesUrl = orderedImages;
 
         if (!settingViewModel.IsPluginPrimaryOwner && existingSetting is not null)
         {

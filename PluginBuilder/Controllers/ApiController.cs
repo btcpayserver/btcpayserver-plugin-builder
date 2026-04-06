@@ -552,7 +552,6 @@ public class ApiController(
             PluginLogo = settings?.Logo,
             Documentation = PluginPublicPage(pluginSlug),
             VideoUrl = settings?.VideoUrl,
-            Images = settings?.Images,
             Fingerprint = fingerprint
         };
     }

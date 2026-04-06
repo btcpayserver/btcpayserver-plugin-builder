@@ -225,18 +225,10 @@ public class AdminController(
         pluginSettings.Documentation = model.PluginSettings.Documentation;
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
-        var existingImages = pluginSettings.Images ?? [];
-        var submittedImages = (imagesUrl ?? [])
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Select(s => s!)
-            .ToList();
-        if (!string.IsNullOrWhiteSpace(removeImageUrl))
-            submittedImages.RemoveAll(s => string.Equals(s, removeImageUrl, StringComparison.Ordinal));
 
-        var submittedImagesOrder = imagesOrder ?? [];
-        pluginSettings.Images = imagesUrlSubmitted
-            ? submittedImages
-            : [..existingImages];
+        pluginSettings.Images = imagesUrlSubmitted ? (imagesUrl ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
+            .ToList() : [..pluginSettings.Images ?? []];
 
         if (model.LogoFile != null)
         {
@@ -267,61 +259,53 @@ public class AdminController(
         }
 
         var uploadedImages = new List<string>();
-        if (model.Images is { Count: > 0 })
+        var imagesToUpload = (model.Images ?? []).Where(s => s.Length > 0).ToList();
+        if (imagesToUpload.Count > 0)
         {
-            var imagesToUploadCount = model.Images.Count(s => s.Length > 0);
-            if (imagesToUploadCount > 0 && (pluginSettings.Images?.Count ?? 0) + imagesToUploadCount > 10)
+            if ((pluginSettings.Images?.Count ?? 0) + imagesToUpload.Count > 10)
             {
-                ModelState.AddModelError(nameof(model.Images),
-                    "A maximum of 10 images is allowed per plugin.");
+                ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
-
-            foreach (var image in model.Images.Where(s => s.Length > 0))
+            foreach (var image in imagesToUpload)
             {
                 if (!image.ValidateUploadedImage(out var errorMessage))
                 {
                     ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
-                    return View(model);
-                }
-                try
-                {
-                    var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
-                    var imageUrl = await azureStorageClient.UploadImageFile(image, uniqueBlobName);
-                    uploadedImages.Add(imageUrl);
-                }
-                catch (Exception)
-                {
-                    ModelState.AddModelError(nameof(model.Images),
-                        "Could not complete settings upload. An error occurred while uploading images");
                     await PopulatePluginEditViewModel(conn, pluginSlug, model);
                     return View(model);
                 }
             }
-        }
-
-        if (submittedImagesOrder.Count > 0)
-        {
-            var existingQueue = new Queue<string>(pluginSettings.Images);
-            var uploadedQueue = new Queue<string>(uploadedImages);
-            var orderedImages = new List<string>(pluginSettings.Images.Count + uploadedImages.Count);
-            foreach (var marker in submittedImagesOrder)
+            try
             {
-                if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
-                    orderedImages.Add(existingQueue.Dequeue());
-                else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
-                    orderedImages.Add(uploadedQueue.Dequeue());
+                uploadedImages = (await Task.WhenAll(imagesToUpload.Select(async image =>
+                {
+                    var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+                    return await azureStorageClient.UploadImageFile(image, blobName);
+                }))).ToList();
             }
+            catch (Exception)
+            {
+                ModelState.AddModelError(nameof(model.Images), "Could not complete settings upload. An error occurred while uploading images");
+                await PopulatePluginEditViewModel(conn, pluginSlug, model);
+                return View(model);
+            }
+        }
 
-            orderedImages.AddRange(existingQueue);
-            orderedImages.AddRange(uploadedQueue);
-            pluginSettings.Images = orderedImages;
-        }
-        else
+        var existingQueue = new Queue<string>(pluginSettings.Images ?? []);
+        var uploadedQueue = new Queue<string>(uploadedImages);
+        var orderedImages = new List<string>((pluginSettings.Images?.Count ?? 0) + uploadedImages.Count);
+        foreach (var marker in imagesOrder ?? [])
         {
-            pluginSettings.Images.AddRange(uploadedImages);
+            if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
+                orderedImages.Add(existingQueue.Dequeue());
+            else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
+                orderedImages.Add(uploadedQueue.Dequeue());
         }
+        orderedImages.AddRange(existingQueue);
+        orderedImages.AddRange(uploadedQueue);
+        pluginSettings.Images = orderedImages;
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
         if (!setPluginSettings)
