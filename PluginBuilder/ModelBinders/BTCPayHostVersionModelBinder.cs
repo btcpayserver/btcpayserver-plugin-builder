@@ -22,6 +22,7 @@ public static class BtcPayHostVersionParser
         if (buildSeparator >= 0)
             normalized = normalized[..buildSeparator];
 
+        // In future consider whitelisting only -rcN suffixes instead of stripping all prerelease labels
         var prereleaseSeparator = normalized.IndexOf('-');
         if (prereleaseSeparator >= 0)
             normalized = normalized[..prereleaseSeparator];
