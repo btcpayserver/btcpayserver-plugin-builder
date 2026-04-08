@@ -191,23 +191,16 @@
 </table>
 
 <div>
-    <ul class="nav nav-pills gap-4 mb-3" id="artifacts-tabs" role="tablist">
-        <li class="nav-item">
+    <nav id="SectionNav">
+        <div class="nav gap-4" id="artifacts-tabs" role="tablist">
             <button class="nav-link active" id="build-logs-tab" data-bs-toggle="pill" data-bs-target="#build-logs-pane" type="button" role="tab"
-                    aria-controls="build-logs-pane">Logs
-            </button>
-        </li>
-        <li class="nav-item">
+                    aria-controls="build-logs-pane">Logs</button>
             <button class="nav-link" id="build-info-tab" data-bs-toggle="pill" data-bs-target="#build-info-pane" type="button" role="tab"
-                    aria-controls="build-info-pane">Build info
-            </button>
-        </li>
-        <li class="nav-item">
+                    aria-controls="build-info-pane">Build info</button>
             <button class="nav-link" id="manifest-info-tab" data-bs-toggle="pill" data-bs-target="#manifest-info-pane" type="button" role="tab"
-                    aria-controls="manifest-info-pane">Plugin manifest
-            </button>
-        </li>
-    </ul>
+                    aria-controls="manifest-info-pane">Plugin manifest</button>
+        </div>
+    </nav>
     <div class="tab-content" id="pills-tabContent">
         <div class="tab-pane show active" id="build-logs-pane" role="tabpanel" aria-labelledby="build-logs-tab">
             <pre><code class="text hljs" id="Logs">@Model.Logs</code>
@@ -256,14 +249,14 @@
 
         #artifacts-tabs .nav-link {
             background: none;
-            padding: 0;
-            font-weight: var(--btcpay-font-weight-semibold);
+            border: 0;
+            border-bottom: 2px solid transparent;
+            border-radius: 0;
+            color: var(--btcpay-nav-link);
             font-size: 1.125rem;
+            padding: 0 0 .75rem;
         }
 
-        #artifacts-tabs .nav-link.active {
-            color: var(--btcpay-primary);
-        }
     </style>
 }
 

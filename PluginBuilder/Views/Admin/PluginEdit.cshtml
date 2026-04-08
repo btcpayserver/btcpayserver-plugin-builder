@@ -42,8 +42,8 @@
     </div>
 </div>
 
-<ul class="nav nav-pills gap-4 mb-4" id="plugin-edit-tabs" role="tablist">
-    <li class="nav-item" role="presentation">
+<nav id="SectionNav" class="mb-4">
+    <div class="nav gap-4" id="plugin-edit-tabs" role="tablist">
         <a class="nav-link @(isSettingsTab ? "active" : null)"
            id="plugin-edit-settings-tab"
            asp-controller="Admin"
@@ -52,8 +52,6 @@
            asp-route-tab="@PluginEditTabs.Settings">
             Settings
         </a>
-    </li>
-    <li class="nav-item" role="presentation">
         <a class="nav-link @(isOwnersTab ? "active" : null)"
            id="plugin-edit-owners-tab"
            asp-controller="Admin"
@@ -62,8 +60,6 @@
            asp-route-tab="@PluginEditTabs.Owners">
             Owners
         </a>
-    </li>
-    <li class="nav-item" role="presentation">
         <a class="nav-link @(isVersionsTab ? "active" : null)"
            id="plugin-edit-versions-tab"
            asp-controller="Admin"
@@ -72,8 +68,6 @@
            asp-route-tab="@PluginEditTabs.Versions">
             Versions
         </a>
-    </li>
-    <li class="nav-item" role="presentation">
         <a class="nav-link @(isReviewsTab ? "active" : null)"
            id="plugin-edit-reviews-tab"
            asp-controller="Admin"
@@ -82,8 +76,8 @@
            asp-route-tab="@PluginEditTabs.Reviews">
             Import Reviews
         </a>
-    </li>
-</ul>
+    </div>
+</nav>
 
 <div class="tab-content" id="plugin-edit-tab-content">
     <div class="tab-pane fade @(isSettingsTab ? "show active" : null)"
@@ -364,13 +358,12 @@
     <style>
         #plugin-edit-tabs .nav-link {
             background: none;
-            padding: 0;
-            font-weight: var(--btcpay-font-weight-semibold);
+            border: 0;
+            border-bottom: 2px solid transparent;
+            border-radius: 0;
+            color: var(--btcpay-nav-link);
             font-size: 1.125rem;
-        }
-
-        #plugin-edit-tabs .nav-link.active {
-            color: var(--btcpay-primary);
+            padding: 0 0 .75rem;
         }
 
         .admin-compatibility-input {
