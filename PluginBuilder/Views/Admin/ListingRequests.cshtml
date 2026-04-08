@@ -10,26 +10,34 @@
     <h2 class="mb-0">@ViewData["Title"]</h2>
 </div>
 
-<div class="mb-3">
-    <div class="btn-group" role="group">
-        <a asp-action="ListingRequests" asp-route-status="pending"
-           class="btn btn-@(Model.StatusFilter == "pending" ? "primary" : "outline-secondary")">
+<nav id="SectionNav" class="mb-3">
+    <div class="nav gap-4">
+        <a asp-action="ListingRequests"
+           asp-route-status="pending"
+           class="nav-link @(Model.StatusFilter == "pending" ? "active" : null)"
+           role="tab">
             Pending
         </a>
-        <a asp-action="ListingRequests" asp-route-status="approved"
-           class="btn btn-@(Model.StatusFilter == "approved" ? "primary" : "outline-secondary")">
+        <a asp-action="ListingRequests"
+           asp-route-status="approved"
+           class="nav-link @(Model.StatusFilter == "approved" ? "active" : null)"
+           role="tab">
             Approved
         </a>
-        <a asp-action="ListingRequests" asp-route-status="rejected"
-           class="btn btn-@(Model.StatusFilter == "rejected" ? "primary" : "outline-secondary")">
+        <a asp-action="ListingRequests"
+           asp-route-status="rejected"
+           class="nav-link @(Model.StatusFilter == "rejected" ? "active" : null)"
+           role="tab">
             Rejected
         </a>
-        <a asp-action="ListingRequests" asp-route-status="all"
-           class="btn btn-@(Model.StatusFilter == "all" ? "primary" : "outline-secondary")">
+        <a asp-action="ListingRequests"
+           asp-route-status="all"
+           class="nav-link @(Model.StatusFilter == "all" ? "active" : null)"
+           role="tab">
             All
         </a>
     </div>
-</div>
+</nav>
 
 @if (!Model.Requests.Any())
 {
