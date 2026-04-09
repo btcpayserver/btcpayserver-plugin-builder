@@ -39,7 +39,11 @@ public class DashboardController(
 
     [HttpPost("/plugins/create")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
+    public async Task<IActionResult> CreatePlugin(
+        CreatePluginViewModel model,
+        [FromForm] List<string>? imagesUrl = null,
+        [FromForm] bool imagesUrlSubmitted = false,
+        [FromForm] List<string>? imagesOrder = null)
     {
         if (!ModelState.IsValid)
             return View(model);
@@ -108,6 +112,22 @@ public class DashboardController(
             }
         }
 
+        var existingImages = new List<string>();
+        var existingImagesSet = new HashSet<string>(existingImages, StringComparer.Ordinal);
+        model.ImagesUrl = imagesUrlSubmitted
+            ? (imagesUrl ?? [])
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct(StringComparer.Ordinal)
+                .Where(existingImagesSet.Contains)
+                .ToList()
+            : [];
+
+        if (model.ImagesUrl.Count > 10)
+        {
+            ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
+            return View(model);
+        }
+
         var imagesToUpload = (model.Images ?? []).Where(s => s is { Length: > 0 }).ToList();
         if (imagesToUpload.Count > 0)
         {
@@ -131,7 +151,28 @@ public class DashboardController(
                     var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
                     return await azureStorageClient.UploadImageFile(image, blobName);
                 }));
-                model.ImagesUrl.AddRange(uploadedUrls);
+
+                var existingQueue = new Queue<string>(model.ImagesUrl);
+                var uploadedQueue = new Queue<string>(uploadedUrls);
+                var orderedImages = new List<string>(model.ImagesUrl.Count + uploadedUrls.Length);
+                foreach (var marker in imagesOrder ?? [])
+                {
+                    if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
+                        orderedImages.Add(existingQueue.Dequeue());
+                    else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
+                        orderedImages.Add(uploadedQueue.Dequeue());
+                }
+                orderedImages.AddRange(existingQueue);
+                orderedImages.AddRange(uploadedQueue);
+
+                if (orderedImages.Count > 10)
+                {
+                    ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
+                    model.ImagesUrl = orderedImages;
+                    return View(model);
+                }
+
+                model.ImagesUrl = orderedImages;
             }
             catch (Exception)
             {
