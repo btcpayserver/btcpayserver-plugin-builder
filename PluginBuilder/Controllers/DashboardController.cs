@@ -91,6 +91,12 @@ public class DashboardController(
             }
         }
 
+        if (!await conn.NewPlugin(pluginSlug, userId))
+        {
+            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+            return View(model);
+        }
+
         if (model.Logo != null)
         {
             string errorMessage;
@@ -179,12 +185,6 @@ public class DashboardController(
                 ModelState.AddModelError(nameof(model.Images), "Could not complete plugin creation. An error occurred while uploading images");
                 return View(model);
             }
-        }
-
-        if (!await conn.NewPlugin(pluginSlug, userId))
-        {
-            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
-            return View(model);
         }
 
         await conn.SetPluginSettings(pluginSlug, new PluginSettings
