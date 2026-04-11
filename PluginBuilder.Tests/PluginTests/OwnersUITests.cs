@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
-using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
@@ -23,9 +22,7 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await t.StartAsync();
 
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
+        await t.EnableGithubVerificationAsync(conn);
 
         await t.GoToUrl("/register");
         var userA = await t.RegisterNewUser();
@@ -60,12 +57,12 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         var addForm = t.Page.Locator("form[method='post'] >> input[name='email']");
 
         await addForm.FillAsync(userB);
-        await t.Page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Add" }).ClickAsync();
+        await t.Page.Locator("#AddUser").ClickAsync();
         await Expect(t.Page.Locator(".alert-warning")).ToBeVisibleAsync();
 
         await t.VerifyUserAccounts(userB);
         await addForm.FillAsync(userB);
-        await t.Page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Add" }).ClickAsync();
+        await t.Page.Locator("#AddUser").ClickAsync();
 
         var bRow = t.Page.Locator("table tbody tr").Filter(new LocatorFilterOptions { HasText = userB });
         await Expect(bRow).ToBeVisibleAsync();
@@ -78,7 +75,7 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await Expect(t.Page.Locator("table tbody tr").Filter(new LocatorFilterOptions { HasText = userB })).ToHaveCountAsync(0);
 
         await addForm.FillAsync(userB);
-        await t.Page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Add" }).ClickAsync();
+        await t.Page.Locator("#AddUser").ClickAsync();
         bRow = t.Page.Locator("table tbody tr").Filter(new LocatorFilterOptions { HasText = userB });
         await Expect(bRow).ToBeVisibleAsync();
         var transferBtn = bRow.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Transfer Primary" });

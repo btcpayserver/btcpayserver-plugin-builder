@@ -55,7 +55,7 @@ public class ApiController(
     [OutputCache(PolicyName = "PluginsList")]
     [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> Plugins(
-        [ModelBinder(typeof(PluginVersionModelBinder))]
+        [ModelBinder(typeof(BtcPayHostVersionModelBinder))]
         PluginVersion? btcpayVersion = null,
         bool? includePreRelease = null,
         bool? includeAllVersions = null,
@@ -145,7 +145,7 @@ public class ApiController(
     [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> GetPluginVersionsForDownload(
         string identifier,
-        [ModelBinder(typeof(PluginVersionModelBinder))]
+        [ModelBinder(typeof(BtcPayHostVersionModelBinder))]
         PluginVersion? btcpayVersion = null,
         bool? includePreRelease = null,
         bool? includeAllVersions = null)
@@ -440,7 +440,7 @@ public class ApiController(
     [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> GetInstalledPluginsUpdates(
         [FromBody] InstalledPluginRequest[] plugins,
-        [ModelBinder(typeof(PluginVersionModelBinder))]
+        [ModelBinder(typeof(BtcPayHostVersionModelBinder))]
         PluginVersion? btcpayVersion = null,
         bool? includePreRelease = null)
     {

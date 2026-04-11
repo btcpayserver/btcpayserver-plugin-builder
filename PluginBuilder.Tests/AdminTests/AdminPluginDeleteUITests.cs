@@ -1,7 +1,5 @@
 using System.Text.RegularExpressions;
 using Dapper;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
 using PluginBuilder.Services;
@@ -23,7 +21,7 @@ public class AdminPluginDeleteUITests(ITestOutputHelper output) : PageTest
         tester.Server.ReuseDatabase = false;
         await tester.StartAsync();
 
-        var adminEmail = await CreateServerAdminAsync(tester);
+        var adminEmail = await tester.CreateServerAdminAsync();
         var ownerId = await tester.Server.CreateFakeUserAsync("owner@admin-delete.test", confirmEmail: true, githubVerified: true);
         var slug = $"admin-delete-{Guid.NewGuid():N}".Substring(0, 20);
         await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
@@ -65,34 +63,5 @@ public class AdminPluginDeleteUITests(ITestOutputHelper output) : PageTest
         await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
         var remaining = await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM plugins WHERE slug=@slug", new { slug });
         Assert.Equal(0, remaining);
-    }
-
-    private static async Task<string> CreateServerAdminAsync(PlaywrightTester tester)
-    {
-        using var scope = tester.Server.WebApp.Services.CreateScope();
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-
-        if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
-            await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
-
-        var email = $"admin-{Guid.NewGuid():N}@test.com";
-        const string password = "123456";
-        var user = new IdentityUser
-        {
-            UserName = email,
-            Email = email,
-            EmailConfirmed = true
-        };
-
-        var result = await userManager.CreateAsync(user, password);
-        if (!result.Succeeded)
-        {
-            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-            throw new InvalidOperationException($"Failed to create admin user: {errors}");
-        }
-
-        await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
-        return email;
     }
 }

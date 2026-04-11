@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright.Xunit;
 using PluginBuilder.Controllers.Logic;
@@ -25,9 +24,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         t.Server.ReuseDatabase = false;
         await t.StartAsync();
         await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
+        await t.EnableGithubVerificationAsync(conn);
 
         await t.GoToUrl("/register");
         var user = await t.RegisterNewUser();
@@ -135,7 +132,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         );
 
         // Create admin user and login
-        var adminEmail = await CreateServerAdminAsync(t);
+        var adminEmail = await t.CreateServerAdminAsync();
         await t.LogIn(adminEmail);
 
         // Navigate to listing requests page
@@ -197,7 +194,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         );
 
         // Create admin user and login
-        var adminEmail = await CreateServerAdminAsync(t);
+        var adminEmail = await t.CreateServerAdminAsync();
         await t.LogIn(adminEmail);
 
         // Navigate to request detail
@@ -224,32 +221,4 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         Assert.Equal(PluginVisibilityEnum.Unlisted, plugin!.Visibility);
     }
 
-    private static async Task<string> CreateServerAdminAsync(PlaywrightTester tester)
-    {
-        using var scope = tester.Server.WebApp.Services.CreateScope();
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-
-        if (!await roleManager.RoleExistsAsync(Roles.ServerAdmin))
-            await roleManager.CreateAsync(new IdentityRole(Roles.ServerAdmin));
-
-        var email = $"admin-{Guid.NewGuid():N}@test.com";
-        const string password = "123456";
-        var user = new IdentityUser
-        {
-            UserName = email,
-            Email = email,
-            EmailConfirmed = true
-        };
-
-        var result = await userManager.CreateAsync(user, password);
-        if (!result.Succeeded)
-        {
-            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-            throw new InvalidOperationException($"Failed to create admin user: {errors}");
-        }
-
-        await userManager.AddToRoleAsync(user, Roles.ServerAdmin);
-        return email;
-    }
 }

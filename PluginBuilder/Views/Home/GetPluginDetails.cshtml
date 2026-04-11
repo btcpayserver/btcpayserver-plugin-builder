@@ -104,7 +104,7 @@
     <div class="tab-content" id="pluginTabsContent">
         <div class="tab-pane fade show active" id="details" role="tabpanel">
             <div class="row">
-                <div class="col-md-8">
+                <div class="col-12 col-lg-8">
                     <div class="card">
                         <div class="card-body">
                             <h4>Description</h4>
@@ -524,8 +524,8 @@
                     </div>
                 </div>
 
-                <div class="col-md-4">
-                    <div class="card">
+                <div class="col-12 col-lg-4 mt-4 mt-lg-0">
+                    <div class="card plugin-details-metadata">
                         <div class="card-body">
                             <div class="row mb-3">
                                 <div class="col-6">
@@ -642,13 +642,14 @@
 								<div class="row">
 									@foreach (var user in contributors)
 									{
-										<div class="col-md-6 d-flex align-items-center mb-3">
-											<div class="me-3">
-												<img src="@user.AvatarUrl" class="rounded-circle" style="width: 48px; height: 48px;"
+											<div class="col-12 col-lg-6 d-flex align-items-center mb-3">
+												<div class="me-3 flex-shrink-0">
+													<img src="@user.AvatarUrl" class="rounded-circle"
+													 style="width: 48px; height: 48px;"
 													 alt="@user.Login avatar" loading="lazy" />
-											</div>
-											<div>
-												<a href="@user.HtmlUrl" class="text-decoration-none" target="_blank" rel="noopener noreferrer">@user.Login</a>
+												</div>
+												<div class="text-break">
+													<a href="@user.HtmlUrl" class="text-decoration-none text-break" target="_blank" rel="noopener noreferrer">@user.Login</a>
 											</div>
 										</div>
 									}
