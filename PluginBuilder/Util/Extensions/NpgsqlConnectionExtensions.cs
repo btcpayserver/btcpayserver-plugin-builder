@@ -241,6 +241,15 @@ public static class NpgsqlConnectionExtensions
         return true;
     }
 
+    public static async Task<bool> DeletePlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        var affectedRows = await connection.ExecuteAsync(
+            "DELETE FROM plugins WHERE slug = @pluginSlug;",
+            new { pluginSlug = pluginSlug.ToString() });
+
+        return affectedRows == 1;
+    }
+
     public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo,
         PluginManifest? manifestInfo = null, NpgsqlTransaction? tx = null)
     {
