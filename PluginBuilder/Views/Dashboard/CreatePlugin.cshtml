@@ -33,10 +33,7 @@
             <div class="form-group">
                 <label asp-for="Images" class="form-label"></label>
                 <input asp-for="Images" id="create-images-input" type="file" class="form-control" accept="image/*" multiple>
-                @{
-                    var hasImagesError = ViewData.ModelState.TryGetValue(nameof(Model.Images), out var imagesState) && imagesState?.Errors.Count > 0;
-                }
-                <span asp-validation-for="Images" class="@(hasImagesError ? "text-danger" : "form-text")">A maximum of 10 images is allowed per plugin.</span>
+                <span asp-validation-for="Images" class="text-danger"></span>
             </div>
             <div class="form-group">
                 <label asp-for="VideoUrl" class="form-label"></label>
@@ -59,16 +56,14 @@
 			const totalSize = Array.from(this.files).reduce((sum, file) => sum + file.size, 0);
 
 			if (totalSize > maxTotal) {
-				errorSpan.textContent = `Total size of images cannot exceed 10MB.`;
+				errorSpan.textContent = 'Total size of images cannot exceed 10MB.';
 				errorSpan.classList.add('text-danger');
-				errorSpan.classList.remove('form-text');
 				this.value = '';
 				return;
 			}
 
-			errorSpan.textContent = 'A maximum of 10 images is allowed per plugin.';
-			errorSpan.classList.remove('text-danger');
-			errorSpan.classList.add('form-text');
+			if (errorSpan.classList.contains('field-validation-valid'))
+				errorSpan.textContent = '';
 		});
 	</script>
 }

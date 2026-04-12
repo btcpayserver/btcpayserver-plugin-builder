@@ -14,8 +14,11 @@ public class DashboardController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
     AzureStorageClient azureStorageClient,
-    UserVerifiedLogic userVerifiedLogic) : Controller
+    UserVerifiedLogic userVerifiedLogic,
+    ILogger<DashboardController> logger) : Controller
 {
+    private static readonly TimeSpan _storageTimeout = TimeSpan.FromSeconds(10);
+
     // plugin methods
 
     [HttpGet("/plugins/create")]
@@ -41,8 +44,6 @@ public class DashboardController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePlugin(
         CreatePluginViewModel model,
-        [FromForm] List<string>? imagesUrl = null,
-        [FromForm] bool imagesUrlSubmitted = false,
         [FromForm] List<string>? imagesOrder = null)
     {
         if (!ModelState.IsValid)
@@ -91,12 +92,6 @@ public class DashboardController(
             }
         }
 
-        if (!await conn.NewPlugin(pluginSlug, userId))
-        {
-            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
-            return View(model);
-        }
-
         if (model.Logo != null)
         {
             string errorMessage;
@@ -105,35 +100,9 @@ public class DashboardController(
                 ModelState.AddModelError(nameof(model.Logo), $"Image upload validation failed: {errorMessage}");
                 return View(model);
             }
-
-            try
-            {
-                var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.Logo.FileName)}";
-                model.LogoUrl = await azureStorageClient.UploadImageFile(model.Logo, uniqueBlobName);
-            }
-            catch (Exception)
-            {
-                ModelState.AddModelError(nameof(model.Logo), "Could not complete plugin creation. An error occurred while uploading logo image");
-                return View(model);
-            }
         }
 
-        var existingImages = new List<string>();
-        var existingImagesSet = new HashSet<string>(existingImages, StringComparer.Ordinal);
-        model.ImagesUrl = imagesUrlSubmitted
-            ? (imagesUrl ?? [])
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Distinct(StringComparer.Ordinal)
-                .Where(existingImagesSet.Contains)
-                .ToList()
-            : [];
-
-        if (model.ImagesUrl.Count > 10)
-        {
-            ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
-            return View(model);
-        }
-
+        model.ImagesUrl = [];
         var imagesToUpload = (model.Images ?? []).Where(s => s is { Length: > 0 }).ToList();
         if (imagesToUpload.Count > 0)
         {
@@ -144,57 +113,114 @@ public class DashboardController(
             }
             foreach (var image in imagesToUpload)
             {
-                if (!image.ValidateUploadedImage(out var errorMessage))
-                {
-                    ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
-                    return View(model);
-                }
-            }
-            try
-            {
-                var uploadedUrls = await Task.WhenAll(imagesToUpload.Select(async image =>
-                {
-                    var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
-                    return await azureStorageClient.UploadImageFile(image, blobName);
-                }));
-
-                var existingQueue = new Queue<string>(model.ImagesUrl);
-                var uploadedQueue = new Queue<string>(uploadedUrls);
-                var orderedImages = new List<string>(model.ImagesUrl.Count + uploadedUrls.Length);
-                foreach (var marker in imagesOrder ?? [])
-                {
-                    if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
-                        orderedImages.Add(existingQueue.Dequeue());
-                    else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
-                        orderedImages.Add(uploadedQueue.Dequeue());
-                }
-                orderedImages.AddRange(existingQueue);
-                orderedImages.AddRange(uploadedQueue);
-
-                if (orderedImages.Count > 10)
-                {
-                    ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
-                    model.ImagesUrl = orderedImages;
-                    return View(model);
-                }
-
-                model.ImagesUrl = orderedImages;
-            }
-            catch (Exception)
-            {
-                ModelState.AddModelError(nameof(model.Images), "Could not complete plugin creation. An error occurred while uploading images");
+                if (image.ValidateUploadedImage(out var errorMessage))
+                    continue;
+                ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
                 return View(model);
             }
         }
 
-        await conn.SetPluginSettings(pluginSlug, new PluginSettings
+        if (!await conn.NewPlugin(pluginSlug, userId))
         {
-            Logo = model.LogoUrl,
+            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+            return View(model);
+        }
+
+        var baseSettings = new PluginSettings
+        {
             PluginTitle = model.PluginTitle,
             Description = model.Description,
             VideoUrl = model.VideoUrl,
-            Images = model.ImagesUrl
-        });
-        return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
+            Logo = null,
+            Images = []
+        };
+        if (!await conn.SetPluginSettings(pluginSlug, baseSettings))
+        {
+            await conn.DeletePlugin(pluginSlug);
+            ModelState.AddModelError(string.Empty, "Could not complete plugin creation.");
+            return View(model);
+        }
+
+        if (model.Logo == null && imagesToUpload.Count == 0)
+            return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
+
+        string? logoUrl = null;
+        var uploadedImages = new List<string>();
+        var uploadedBlobNames = new List<string>();
+        var mediaUploadFailed = false;
+
+        if (model.Logo != null)
+            try
+            {
+                var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.Logo.FileName)}";
+                logoUrl = await azureStorageClient.UploadImageFile(model.Logo, uniqueBlobName, _storageTimeout);
+                uploadedBlobNames.Add(uniqueBlobName);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to upload logo during create flow for plugin {PluginSlug}", pluginSlug);
+                mediaUploadFailed = true;
+            }
+
+        if (!mediaUploadFailed)
+            foreach (var image in imagesToUpload)
+                try
+                {
+                    var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+                    uploadedImages.Add(await azureStorageClient.UploadImageFile(image, blobName, _storageTimeout));
+                    uploadedBlobNames.Add(blobName);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to upload plugin image during create flow for plugin {PluginSlug}", pluginSlug);
+                    mediaUploadFailed = true;
+                    break;
+                }
+
+        if (logoUrl != null || uploadedImages.Count > 0)
+        {
+            var uploadedQueue = new Queue<string>(uploadedImages);
+            var orderedImages = new List<string>(uploadedImages.Count);
+            foreach (var marker in imagesOrder ?? [])
+            {
+                if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
+                    orderedImages.Add(uploadedQueue.Dequeue());
+            }
+
+            orderedImages.AddRange(uploadedQueue);
+            var mediaSettings = new PluginSettings
+            {
+                PluginTitle = model.PluginTitle,
+                Description = model.Description,
+                VideoUrl = model.VideoUrl,
+                Logo = logoUrl,
+                Images = orderedImages
+            };
+
+            if (!await conn.SetPluginSettings(pluginSlug, mediaSettings))
+            {
+                logger.LogWarning("Failed to persist optional media during create flow for plugin {PluginSlug}", pluginSlug);
+                foreach (var blobName in uploadedBlobNames)
+                    try
+                    {
+                        await azureStorageClient.DeleteImageFileIfExists(blobName, _storageTimeout);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Failed to clean up uploaded blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
+                    }
+
+                TempData[TempDataConstant.WarningMessage] =
+                    "Plugin created, but logo/images could not be saved. You can add them later in Settings.";
+                return RedirectToAction(nameof(PluginController.Settings), "Plugin", new { pluginSlug = pluginSlug.ToString() });
+            }
+        }
+
+        if (!mediaUploadFailed)
+            return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
+
+        TempData[TempDataConstant.WarningMessage] =
+            "Plugin created, but some media could not be saved. You can add them later in Settings.";
+        return RedirectToAction(nameof(PluginController.Settings), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }
 }
