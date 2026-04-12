@@ -56,7 +56,12 @@ public class PluginController(
     public async Task<IActionResult> Settings(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        PluginSettingViewModel settingViewModel, [FromForm] bool removeLogoFile = false)
+        PluginSettingViewModel settingViewModel,
+        [FromForm] bool removeLogoFile = false,
+        [FromForm] string? removeImageUrl = null,
+        [FromForm] List<string>? imagesUrl = null,
+        [FromForm] bool imagesUrlSubmitted = false,
+        [FromForm] List<string>? imagesOrder = null)
     {
         if (settingViewModel is null)
             return NotFound();
@@ -98,6 +103,23 @@ public class PluginController(
         var pluginOwner = await conn.RetrievePluginPrimaryOwner(pluginSlug);
         settingViewModel.LogoUrl = existingSetting?.Logo;
         settingViewModel.IsPluginPrimaryOwner = pluginOwner == userId;
+
+        var existingImages = existingSetting?.Images ?? [];
+        var existingImagesSet = new HashSet<string>(existingImages, StringComparer.Ordinal);
+        settingViewModel.ImagesUrl = imagesUrlSubmitted
+            ? (imagesUrl ?? [])
+                .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .Where(existingImagesSet.Contains)
+                .ToList()
+            : [..existingImages];
+
+        if (settingViewModel.ImagesUrl.Count > 10)
+        {
+            ModelState.AddModelError(nameof(settingViewModel.Images), "A maximum of 10 images is allowed per plugin.");
+            return View(settingViewModel);
+        }
+
         if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
         {
             ModelState.AddModelError(nameof(settingViewModel.PluginTitle), "Plugin title and description are required");
@@ -142,6 +164,61 @@ public class PluginController(
             settingViewModel.Logo = null;
             settingViewModel.LogoUrl = null;
         }
+
+        var uploadedImages = new List<string>();
+        var imagesToUpload = (settingViewModel.Images ?? []).OfType<IFormFile>().Where(s => s.Length > 0).ToList();
+        if (imagesToUpload.Count > 0)
+        {
+            if (settingViewModel.ImagesUrl.Count + imagesToUpload.Count > 10)
+            {
+                ModelState.AddModelError(nameof(settingViewModel.Images), "A maximum of 10 images is allowed per plugin.");
+                return View(settingViewModel);
+            }
+            foreach (var image in imagesToUpload)
+            {
+                if (!image.ValidateUploadedImage(out var errorMessage))
+                {
+                    ModelState.AddModelError(nameof(settingViewModel.Images), $"Image upload validation failed: {errorMessage}");
+                    return View(settingViewModel);
+                }
+            }
+            try
+            {
+                uploadedImages = (await Task.WhenAll(imagesToUpload.Select(async image =>
+                {
+                    var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+                    return await azureStorageClient.UploadImageFile(image, blobName);
+                }))).ToList();
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to upload images for plugin {PluginSlug}", pluginSlug);
+                ModelState.AddModelError(nameof(settingViewModel.Images), "Could not complete settings upload. An error occurred while uploading images");
+                return View(settingViewModel);
+            }
+        }
+
+        var existingQueue = new Queue<string>(settingViewModel.ImagesUrl);
+        var uploadedQueue = new Queue<string>(uploadedImages);
+        var orderedImages = new List<string>(settingViewModel.ImagesUrl.Count + uploadedImages.Count);
+        foreach (var marker in imagesOrder ?? [])
+        {
+            if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
+                orderedImages.Add(existingQueue.Dequeue());
+            else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
+                orderedImages.Add(uploadedQueue.Dequeue());
+        }
+        orderedImages.AddRange(existingQueue);
+        orderedImages.AddRange(uploadedQueue);
+
+        if (orderedImages.Count > 10)
+        {
+            ModelState.AddModelError(nameof(settingViewModel.Images), "A maximum of 10 images is allowed per plugin.");
+            settingViewModel.ImagesUrl = orderedImages;
+            return View(settingViewModel);
+        }
+
+        settingViewModel.ImagesUrl = orderedImages;
 
         if (!settingViewModel.IsPluginPrimaryOwner && existingSetting is not null)
         {

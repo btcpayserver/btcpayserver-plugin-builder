@@ -161,7 +161,14 @@ public class AdminController(
 
 
     [HttpPost("plugins/edit/{pluginSlug}")]
-    public async Task<IActionResult> PluginEdit(string pluginSlug, PluginEditViewModel model, [FromForm] bool removeLogoFile = false)
+    public async Task<IActionResult> PluginEdit(
+        string pluginSlug,
+        PluginEditViewModel model,
+        [FromForm] bool removeLogoFile = false,
+        [FromForm] string? removeImageUrl = null,
+        [FromForm] List<string>? imagesUrl = null,
+        [FromForm] bool imagesUrlSubmitted = false,
+        [FromForm] List<string>? imagesOrder = null)
     {
         await using var conn = await connectionFactory.Open();
         model.ActiveTab = PluginEditTabs.Settings;
@@ -218,6 +225,25 @@ public class AdminController(
         pluginSettings.Documentation = model.PluginSettings.Documentation;
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
+
+        var existingImages = pluginSettings.Images ?? [];
+        var existingImagesSet = new HashSet<string>(existingImages, StringComparer.Ordinal);
+        pluginSettings.Images = imagesUrlSubmitted
+            ? (imagesUrl ?? [])
+                .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .Where(existingImagesSet.Contains)
+                .ToList()
+            : [..existingImages];
+        model.PluginSettings.Images = [..pluginSettings.Images];
+
+        if (pluginSettings.Images.Count > 10)
+        {
+            ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
+            await PopulatePluginEditViewModel(conn, pluginSlug, model);
+            return View(model);
+        }
+
         if (model.LogoFile != null)
         {
             if (!model.LogoFile.ValidateUploadedImage(out var errorMessage))
@@ -245,6 +271,65 @@ public class AdminController(
             model.LogoFile = null;
             pluginSettings.Logo = null;
         }
+
+        var uploadedImages = new List<string>();
+        var imagesToUpload = (model.Images ?? []).Where(s => s.Length > 0).ToList();
+        if (imagesToUpload.Count > 0)
+        {
+            if ((pluginSettings.Images?.Count ?? 0) + imagesToUpload.Count > 10)
+            {
+                ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
+                await PopulatePluginEditViewModel(conn, pluginSlug, model);
+                return View(model);
+            }
+            foreach (var image in imagesToUpload)
+            {
+                if (!image.ValidateUploadedImage(out var errorMessage))
+                {
+                    ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
+                    await PopulatePluginEditViewModel(conn, pluginSlug, model);
+                    return View(model);
+                }
+            }
+            try
+            {
+                uploadedImages = (await Task.WhenAll(imagesToUpload.Select(async image =>
+                {
+                    var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+                    return await azureStorageClient.UploadImageFile(image, blobName);
+                }))).ToList();
+            }
+            catch (Exception)
+            {
+                ModelState.AddModelError(nameof(model.Images), "Could not complete settings upload. An error occurred while uploading images");
+                await PopulatePluginEditViewModel(conn, pluginSlug, model);
+                return View(model);
+            }
+        }
+
+        var existingQueue = new Queue<string>(pluginSettings.Images ?? []);
+        var uploadedQueue = new Queue<string>(uploadedImages);
+        var orderedImages = new List<string>((pluginSettings.Images?.Count ?? 0) + uploadedImages.Count);
+        foreach (var marker in imagesOrder ?? [])
+        {
+            if (string.Equals(marker, "existing", StringComparison.OrdinalIgnoreCase) && existingQueue.Count > 0)
+                orderedImages.Add(existingQueue.Dequeue());
+            else if (string.Equals(marker, "new", StringComparison.OrdinalIgnoreCase) && uploadedQueue.Count > 0)
+                orderedImages.Add(uploadedQueue.Dequeue());
+        }
+        orderedImages.AddRange(existingQueue);
+        orderedImages.AddRange(uploadedQueue);
+
+        if (orderedImages.Count > 10)
+        {
+            ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
+            model.PluginSettings.Images = orderedImages;
+            await PopulatePluginEditViewModel(conn, pluginSlug, model);
+            return View(model);
+        }
+
+        pluginSettings.Images = orderedImages;
+        model.PluginSettings.Images = orderedImages;
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
         if (!setPluginSettings)

@@ -1,7 +1,9 @@
 @model PluginSettingViewModel
+@using PluginBuilder.ViewModels.Shared
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(PluginNavPages.Settings, "Plugin settings");
+    var editImagesVm = EditImagesViewModel.Create(Model.ImagesUrl);
 }
 <div class="d-flex align-items-center justify-content-between mb-4">
     <h2 class="mb-0">
@@ -93,6 +95,7 @@
                 </div>
                 <span asp-validation-for="LogoUrl" class="text-danger"></span>
             </div>
+            <partial name="_EditImages" model="editImagesVm"></partial>
         </form>
     </div>
 </div>

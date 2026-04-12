@@ -31,6 +31,11 @@
                 <span asp-validation-for="Logo" class="text-danger"></span>
             </div>
             <div class="form-group">
+                <label asp-for="Images" class="form-label"></label>
+                <input asp-for="Images" id="create-images-input" type="file" class="form-control" accept="image/*" multiple>
+                <span asp-validation-for="Images" class="text-danger"></span>
+            </div>
+            <div class="form-group">
                 <label asp-for="VideoUrl" class="form-label"></label>
                 <input asp-for="VideoUrl" type="url" class="form-control" />
                 <span asp-validation-for="VideoUrl" class="text-danger"></span>
@@ -41,3 +46,24 @@
         </form>
     </div>
 </div>
+
+
+@section FooterScripts {
+	<script>
+		document.getElementById('create-images-input').addEventListener('change', function () {
+			const maxTotal = 10 * 1024 * 1024;
+			const errorSpan = document.querySelector('span[data-valmsg-for="Images"]');
+			const totalSize = Array.from(this.files).reduce((sum, file) => sum + file.size, 0);
+
+			if (totalSize > maxTotal) {
+				errorSpan.textContent = 'Total size of images cannot exceed 10MB.';
+				errorSpan.classList.add('text-danger');
+				this.value = '';
+				return;
+			}
+
+			if (errorSpan.classList.contains('field-validation-valid'))
+				errorSpan.textContent = '';
+		});
+	</script>
+}

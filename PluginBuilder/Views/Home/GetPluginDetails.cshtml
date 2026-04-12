@@ -114,20 +114,104 @@
 
                     @{
                         var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
+                        var videoThumbUrl = Model.Plugin.VideoUrl.GetVideoThumbnailUrl();
+                        var screenshots = Model.Plugin.Images?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList() ?? new List<string>();
+                        var mediaItems = new List<(bool IsVideo, string MediaUrl, string? ThumbUrl, string SlideAlt, string ThumbAriaLabel, string ThumbAlt)>();
+
+                        if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
+                        {
+                            mediaItems.Add((
+                                true,
+                                videoEmbedUrl,
+                                videoThumbUrl,
+                                "Plugin video",
+                                "Show video",
+                                "Video thumbnail"
+                            ));
+                        }
+
+                        for (var i = 0; i < screenshots.Count; i++)
+                        {
+                            var screenshot = screenshots[i];
+                            mediaItems.Add((
+                                false,
+                                screenshot,
+                                screenshot,
+                                $"{Model.Plugin.PluginTitle} screenshot {i + 1}",
+                                $"Show screenshot {i + 1}",
+                                $"Screenshot thumbnail {i + 1}"
+                            ));
+                        }
+
+                        var hasMedia = mediaItems.Count > 0;
                     }
-                    @if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
+                    @if (hasMedia)
                     {
                         <div class="card mt-4">
                             <div class="card-body">
-								<h4 class="mb-3">Demo</h4>
-                                <div class="ratio ratio-16x9 rounded overflow-hidden" style="border-radius: 0.5rem;">
-                                    <!-- default "allow" settings by youtube -->
-                                    <iframe src="@videoEmbedUrl"
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                            allowfullscreen
-                                            loading="lazy"
-                                            style="border: none;">
-                                    </iframe>
+                                <h4 class="mb-3">Media</h4>
+                                <div id="plugin-media-carousel" class="plugin-media-carousel" tabindex="0" aria-label="Plugin media carousel">
+                                    <div class="plugin-media-stage ratio ratio-16x9 rounded overflow-hidden">
+                                        <button type="button" class="plugin-media-nav plugin-media-nav-prev" data-media-nav="prev" aria-label="Previous media">
+                                            <i class="fa fa-chevron-left" aria-hidden="true"></i>
+                                        </button>
+                                        <button type="button" class="plugin-media-nav plugin-media-nav-next" data-media-nav="next" aria-label="Next media">
+                                            <i class="fa fa-chevron-right" aria-hidden="true"></i>
+                                        </button>
+
+                                        @for (var i = 0; i < mediaItems.Count; i++)
+                                        {
+                                            var mediaItem = mediaItems[i];
+                                            <div class="plugin-media-slide @(i == 0 ? "is-active" : "d-none")" data-media-slide data-media-index="@i" aria-hidden="@(i == 0 ? "false" : "true")">
+                                                @if (mediaItem.IsVideo)
+                                                {
+                                                    <iframe data-video-embed data-video-src="@mediaItem.MediaUrl"
+                                                            title="Plugin video"
+                                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                            allowfullscreen
+                                                            loading="lazy"
+                                                            style="border: none;">
+                                                    </iframe>
+                                                }
+                                                else
+                                                {
+                                                    <img src="@mediaItem.MediaUrl" alt="@mediaItem.SlideAlt" loading="lazy" class="plugin-media-image" />
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <div class="plugin-media-thumbs" data-media-thumbs>
+                                        @for (var i = 0; i < mediaItems.Count; i++)
+                                        {
+                                            var mediaItem = mediaItems[i];
+                                            <button type="button" class="plugin-media-thumb @(i == 0 ? "is-active" : "")" data-media-thumb data-media-index="@i" aria-label="@mediaItem.ThumbAriaLabel" aria-current="@(i == 0 ? "true" : "false")">
+                                                @if (mediaItem.IsVideo)
+                                                {
+                                                    @if (!string.IsNullOrWhiteSpace(mediaItem.ThumbUrl))
+                                                    {
+                                                        <span class="plugin-media-video-thumb-wrap">
+                                                            <img src="@mediaItem.ThumbUrl" alt="@mediaItem.ThumbAlt" loading="lazy" class="plugin-media-video-thumb-image" />
+                                                            <span class="plugin-media-video-play">
+                                                                <i class="fa fa-play" aria-hidden="true"></i>
+                                                            </span>
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="plugin-media-video-thumb">
+                                                            <i class="fa fa-play" aria-hidden="true"></i>
+                                                            Video
+                                                        </span>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <img src="@mediaItem.ThumbUrl" alt="@mediaItem.ThumbAlt" loading="lazy" />
+                                                }
+                                            </button>
+                                        }
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -582,6 +666,76 @@
 <partial name="_Confirm" model="@(new ConfirmModel("Delete review", "Are you sure?", "Delete"))" />
 
 <script>
+    (() => {
+        const carousel = document.getElementById('plugin-media-carousel');
+        if (!carousel)
+            return;
+
+        const slides = Array.from(carousel.querySelectorAll('[data-media-slide]'));
+        const thumbs = Array.from(carousel.querySelectorAll('[data-media-thumb]'));
+        const prevBtn = carousel.querySelector('[data-media-nav="prev"]');
+        const nextBtn = carousel.querySelector('[data-media-nav="next"]');
+        if (slides.length === 0)
+            return;
+
+        let activeIndex = Math.max(0, slides.findIndex(slide => slide.classList.contains('is-active')));
+
+        const applyVideoState = (slide, isActive) => {
+            const iframe = slide.querySelector('iframe[data-video-embed]');
+            if (!iframe)
+                return;
+
+            const videoSrc = iframe.getAttribute('data-video-src') || '';
+            if (isActive) {
+                if (!iframe.getAttribute('src'))
+                    iframe.setAttribute('src', videoSrc);
+            }
+            else if (iframe.getAttribute('src')) {
+                iframe.removeAttribute('src');
+            }
+        };
+
+        const setActive = (index, shouldScrollThumb = false) => {
+            activeIndex = (index + slides.length) % slides.length;
+
+            slides.forEach((slide, i) => {
+                const isActive = i === activeIndex;
+                slide.classList.toggle('is-active', isActive);
+                slide.classList.toggle('d-none', !isActive);
+                slide.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+                applyVideoState(slide, isActive);
+            });
+
+            thumbs.forEach((thumb, i) => {
+                const isActive = i === activeIndex;
+                thumb.classList.toggle('is-active', isActive);
+                thumb.setAttribute('aria-current', isActive ? 'true' : 'false');
+                if (isActive && shouldScrollThumb)
+                    thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            });
+        };
+
+        prevBtn?.addEventListener('click', () => setActive(activeIndex - 1, true));
+        nextBtn?.addEventListener('click', () => setActive(activeIndex + 1, true));
+
+        thumbs.forEach((thumb, i) => {
+            thumb.addEventListener('click', () => setActive(i, true));
+        });
+
+        carousel.addEventListener('keydown', (evt) => {
+            if (evt.key === 'ArrowLeft') {
+                evt.preventDefault();
+                setActive(activeIndex - 1, true);
+            }
+            else if (evt.key === 'ArrowRight') {
+                evt.preventDefault();
+                setActive(activeIndex + 1, true);
+            }
+        });
+
+        setActive(activeIndex);
+    })();
+
     (() => {
         const input = document.getElementById('ratingInput');
         const group = document.getElementById('ratingStars');

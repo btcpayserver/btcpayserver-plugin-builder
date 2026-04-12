@@ -19,6 +19,7 @@ public class PublishedVersion
     public string PluginTitle { get; set; }
     public string Description { get; set; }
     public string VideoUrl { get; set; }
+    public List<string> Images { get; set; }
     public string Fingerprint { get; set; }
 }
 
