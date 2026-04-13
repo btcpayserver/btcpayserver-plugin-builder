@@ -1,5 +1,7 @@
+using System.Net;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using Xunit;
@@ -379,6 +381,90 @@ public class GitHostingProviderTests
         Assert.Null(Controllers.PluginController.GetUrl(buildInfo));
     }
 
+    // ── GitLab avatar resolution ─────────────────────────────────────
+
+    [Fact]
+    public async Task GitLab_GetContributors_ResolvesAvatarFromEmail()
+    {
+        var commitsJson = JArray.FromObject(new[]
+        {
+            new { author_name = "Alice", author_email = "alice@example.com" },
+            new { author_name = "Alice", author_email = "alice@example.com" },
+            new { author_name = "Bob", author_email = "bob@example.com" }
+        }).ToString();
+
+        var handler = new FakeHttpHandler(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["projects/owner%2Frepo/repository/commits?per_page=100&page=1"] =
+                (HttpStatusCode.OK, commitsJson),
+            ["avatar?email=alice%40example.com&size=48"] =
+                (HttpStatusCode.OK, """{"avatar_url":"https://gitlab.com/uploads/-/alice.png"}"""),
+            ["avatar?email=bob%40example.com&size=48"] =
+                (HttpStatusCode.OK, """{"avatar_url":"https://gitlab.com/uploads/-/bob.png"}""")
+        });
+
+        var provider = CreateGitLabProvider(handler: handler);
+        var contributors = await provider.GetContributorsAsync("https://gitlab.com/owner/repo", "");
+
+        Assert.Equal(2, contributors.Count);
+
+        var alice = contributors.First(c => c.Login == "Alice");
+        Assert.Equal("https://gitlab.com/uploads/-/alice.png", alice.AvatarUrl);
+        Assert.Equal(2, alice.Contributions);
+
+        var bob = contributors.First(c => c.Login == "Bob");
+        Assert.Equal("https://gitlab.com/uploads/-/bob.png", bob.AvatarUrl);
+        Assert.Equal(1, bob.Contributions);
+    }
+
+    [Fact]
+    public async Task GitLab_GetContributors_AvatarEndpointFails_StillReturnsContributors()
+    {
+        var commitsJson = JArray.FromObject(new[]
+        {
+            new { author_name = "Alice", author_email = "alice@example.com" }
+        }).ToString();
+
+        var handler = new FakeHttpHandler(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["projects/owner%2Frepo/repository/commits?per_page=100&page=1"] =
+                (HttpStatusCode.OK, commitsJson),
+            // avatar endpoint returns 500
+            ["avatar?email=alice%40example.com&size=48"] =
+                (HttpStatusCode.InternalServerError, "")
+        });
+
+        var provider = CreateGitLabProvider(handler: handler);
+        var contributors = await provider.GetContributorsAsync("https://gitlab.com/owner/repo", "");
+
+        var alice = Assert.Single(contributors);
+        Assert.Equal("Alice", alice.Login);
+        Assert.Null(alice.AvatarUrl); // gracefully null
+    }
+
+    [Fact]
+    public async Task GitLab_GetContributors_NoEmail_SkipsAvatarResolution()
+    {
+        var commitsJson = JArray.FromObject(new[]
+        {
+            new { author_name = "NoEmail", author_email = (string?)null }
+        }).ToString();
+
+        var handler = new FakeHttpHandler(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["projects/owner%2Frepo/repository/commits?per_page=100&page=1"] =
+                (HttpStatusCode.OK, commitsJson)
+            // no avatar endpoint registered — would throw if called
+        });
+
+        var provider = CreateGitLabProvider(handler: handler);
+        var contributors = await provider.GetContributorsAsync("https://gitlab.com/owner/repo", "");
+
+        var c = Assert.Single(contributors);
+        Assert.Equal("NoEmail", c.Login);
+        Assert.Null(c.AvatarUrl);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────
 
     private static GitHubHostingProvider CreateGitHubProvider()
@@ -387,9 +473,13 @@ public class GitHostingProviderTests
         return new GitHubHostingProvider(factory);
     }
 
-    private static GitLabHostingProvider CreateGitLabProvider(IEnumerable<string>? additionalHosts = null)
+    private static GitLabHostingProvider CreateGitLabProvider(
+        IEnumerable<string>? additionalHosts = null,
+        FakeHttpHandler? handler = null)
     {
-        var factory = new TestHttpClientFactory();
+        var factory = handler != null
+            ? new FakeHttpClientFactory(handler)
+            : (IHttpClientFactory)new TestHttpClientFactory();
         return new GitLabHostingProvider(factory, additionalHosts);
     }
 
@@ -407,5 +497,50 @@ public class GitHostingProviderTests
     private class TestHttpClientFactory : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new();
+    }
+
+    private class FakeHttpClientFactory : IHttpClientFactory
+    {
+        private readonly FakeHttpHandler _handler;
+        public FakeHttpClientFactory(FakeHttpHandler handler) => _handler = handler;
+
+        public HttpClient CreateClient(string name)
+        {
+            return new HttpClient(_handler)
+            {
+                BaseAddress = new Uri("https://gitlab.com/api/v4/")
+            };
+        }
+    }
+
+    private class FakeHttpHandler : HttpMessageHandler
+    {
+        private readonly Dictionary<string, (HttpStatusCode Status, string Body)> _responses;
+
+        public FakeHttpHandler(Dictionary<string, (HttpStatusCode, string)> responses)
+        {
+            _responses = responses;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            // Match on the path+query relative to the base address
+            var key = request.RequestUri!.PathAndQuery.TrimStart('/');
+            // Strip the base path prefix (e.g., "/api/v4/")
+            const string prefix = "api/v4/";
+            if (key.StartsWith(prefix))
+                key = key[prefix.Length..];
+
+            if (_responses.TryGetValue(key, out var resp))
+            {
+                return Task.FromResult(new HttpResponseMessage(resp.Status)
+                {
+                    Content = new StringContent(resp.Body)
+                });
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+        }
     }
 }

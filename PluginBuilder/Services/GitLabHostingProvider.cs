@@ -198,11 +198,41 @@ public class GitLabHostingProvider : IGitHostingProvider
                 page = np;
             }
 
-            return contributors.Values.OrderByDescending(c => c.Contributions).ToList();
+            var result = contributors.Values.OrderByDescending(c => c.Contributions).ToList();
+            await ResolveAvatarsAsync(client, contributors);
+            return result;
         }
         catch (Exception)
         {
             return new List<GitHubContributor>();
+        }
+    }
+
+    private static async Task ResolveAvatarsAsync(
+        HttpClient client,
+        Dictionary<string, GitHubContributor> contributors)
+    {
+        foreach (var (key, contributor) in contributors)
+        {
+            // key is the email when available
+            if (!key.Contains('@'))
+                continue;
+            try
+            {
+                var apiUrl = $"avatar?email={Uri.EscapeDataString(key)}&size=48";
+                using var resp = await client.GetAsync(apiUrl);
+                if (!resp.IsSuccessStatusCode)
+                    continue;
+                var json = await resp.Content.ReadAsStringAsync();
+                var obj = JObject.Parse(json);
+                var avatarUrl = obj["avatar_url"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(avatarUrl))
+                    contributor.AvatarUrl = avatarUrl;
+            }
+            catch
+            {
+                // Best effort — skip if anything goes wrong
+            }
         }
     }
 
