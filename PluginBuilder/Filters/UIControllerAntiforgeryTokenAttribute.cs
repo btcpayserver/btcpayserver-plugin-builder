@@ -14,6 +14,7 @@ public class UIControllerAntiforgeryTokenAttribute :
     IFilterMetadata,
     IAntiforgeryPolicy,
     IAsyncAuthorizationFilter,
+    IAsyncAlwaysRunResultFilter,
     IOrderedFilter
 {
     public int Order => 1000;
@@ -39,6 +40,14 @@ public class UIControllerAntiforgeryTokenAttribute :
                 AddErrorDetails(context.HttpContext);
             }
         }
+    }
+
+    public async Task OnResultExecutionAsync(ResultExecutingContext context, ResultExecutionDelegate next)
+    {
+        if (context.Result is AntiforgeryValidationFailedResult)
+            AddErrorDetails(context.HttpContext);
+
+        await next();
     }
 
     private static void AddErrorDetails(HttpContext context)

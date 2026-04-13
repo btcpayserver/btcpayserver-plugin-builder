@@ -98,6 +98,35 @@ public class UIControllerAntiforgeryTokenAttributeTests
         Assert.False(context.HttpContext.Items.ContainsKey(UIErrorController.ErrorDetailsKey));
     }
 
+    [Fact]
+    public async Task OnResultExecutionAsync_WithAntiforgeryFailureResult_AddsErrorDetails()
+    {
+        var filter = new UIControllerAntiforgeryTokenAttribute();
+        var httpContext = new DefaultHttpContext();
+        var actionContext = new ActionContext(httpContext, new RouteData(), new ActionDescriptor());
+        List<IFilterMetadata> filters = new() { filter };
+        var result = new AntiforgeryValidationFailedResult();
+        var controller = new object();
+        var context = new ResultExecutingContext(actionContext, filters, result, controller);
+
+        await filter.OnResultExecutionAsync(context, () =>
+        {
+            var executedContext = new ResultExecutedContext(actionContext, filters, result, controller);
+            return Task.FromResult(executedContext);
+        });
+
+        Assert.Equal("CSRF token validation failed.", context.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
+    }
+
+    [Fact]
+    public void NostrVerifyNip07_HasIgnoreAntiforgeryTokenAttribute()
+    {
+        var method = typeof(AccountController).GetMethod(nameof(AccountController.NostrVerifyNip07));
+
+        Assert.NotNull(method);
+        Assert.NotNull(method!.GetCustomAttribute<IgnoreAntiforgeryTokenAttribute>());
+    }
+
     private static AuthorizationFilterContext CreateContext(
         UIControllerAntiforgeryTokenAttribute filter,
         Type controllerType,
