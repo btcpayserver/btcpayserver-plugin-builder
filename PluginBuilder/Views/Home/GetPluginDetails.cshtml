@@ -2,16 +2,18 @@
 @using PluginBuilder.APIModels
 @using PluginBuilder.Controllers
 @using PluginBuilder.DataModels
+@using PluginBuilder.Services
 @using System.Text.RegularExpressions
+@inject GitHostingProviderFactory GitHostingProviderFactory
 @model PluginDetailsViewModel
 @{
     Layout = "_LayoutPublicModal";
     var desc = string.IsNullOrWhiteSpace(Model.Plugin.Description) ? "Plugin for BTCPay Server" : Model.Plugin.Description;
     ViewData["Title"] = Model.Plugin.PluginTitle + " - " + desc;
-    var owner = Model.Plugin.GetGithubRepository()?.Owner;
+    var owner = Model.Plugin.GetOwnerName(GitHostingProviderFactory);
     var dependencies = Model.Plugin.ManifestInfo?["Dependencies"] as JArray;
 
-    var sourceUrl = Model.Plugin.GetGithubRepository()?.GetSourceUrl(Model.Plugin.BuildInfo?["gitCommit"]?.ToString(), Model.Plugin.BuildInfo?["pluginDir"]?.ToString());
+    var sourceUrl = Model.Plugin.GetSourceUrl(GitHostingProviderFactory);
     var pluginUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = Model.Plugin.ProjectSlug },
         Context.Request.Scheme, Context.Request.Host.ToString());
 
