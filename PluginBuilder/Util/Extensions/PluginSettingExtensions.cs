@@ -20,7 +20,7 @@ public static class PluginSettingExtensions
             BuildConfig = viewModel.BuildConfig ?? string.Empty,
             Logo = viewModel.LogoUrl,
             VideoUrl = viewModel.VideoUrl,
-            Images = viewModel.ImagesUrl,
+            Images = viewModel.ImagesUrl is null ? [] : [..viewModel.ImagesUrl],
             RequireGPGSignatureForRelease = viewModel.RequireGPGSignatureForRelease
         };
     }
@@ -38,7 +38,7 @@ public static class PluginSettingExtensions
             BuildConfig = settings.BuildConfig ?? string.Empty,
             LogoUrl = settings.Logo,
             VideoUrl = settings.VideoUrl,
-            ImagesUrl = settings.Images ?? [],
+            ImagesUrl = settings.Images is null ? [] : [..settings.Images],
             RequireGPGSignatureForRelease = settings.RequireGPGSignatureForRelease
         };
     }

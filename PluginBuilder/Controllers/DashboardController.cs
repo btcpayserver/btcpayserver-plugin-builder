@@ -46,8 +46,17 @@ public class DashboardController(
         CreatePluginViewModel model,
         [FromForm] List<string>? imagesOrder = null)
     {
+        const long maxTotalBytes = 10 * 1024 * 1024;
+
         if (!ModelState.IsValid)
             return View(model);
+
+        var totalUploadBytes = Request.Form.Files.Sum(file => file.Length);
+        if (totalUploadBytes > maxTotalBytes)
+        {
+            ModelState.AddModelError(nameof(model.Images), "Total size of uploaded files cannot exceed 10MB.");
+            return View(model);
+        }
 
         if (!PluginSlug.TryParse(model.PluginSlug, out var pluginSlug))
         {
@@ -162,20 +171,18 @@ public class DashboardController(
                 mediaUploadFailed = true;
             }
 
-        if (!mediaUploadFailed)
-            foreach (var image in imagesToUpload)
-                try
-                {
-                    var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
-                    uploadedImages.Add(await azureStorageClient.UploadImageFile(image, blobName, _storageTimeout));
-                    uploadedBlobNames.Add(blobName);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Failed to upload plugin image during create flow for plugin {PluginSlug}", pluginSlug);
-                    mediaUploadFailed = true;
-                    break;
-                }
+        foreach (var image in imagesToUpload)
+            try
+            {
+                var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+                uploadedImages.Add(await azureStorageClient.UploadImageFile(image, blobName, _storageTimeout));
+                uploadedBlobNames.Add(blobName);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to upload plugin image during create flow for plugin {PluginSlug}", pluginSlug);
+                mediaUploadFailed = true;
+            }
 
         if (logoUrl != null || uploadedImages.Count > 0)
         {

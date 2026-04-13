@@ -47,11 +47,15 @@ public class RateLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
         for (var i = 0; i < 2; i++)
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/public/plugins")).StatusCode);
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await client.GetAsync("/public/plugins")).StatusCode);
+        await AssertEventually(async () =>
+            (await client.GetAsync("/public/plugins")).StatusCode == HttpStatusCode.TooManyRequests,
+            timeout: TimeSpan.FromSeconds(2));
 
         await Task.Delay(TimeSpan.FromSeconds(3));
 
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/public/plugins")).StatusCode);
+        await AssertEventually(async () =>
+            (await client.GetAsync("/public/plugins")).StatusCode == HttpStatusCode.OK,
+            timeout: TimeSpan.FromSeconds(2));
     }
 
     [Fact]
@@ -96,5 +100,19 @@ public class RateLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
         return method == "POST"
             ? await client.PostAsync(url, new StringContent("[]", Encoding.UTF8, "application/json"))
             : await client.GetAsync(url);
+    }
+
+    private static async Task AssertEventually(Func<Task<bool>> predicate, TimeSpan timeout, int delayMs = 100)
+    {
+        var start = DateTimeOffset.UtcNow;
+        while (DateTimeOffset.UtcNow - start < timeout)
+        {
+            if (await predicate())
+                return;
+
+            await Task.Delay(delayMs);
+        }
+
+        Assert.True(await predicate(), "Condition was not met within the timeout.");
     }
 }

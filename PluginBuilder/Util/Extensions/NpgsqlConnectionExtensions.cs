@@ -241,13 +241,14 @@ public static class NpgsqlConnectionExtensions
         return true;
     }
 
-    public static async Task<bool> DeletePlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    public static async Task DeletePlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         var affectedRows = await connection.ExecuteAsync(
             "DELETE FROM plugins WHERE slug = @pluginSlug;",
             new { pluginSlug = pluginSlug.ToString() });
 
-        return affectedRows == 1;
+        if (affectedRows != 1)
+            throw new InvalidOperationException($"Failed to delete plugin '{pluginSlug}'. Expected to delete exactly 1 row, deleted {affectedRows} row(s).");
     }
 
     public static async Task UpdateBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo,

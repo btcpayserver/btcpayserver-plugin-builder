@@ -22,7 +22,10 @@ public class UIControllerAntiforgeryTokenAttribute :
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
         if (context.Result is AntiforgeryValidationFailedResult)
+        {
             AddErrorDetails(context.HttpContext);
+            return;
+        }
 
         var antiforgery = context.HttpContext.RequestServices.GetService<IAntiforgery>();
         if (

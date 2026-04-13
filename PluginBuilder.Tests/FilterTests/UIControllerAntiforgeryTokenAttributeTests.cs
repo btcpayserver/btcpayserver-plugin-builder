@@ -46,6 +46,22 @@ public class UIControllerAntiforgeryTokenAttributeTests
     }
 
     [Fact]
+    public async Task OnAuthorizationAsync_WithExistingAntiforgeryFailure_DoesNotValidateAgain()
+    {
+        var filter = new UIControllerAntiforgeryTokenAttribute();
+        var services = new ServiceCollection()
+            .AddSingleton<IAntiforgery, FailIfValidatedAntiforgery>()
+            .BuildServiceProvider();
+
+        var context = CreateContext(filter, typeof(DummyUiController), HttpMethods.Post, services);
+        context.Result = new AntiforgeryValidationFailedResult();
+
+        await filter.OnAuthorizationAsync(context);
+
+        Assert.Equal("CSRF token validation failed.", context.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
+    }
+
+    [Fact]
     public async Task OnAuthorizationAsync_WithPostApiRequest_DoesNotValidate()
     {
         var filter = new UIControllerAntiforgeryTokenAttribute();
@@ -183,5 +199,18 @@ public class UIControllerAntiforgeryTokenAttributeTests
         public void SetCookieTokenAndHeader(HttpContext httpContext) => throw new NotSupportedException();
 
         public Task ValidateRequestAsync(HttpContext httpContext) => throw new AntiforgeryValidationException("Invalid CSRF token.");
+    }
+
+    private sealed class FailIfValidatedAntiforgery : IAntiforgery
+    {
+        public AntiforgeryTokenSet GetAndStoreTokens(HttpContext httpContext) => throw new NotSupportedException();
+
+        public AntiforgeryTokenSet GetTokens(HttpContext httpContext) => throw new NotSupportedException();
+
+        public Task<bool> IsRequestValidAsync(HttpContext httpContext) => throw new NotSupportedException();
+
+        public void SetCookieTokenAndHeader(HttpContext httpContext) => throw new NotSupportedException();
+
+        public Task ValidateRequestAsync(HttpContext httpContext) => throw new InvalidOperationException("ValidateRequestAsync should not be called when result is already AntiforgeryValidationFailedResult.");
     }
 }

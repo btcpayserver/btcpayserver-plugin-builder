@@ -170,6 +170,8 @@ public class AdminController(
         [FromForm] bool imagesUrlSubmitted = false,
         [FromForm] List<string>? imagesOrder = null)
     {
+        const long maxTotalBytes = 10 * 1024 * 1024;
+
         await using var conn = await connectionFactory.Open();
         model.ActiveTab = PluginEditTabs.Settings;
         if (!ModelState.IsValid)
@@ -178,8 +180,18 @@ public class AdminController(
             return View(model);
         }
 
+        var totalUploadBytes = Request.Form.Files.Sum(file => file.Length);
+        if (totalUploadBytes > maxTotalBytes)
+        {
+            ModelState.AddModelError(nameof(model.Images), "Total size of uploaded files cannot exceed 10MB.");
+            await PopulatePluginEditViewModel(conn, pluginSlug, model);
+            return View(model);
+        }
+
         var plugin = await conn.GetPluginDetails(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
+
+        var uploadedBlobNames = new List<string>();
 
         if (!string.IsNullOrEmpty(model.PluginSettings.VideoUrl))
         {
@@ -257,6 +269,7 @@ public class AdminController(
             {
                 var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.LogoFile.FileName)}";
                 pluginSettings.Logo = await azureStorageClient.UploadImageFile(model.LogoFile, uniqueBlobName);
+                uploadedBlobNames.Add(uniqueBlobName);
             }
             catch (Exception)
             {
@@ -278,6 +291,15 @@ public class AdminController(
         {
             if ((pluginSettings.Images?.Count ?? 0) + imagesToUpload.Count > 10)
             {
+                foreach (var blobName in uploadedBlobNames)
+                    try
+                    {
+                        await azureStorageClient.DeleteImageFileIfExists(blobName);
+                    }
+                    catch
+                    {
+                    }
+
                 ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
@@ -286,6 +308,15 @@ public class AdminController(
             {
                 if (!image.ValidateUploadedImage(out var errorMessage))
                 {
+                    foreach (var blobName in uploadedBlobNames)
+                        try
+                        {
+                            await azureStorageClient.DeleteImageFileIfExists(blobName);
+                        }
+                        catch
+                        {
+                        }
+
                     ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
                     await PopulatePluginEditViewModel(conn, pluginSlug, model);
                     return View(model);
@@ -293,14 +324,25 @@ public class AdminController(
             }
             try
             {
-                uploadedImages = (await Task.WhenAll(imagesToUpload.Select(async image =>
+                foreach (var image in imagesToUpload)
                 {
                     var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
-                    return await azureStorageClient.UploadImageFile(image, blobName);
-                }))).ToList();
+                    var uploadedImageUrl = await azureStorageClient.UploadImageFile(image, blobName);
+                    uploadedImages.Add(uploadedImageUrl);
+                    uploadedBlobNames.Add(blobName);
+                }
             }
             catch (Exception)
             {
+                foreach (var blobName in uploadedBlobNames)
+                    try
+                    {
+                        await azureStorageClient.DeleteImageFileIfExists(blobName);
+                    }
+                    catch
+                    {
+                    }
+
                 ModelState.AddModelError(nameof(model.Images), "Could not complete settings upload. An error occurred while uploading images");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
