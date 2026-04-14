@@ -37,10 +37,10 @@ public class UIControllerAntiforgeryTokenAttribute :
             {
                 await antiforgery.ValidateRequestAsync(context.HttpContext);
             }
-            catch (AntiforgeryValidationException)
+            catch (AntiforgeryValidationException ex)
             {
                 context.Result = new AntiforgeryValidationFailedResult();
-                AddErrorDetails(context.HttpContext);
+                AddErrorDetails(context.HttpContext, ex.Message);
             }
         }
     }
@@ -53,9 +53,10 @@ public class UIControllerAntiforgeryTokenAttribute :
         await next();
     }
 
-    private static void AddErrorDetails(HttpContext context)
+    private static void AddErrorDetails(HttpContext context, string? message = null)
     {
-        context.Items[UIErrorController.ErrorDetailsKey] = "CSRF token validation failed.";
+        context.Items[UIErrorController.ErrorDetailsKey] =
+            string.IsNullOrWhiteSpace(message) ? "CSRF token validation failed." : message;
     }
 
     private static bool ShouldValidate(AuthorizationFilterContext context)

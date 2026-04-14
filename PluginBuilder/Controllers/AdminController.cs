@@ -35,7 +35,8 @@ public class AdminController(
     ReferrerNavigationService referrerNavigation,
     PluginBuilderOptions pbOptions,
     IOutputCacheStore outputCacheStore,
-    PluginOwnershipService ownershipService)
+    PluginOwnershipService ownershipService,
+    ILogger<AdminController> logger)
     : Controller
 {
     // settings editor
@@ -296,8 +297,9 @@ public class AdminController(
                     {
                         await azureStorageClient.DeleteImageFileIfExists(blobName);
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        logger.LogError(ex, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
                     }
                 ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
@@ -312,8 +314,9 @@ public class AdminController(
                         {
                             await azureStorageClient.DeleteImageFileIfExists(blobName);
                         }
-                        catch
+                        catch (Exception ex)
                         {
+                            logger.LogError(ex, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
                         }
                     ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
                     await PopulatePluginEditViewModel(conn, pluginSlug, model);
@@ -337,8 +340,9 @@ public class AdminController(
                     {
                         await azureStorageClient.DeleteImageFileIfExists(blobName);
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        logger.LogError(ex, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
                     }
                 ModelState.AddModelError(nameof(model.Images), "Could not complete settings upload. An error occurred while uploading images");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);

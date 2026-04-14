@@ -28,7 +28,7 @@ public class UIControllerAntiforgeryTokenAttributeTests
         await filter.OnAuthorizationAsync(context);
 
         Assert.IsType<AntiforgeryValidationFailedResult>(context.Result);
-        Assert.Equal("CSRF token validation failed.", context.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
+        Assert.Equal("Invalid CSRF token.", context.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
     }
 
     [Fact]
