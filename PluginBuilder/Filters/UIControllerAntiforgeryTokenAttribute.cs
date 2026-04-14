@@ -55,8 +55,18 @@ public class UIControllerAntiforgeryTokenAttribute :
 
     private static void AddErrorDetails(HttpContext context, string? message = null)
     {
-        context.Items[UIErrorController.ErrorDetailsKey] =
-            string.IsNullOrWhiteSpace(message) ? "CSRF token validation failed." : message;
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            context.Items[UIErrorController.ErrorDetailsKey] = message;
+            return;
+        }
+
+        if (context.Items.TryGetValue(UIErrorController.ErrorDetailsKey, out var existing) &&
+            existing is string existingMessage &&
+            !string.IsNullOrWhiteSpace(existingMessage))
+            return;
+
+        context.Items[UIErrorController.ErrorDetailsKey] = "CSRF token validation failed.";
     }
 
     private static bool ShouldValidate(AuthorizationFilterContext context)

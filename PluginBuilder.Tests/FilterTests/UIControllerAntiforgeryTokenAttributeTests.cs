@@ -135,6 +135,32 @@ public class UIControllerAntiforgeryTokenAttributeTests
     }
 
     [Fact]
+    public async Task OnResultExecutionAsync_WithExistingDetailedError_PreservesExistingDetails()
+    {
+        var filter = new UIControllerAntiforgeryTokenAttribute();
+        var services = new ServiceCollection()
+            .AddSingleton<IAntiforgery, ThrowingAntiforgery>()
+            .BuildServiceProvider();
+
+        var authorizationContext = CreateContext(filter, typeof(DummyUiController), HttpMethods.Post, services);
+        await filter.OnAuthorizationAsync(authorizationContext);
+
+        var actionContext = new ActionContext(authorizationContext.HttpContext, new RouteData(), new ActionDescriptor());
+        List<IFilterMetadata> filters = new() { filter };
+        var result = authorizationContext.Result ?? new AntiforgeryValidationFailedResult();
+        var controller = new object();
+        var resultContext = new ResultExecutingContext(actionContext, filters, result, controller);
+
+        await filter.OnResultExecutionAsync(resultContext, () =>
+        {
+            var executedContext = new ResultExecutedContext(actionContext, filters, result, controller);
+            return Task.FromResult(executedContext);
+        });
+
+        Assert.Equal("Invalid CSRF token.", authorizationContext.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
+    }
+
+    [Fact]
     public void NostrVerifyNip07_HasIgnoreAntiforgeryTokenAttribute()
     {
         var method = typeof(AccountController).GetMethod(nameof(AccountController.NostrVerifyNip07));
