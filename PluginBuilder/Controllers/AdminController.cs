@@ -376,7 +376,19 @@ public class AdminController(
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
         if (!setPluginSettings)
+        {
+            foreach (var blobName in uploadedBlobNames)
+                try
+                {
+                    await azureStorageClient.DeleteImageFileIfExists(blobName);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
+                }
+
             return NotFound();
+        }
 
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = "Plugin settings updated successfully";
