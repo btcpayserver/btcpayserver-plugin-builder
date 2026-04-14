@@ -123,7 +123,15 @@ public class GitLabHostingProvider : IGitHostingProvider
             throw new BuildServiceException(
                 $"GitLab error downloading '{csprojs[0].Name}' (HTTP {(int)fileResp.StatusCode}).\nBody: {csprojBody}");
 
-        var doc = XDocument.Parse(csprojBody);
+        XDocument doc;
+        try
+        {
+            doc = XDocument.Parse(csprojBody);
+        }
+        catch (System.Xml.XmlException ex)
+        {
+            throw new BuildServiceException($"Failed to parse '{csprojs[0].Name}' as XML: {ex.Message}");
+        }
         var assemblyName = doc.Descendants("AssemblyName").FirstOrDefault()?.Value ?? Path.GetFileNameWithoutExtension(csprojs[0].Name);
 
         return assemblyName;

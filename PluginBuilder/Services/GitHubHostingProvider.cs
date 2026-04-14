@@ -98,7 +98,15 @@ public class GitHubHostingProvider : IGitHostingProvider
             throw new BuildServiceException(
                 $"GitHub error downloading '{csprojs[0].name}' from {downloadUrl} (HTTP {(int)csprojResp.StatusCode}).\nBody: {csprojBody}");
 
-        var doc = XDocument.Parse(csprojBody);
+        XDocument doc;
+        try
+        {
+            doc = XDocument.Parse(csprojBody);
+        }
+        catch (System.Xml.XmlException ex)
+        {
+            throw new BuildServiceException($"Failed to parse '{csprojs[0].name}' as XML: {ex.Message}");
+        }
         var assemblyName = doc.Descendants("AssemblyName").FirstOrDefault()?.Value ?? Path.GetFileNameWithoutExtension(csprojs[0].name);
 
         return assemblyName;
