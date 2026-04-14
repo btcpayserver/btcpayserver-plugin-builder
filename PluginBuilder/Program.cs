@@ -207,6 +207,18 @@ public class Program
                 client.DefaultRequestHeaders.Authorization =
                     new AuthenticationHeaderValue("Bearer", token);
         });
+        services.AddHttpClient(HttpClientNames.GitLab, client =>
+        {
+            client.BaseAddress = new Uri("https://gitlab.com/api/v4/");
+            client.DefaultRequestHeaders.Add("User-Agent", "PluginBuilder");
+
+            var token = configuration["GITLAB_TOKEN"];
+            if (!string.IsNullOrWhiteSpace(token))
+                client.DefaultRequestHeaders.Add("PRIVATE-TOKEN", token);
+        });
+        services.AddSingleton<IGitHostingProvider, GitHubHostingProvider>();
+        services.AddSingleton<IGitHostingProvider, GitLabHostingProvider>();
+        services.AddSingleton<GitHostingProviderFactory>();
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
         services.AddSingleton<FirstBuildEvent>();
