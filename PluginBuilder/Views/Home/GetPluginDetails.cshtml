@@ -11,6 +11,7 @@
     var desc = string.IsNullOrWhiteSpace(Model.Plugin.Description) ? "Plugin for BTCPay Server" : Model.Plugin.Description;
     ViewData["Title"] = Model.Plugin.PluginTitle + " - " + desc;
     var owner = Model.Plugin.GetOwnerName(GitHostingProviderFactory);
+    var ownerProfileUrl = Model.Plugin.GetOwnerProfileUrl(GitHostingProviderFactory);
     var dependencies = Model.Plugin.ManifestInfo?["Dependencies"] as JArray;
 
     var sourceUrl = Model.Plugin.GetSourceUrl(GitHostingProviderFactory);
@@ -60,7 +61,7 @@
                         @if (!string.IsNullOrWhiteSpace(owner))
                         {
                             <span class="d-inline-flex align-items-center flex-wrap">
-                                by<a href="@Model.OwnerGithubUrl" rel="noreferrer noopener" target="_blank" class="ms-1">@owner</a>
+                                by @if (!string.IsNullOrWhiteSpace(ownerProfileUrl)) {<a href="@ownerProfileUrl" rel="noreferrer noopener" target="_blank" class="ms-1">@owner</a>} else {<span class="ms-1">@owner</span>}
 
                                 <span class="d-inline-flex align-items-center gap-2 ms-2 mb-1">
                                     @if (!string.IsNullOrWhiteSpace(Model.OwnerGithubUrl))

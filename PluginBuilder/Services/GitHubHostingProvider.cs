@@ -167,7 +167,9 @@ public class GitHubHostingProvider : IGitHostingProvider
 
     private static (string owner, string repo) ExtractOwnerRepo(string repoUrl)
     {
-        repoUrl = repoUrl.Trim().Replace(".git", "");
+        repoUrl = repoUrl.Trim();
+        if (repoUrl.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+            repoUrl = repoUrl[..^4];
 
         if (!repoUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             repoUrl = "https://" + repoUrl.TrimStart('/');

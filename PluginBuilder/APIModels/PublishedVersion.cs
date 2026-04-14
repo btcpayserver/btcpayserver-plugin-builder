@@ -68,9 +68,9 @@ public class PublishedPlugin : PublishedVersion
         if (parsed is null)
             return null;
 
-        // Build profile URL from the repository host
+        // Build profile URL from the repository host, preserving port for self-hosted instances
         if (Uri.TryCreate(gitRepository, UriKind.Absolute, out var uri))
-            return $"{uri.Scheme}://{uri.Host}/{parsed.Value.Owner}";
+            return $"{uri.Scheme}://{uri.Authority}/{parsed.Value.Owner}";
         return null;
     }
 

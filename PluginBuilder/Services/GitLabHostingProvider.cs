@@ -3,7 +3,6 @@ using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
-using PluginBuilder.DataModels;
 
 namespace PluginBuilder.Services;
 
@@ -11,11 +10,6 @@ public class GitLabHostingProvider : IGitHostingProvider
 {
     private static readonly Regex HostRegex = new(
         @"^https?://(www\.)?gitlab\.com/", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    // GitLab supports nested groups: gitlab.com/group/subgroup/repo
-    private static readonly Regex RepoRegex = new(
-        @"^https://(www\.)?gitlab\.com/(.+?)(?:\.git)?/?$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IEnumerable<string> _additionalHosts;
@@ -72,7 +66,7 @@ public class GitLabHostingProvider : IGitHostingProvider
         if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
             path = path[..^4];
 
-        var baseUrl = $"{uri.Scheme}://{uri.Host}/{path}";
+        var baseUrl = $"{uri.Scheme}://{uri.Authority}/{path}";
         var link = $"{baseUrl}/-/tree/{commit}";
         if (!string.IsNullOrEmpty(pluginDir))
             link += $"/{pluginDir}";
@@ -81,7 +75,7 @@ public class GitLabHostingProvider : IGitHostingProvider
 
     public async Task<string> FetchIdentifierFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
     {
-        var client = _httpClientFactory.CreateClient(HttpClientNames.GitLab);
+        var client = CreateClientForRepo(repoUrl);
         var projectId = GetProjectId(repoUrl);
         var dir = string.IsNullOrWhiteSpace(pluginDir) ? "" : pluginDir.Trim('/');
 
@@ -141,7 +135,7 @@ public class GitLabHostingProvider : IGitHostingProvider
         if (repo == null)
             return new List<GitHubContributor>();
 
-        var client = _httpClientFactory.CreateClient(HttpClientNames.GitLab);
+        var client = CreateClientForRepo(repoUrl);
         var projectId = GetProjectId(repoUrl);
         var contributors = new Dictionary<string, GitHubContributor>(StringComparer.OrdinalIgnoreCase);
         int page = 1;
@@ -234,6 +228,17 @@ public class GitLabHostingProvider : IGitHostingProvider
                 // Best effort — skip if anything goes wrong
             }
         }
+    }
+
+    private HttpClient CreateClientForRepo(string repoUrl)
+    {
+        if (!Uri.TryCreate(repoUrl.Trim(), UriKind.Absolute, out var uri))
+            throw new BuildServiceException("Invalid repository URL");
+
+        var client = _httpClientFactory.CreateClient();
+        client.BaseAddress = new Uri($"{uri.Scheme}://{uri.Authority}/api/v4/");
+        client.DefaultRequestHeaders.Add("User-Agent", "PluginBuilder");
+        return client;
     }
 
     private static string GetProjectId(string repoUrl)

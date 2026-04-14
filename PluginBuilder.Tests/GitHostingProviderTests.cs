@@ -381,6 +381,58 @@ public class GitHostingProviderTests
         Assert.Null(Controllers.PluginController.GetUrl(buildInfo));
     }
 
+    // ── Self-hosted / port preservation ─────────────────────────────
+
+    [Fact]
+    public void PublishedPlugin_GetOwnerProfileUrl_PreservesPort()
+    {
+        var httpFactory = new TestHttpClientFactory();
+        var gitlabProvider = new GitLabHostingProvider(httpFactory, new[] { "gitlab.example.com" });
+        var factory = new GitHostingProviderFactory(new IGitHostingProvider[] { gitlabProvider });
+        var plugin = new PublishedPlugin
+        {
+            BuildInfo = JObject.FromObject(new
+            {
+                gitRepository = "https://gitlab.example.com:8443/group/repo"
+            })
+        };
+        Assert.Equal("https://gitlab.example.com:8443/group", plugin.GetOwnerProfileUrl(factory));
+    }
+
+    [Fact]
+    public void GitLab_GetSourceUrl_PreservesPort()
+    {
+        var provider = CreateGitLabProvider(additionalHosts: new[] { "gitlab.example.com" });
+        var url = provider.GetSourceUrl(
+            "https://gitlab.example.com:8443/group/repo",
+            "abc123",
+            "src/Plugin");
+        Assert.Equal("https://gitlab.example.com:8443/group/repo/-/tree/abc123/src/Plugin", url);
+    }
+
+    // ── GitHub ExtractOwnerRepo .git handling ─────────────────────────
+
+    [Fact]
+    public void GitHub_GetSourceUrl_RepoNameContainsDotGit()
+    {
+        var provider = CreateGitHubProvider();
+        var url = provider.GetSourceUrl(
+            "https://github.com/owner/my.gitrepo",
+            "abc123",
+            null);
+        Assert.Equal("https://github.com/owner/my.gitrepo/tree/abc123", url);
+    }
+
+    [Fact]
+    public void GitHub_ParseRepository_RepoNameContainsDotGit()
+    {
+        var provider = CreateGitHubProvider();
+        var result = provider.ParseRepository("https://github.com/owner/my.gitrepo");
+        Assert.NotNull(result);
+        Assert.Equal("owner", result.Value.Owner);
+        Assert.Equal("my.gitrepo", result.Value.RepoName);
+    }
+
     // ── GitLab avatar resolution ─────────────────────────────────────
 
     [Fact]
