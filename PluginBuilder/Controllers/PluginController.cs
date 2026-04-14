@@ -192,7 +192,6 @@ public class PluginController(
                     {
                         logger.LogError(cleanupEx, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
                     }
-
                 ModelState.AddModelError(nameof(settingViewModel.Images), "A maximum of 10 images is allowed per plugin.");
                 return View(settingViewModel);
             }
@@ -209,7 +208,6 @@ public class PluginController(
                         {
                             logger.LogError(cleanupEx, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
                         }
-
                     ModelState.AddModelError(nameof(settingViewModel.Images), $"Image upload validation failed: {errorMessage}");
                     return View(settingViewModel);
                 }
@@ -227,7 +225,6 @@ public class PluginController(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed to upload images for plugin {PluginSlug}", pluginSlug);
-
                 foreach (var blobName in uploadedBlobNames)
                     try
                     {
@@ -237,7 +234,6 @@ public class PluginController(
                     {
                         logger.LogError(cleanupEx, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
                     }
-
                 ModelState.AddModelError(nameof(settingViewModel.Images), "Could not complete settings upload. An error occurred while uploading images");
                 return View(settingViewModel);
             }

@@ -299,7 +299,6 @@ public class AdminController(
                     catch
                     {
                     }
-
                 ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
@@ -316,7 +315,6 @@ public class AdminController(
                         catch
                         {
                         }
-
                     ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
                     await PopulatePluginEditViewModel(conn, pluginSlug, model);
                     return View(model);
@@ -342,7 +340,6 @@ public class AdminController(
                     catch
                     {
                     }
-
                 ModelState.AddModelError(nameof(model.Images), "Could not complete settings upload. An error occurred while uploading images");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
