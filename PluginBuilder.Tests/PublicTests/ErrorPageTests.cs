@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using PluginBuilder.Controllers;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -171,5 +172,29 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Contains("404 - Page not found", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("399 -", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GenericErrorPage_WithErrorDetails_ShowsCsrfDetails()
+    {
+        await using var tester = Create();
+        tester.ConfigureApplication = app =>
+            app.MapPost("/throw/csrf", (HttpContext context) =>
+            {
+                context.Items[UIErrorController.ErrorDetailsKey] = "CSRF token validation failed.";
+                return Results.StatusCode(StatusCodes.Status400BadRequest);
+            });
+        await tester.Start();
+
+        var client = tester.CreateHttpClient();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+
+        using var content = new StringContent(string.Empty);
+        var response = await client.PostAsync("/throw/csrf", content);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("400 - Bad Request", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CSRF token validation failed.", body, StringComparison.OrdinalIgnoreCase);
     }
 }
