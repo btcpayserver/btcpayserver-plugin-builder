@@ -49,16 +49,24 @@
     <div class="row mb-4">
         <div class="col-12">
             <div class="rounded p-4 position-relative" style="background: linear-gradient(135deg, var(--btcpay-body-bg) 0%, var(--btcpay-body-bg-medium) 100%);">
-                <div class="d-flex align-items-center">
+                <div class="plugin-hero d-flex flex-column flex-sm-row align-items-start align-items-sm-center gap-3">
                     <div class="me-2">
                         <partial name="_PluginLogo" model="Model.Plugin" />
                     </div>
-                    <div>
-                        <h1 class="display-6 mb-1">@Model.Plugin.PluginTitle</h1>
+                    <div class="plugin-hero-title-wrap flex-grow-1">
+                        <h1 class="plugin-hero-title display-6 mb-1">@Model.Plugin.PluginTitle</h1>
                         @if (!string.IsNullOrWhiteSpace(owner))
                         {
                             <span class="d-inline-flex align-items-center flex-wrap">
-                                by<a href="@Model.OwnerGithubUrl" rel="noreferrer noopener" target="_blank" class="ms-1">@owner</a>
+                                by
+                                @if (!string.IsNullOrWhiteSpace(Model.OwnerGithubUrl))
+                                {
+                                    <a href="@Model.OwnerGithubUrl" rel="noreferrer noopener" target="_blank" class="ms-1">@owner</a>
+                                }
+                                else
+                                {
+                                    <span class="ms-1">@owner</span>
+                                }
 
                                 <span class="d-inline-flex align-items-center gap-2 ms-2 mb-1">
                                     @if (!string.IsNullOrWhiteSpace(Model.OwnerGithubUrl))
@@ -90,12 +98,6 @@
                             </span>
                         }
                     </div>
-                    <a asp-action="Download" asp-controller="Api"
-                       asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                       asp-route-version="@Model.Plugin.Version"
-                       class="btn btn-primary ms-auto"
-                       target="_blank"
-                       rel="noopener noreferrer">Download</a>
                 </div>
             </div>
         </div>
@@ -316,7 +318,7 @@
                                     var upClass = $"{helpfulBaseBtn} vote-up {(voted == true ? "text-success" : "text-secondary")}";
                                     var downClass = $"{helpfulBaseBtn} vote-down {(voted == false ? "text-danger" : "text-secondary")}";
 
-                                    <div class="test-review-card border rounded p-3 mb-3">
+                                     <div class="test-review-card border rounded p-3 mb-3">
                                         <div class="d-flex align-items-start">
                                             <div class="flex-grow-1">
 
@@ -489,24 +491,6 @@
                                                            class="visually-hidden" />
                                                 </div>
                                             </div>
-
-                                            <div class="col-auto">
-                                                <div class="d-flex align-items-center overflow-visible">
-                                                    <label class="form-label me-2 mb-0">Version</label>
-                                                    <div class="overflow-visible position-relative">
-                                                        <select name="PluginVersion" class="form-select form-select-sm w-auto">
-                                                            <option value="">N/A</option>
-                                                            @if (Model.PluginVersions != null)
-                                                            {
-                                                                foreach (var version in Model.PluginVersions)
-                                                                {
-                                                                    <option value="@version">@version</option>
-                                                                }
-                                                            }
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            </div>
                                         </div>
                                         <partial name="_MarkdownToolbarTextArea" model="@("Body")" />
                                         <button class="btn btn-primary mt-3">Submit</button>
@@ -528,11 +512,36 @@
                     <div class="card plugin-details-metadata">
                         <div class="card-body">
                             <div class="row mb-3">
-                                <div class="col-6">
+                                <div class="col-6 d-flex align-items-center">
                                     <strong>Version</strong>
                                 </div>
                                 <div class="col-6 text-end">
-                                    @Model.Plugin.Version
+                                    <input type="hidden" id="version-selector" value="@Model.Plugin.Version" />
+                                    <div id="PluginVersionSelectorDropdown" class="dropdown d-inline-block w-100 plugin-version-dropdown">
+                                        <button id="PluginVersionSelectorToggle"
+                                                class="btn btn-secondary dropdown-toggle rounded px-3 w-100 fw-semibold d-flex align-items-center plugin-version-toggle"
+                                                type="button"
+                                                data-bs-toggle="dropdown"
+                                                aria-expanded="false">
+                                            <span id="PluginVersionSelectorLabel">@Model.Plugin.Version</span>
+                                            <vc:icon symbol="caret-down" />
+                                        </button>
+                                        <ul id="PluginVersionSelectorMenu" class="dropdown-menu dropdown-menu-end w-100 overflow-auto" style="max-height: min(16rem, calc(100vh - var(--header-height)));" aria-labelledby="PluginVersionSelectorToggle">
+                                            @if (Model.PluginVersions != null)
+                                            {
+                                                foreach (var version in Model.PluginVersions)
+                                                {
+                                                    <li>
+                                                        <button type="button"
+                                                                class="dropdown-item plugin-version-option@(version == Model.Plugin.Version ? " active" : "")"
+                                                                data-version="@version">
+                                                            @version
+                                                        </button>
+                                                    </li>
+                                                }
+                                            }
+                                        </ul>
+                                    </div>
                                 </div>
                             </div>
 
@@ -541,54 +550,42 @@
                                     <strong>Published</strong>
                                 </div>
                                 <div class="col-6 text-end">
-                                    @(DateTimeOffset.TryParse(Model.Plugin.BuildInfo?["buildDate"]?.ToString(), out var parsedDate) ? parsedDate.ToString("MMM dd, yyyy") : "")
+                                    <span id="plugin-published-date">@(DateTimeOffset.TryParse(Model.Plugin.BuildInfo?["buildDate"]?.ToString(), out var parsedDate) ? parsedDate.ToString("MMM dd, yyyy") : "")</span>
                                 </div>
                             </div>
-                            @if (!string.IsNullOrEmpty(sourceUrl))
-                            {
-                                <div class="row mb-3">
-                                    <div class="col-6">
-                                        <strong>Repository</strong>
-                                    </div>
-                                    <div class="col-6 text-end">
-                                        <a href="@sourceUrl" target="_blank" rel="noopener noreferrer">View Source</a>
-                                    </div>
+                            <div id="plugin-repository-row" class="row mb-3@((string.IsNullOrEmpty(sourceUrl) ? " d-none" : ""))">
+                                <div class="col-6">
+                                    <strong>Repository</strong>
                                 </div>
-                            }
+                                <div class="col-6 text-end">
+                                    <a id="plugin-source-url" href="@sourceUrl" target="_blank" rel="noopener noreferrer">View Source</a>
+                                </div>
+                            </div>
 
-                            @if (!string.IsNullOrEmpty(Model.Plugin.Documentation))
-                            {
-                                <div class="row mb-3">
-                                    <div class="col-6">
-                                        <strong>Documentation</strong>
-                                    </div>
-                                    <div class="col-6 text-end">
-                                        <a href="@Model.Plugin.Documentation" target="_blank" rel="noopener noreferrer">View Documentation</a>
-                                    </div>
+                            <div id="plugin-documentation-row" class="row mb-3@((string.IsNullOrEmpty(Model.Plugin.Documentation) ? " d-none" : ""))">
+                                <div class="col-6">
+                                    <strong>Documentation</strong>
                                 </div>
-                            }
-							@if (!string.IsNullOrEmpty(Model.Plugin.BTCPayMinVersion))
-							{
-								<div class="row mb-3">
-									<div class="col-6">
-										<strong>Min. BTCPay Version</strong>
-									</div>
-									<div class="col-6 text-end">
-										@Model.Plugin.BTCPayMinVersion
-									</div>
-								</div>
-							}
-							@if (!string.IsNullOrEmpty(Model.Plugin.BTCPayMaxVersion))
-							{
-								<div class="row mb-3">
-									<div class="col-6">
-										<strong>Max. BTCPay Version</strong>
-									</div>
-									<div class="col-6 text-end">
-										@Model.Plugin.BTCPayMaxVersion
-									</div>
-								</div>
-							}
+                                <div class="col-6 text-end">
+                                    <a id="plugin-documentation-url" href="@Model.Plugin.Documentation" target="_blank" rel="noopener noreferrer">View Documentation</a>
+                                </div>
+                            </div>
+                            <div id="plugin-min-btcpay-row" class="row mb-3@((string.IsNullOrEmpty(Model.Plugin.BTCPayMinVersion) ? " d-none" : ""))">
+                                <div class="col-6">
+                                    <strong>Min. BTCPay Version</strong>
+                                </div>
+                                <div class="col-6 text-end">
+                                    <span id="plugin-min-btcpay-version">@Model.Plugin.BTCPayMinVersion</span>
+                                </div>
+                            </div>
+                            <div id="plugin-max-btcpay-row" class="row mb-3@((string.IsNullOrEmpty(Model.Plugin.BTCPayMaxVersion) ? " d-none" : ""))">
+                                <div class="col-6">
+                                    <strong>Max. BTCPay Version</strong>
+                                </div>
+                                <div class="col-6 text-end">
+                                    <span id="plugin-max-btcpay-version">@Model.Plugin.BTCPayMaxVersion</span>
+                                </div>
+                            </div>
 
                             @if (dependencies != null && dependencies.Count > 0)
                             {
@@ -621,21 +618,29 @@
                                 </div>
                                 <div class="col-6 text-end">
 									<span class="d-inline-flex align-items-center gap-1 lh-1">
-										<span class="fw-semibold">
+                                        <span id="plugin-rating-average" class="fw-semibold">
 											@((Model.Plugin.RatingSummary?.Average ?? 0m).ToString("0.0"))
 										</span>
 										<span class="text-warning">
 											<vc:icon symbol="star-fill" />
 										</span>
-										<span class="text-muted small">(@(Model.Plugin.RatingSummary?.TotalReviews ?? 0))</span>
+                                        <span id="plugin-rating-count" class="text-muted small">(@(Model.Plugin.RatingSummary?.TotalReviews ?? 0))</span>
 									</span>
                                 </div>
                             </div>
+
+                            <a id="download-btn" asp-action="Download" asp-controller="Api"
+                               asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                               asp-route-version="@Model.Plugin.Version"
+                               class="btn btn-primary w-100"
+                               target="_blank"
+                               rel="noopener noreferrer">Download</a>
                         </div>
                     </div>
 
-					@if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())
-					{
+                        @if (Model.Contributors != null && Model.Contributors.Any())
+                        {
+                            var contributors = Model.Contributors;
 						<div class="card mt-4">
 							<div class="card-body">
 								<h4>Contributors</h4>
@@ -765,11 +770,167 @@
             render(btn.dataset.value);
         });
 
-        group.addEventListener('mouseleave', () => {
-            render(input.value);
+        group.addEventListener('mouseleave', () => render(input.value));
+        render(input.value);
+    })();
+
+    // version selector and download url update
+    (() => {
+        const selector = document.getElementById('version-selector');
+        const downloadBtn = document.getElementById('download-btn');
+        const selectorLabel = document.getElementById('PluginVersionSelectorLabel');
+        const selectorOptions = document.querySelectorAll('.plugin-version-option');
+        const publishedDate = document.getElementById('plugin-published-date');
+        const repositoryRow = document.getElementById('plugin-repository-row');
+        const sourceUrlLink = document.getElementById('plugin-source-url');
+        const documentationRow = document.getElementById('plugin-documentation-row');
+        const documentationUrlLink = document.getElementById('plugin-documentation-url');
+        const minBtcPayRow = document.getElementById('plugin-min-btcpay-row');
+        const minBtcPayValue = document.getElementById('plugin-min-btcpay-version');
+        const maxBtcPayRow = document.getElementById('plugin-max-btcpay-row');
+        const maxBtcPayValue = document.getElementById('plugin-max-btcpay-version');
+
+        if (!selector) return;
+
+        const pluginSlug = '@Html.Raw(Model.Plugin.ProjectSlug?.Replace("'", "\\'"))';
+        const baseVersionUrl = '/api/v1/plugins/' + encodeURIComponent(pluginSlug) + '/versions/';
+        const versionDetailsCache = new Map();
+
+        const formatDisplayDate = (dateValue) => {
+            if (!dateValue)
+                return '';
+
+            const parsed = new Date(dateValue);
+            if (Number.isNaN(parsed.getTime()))
+                return '';
+
+            return parsed.toLocaleDateString('en-US', {
+                month: 'short',
+                day: '2-digit',
+                year: 'numeric'
+            });
+        };
+
+        const buildSourceUrl = (buildInfo) => {
+            if (!buildInfo)
+                return null;
+
+            const gitRepository = (buildInfo.gitRepository || '').trim();
+            const gitCommit = (buildInfo.gitCommit || '').trim();
+            const pluginDir = (buildInfo.pluginDir || '').trim();
+            if (!gitRepository || !gitCommit)
+                return null;
+
+            try {
+                const repoUrl = new URL(gitRepository);
+                if (repoUrl.hostname.toLowerCase() !== 'github.com')
+                    return null;
+
+                const parts = repoUrl.pathname.split('/').filter(Boolean);
+                if (parts.length < 2)
+                    return null;
+
+                const owner = parts[0];
+                const repo = parts[1].replace(/\.git$/i, '');
+                const encodedDir = pluginDir
+                    .split('/')
+                    .filter(Boolean)
+                    .map(encodeURIComponent)
+                    .join('/');
+
+                const pathSuffix = encodedDir ? `/${encodedDir}` : '';
+                return `https://github.com/${owner}/${repo}/tree/${encodeURIComponent(gitCommit)}${pathSuffix}`;
+            }
+            catch {
+                return null;
+            }
+        };
+
+        const applyVersionMetadata = (versionData) => {
+            if (publishedDate)
+                publishedDate.textContent = formatDisplayDate(versionData?.buildInfo?.buildDate);
+
+            const docUrl = (versionData?.documentation || '').trim();
+            if (documentationRow && documentationUrlLink) {
+                if (docUrl) {
+                    documentationUrlLink.href = docUrl;
+                    documentationRow.classList.remove('d-none');
+                } else {
+                    documentationRow.classList.add('d-none');
+                }
+            }
+
+            if (versionData?.btcPayMinVersion != null && minBtcPayRow && minBtcPayValue) {
+                const minVersion = versionData.btcPayMinVersion.trim();
+                minBtcPayValue.textContent = minVersion;
+                minBtcPayRow.classList.toggle('d-none', !minVersion);
+            }
+
+            if (versionData?.btcPayMaxVersion != null && maxBtcPayRow && maxBtcPayValue) {
+                const maxVersion = versionData.btcPayMaxVersion.trim();
+                maxBtcPayValue.textContent = maxVersion;
+                maxBtcPayRow.classList.toggle('d-none', !maxVersion);
+            }
+
+            if (repositoryRow && sourceUrlLink) {
+                const nextSourceUrl = buildSourceUrl(versionData?.buildInfo);
+                if (nextSourceUrl) {
+                    sourceUrlLink.href = nextSourceUrl;
+                    repositoryRow.classList.remove('d-none');
+                }
+                else {
+                    repositoryRow.classList.add('d-none');
+                }
+            }
+        };
+
+        const fetchVersionMetadata = async (selectedVersion) => {
+            if (!selectedVersion)
+                return null;
+
+            if (versionDetailsCache.has(selectedVersion))
+                return versionDetailsCache.get(selectedVersion);
+
+            try {
+                const response = await fetch(baseVersionUrl + encodeURIComponent(selectedVersion), { headers: { 'Accept': 'application/json' } });
+                if (!response.ok)
+                    return null;
+
+                const data = await response.json();
+                versionDetailsCache.set(selectedVersion, data);
+                return data;
+            }
+            catch {
+                return null;
+            }
+        };
+
+        const setSelectedVersion = async (selectedVersion) => {
+            selector.value = selectedVersion;
+
+            if (selectorLabel)
+                selectorLabel.textContent = selectedVersion;
+
+            selectorOptions.forEach(option => {
+                option.classList.toggle('active', option.dataset.version === selectedVersion);
+            });
+
+            if (downloadBtn)
+                downloadBtn.href = baseVersionUrl + encodeURIComponent(selectedVersion) + '/download';
+
+            const versionData = await fetchVersionMetadata(selectedVersion);
+            if (versionData)
+                applyVersionMetadata(versionData);
+        };
+
+        selectorOptions.forEach(option => {
+            option.addEventListener('click', function () {
+                const selectedVersion = this.dataset.version;
+                if (!selectedVersion) return;
+                void setSelectedVersion(selectedVersion);
+            });
         });
 
-        render(input.value);
     })();
 </script>
 
@@ -788,5 +949,34 @@
 
     .btn.vote-down.text-danger:hover {
         color: var(--btcpay-neutral-600, #6c757d) !important;
+    }
+
+    #PluginVersionSelectorToggle::after {
+        content: none;
+    }
+
+    #PluginVersionSelectorToggle > .icon.icon-caret-down {
+        color: currentColor;
+    }
+
+    .plugin-hero-title-wrap {
+        min-width: 0;
+    }
+
+    .plugin-hero-title {
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+    }
+
+    @@media (max-width: 575.98px) {
+        .plugin-hero {
+            gap: 0.75rem;
+        }
+
+        .plugin-hero-title {
+            font-size: clamp(1.8rem, 7.5vw, 2.3rem);
+            margin-bottom: 0.25rem;
+        }
+
     }
 </style>

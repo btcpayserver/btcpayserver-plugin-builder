@@ -362,11 +362,11 @@ public class HomeController(
                            b.manifest_info,
                            b.build_info,
                            p.visibility,
-                           (SELECT b2.created_at
-                              FROM builds b2
-                             WHERE b2.plugin_slug = v.plugin_slug
-                             ORDER BY b2.id ASC
-                             LIMIT 1) AS created_at,
+                                                     (SELECT b2.created_at
+                                                            FROM builds b2
+                                                         WHERE b2.plugin_slug = v.plugin_slug
+                                                         ORDER BY b2.id ASC
+                                                         LIMIT 1) AS created_at,
                            (
                              SELECT array_agg(array_to_string(ver, '.') ORDER BY ver DESC)
                              FROM versions
@@ -415,12 +415,12 @@ public class HomeController(
                           r.created_at AS ""CreatedAt"",
                           COALESCE(hv.up_count, 0)   AS ""UpCount"",
                           COALESCE(hv.down_count, 0) AS ""DownCount"",
-                          ( @currentUserId IS NOT NULL AND u.user_id = @currentUserId ) AS ""IsReviewOwner"",
+                                                    ( @currentUserId IS NOT NULL AND u.user_id = @currentUserId ) AS ""IsReviewOwner"",
                           CASE
-                            WHEN @currentUserId IS NULL THEN NULL
-                            WHEN r.helpful_voters ? @currentUserId
-                              THEN (r.helpful_voters ->> @currentUserId)::boolean
-                            ELSE NULL
+                                                        WHEN @currentUserId IS NULL THEN NULL
+                                                        WHEN r.helpful_voters ? @currentUserId
+                                                            THEN (r.helpful_voters ->> @currentUserId)::boolean
+                                                        ELSE NULL
                           END AS ""UserVoteHelpful""
                         FROM plugin_reviews r
                         LEFT JOIN plugin_reviewers u ON u.id = r.reviewer_id
