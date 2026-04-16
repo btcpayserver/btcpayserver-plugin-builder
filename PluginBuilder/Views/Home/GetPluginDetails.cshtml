@@ -2,23 +2,17 @@
 @using PluginBuilder.APIModels
 @using PluginBuilder.Controllers
 @using PluginBuilder.DataModels
-@using PluginBuilder.Services
-@using System.Text.RegularExpressions
-@inject GitHostingProviderFactory GitHostingProviderFactory
 @model PluginDetailsViewModel
 @{
     Layout = "_LayoutPublicModal";
     var desc = string.IsNullOrWhiteSpace(Model.Plugin.Description) ? "Plugin for BTCPay Server" : Model.Plugin.Description;
     ViewData["Title"] = Model.Plugin.PluginTitle + " - " + desc;
-    var owner = Model.Plugin.GetOwnerName(GitHostingProviderFactory);
-    var ownerProfileUrl = Model.Plugin.GetOwnerProfileUrl(GitHostingProviderFactory);
+    var owner = Model.Plugin.GetGithubRepository()?.Owner;
     var dependencies = Model.Plugin.ManifestInfo?["Dependencies"] as JArray;
-
-    var sourceUrl = Model.Plugin.GetSourceUrl(GitHostingProviderFactory);
-    var pluginUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = Model.Plugin.ProjectSlug },
-        Context.Request.Scheme, Context.Request.Host.ToString());
-
+    var sourceUrl = Model.Plugin.GetGithubRepository()?.GetSourceUrl(Model.Plugin.BuildInfo?["gitCommit"]?.ToString(), Model.Plugin.BuildInfo?["pluginDir"]?.ToString());
+    var pluginUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = Model.Plugin.ProjectSlug }, Context.Request.Scheme, Context.Request.Host.ToString());
     var currentRating = Model.RatingFilter;
+    DateTimeOffset.TryParse(Model.Plugin.BuildInfo?["buildDate"]?.ToString(), out var buildDate);
 }
 
 @section Meta {
@@ -35,7 +29,6 @@
     <meta name="twitter:title" content="@Model.Plugin.PluginTitle" />
     <meta name="twitter:description" content="@desc" />
     <meta name="twitter:image" content="@Model.Plugin.PluginLogo" />
-
     <link rel="canonical" href="@pluginUrl" />
 }
 
@@ -51,7 +44,7 @@
 <div class="container">
     <div class="row mb-4">
         <div class="col-12">
-            <div class="rounded p-4 position-relative" style="background: linear-gradient(135deg, var(--btcpay-body-bg) 0%, var(--btcpay-body-bg-medium) 100%);">
+            <div class="rounded p-4" style="background: linear-gradient(135deg, var(--btcpay-body-bg) 0%, var(--btcpay-body-bg-medium) 100%);">
                 <div class="d-flex align-items-center">
                     <div class="me-2">
                         <partial name="_PluginLogo" model="Model.Plugin" />
@@ -61,698 +54,464 @@
                         @if (!string.IsNullOrWhiteSpace(owner))
                         {
                             <span class="d-inline-flex align-items-center flex-wrap">
-                                by @if (!string.IsNullOrWhiteSpace(ownerProfileUrl)) {<a href="@ownerProfileUrl" rel="noreferrer noopener" target="_blank" class="ms-1">@owner</a>} else {<span class="ms-1">@owner</span>}
+                                by<a href="@Model.OwnerGithubUrl" rel="noreferrer noopener" target="_blank" class="ms-1">@owner</a>
 
                                 <span class="d-inline-flex align-items-center gap-2 ms-2 mb-1">
                                     @if (!string.IsNullOrWhiteSpace(Model.OwnerGithubUrl))
                                     {
-                                        <a id="github-verified-icon" href="@Model.OwnerGithubUrl"
-                                           rel="noreferrer noopener"
-                                           target="_blank"
-                                           class="d-inline-flex align-items-center text-reset"
-                                           aria-label="Github profile">
-                                            <span class="icon">
-                                                <vc:icon symbol="github" />
-                                            </span>
+                                        <a id="github-verified-icon" href="@Model.OwnerGithubUrl" rel="noreferrer noopener" target="_blank" class="d-inline-flex align-items-center text-reset" aria-label="Github profile">
+                                            <span class="icon"><vc:icon symbol="github" /></span>
                                         </a>
                                     }
-
                                     @if (!string.IsNullOrWhiteSpace(Model.OwnerNostrUrl))
                                     {
-                                        <a id="nostr-verified-icon" href="@Model.OwnerNostrUrl"
-                                           rel="noreferrer noopener"
-                                           target="_blank"
-                                           class="d-inline-flex align-items-center text-reset"
-                                           aria-label="Nostr profile">
-                                            <span class="icon">
-                                                <vc:icon symbol="nostr" />
-                                            </span>
+                                        <a id="nostr-verified-icon" href="@Model.OwnerNostrUrl" rel="noreferrer noopener" target="_blank" class="d-inline-flex align-items-center text-reset" aria-label="Nostr profile">
+                                            <span class="icon"><vc:icon symbol="nostr" /></span>
                                         </a>
                                     }
                                 </span>
                             </span>
                         }
                     </div>
-                    <a asp-action="Download" asp-controller="Api"
-                       asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                       asp-route-version="@Model.Plugin.Version"
-                       class="btn btn-primary ms-auto"
-                       target="_blank"
-                       rel="noopener noreferrer">Download</a>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="tab-content" id="pluginTabsContent">
-        <div class="tab-pane fade show active" id="details" role="tabpanel">
-            <div class="row">
-                <div class="col-12 col-lg-8">
-                    <div class="card">
-                        <div class="card-body">
-                            <h4>Description</h4>
-                            <p>@Model.Plugin.Description</p>
-                        </div>
-                    </div>
+    <div class="row">
+        <div class="col-12 col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h4>Description</h4>
+                    <p>@Model.Plugin.Description</p>
+                </div>
+            </div>
 
-                    @{
-                        var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
-                        var videoThumbUrl = Model.Plugin.VideoUrl.GetVideoThumbnailUrl();
-                        var screenshots = Model.Plugin.Images?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList() ?? new List<string>();
-                        var mediaItems = new List<(bool IsVideo, string MediaUrl, string? ThumbUrl, string SlideAlt, string ThumbAriaLabel, string ThumbAlt)>();
+            @{
+                var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
+                var videoThumbUrl = Model.Plugin.VideoUrl.GetVideoThumbnailUrl();
+                var screenshots = Model.Plugin.Images?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList() ?? new List<string>();
+                var mediaItems = new List<(bool IsVideo, string MediaUrl, string? ThumbUrl, string Alt, string ThumbLabel)>();
 
-                        if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
-                        {
-                            mediaItems.Add((
-                                true,
-                                videoEmbedUrl,
-                                videoThumbUrl,
-                                "Plugin video",
-                                "Show video",
-                                "Video thumbnail"
-                            ));
-                        }
+                if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
+                    mediaItems.Add((true, videoEmbedUrl, videoThumbUrl, "Plugin video", "Show video"));
 
-                        for (var i = 0; i < screenshots.Count; i++)
-                        {
-                            var screenshot = screenshots[i];
-                            mediaItems.Add((
-                                false,
-                                screenshot,
-                                screenshot,
-                                $"{Model.Plugin.PluginTitle} screenshot {i + 1}",
-                                $"Show screenshot {i + 1}",
-                                $"Screenshot thumbnail {i + 1}"
-                            ));
-                        }
-
-                        var hasMedia = mediaItems.Count > 0;
-                    }
-                    @if (hasMedia)
-                    {
-                        <div class="card mt-4">
-                            <div class="card-body">
-                                <h4 class="mb-3">Media</h4>
-                                <div id="plugin-media-carousel" class="plugin-media-carousel" tabindex="0" aria-label="Plugin media carousel">
-                                    <div class="plugin-media-stage ratio ratio-16x9 rounded overflow-hidden">
-                                        <button type="button" class="plugin-media-nav plugin-media-nav-prev" data-media-nav="prev" aria-label="Previous media">
-                                            <i class="fa fa-chevron-left" aria-hidden="true"></i>
-                                        </button>
-                                        <button type="button" class="plugin-media-nav plugin-media-nav-next" data-media-nav="next" aria-label="Next media">
-                                            <i class="fa fa-chevron-right" aria-hidden="true"></i>
-                                        </button>
-
-                                        @for (var i = 0; i < mediaItems.Count; i++)
-                                        {
-                                            var mediaItem = mediaItems[i];
-                                            <div class="plugin-media-slide @(i == 0 ? "is-active" : "d-none")" data-media-slide data-media-index="@i" aria-hidden="@(i == 0 ? "false" : "true")">
-                                                @if (mediaItem.IsVideo)
-                                                {
-                                                    <iframe data-video-embed data-video-src="@mediaItem.MediaUrl"
-                                                            title="Plugin video"
-                                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                            allowfullscreen
-                                                            loading="lazy"
-                                                            style="border: none;">
-                                                    </iframe>
-                                                }
-                                                else
-                                                {
-                                                    <img src="@mediaItem.MediaUrl" alt="@mediaItem.SlideAlt" loading="lazy" class="plugin-media-image" />
-                                                }
-                                            </div>
-                                        }
-                                    </div>
-
-                                    <div class="plugin-media-thumbs" data-media-thumbs>
-                                        @for (var i = 0; i < mediaItems.Count; i++)
-                                        {
-                                            var mediaItem = mediaItems[i];
-                                            <button type="button" class="plugin-media-thumb @(i == 0 ? "is-active" : "")" data-media-thumb data-media-index="@i" aria-label="@mediaItem.ThumbAriaLabel" aria-current="@(i == 0 ? "true" : "false")">
-                                                @if (mediaItem.IsVideo)
-                                                {
-                                                    @if (!string.IsNullOrWhiteSpace(mediaItem.ThumbUrl))
-                                                    {
-                                                        <span class="plugin-media-video-thumb-wrap">
-                                                            <img src="@mediaItem.ThumbUrl" alt="@mediaItem.ThumbAlt" loading="lazy" class="plugin-media-video-thumb-image" />
-                                                            <span class="plugin-media-video-play">
-                                                                <i class="fa fa-play" aria-hidden="true"></i>
-                                                            </span>
-                                                        </span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="plugin-media-video-thumb">
-                                                            <i class="fa fa-play" aria-hidden="true"></i>
-                                                            Video
-                                                        </span>
-                                                    }
-                                                }
-                                                else
-                                                {
-                                                    <img src="@mediaItem.ThumbUrl" alt="@mediaItem.ThumbAlt" loading="lazy" />
-                                                }
-                                            </button>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    }
-
-                    <div class="card mt-4" id="reviews">
-                        <div class="card-body">
-                            <div class="d-flex align-items-center mb-3">
-                                <h4 class="mb-0">Reviews</h4>
-                                <a class="btn btn-primary btn-sm ms-auto" href="#write-review">
-                                    Write a review
-                                </a>
-                            </div>
-
-                            <div class="mb-3">
-                                @for (var star = 5; star >= 1; star--)
+                for (var i = 0; i < screenshots.Count; i++)
+                    mediaItems.Add((false, screenshots[i], screenshots[i], $"{Model.Plugin.PluginTitle} screenshot {i + 1}", $"Show screenshot {i + 1}"));
+            }
+            @if (mediaItems.Any())
+            {
+                <div class="card mt-4">
+                    <div class="card-body">
+                        <h4 class="mb-3">Media</h4>
+                        <div id="plugin-media-carousel" class="plugin-media-carousel" tabindex="0" aria-label="Plugin media carousel">
+                            <div class="plugin-media-stage ratio ratio-16x9 rounded overflow-hidden">
+                                <button type="button" class="plugin-media-nav plugin-media-nav-prev" data-media-nav="prev" aria-label="Previous media">
+                                    <i class="fa fa-chevron-left" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="plugin-media-nav plugin-media-nav-next" data-media-nav="next" aria-label="Next media">
+                                    <i class="fa fa-chevron-right" aria-hidden="true"></i>
+                                </button>
+                                @for (var i = 0; i < mediaItems.Count; i++)
                                 {
-                                    var count = Model.Plugin.RatingSummary?.StarCounts?.ContainsKey(star) == true ? Model.Plugin.RatingSummary.StarCounts[star] : 0;
-                                    var pct = Model.Plugin.RatingSummary?.StarPct?.ContainsKey(star) == true ? Model.Plugin.RatingSummary.StarPct[star] : 0;
-                                    var isActive = currentRating == star;
-                                    var active = isActive ? "bg-light border rounded px-2" : "";
-
-                                    <a class="text-decoration-none text-reset d-block"
-                                       asp-action="GetPluginDetails"
-                                       asp-controller="Home"
-                                       asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                                       asp-route-sort="@Model.Sort"
-                                       asp-route-skip="0"
-                                       asp-route-count="@Model.Count"
-                                       asp-route-RatingFilter="@(isActive ? null : star)"
-                                       asp-fragment="reviews">
-                                        <div class="d-flex align-items-center gap-2 mb-1 py-1 hover-bg @active">
-                                            <span class="me-2">@star★</span>
-                                            <div class="progress flex-grow-1" style="height:8px;">
-                                                <div class="progress-bar" role="progressbar" style="width:@pct%"></div>
-                                            </div>
-                                            <span class="ms-2 small text-muted">@count</span>
-                                        </div>
-                                    </a>
+                                    var m = mediaItems[i];
+                                    <div class="plugin-media-slide @(i == 0 ? "is-active" : "d-none")" data-media-slide aria-hidden="@(i == 0 ? "false" : "true")">
+                                        @if (m.IsVideo)
+                                        {
+                                            <iframe data-video-embed data-video-src="@m.MediaUrl"
+                                                    title="Plugin video"
+                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                    allowfullscreen loading="lazy" style="border: none;">
+                                            </iframe>
+                                        }
+                                        else
+                                        {
+                                            <img src="@m.MediaUrl" alt="@m.Alt" loading="lazy" class="plugin-media-image" />
+                                        }
+                                    </div>
                                 }
                             </div>
 
-                            @if (currentRating is not null)
-                            {
-                                <div class="mb-2">
-                                    <span id="rating-filter-badge" class="badge bg-secondary">
-                                        Filtering by @currentRating★
-                                    </span>
-                                </div>
-                            }
-
-                            <div class="d-flex justify-content-end gap-2 mb-3">
-                                <div class="dropdown">
-                                    <button id="ReviewsSortToggle"
-                                            class="btn btn-secondary btn-sm dropdown-toggle"
-                                            type="button"
-                                            data-bs-toggle="dropdown"
-                                            aria-expanded="false">
-                                        @(Model.Sort == "helpful" ? "Most helpful" : "Newest")
-                                    </button>
-                                    <div class="dropdown-menu dropdown-menu-end" aria-labelledby="ReviewsSortToggle">
-                                        <a class="dropdown-item @(Model.Sort == "newest" ? "active" : null)"
-                                           asp-action="GetPluginDetails"
-                                           asp-controller="Home"
-                                           asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                                           asp-route-sort="newest"
-                                           asp-route-skip="0"
-                                           asp-route-count="@Model.Count"
-                                           asp-route-RatingFilter="@(Model.RatingFilter)"
-                                           asp-fragment="reviews">
-                                            Newest
-                                        </a>
-                                        <a class="dropdown-item @(Model.Sort == "helpful" ? "active" : null)"
-                                           asp-action="GetPluginDetails"
-                                           asp-controller="Home"
-                                           asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                                           asp-route-sort="helpful"
-                                           asp-route-skip="0"
-                                           asp-route-count="@Model.Count"
-                                           asp-route-RatingFilter="@(Model.RatingFilter)"
-                                           asp-fragment="reviews">
-                                            Most helpful
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-
-                            @if (!Model.Reviews.Any())
-                            {
-                                <div class="text-muted">
-                                    No reviews yet.
-                                    <a class="text-success fw-semibold text-decoration-none hover-underline" href="#write-review">Be the first to write one</a>.
-                                </div>
-                            }
-                            else
-                            {
-                                @foreach (var review in Model.Reviews)
+                            <div class="plugin-media-thumbs" data-media-thumbs>
+                                @for (var i = 0; i < mediaItems.Count; i++)
                                 {
-                                    const string helpfulBaseBtn = "btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center";
+                                    var m = mediaItems[i];
+                                    <button type="button" class="plugin-media-thumb @(i == 0 ? "is-active" : "")" data-media-thumb aria-label="@m.ThumbLabel" aria-current="@(i == 0 ? "true" : "false")">
+                                        @if (m.IsVideo)
+                                        {
+                                            @if (!string.IsNullOrWhiteSpace(m.ThumbUrl))
+                                            {
+                                                <span class="plugin-media-video-thumb-wrap">
+                                                    <img src="@m.ThumbUrl" alt="Video thumbnail" loading="lazy" class="plugin-media-video-thumb-image" />
+                                                    <span class="plugin-media-video-play"><i class="fa fa-play" aria-hidden="true"></i></span>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="plugin-media-video-thumb">
+                                                    <i class="fa fa-play" aria-hidden="true"></i> Video
+                                                </span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <img src="@m.ThumbUrl" alt="@m.Alt" loading="lazy" />
+                                        }
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
 
-                                    var voted = review.UserVoteHelpful;
-                                    var upClass = $"{helpfulBaseBtn} vote-up {(voted == true ? "text-success" : "text-secondary")}";
-                                    var downClass = $"{helpfulBaseBtn} vote-down {(voted == false ? "text-danger" : "text-secondary")}";
+            <div class="card mt-4" id="reviews">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <h4 class="mb-0">Reviews</h4>
+                        <a class="btn btn-primary btn-sm ms-auto" href="#write-review">Write a review</a>
+                    </div>
 
-                                    <div class="test-review-card border rounded p-3 mb-3">
-                                        <div class="d-flex align-items-start">
-                                            <div class="flex-grow-1">
+                    <div class="mb-3">
+                        @for (var star = 5; star >= 1; star--)
+                        {
+                            var count = Model.Plugin.RatingSummary?.StarCounts?.GetValueOrDefault(star) ?? 0;
+                            var pct = Model.Plugin.RatingSummary?.StarPct?.GetValueOrDefault(star) ?? 0;
+                            var isActive = currentRating == star;
+                            <a class="text-decoration-none text-reset d-block"
+                               asp-action="GetPluginDetails" asp-controller="Home"
+                               asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                               asp-route-sort="@Model.Sort" asp-route-skip="0" asp-route-count="@Model.Count"
+                               asp-route-RatingFilter="@(isActive ? null : star)" asp-fragment="reviews">
+                                <div class="d-flex align-items-center gap-2 mb-1 py-1 hover-bg @(isActive ? "bg-light border rounded px-2" : "")">
+                                    <span class="me-2">@star★</span>
+                                    <div class="progress flex-grow-1" style="height:8px;">
+                                        <div class="progress-bar" role="progressbar" style="width:@pct%"></div>
+                                    </div>
+                                    <span class="ms-2 small text-muted">@count</span>
+                                </div>
+                            </a>
+                        }
+                    </div>
 
-                                                <div class="d-flex align-items-center flex-wrap gap-2">
-                                                    @if (!string.IsNullOrEmpty(review.AuthorAvatarUrl))
-                                                    {
-                                                        <img src="@review.AuthorAvatarUrl"
-                                                             srcset="@review.AuthorAvatarUrl 1x, @($"{review.AuthorAvatarUrl}?s=96") 2x"
-                                                             alt="@review.AuthorDisplay avatar"
-                                                             class="rounded-circle me-1"
-                                                             style="width:24px;height:24px;" loading="lazy" />
-                                                    }
-                                                    @if (!string.IsNullOrEmpty(review.AuthorUrl))
-                                                    {
-                                                        <a href="@review.AuthorUrl" target="_blank" rel="noopener noreferrer">@review.AuthorDisplay</a>
-                                                    }
-                                                    else
-                                                    {
-                                                        <strong>@review.AuthorDisplay</strong>
-                                                    }
+                    @if (currentRating is not null)
+                    {
+                        <div class="mb-2">
+                            <span class="badge bg-secondary">Filtering by @currentRating★</span>
+                        </div>
+                    }
 
-                                                    <span class="small text-muted">@review.CreatedAt.ToString("MMM dd, yyyy")</span>
+                    <div class="d-flex justify-content-end gap-2 mb-3">
+                        <div class="dropdown">
+                            <button id="ReviewsSortToggle" class="btn btn-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                @(Model.Sort == "helpful" ? "Most helpful" : "Newest")
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item @(Model.Sort == "newest" ? "active" : null)"
+                                   asp-action="GetPluginDetails" asp-controller="Home"
+                                   asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-sort="newest"
+                                   asp-route-skip="0" asp-route-count="@Model.Count"
+                                   asp-route-RatingFilter="@Model.RatingFilter" asp-fragment="reviews">Newest</a>
+                                <a class="dropdown-item @(Model.Sort == "helpful" ? "active" : null)"
+                                   asp-action="GetPluginDetails" asp-controller="Home"
+                                   asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-sort="helpful"
+                                   asp-route-skip="0" asp-route-count="@Model.Count"
+                                   asp-route-RatingFilter="@Model.RatingFilter" asp-fragment="reviews">Most helpful</a>
+                            </div>
+                        </div>
+                    </div>
 
-                                                    @if (!string.IsNullOrEmpty(review.PluginVersion))
-                                                    {
-                                                        <span class="badge bg-light text-dark border">@review.PluginVersion</span>
-                                                    }
-                                                </div>
-
-                                                <div class="test-review-rating mt-1 d-inline-flex align-items-center gap-1" data-rating="@review.Rating"
-                                                     title="@($"{review.Rating} out of 5")">
-                                                    @for (var i = 1; i <= 5; i++)
-                                                    {
-                                                        <span class="@(i <= review.Rating ? "text-warning" : "text-secondary") lh-1">
+                    @if (!Model.Reviews.Any())
+                    {
+                        <div class="text-muted">
+                            No reviews yet. <a class="text-success fw-semibold text-decoration-none hover-underline" href="#write-review">Be the first to write one</a>.
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var review in Model.Reviews)
+                        {
+                            const string voteBtn = "btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center";
+                            <div class="test-review-card border rounded p-3 mb-3">
+                                <div class="d-flex align-items-start">
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex align-items-center flex-wrap gap-2">
+                                            @if (!string.IsNullOrEmpty(review.AuthorAvatarUrl))
+                                            {
+                                                <img src="@review.AuthorAvatarUrl"
+                                                     srcset="@review.AuthorAvatarUrl 1x, @($"{review.AuthorAvatarUrl}?s=96") 2x"
+                                                     alt="@review.AuthorDisplay avatar"
+                                                     class="rounded-circle me-1" style="width:24px;height:24px;" loading="lazy" />
+                                            }
+                                            @if (!string.IsNullOrEmpty(review.AuthorUrl))
+                                            {
+                                                <a href="@review.AuthorUrl" target="_blank" rel="noopener noreferrer">@review.AuthorDisplay</a>
+                                            }
+                                            else
+                                            {
+                                                <strong>@review.AuthorDisplay</strong>
+                                            }
+                                            <span class="small text-muted">@review.CreatedAt.ToString("MMM dd, yyyy")</span>
+                                            @if (!string.IsNullOrEmpty(review.PluginVersion))
+                                            {
+                                                <span class="badge bg-light text-dark border">@review.PluginVersion</span>
+                                            }
+                                        </div>
+                                        <div class="test-review-rating mt-1 d-inline-flex align-items-center gap-1" data-rating="@review.Rating" title="@review.Rating out of 5">
+                                            @for (var i = 1; i <= 5; i++)
+                                            {
+                                                <span class="@(i <= review.Rating ? "text-warning" : "text-secondary") lh-1">
                                                     <vc:icon symbol="star-fill" />
                                                 </span>
-                                                    }
-                                                </div>
-                                            </div>
-
-                                            <div class="ms-auto d-inline-flex align-items-center gap-3">
-                                                @if (review.IsReviewOwner)
-                                                {
-                                                    <span
-                                                        class="test-upvote-disabled btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center text-muted"
-                                                        aria-disabled="true" title="Authors can't vote their own review" style="cursor: default;">
-                                                    <vc:icon symbol="thumb-up" />
-                                                    <span class="small ms-1">@review.UpCount</span>
-                                                </span>
-                                                    <span
-                                                        class="test-downvote-disabled btn btn-link btn-sm p-0 align-middle d-inline-flex align-items-center text-muted"
-                                                        aria-disabled="true" title="Authors can't vote their own review" style="cursor: default;">
-                                                    <vc:icon symbol="thumb-down" />
-                                                    <span class="small ms-1">@review.DownCount</span>
-                                                </span>
-                                                }
-                                                else
-                                                {
-                                                    <!-- Upvote -->
-                                                    <form method="post"
-                                                          asp-action="VoteReview"
-                                                          asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                                                          asp-route-id="@review.Id"
-                                                          asp-route-isHelpful="true"
-                                                          class="test-upvote-form d-inline">
-                                                        @Html.AntiForgeryToken()
-                                                        <button type="submit"
-                                                                class="@upClass"
-                                                                aria-label="Mark this review as helpful">
-                                                            <vc:icon symbol="thumb-up" />
-                                                            <span class="small ms-1">@review.UpCount</span>
-                                                        </button>
-                                                    </form>
-
-                                                    <!-- Downvote -->
-                                                    <form method="post"
-                                                          asp-action="VoteReview"
-                                                          asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                                                          asp-route-id="@review.Id"
-                                                          asp-route-isHelpful="false"
-                                                          class="test-downvote-form d-inline">
-                                                        @Html.AntiForgeryToken()
-                                                        <button type="submit"
-                                                                class="@downClass"
-                                                                aria-label="Mark this review as not helpful">
-                                                            <vc:icon symbol="thumb-down" />
-                                                            <span class="small ms-1">@review.DownCount</span>
-                                                        </button>
-                                                    </form>
-                                                }
-                                            </div>
-                                        </div>
-
-                                        <div class="mt-1 d-flex">
-                                            <div class="flex-grow-1 pe-2">
-                                                @if (!string.IsNullOrWhiteSpace(review.Body))
-                                                {
-                                                    <partial name="_MarkdownRender" model="review.Body" />
-                                                }
-                                            </div>
-
-                                            @if (review.IsReviewOwner || Model.IsAdmin)
-                                            {
-                                                <button type="button"
-                                                        class="btn btn-link btn-sm p-0 text-danger align-self-start ms-2"
-                                                        title="Delete"
-                                                        aria-label="Delete review"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#ConfirmModal"
-                                                        data-action='@Url.EnsureLocal(
-                                                                         Url.Action("DeleteReview", "Home", new { pluginSlug = Model.Plugin.ProjectSlug, id = review.Id }),
-                                                                         Context.Request
-                                                                     )'
-                                                        data-title="Delete review"
-                                                        data-description="Delete this review? This action cannot be undone."
-                                                        data-confirm="Delete">
-                                                    <vc:icon symbol="actions-trash" />
-                                                </button>
                                             }
                                         </div>
                                     </div>
-                                }
-                            }
 
-                            <vc:pager view-model="Model" />
-
-                            <hr class="my-4" />
-
-                            <a id="write-review"></a>
-                            @if (User.Identity?.IsAuthenticated == true)
-                            {
-                                if (Model.IsOwner == true)
-                                {
-                                    <div id="owner-cannot-review" class="alert alert-warning mb-3">
-                                        Owners can’t review their own plugin.
+                                    <div class="ms-auto d-inline-flex align-items-center gap-3">
+                                        @if (review.IsReviewOwner)
+                                        {
+                                            <span class="test-upvote-disabled @voteBtn text-muted" aria-disabled="true" title="Authors can't vote their own review" style="cursor: default;">
+                                                <vc:icon symbol="thumb-up" /><span class="small ms-1">@review.UpCount</span>
+                                            </span>
+                                            <span class="test-downvote-disabled @voteBtn text-muted" aria-disabled="true" title="Authors can't vote their own review" style="cursor: default;">
+                                                <vc:icon symbol="thumb-down" /><span class="small ms-1">@review.DownCount</span>
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-id="@review.Id" asp-route-isHelpful="true" class="test-upvote-form d-inline">
+                                                @Html.AntiForgeryToken()
+                                                <button type="submit" class="@voteBtn vote-up @(review.UserVoteHelpful == true ? "text-success" : "text-secondary")" aria-label="Mark this review as helpful">
+                                                    <vc:icon symbol="thumb-up" /><span class="small ms-1">@review.UpCount</span>
+                                                </button>
+                                            </form>
+                                            <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-id="@review.Id" asp-route-isHelpful="false" class="test-downvote-form d-inline">
+                                                @Html.AntiForgeryToken()
+                                                <button type="submit" class="@voteBtn vote-down @(review.UserVoteHelpful == false ? "text-danger" : "text-secondary")" aria-label="Mark this review as not helpful">
+                                                    <vc:icon symbol="thumb-down" /><span class="small ms-1">@review.DownCount</span>
+                                                </button>
+                                            </form>
+                                        }
                                     </div>
-                                }
-                                else
-                                {
-                                    <form id="review-form" method="post" asp-action="UpsertReview" asp-controller="Home"
-                                          asp-route-pluginSlug="@Model.Plugin.ProjectSlug">
-                                        @Html.AntiForgeryToken()
-
-                                        <div class="row align-items-center g-2 mb-3">
-                                            <div class="col">
-                                                <div id="ratingStars"
-                                                     class="d-inline-flex align-items-center gap-1 fs-4"
-                                                     role="radiogroup" aria-label="Rating (1 to 5)" tabindex="0">
-                                                    @for (var i = 1; i <= 5; i++)
-                                                    {
-                                                        <button type="button"
-                                                                class="btn btn-link p-2 border-0 bg-transparent shadow-none star-btn"
-                                                                data-value="@i"
-                                                                aria-label="@i star@(i > 1 ? "s" : "")"
-                                                                aria-pressed="false">
-                                                        <span class="star-on d-none text-warning fs-4">
-                                                            <vc:icon symbol="star-fill" />
-                                                        </span>
-                                                            <span class="star-off text-secondary fs-4">
-                                                            <vc:icon symbol="star-fill" />
-                                                        </span>
-                                                        </button>
-                                                    }
-                                                    <input type="number"
-                                                           name="Rating"
-                                                           id="ratingInput"
-                                                           value="0"
-                                                           min="1" max="5"
-                                                           required
-                                                           class="visually-hidden" />
-                                                </div>
-                                            </div>
-
-                                            <div class="col-auto">
-                                                <div class="d-flex align-items-center overflow-visible">
-                                                    <label class="form-label me-2 mb-0">Version</label>
-                                                    <div class="overflow-visible position-relative">
-                                                        <select name="PluginVersion" class="form-select form-select-sm w-auto">
-                                                            <option value="">N/A</option>
-                                                            @if (Model.PluginVersions != null)
-                                                            {
-                                                                foreach (var version in Model.PluginVersions)
-                                                                {
-                                                                    <option value="@version">@version</option>
-                                                                }
-                                                            }
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <partial name="_MarkdownToolbarTextArea" model="@("Body")" />
-                                        <button class="btn btn-primary mt-3">Submit</button>
-                                    </form>
-                                }
-                            }
-                            else
-                            {
-                                <div class="alert bg-info text-white">
-                                    Please <a class="text-white text-decoration-underline fw-semibold" asp-action="Login" asp-controller="Home">sign in</a> to
-                                    write a review.
                                 </div>
-                            }
+
+                                <div class="mt-1 d-flex">
+                                    <div class="flex-grow-1 pe-2">
+                                        @if (!string.IsNullOrWhiteSpace(review.Body))
+                                        {
+                                            <partial name="_MarkdownRender" model="review.Body" />
+                                        }
+                                    </div>
+                                    @if (review.IsReviewOwner || Model.IsAdmin)
+                                    {
+                                        <button type="button" class="btn btn-link btn-sm p-0 text-danger align-self-start ms-2"
+                                                title="Delete" aria-label="Delete review"
+                                                data-bs-toggle="modal" data-bs-target="#ConfirmModal"
+                                                data-action='@Url.EnsureLocal(Url.Action("DeleteReview", "Home", new { pluginSlug = Model.Plugin.ProjectSlug, id = review.Id }), Context.Request)'
+                                                data-title="Delete review"
+                                                data-description="Delete this review? This action cannot be undone."
+                                                data-confirm="Delete">
+                                            <vc:icon symbol="actions-trash" />
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    <vc:pager view-model="Model" />
+                    <hr class="my-4" />
+
+                    <a id="write-review"></a>
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        @if (Model.IsOwner == true)
+                        {
+                            <div class="alert alert-warning mb-3">Owners can't review their own plugin.</div>
+                        }
+                        else
+                        {
+                            <form id="review-form" method="post" asp-action="UpsertReview" asp-controller="Home" asp-route-pluginSlug="@Model.Plugin.ProjectSlug">
+                                @Html.AntiForgeryToken()
+                                <div id="ratingStars" class="d-inline-flex align-items-center gap-1 fs-4 mb-3" role="radiogroup" aria-label="Rating (1 to 5)" tabindex="0">
+                                    @for (var i = 1; i <= 5; i++)
+                                    {
+                                        <button type="button" class="btn btn-link p-2 border-0 bg-transparent shadow-none star-btn" data-value="@i" aria-label="@i star@(i > 1 ? "s" : "")" aria-pressed="false">
+                                            <span class="star-on d-none text-warning fs-4"><vc:icon symbol="star-fill" /></span>
+                                            <span class="star-off text-secondary fs-4"><vc:icon symbol="star-fill" /></span>
+                                        </button>
+                                    }
+                                    <input type="number" name="Rating" id="ratingInput" value="0" min="1" max="5" required class="visually-hidden" />
+                                </div>
+                                <partial name="_MarkdownToolbarTextArea" model="@("Body")" />
+                                <button class="btn btn-primary mt-3">Submit</button>
+                            </form>
+                        }
+                    }
+                    else
+                    {
+                        <div class="alert bg-info text-white">
+                            Please <a class="text-white text-decoration-underline fw-semibold" asp-action="Login" asp-controller="Home">sign in</a> to write a review.
                         </div>
-                    </div>
-                </div>
-
-                <div class="col-12 col-lg-4 mt-4 mt-lg-0">
-                    <div class="card plugin-details-metadata">
-                        <div class="card-body">
-                            <div class="row mb-3">
-                                <div class="col-6">
-                                    <strong>Version</strong>
-                                </div>
-                                <div class="col-6 text-end">
-                                    @Model.Plugin.Version
-                                </div>
-                            </div>
-
-                            <div class="row mb-3">
-                                <div class="col-6">
-                                    <strong>Published</strong>
-                                </div>
-                                <div class="col-6 text-end">
-                                    @(DateTimeOffset.TryParse(Model.Plugin.BuildInfo?["buildDate"]?.ToString(), out var parsedDate) ? parsedDate.ToString("MMM dd, yyyy") : "")
-                                </div>
-                            </div>
-                            @if (!string.IsNullOrEmpty(sourceUrl))
-                            {
-                                <div class="row mb-3">
-                                    <div class="col-6">
-                                        <strong>Repository</strong>
-                                    </div>
-                                    <div class="col-6 text-end">
-                                        <a href="@sourceUrl" target="_blank" rel="noopener noreferrer">View Source</a>
-                                    </div>
-                                </div>
-                            }
-
-                            @if (!string.IsNullOrEmpty(Model.Plugin.Documentation))
-                            {
-                                <div class="row mb-3">
-                                    <div class="col-6">
-                                        <strong>Documentation</strong>
-                                    </div>
-                                    <div class="col-6 text-end">
-                                        <a href="@Model.Plugin.Documentation" target="_blank" rel="noopener noreferrer">View Documentation</a>
-                                    </div>
-                                </div>
-                            }
-							@if (!string.IsNullOrEmpty(Model.Plugin.BTCPayMinVersion))
-							{
-								<div class="row mb-3">
-									<div class="col-6">
-										<strong>Min. BTCPay Version</strong>
-									</div>
-									<div class="col-6 text-end">
-										@Model.Plugin.BTCPayMinVersion
-									</div>
-								</div>
-							}
-							@if (!string.IsNullOrEmpty(Model.Plugin.BTCPayMaxVersion))
-							{
-								<div class="row mb-3">
-									<div class="col-6">
-										<strong>Max. BTCPay Version</strong>
-									</div>
-									<div class="col-6 text-end">
-										@Model.Plugin.BTCPayMaxVersion
-									</div>
-								</div>
-							}
-
-                            @if (dependencies != null && dependencies.Count > 0)
-                            {
-                                foreach (var dependency in dependencies)
-                                {
-									if (string.Equals(dependency["Identifier"]?.ToString(), "BTCPayServer", StringComparison.OrdinalIgnoreCase))
-										continue;
-
-                                    <div class="row mb-3">
-                                        <div class="col-6">
-                                            <strong>@dependency["Identifier"]</strong>
-                                        </div>
-                                        <div class="col-6 text-end">
-											@dependency["Condition"]
-                                        </div>
-                                    </div>
-                                }
-                            }
-                            <div class="row mb-3">
-                                <div class="col-6">
-                                    <strong>Created</strong>
-                                </div>
-                                <div class="col-6 text-end">
-                                    @Model.Plugin.CreatedDate.ToString("MMM dd, yyyy")
-                                </div>
-                            </div>
-                            <div class="row mb-3">
-                                <div class="col-6">
-                                    <strong>Rating</strong>
-                                </div>
-                                <div class="col-6 text-end">
-									<span class="d-inline-flex align-items-center gap-1 lh-1">
-										<span class="fw-semibold">
-											@((Model.Plugin.RatingSummary?.Average ?? 0m).ToString("0.0"))
-										</span>
-										<span class="text-warning">
-											<vc:icon symbol="star-fill" />
-										</span>
-										<span class="text-muted small">(@(Model.Plugin.RatingSummary?.TotalReviews ?? 0))</span>
-									</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-					@if (Model.Contributors is List<GitHubContributor> contributors && contributors.Any())
-					{
-						<div class="card mt-4">
-							<div class="card-body">
-								<h4>Contributors</h4>
-								<div class="row">
-									@foreach (var user in contributors)
-									{
-											<div class="col-12 col-lg-6 d-flex align-items-center mb-3">
-												<div class="me-3 flex-shrink-0">
-													@if (!string.IsNullOrEmpty(user.AvatarUrl))
-													{
-														<img src="@user.AvatarUrl" class="rounded-circle"
-														 style="width: 48px; height: 48px;"
-														 alt="@user.Login avatar" loading="lazy" />
-													}
-													else
-													{
-														<div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white fw-bold"
-														     style="width: 48px; height: 48px; font-size: 1.2rem;">
-															@user.Login?.FirstOrDefault()
-														</div>
-													}
-												</div>
-												<div class="text-break">
-													@if (!string.IsNullOrEmpty(user.HtmlUrl))
-													{
-														<a href="@user.HtmlUrl" class="text-decoration-none text-break" target="_blank" rel="noopener noreferrer">@user.Login</a>
-													}
-													else
-													{
-														<span>@user.Login</span>
-													}
-											</div>
-										</div>
-									}
-								</div>
-							</div>
-						</div>
-					}
+                    }
                 </div>
             </div>
         </div>
-    </div>
 
+        <div class="col-12 col-lg-4 mt-4 mt-lg-0">
+            <div class="card plugin-details-metadata">
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-6 d-flex align-items-center"><strong>Version</strong></div>
+                        <div class="col-6 text-end">
+                            <div class="dropdown d-inline-block">
+                                <button id="version-dropdown-btn" class="btn btn-secondary btn-sm dropdown-toggle" type="button"
+                                        data-bs-toggle="dropdown" aria-expanded="false">
+                                    @string.Join(".", Model.Plugin.Version.Split('.').Take(3))
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end" style="max-height: 140px; overflow-y: auto;">
+                                    @foreach (var v in Model.PluginVersions)
+                                    {
+                                        var shortV = string.Join(".", v.Split('.').Take(3));
+                                        <li>
+                                            <a class="dropdown-item @(v == Model.Plugin.Version ? "active" : "")"
+                                            href="#" data-version="@v" data-display="@shortV">@shortV</a>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                            <input type="hidden" id="version-selector" name="Plugin.Version" value="@Model.Plugin.Version" />
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6"><strong>Published</strong></div>
+                        <div class="col-6 text-end">
+                            <span id="plugin-published-date">@(buildDate != default ? buildDate.ToString("MMM dd, yyyy") : "")</span>
+                        </div>
+                    </div>
+                    <div id="plugin-repository-row" class="row mb-3 @(string.IsNullOrEmpty(sourceUrl) ? "d-none" : "")">
+                        <div class="col-6"><strong>Repository</strong></div>
+                        <div class="col-6 text-end">
+                            <a id="plugin-source-url" href="@sourceUrl" target="_blank" rel="noopener noreferrer">View Source</a>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(Model.Plugin.Documentation))
+                    {
+                        <div class="row mb-3">
+                            <div class="col-6"><strong>Documentation</strong></div>
+                            <div class="col-6 text-end">
+                                <a href="@Model.Plugin.Documentation" target="_blank" rel="noopener noreferrer">View Documentation</a>
+                            </div>
+                        </div>
+                    }
+                    <div id="plugin-min-btcpay-row" class="row mb-3 @(string.IsNullOrEmpty(Model.Plugin.BTCPayMinVersion) ? "d-none" : "")">
+                        <div class="col-6"><strong>Min. BTCPay Version</strong></div>
+                        <div class="col-6 text-end">
+                            <span id="plugin-min-btcpay-version">@Model.Plugin.BTCPayMinVersion</span>
+                        </div>
+                    </div>
+                    <div id="plugin-max-btcpay-row" class="row mb-3 @(string.IsNullOrEmpty(Model.Plugin.BTCPayMaxVersion) ? "d-none" : "")">
+                        <div class="col-6"><strong>Max. BTCPay Version</strong></div>
+                        <div class="col-6 text-end">
+                            <span id="plugin-max-btcpay-version">@Model.Plugin.BTCPayMaxVersion</span>
+                        </div>
+                    </div>
+                    @if (dependencies != null)
+                    {
+                        foreach (var dep in dependencies)
+                        {
+                            if (string.Equals(dep["Identifier"]?.ToString(), "BTCPayServer", StringComparison.OrdinalIgnoreCase)) continue;
+                            <div class="row mb-3">
+                                <div class="col-6"><strong>@dep["Identifier"]</strong></div>
+                                <div class="col-6 text-end">@dep["Condition"]</div>
+                            </div>
+                        }
+                    }
+                    <div class="row mb-3">
+                        <div class="col-6"><strong>Created</strong></div>
+                        <div class="col-6 text-end">@Model.Plugin.CreatedDate.ToString("MMM dd, yyyy")</div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6"><strong>Rating</strong></div>
+                        <div class="col-6 text-end">
+                            <span class="d-inline-flex align-items-center gap-1 lh-1">
+                                <span class="fw-semibold">@((Model.Plugin.RatingSummary?.Average ?? 0m).ToString("0.0"))</span>
+                                <span class="text-warning"><vc:icon symbol="star-fill" /></span>
+                                <span class="text-muted small">(@(Model.Plugin.RatingSummary?.TotalReviews ?? 0))</span>
+                            </span>
+                        </div>
+                    </div>
+                    <a id="download-btn"
+                       asp-action="Download" asp-controller="Api"
+                       asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                       asp-route-version="@Model.Plugin.Version"
+                       class="btn btn-primary w-100" target="_blank" rel="noopener noreferrer">Download</a>
+                </div>
+            </div>
+
+            @if (Model.Contributors?.Any() == true)
+            {
+                <div class="card mt-4">
+                    <div class="card-body">
+                        <h4>Contributors</h4>
+                        <div class="row">
+                            @foreach (var user in Model.Contributors)
+                            {
+                                <div class="col-12 col-lg-6 d-flex align-items-center mb-3">
+                                    <div class="me-3 flex-shrink-0">
+                                        <img src="@user.AvatarUrl" class="rounded-circle" style="width: 48px; height: 48px;" alt="@user.Login avatar" loading="lazy" />
+                                    </div>
+                                    <div class="text-break">
+                                        <a href="@user.HtmlUrl" class="text-decoration-none text-break" target="_blank" rel="noopener noreferrer">@user.Login</a>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
 </div>
+
 <partial name="_Confirm" model="@(new ConfirmModel("Delete review", "Are you sure?", "Delete"))" />
 
 <script>
     (() => {
         const carousel = document.getElementById('plugin-media-carousel');
-        if (!carousel)
-            return;
+        if (!carousel) return;
 
         const slides = Array.from(carousel.querySelectorAll('[data-media-slide]'));
         const thumbs = Array.from(carousel.querySelectorAll('[data-media-thumb]'));
-        const prevBtn = carousel.querySelector('[data-media-nav="prev"]');
-        const nextBtn = carousel.querySelector('[data-media-nav="next"]');
-        if (slides.length === 0)
-            return;
+        if (!slides.length) return;
 
-        let activeIndex = Math.max(0, slides.findIndex(slide => slide.classList.contains('is-active')));
+        let activeIndex = Math.max(0, slides.findIndex(s => s.classList.contains('is-active')));
 
-        const applyVideoState = (slide, isActive) => {
-            const iframe = slide.querySelector('iframe[data-video-embed]');
-            if (!iframe)
-                return;
-
-            const videoSrc = iframe.getAttribute('data-video-src') || '';
-            if (isActive) {
-                if (!iframe.getAttribute('src'))
-                    iframe.setAttribute('src', videoSrc);
-            }
-            else if (iframe.getAttribute('src')) {
-                iframe.removeAttribute('src');
-            }
-        };
-
-        const setActive = (index, shouldScrollThumb = false) => {
+        const setActive = (index, scroll = false) => {
             activeIndex = (index + slides.length) % slides.length;
-
-            slides.forEach((slide, i) => {
-                const isActive = i === activeIndex;
-                slide.classList.toggle('is-active', isActive);
-                slide.classList.toggle('d-none', !isActive);
-                slide.setAttribute('aria-hidden', isActive ? 'false' : 'true');
-                applyVideoState(slide, isActive);
+            slides.forEach((s, i) => {
+                const on = i === activeIndex;
+                s.classList.toggle('is-active', on);
+                s.classList.toggle('d-none', !on);
+                s.setAttribute('aria-hidden', on ? 'false' : 'true');
+                const iframe = s.querySelector('iframe[data-video-embed]');
+                if (iframe) on ? (iframe.src || (iframe.src = iframe.dataset.videoSrc)) : iframe.removeAttribute('src');
             });
-
-            thumbs.forEach((thumb, i) => {
-                const isActive = i === activeIndex;
-                thumb.classList.toggle('is-active', isActive);
-                thumb.setAttribute('aria-current', isActive ? 'true' : 'false');
-                if (isActive && shouldScrollThumb)
-                    thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            thumbs.forEach((t, i) => {
+                const on = i === activeIndex;
+                t.classList.toggle('is-active', on);
+                t.setAttribute('aria-current', on ? 'true' : 'false');
+                if (on && scroll) t.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
             });
         };
 
-        prevBtn?.addEventListener('click', () => setActive(activeIndex - 1, true));
-        nextBtn?.addEventListener('click', () => setActive(activeIndex + 1, true));
-
-        thumbs.forEach((thumb, i) => {
-            thumb.addEventListener('click', () => setActive(i, true));
+        carousel.querySelector('[data-media-nav="prev"]')?.addEventListener('click', () => setActive(activeIndex - 1, true));
+        carousel.querySelector('[data-media-nav="next"]')?.addEventListener('click', () => setActive(activeIndex + 1, true));
+        thumbs.forEach((t, i) => t.addEventListener('click', () => setActive(i, true)));
+        carousel.addEventListener('keydown', e => {
+            if (e.key === 'ArrowLeft') { e.preventDefault(); setActive(activeIndex - 1, true); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); setActive(activeIndex + 1, true); }
         });
-
-        carousel.addEventListener('keydown', (evt) => {
-            if (evt.key === 'ArrowLeft') {
-                evt.preventDefault();
-                setActive(activeIndex - 1, true);
-            }
-            else if (evt.key === 'ArrowRight') {
-                evt.preventDefault();
-                setActive(activeIndex + 1, true);
-            }
-        });
-
         setActive(activeIndex);
     })();
 
@@ -761,52 +520,84 @@
         const group = document.getElementById('ratingStars');
         if (!input || !group) return;
 
-        function render(val) {
-            const v = Math.max(0, Math.min(5, parseInt(val || '0', 10)));
+        const render = val => {
+            const v = Math.max(0, Math.min(5, parseInt(val || 0, 10)));
             group.querySelectorAll('.star-btn').forEach(btn => {
-                const cur = parseInt(btn.dataset.value, 10);
-                const on = v > 0 && cur <= v;
+                const on = v > 0 && parseInt(btn.dataset.value, 10) <= v;
                 btn.setAttribute('aria-pressed', on ? 'true' : 'false');
                 btn.querySelector('.star-on').classList.toggle('d-none', !on);
                 btn.querySelector('.star-off').classList.toggle('d-none', on);
             });
-        }
+        };
 
-        group.addEventListener('click', (e) => {
-            const btn = e.target.closest('.star-btn');
-            if (!btn || !group.contains(btn)) return;
-            input.value = btn.dataset.value;
-            render(input.value);
-        });
-
-        group.addEventListener('mouseover', (e) => {
-            const btn = e.target.closest('.star-btn');
-            if (!btn || !group.contains(btn)) return;
-            render(btn.dataset.value);
-        });
-
-        group.addEventListener('mouseleave', () => {
-            render(input.value);
-        });
-
+        group.addEventListener('click', e => { const b = e.target.closest('.star-btn'); if (b) { input.value = b.dataset.value; render(input.value); } });
+        group.addEventListener('mouseover', e => { const b = e.target.closest('.star-btn'); if (b) render(b.dataset.value); });
+        group.addEventListener('mouseleave', () => render(input.value));
         render(input.value);
     })();
+
+    (() => {
+        const input = document.getElementById('version-selector');
+        const btn = document.getElementById('version-dropdown-btn');
+        if (!input || !btn) return;
+
+        const slug = '@Html.Raw(Model.Plugin.ProjectSlug?.Replace("'", "\\'"))';
+        const base = '/api/v1/plugins/' + encodeURIComponent(slug) + '/versions/';
+        const cache = new Map();
+
+        document.querySelectorAll('[data-version]').forEach(item => {
+            item.addEventListener('click', async function (e) {
+                e.preventDefault();
+                const version = this.dataset.version;
+
+                btn.childNodes[0].textContent = this.dataset.display + ' ';
+                input.value = this.dataset.version;
+
+                document.querySelectorAll('[data-version]').forEach(el =>
+                    el.classList.toggle('active', el.dataset.version === version));
+
+                const downloadBtn = document.getElementById('download-btn');
+                if (downloadBtn) downloadBtn.href = base + encodeURIComponent(version) + '/download';
+
+                let data = cache.get(version);
+                if (!data) {
+                    try {
+                        const res = await fetch(base + encodeURIComponent(version), { headers: { 'Accept': 'application/json' } });
+                        if (!res.ok) return;
+                        data = await res.json();
+                        cache.set(version, data);
+                    } catch { return; }
+                }
+
+                const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+                const toggle = (id, show) => document.getElementById(id)?.classList.toggle('d-none', !show);
+
+                const dt = new Date(data?.buildInfo?.buildDate);
+                set('plugin-published-date', isNaN(dt) ? '' : dt.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }));
+
+                const src = (() => {
+                    const b = data?.buildInfo;
+                    if (!b?.gitRepository || !b?.gitCommit) return null;
+                    try {
+                        const u = new URL(b.gitRepository);
+                        if (u.hostname.toLowerCase() !== 'github.com') return null;
+                        const [owner, repo] = u.pathname.split('/').filter(Boolean);
+                        const dir = (b.pluginDir || '').split('/').filter(Boolean).map(encodeURIComponent).join('/');
+                        return `https://github.com/${owner}/${repo.replace(/\.git$/i, '')}/tree/${encodeURIComponent(b.gitCommit)}${dir ? '/' + dir : ''}`;
+                    } catch { return null; }
+                })();
+                const srcEl = document.getElementById('plugin-source-url');
+                if (srcEl) srcEl.href = src || '#';
+                toggle('plugin-repository-row', !!src);
+
+                const min = (data?.btcPayMinVersion || '').trim();
+                set('plugin-min-btcpay-version', min);
+                toggle('plugin-min-btcpay-row', !!min);
+
+                const max = (data?.btcPayMaxVersion || '').trim();
+                set('plugin-max-btcpay-version', max);
+                toggle('plugin-max-btcpay-row', !!max);
+            });
+        });
+    })();
 </script>
-
-<style>
-    .btn.vote-up.text-secondary:hover {
-        color: var(--btcpay-success, #51B13E) !important;
-    }
-
-    .btn.vote-down.text-secondary:hover {
-        color: var(--btcpay-danger, #E11900) !important;
-    }
-
-    .btn.vote-up.text-success:hover {
-        color: var(--btcpay-neutral-600, #6c757d) !important;
-    }
-
-    .btn.vote-down.text-danger:hover {
-        color: var(--btcpay-neutral-600, #6c757d) !important;
-    }
-</style>
