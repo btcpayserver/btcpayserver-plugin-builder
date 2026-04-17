@@ -119,6 +119,15 @@ public class DashboardController(
         if (!await conn.SetPluginSettings(pluginSlug, baseSettings))
         {
             await conn.DeletePlugin(pluginSlug);
+            if (logoUrl is not null)
+            {
+                var uploadedBlobName = Path.GetFileName(new Uri(logoUrl).AbsolutePath);
+                try
+                {
+                    await azureStorageClient.DeleteImageFileIfExists(uploadedBlobName);
+                }
+                catch { }
+            }
             ModelState.AddModelError(string.Empty, "Could not complete plugin creation.");
             return View(model);
         }
