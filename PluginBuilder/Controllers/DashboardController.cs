@@ -104,7 +104,10 @@ public class DashboardController(
                 var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.Logo.FileName)}";
                 logoUrl = await azureStorageClient.UploadImageFile(model.Logo, uniqueBlobName);
             }
-            catch (Exception) { }
+            catch (Exception)
+            {
+                TempData[TempDataConstant.WarningMessage] = "Plugin was created, but the logo could not be uploaded. You can retry from plugin settings.";
+            }
         }
 
         var baseSettings = new PluginSettings
