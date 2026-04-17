@@ -239,7 +239,7 @@ public class CreatePluginUITests(ITestOutputHelper output) : PageTest
         public List<string> UploadedBlobNames { get; } = [];
         public List<string> DeletedBlobNames { get; } = [];
 
-        public override Task<string> UploadImageFile(IFormFile file, string blobName, TimeSpan? timeout = null)
+        public override Task<string> UploadImageFile(IFormFile file, string blobName)
         {
             if (ThrowOnUpload)
                 throw new AzureStorageClientException("Synthetic upload failure");
@@ -248,7 +248,7 @@ public class CreatePluginUITests(ITestOutputHelper output) : PageTest
             return Task.FromResult($"https://example.com/{blobName}");
         }
 
-        public override Task DeleteImageFileIfExists(string blobName, TimeSpan? timeout = null)
+        public override Task DeleteImageFileIfExists(string blobName)
         {
             DeletedBlobNames.Add(blobName);
             return Task.CompletedTask;
