@@ -97,6 +97,7 @@ public class DashboardController(
         }
 
         string? logoUrl = null;
+        var logoUploadFailed = false;
         if (model.Logo != null)
         {
             try
@@ -104,10 +105,7 @@ public class DashboardController(
                 var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.Logo.FileName)}";
                 logoUrl = await azureStorageClient.UploadImageFile(model.Logo, uniqueBlobName);
             }
-            catch (Exception)
-            {
-                TempData[TempDataConstant.WarningMessage] = "Plugin was created, but the logo could not be uploaded. You can retry from plugin settings.";
-            }
+            catch (Exception) { logoUploadFailed = true; }
         }
 
         var baseSettings = new PluginSettings
@@ -136,6 +134,9 @@ public class DashboardController(
         }
 
         TempData[TempDataConstant.SuccessMessage] = "Plugin created successfully.";
+        if (logoUploadFailed)
+            TempData[TempDataConstant.WarningMessage] = "Plugin was created, but the logo could not be uploaded. You can retry from plugin settings.";
+
         return RedirectToAction(nameof(PluginController.Dashboard), "Plugin", new { pluginSlug = pluginSlug.ToString() });
     }
 }
