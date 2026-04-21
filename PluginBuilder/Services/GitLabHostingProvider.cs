@@ -3,6 +3,7 @@ using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
+using PluginBuilder.DataModels;
 
 namespace PluginBuilder.Services;
 
@@ -243,9 +244,10 @@ public class GitLabHostingProvider : IGitHostingProvider
         if (!Uri.TryCreate(repoUrl.Trim(), UriKind.Absolute, out var uri))
             throw new BuildServiceException("Invalid repository URL");
 
-        var client = _httpClientFactory.CreateClient();
+        // Use the named GitLab client so GITLAB_TOKEN config is applied
+        var client = _httpClientFactory.CreateClient(HttpClientNames.GitLab);
+        // Override base address to target the repo's actual host (self-hosted support)
         client.BaseAddress = new Uri($"{uri.Scheme}://{uri.Authority}/api/v4/");
-        client.DefaultRequestHeaders.Add("User-Agent", "PluginBuilder");
         return client;
     }
 
