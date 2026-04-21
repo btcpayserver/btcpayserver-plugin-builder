@@ -647,12 +647,29 @@
 									{
 											<div class="col-12 col-lg-6 d-flex align-items-center mb-3">
 												<div class="me-3 flex-shrink-0">
-													<img src="@user.AvatarUrl" class="rounded-circle"
-													 style="width: 48px; height: 48px;"
-													 alt="@user.Login avatar" loading="lazy" />
+													@if (!string.IsNullOrEmpty(user.AvatarUrl))
+													{
+														<img src="@user.AvatarUrl" class="rounded-circle"
+														 style="width: 48px; height: 48px;"
+														 alt="@user.Login avatar" loading="lazy" />
+													}
+													else
+													{
+														<div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white fw-bold"
+														     style="width: 48px; height: 48px; font-size: 1.2rem;">
+															@user.Login?.FirstOrDefault()
+														</div>
+													}
 												</div>
 												<div class="text-break">
-													<a href="@user.HtmlUrl" class="text-decoration-none text-break" target="_blank" rel="noopener noreferrer">@user.Login</a>
+													@if (!string.IsNullOrEmpty(user.HtmlUrl))
+													{
+														<a href="@user.HtmlUrl" class="text-decoration-none text-break" target="_blank" rel="noopener noreferrer">@user.Login</a>
+													}
+													else
+													{
+														<span>@user.Login</span>
+													}
 											</div>
 										</div>
 									}
