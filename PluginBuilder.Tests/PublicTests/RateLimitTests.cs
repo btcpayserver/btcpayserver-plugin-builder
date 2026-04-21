@@ -11,6 +11,8 @@ namespace PluginBuilder.Tests.PublicTests;
 
 public class RateLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
+    private const string PluginUpdatesEndpoint = "/api/v1/plugins/updates";
+
     [Theory]
     [InlineData("/public/plugins", "GET")]
     [InlineData("/api/v1/plugins", "GET")]
@@ -18,7 +20,7 @@ public class RateLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [InlineData("/api/v1/plugins/test-identifier", "GET")]
     [InlineData("/api/v1/plugins/test-slug/versions/1.0.0", "GET")]
     [InlineData("/api/v1/plugins/test-slug/versions/1.0.0/download", "GET")]
-    [InlineData("/api/v1/plugins/updates", "POST")]
+    [InlineData(PluginUpdatesEndpoint, "POST")]
     [InlineData("/login", "POST")]
     [InlineData("/register", "POST")]
     [InlineData("/forgotpassword", "POST")]
@@ -45,13 +47,16 @@ public class RateLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var _ = tester;
 
         for (var i = 0; i < 2; i++)
-            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/public/plugins")).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest,
+                (await SendRequest(client, PluginUpdatesEndpoint, "POST")).StatusCode);
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await client.GetAsync("/public/plugins")).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests,
+            (await SendRequest(client, PluginUpdatesEndpoint, "POST")).StatusCode);
 
         await Task.Delay(TimeSpan.FromSeconds(3));
 
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/public/plugins")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await SendRequest(client, PluginUpdatesEndpoint, "POST")).StatusCode);
     }
 
     [Fact]
