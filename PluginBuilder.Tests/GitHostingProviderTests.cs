@@ -531,6 +531,148 @@ public class GitHostingProviderTests
         Assert.Null(c.AvatarUrl);
     }
 
+    // ── GitLab Users API resolution ───────────────────────────────────
+
+    [Fact]
+    public async Task GitLab_GetContributors_ResolvesUserViaPublicEmail()
+    {
+        var commitsJson = JArray.FromObject(new[]
+        {
+            new { author_name = "Alice Commit", author_email = "alice@example.com" }
+        }).ToString();
+
+        var userJson = JArray.FromObject(new[]
+        {
+            new
+            {
+                username = "alice_gitlab",
+                web_url = "https://gitlab.com/alice_gitlab",
+                avatar_url = "https://gitlab.com/uploads/-/alice.png"
+            }
+        }).ToString();
+
+        var handler = new FakeHttpHandler(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["projects/owner%2Frepo/repository/commits?per_page=100&page=1"] =
+                (HttpStatusCode.OK, commitsJson),
+            ["users?public_email=alice%40example.com"] =
+                (HttpStatusCode.OK, userJson)
+        });
+
+        var provider = CreateGitLabProvider(handler: handler);
+        var contributors = await provider.GetContributorsAsync("https://gitlab.com/owner/repo", "");
+
+        var alice = Assert.Single(contributors);
+        Assert.Equal("alice_gitlab", alice.Login); // uses canonical username
+        Assert.Equal("https://gitlab.com/alice_gitlab", alice.HtmlUrl);
+        Assert.Equal("https://gitlab.com/uploads/-/alice.png", alice.AvatarUrl);
+    }
+
+    [Fact]
+    public async Task GitLab_GetContributors_FallsBackToSearchWhenPublicEmailEmpty()
+    {
+        var commitsJson = JArray.FromObject(new[]
+        {
+            new { author_name = "Bob Commit", author_email = "bob@example.com" }
+        }).ToString();
+
+        var userJson = JArray.FromObject(new[]
+        {
+            new
+            {
+                username = "bob_gitlab",
+                web_url = "https://gitlab.com/bob_gitlab",
+                avatar_url = "https://gitlab.com/uploads/-/bob.png"
+            }
+        }).ToString();
+
+        var handler = new FakeHttpHandler(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["projects/owner%2Frepo/repository/commits?per_page=100&page=1"] =
+                (HttpStatusCode.OK, commitsJson),
+            // public_email returns empty (user hasn't made email public)
+            ["users?public_email=bob%40example.com"] =
+                (HttpStatusCode.OK, "[]"),
+            // search returns a single match
+            ["users?search=bob%40example.com"] =
+                (HttpStatusCode.OK, userJson)
+        });
+
+        var provider = CreateGitLabProvider(handler: handler);
+        var contributors = await provider.GetContributorsAsync("https://gitlab.com/owner/repo", "");
+
+        var bob = Assert.Single(contributors);
+        Assert.Equal("bob_gitlab", bob.Login);
+        Assert.Equal("https://gitlab.com/bob_gitlab", bob.HtmlUrl);
+        Assert.Equal("https://gitlab.com/uploads/-/bob.png", bob.AvatarUrl);
+    }
+
+    [Fact]
+    public async Task GitLab_GetContributors_SearchAmbiguous_FallsBackToAvatarOnly()
+    {
+        var commitsJson = JArray.FromObject(new[]
+        {
+            new { author_name = "Carol Commit", author_email = "carol@example.com" }
+        }).ToString();
+
+        // Two matches — ambiguous, should be rejected
+        var ambiguousJson = JArray.FromObject(new[]
+        {
+            new { username = "carol1", web_url = "https://gitlab.com/carol1", avatar_url = "https://gitlab.com/carol1.png" },
+            new { username = "carol2", web_url = "https://gitlab.com/carol2", avatar_url = "https://gitlab.com/carol2.png" }
+        }).ToString();
+
+        var handler = new FakeHttpHandler(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["projects/owner%2Frepo/repository/commits?per_page=100&page=1"] =
+                (HttpStatusCode.OK, commitsJson),
+            ["users?public_email=carol%40example.com"] =
+                (HttpStatusCode.OK, "[]"),
+            ["users?search=carol%40example.com"] =
+                (HttpStatusCode.OK, ambiguousJson),
+            ["avatar?email=carol%40example.com&size=48"] =
+                (HttpStatusCode.OK, """{"avatar_url":"https://gitlab.com/uploads/-/carol_gravatar.png"}""")
+        });
+
+        var provider = CreateGitLabProvider(handler: handler);
+        var contributors = await provider.GetContributorsAsync("https://gitlab.com/owner/repo", "");
+
+        var carol = Assert.Single(contributors);
+        // Name stays as commit author since we couldn't resolve unambiguously
+        Assert.Equal("Carol Commit", carol.Login);
+        // No profile URL since we couldn't resolve
+        Assert.Null(carol.HtmlUrl);
+        // But avatar came through via the /avatar fallback
+        Assert.Equal("https://gitlab.com/uploads/-/carol_gravatar.png", carol.AvatarUrl);
+    }
+
+    [Fact]
+    public async Task GitLab_GetContributors_NoUserMatch_AllFallbacksFail_LeavesNull()
+    {
+        var commitsJson = JArray.FromObject(new[]
+        {
+            new { author_name = "Ghost", author_email = "ghost@example.com" }
+        }).ToString();
+
+        var handler = new FakeHttpHandler(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["projects/owner%2Frepo/repository/commits?per_page=100&page=1"] =
+                (HttpStatusCode.OK, commitsJson),
+            ["users?public_email=ghost%40example.com"] = (HttpStatusCode.OK, "[]"),
+            ["users?search=ghost%40example.com"] = (HttpStatusCode.OK, "[]"),
+            // avatar endpoint returns 500
+            ["avatar?email=ghost%40example.com&size=48"] = (HttpStatusCode.InternalServerError, "")
+        });
+
+        var provider = CreateGitLabProvider(handler: handler);
+        var contributors = await provider.GetContributorsAsync("https://gitlab.com/owner/repo", "");
+
+        var ghost = Assert.Single(contributors);
+        Assert.Equal("Ghost", ghost.Login); // original commit author name
+        Assert.Null(ghost.HtmlUrl);
+        Assert.Null(ghost.AvatarUrl);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────
 
     private static GitHubHostingProvider CreateGitHubProvider()

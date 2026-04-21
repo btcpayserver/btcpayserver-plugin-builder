@@ -203,7 +203,7 @@ public class GitLabHostingProvider : IGitHostingProvider
             }
 
             var result = contributors.Values.OrderByDescending(c => c.Contributions).ToList();
-            await ResolveAvatarsAsync(client, contributors);
+            await ResolveUsersAsync(client, contributors);
             return result;
         }
         catch (Exception)
@@ -212,7 +212,7 @@ public class GitLabHostingProvider : IGitHostingProvider
         }
     }
 
-    private static async Task ResolveAvatarsAsync(
+    private static async Task ResolveUsersAsync(
         HttpClient client,
         Dictionary<string, GitHubContributor> contributors)
     {
@@ -223,13 +223,21 @@ public class GitLabHostingProvider : IGitHostingProvider
                 continue;
             try
             {
-                var apiUrl = $"avatar?email={Uri.EscapeDataString(key)}&size=48";
-                using var resp = await client.GetAsync(apiUrl);
-                if (!resp.IsSuccessStatusCode)
+                var user = await TryResolveGitLabUser(client, key);
+                if (user is not null)
+                {
+                    if (!string.IsNullOrWhiteSpace(user.WebUrl))
+                        contributor.HtmlUrl = user.WebUrl;
+                    if (!string.IsNullOrWhiteSpace(user.AvatarUrl))
+                        contributor.AvatarUrl = user.AvatarUrl;
+                    // Prefer the canonical username if we found one
+                    if (!string.IsNullOrWhiteSpace(user.Username))
+                        contributor.Login = user.Username;
                     continue;
-                var json = await resp.Content.ReadAsStringAsync();
-                var obj = JObject.Parse(json);
-                var avatarUrl = obj["avatar_url"]?.ToString();
+                }
+
+                // Fallback: avatar-only lookup via /avatar
+                var avatarUrl = await TryResolveAvatarOnly(client, key);
                 if (!string.IsNullOrWhiteSpace(avatarUrl))
                     contributor.AvatarUrl = avatarUrl;
             }
@@ -238,6 +246,39 @@ public class GitLabHostingProvider : IGitHostingProvider
                 // Best effort — skip if anything goes wrong
             }
         }
+    }
+
+    private static async Task<GitLabUser?> TryResolveGitLabUser(HttpClient client, string email)
+    {
+        // Try exact public_email match first (only returns users who made their email public)
+        var user = await QueryUser(client, $"users?public_email={Uri.EscapeDataString(email)}");
+        if (user is not null)
+            return user;
+
+        // Fall back to search (matches any field including email substring)
+        return await QueryUser(client, $"users?search={Uri.EscapeDataString(email)}");
+    }
+
+    private static async Task<GitLabUser?> QueryUser(HttpClient client, string apiPath)
+    {
+        using var resp = await client.GetAsync(apiPath);
+        if (!resp.IsSuccessStatusCode)
+            return null;
+        var json = await resp.Content.ReadAsStringAsync();
+        var users = JsonConvert.DeserializeObject<List<GitLabUser>>(json);
+        // Only accept unambiguous matches
+        return users is { Count: 1 } ? users[0] : null;
+    }
+
+    private static async Task<string?> TryResolveAvatarOnly(HttpClient client, string email)
+    {
+        var apiUrl = $"avatar?email={Uri.EscapeDataString(email)}&size=48";
+        using var resp = await client.GetAsync(apiUrl);
+        if (!resp.IsSuccessStatusCode)
+            return null;
+        var json = await resp.Content.ReadAsStringAsync();
+        var obj = JObject.Parse(json);
+        return obj["avatar_url"]?.ToString();
     }
 
     private HttpClient CreateClientForRepo(string repoUrl)
@@ -276,4 +317,9 @@ public class GitLabHostingProvider : IGitHostingProvider
     private record GitLabCommit(
         [property: JsonProperty("author_name")] string AuthorName,
         [property: JsonProperty("author_email")] string? AuthorEmail);
+
+    private record GitLabUser(
+        [property: JsonProperty("username")] string? Username,
+        [property: JsonProperty("web_url")] string? WebUrl,
+        [property: JsonProperty("avatar_url")] string? AvatarUrl);
 }
