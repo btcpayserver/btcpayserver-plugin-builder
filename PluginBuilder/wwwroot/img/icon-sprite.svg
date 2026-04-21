@@ -410,7 +410,7 @@
     </symbol>
 
     <symbol id="code" viewBox="0 0 24 24">
-        <path fill="currentColor" d="M7 8L3 11.6923L7 16M17 8L21 11.6923L17 16M14 4L10 20" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path fill="currentColor" d="M7 8L3 11.6923L7 16M17 8L21 11.6923L17 16M14 4L10 20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
 
     <symbol id="link" viewBox="0 0 24 24">
