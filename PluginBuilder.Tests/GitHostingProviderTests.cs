@@ -50,6 +50,20 @@ public class GitHostingProviderTests
         Assert.Equal(expected, provider.CanHandle(url));
     }
 
+    [Theory]
+    // Config "host:port" matches URL with same port
+    [InlineData("gitlab.example.com:8443", "https://gitlab.example.com:8443/owner/repo", true)]
+    // Config "host:port" does NOT match URL without port
+    [InlineData("gitlab.example.com:8443", "https://gitlab.example.com/owner/repo", false)]
+    // Config "host" matches URL with any port (host fallback)
+    [InlineData("gitlab.example.com", "https://gitlab.example.com:8443/owner/repo", true)]
+    [InlineData("gitlab.example.com", "https://gitlab.example.com/owner/repo", true)]
+    public void GitLab_CanHandle_AdditionalHosts_PortAware(string configuredHost, string url, bool expected)
+    {
+        var provider = CreateGitLabProvider(additionalHosts: new[] { configuredHost });
+        Assert.Equal(expected, provider.CanHandle(url));
+    }
+
     // ── GitHub ParseRepository ────────────────────────────────────────
 
     [Theory]

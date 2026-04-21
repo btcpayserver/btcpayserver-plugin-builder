@@ -30,7 +30,8 @@ public class GitLabHostingProvider : IGitHostingProvider
         if (!Uri.TryCreate(repoUrl, UriKind.Absolute, out var uri))
             return false;
 
-        return _additionalHosts.Any(h => uri.Host.Equals(h, StringComparison.OrdinalIgnoreCase));
+        return _additionalHosts.Any(h => uri.Authority.Equals(h, StringComparison.OrdinalIgnoreCase)
+                                         || uri.Host.Equals(h, StringComparison.OrdinalIgnoreCase));
     }
 
     public (string Owner, string RepoName)? ParseRepository(string repoUrl)
