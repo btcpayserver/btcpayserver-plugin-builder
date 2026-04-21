@@ -1,3 +1,5 @@
+@using PluginBuilder.Services
+@inject GitHostingProviderFactory GitHostingProviderFactory
 @model List<PluginBuilder.APIModels.PublishedPlugin>?
 @{
     Layout = "_LayoutPublicModal";
@@ -95,7 +97,8 @@
         {
             @foreach (var plugin in Model)
             {
-                var owner = plugin.GetGithubRepository()?.Owner;
+                var owner = plugin.GetOwnerName(GitHostingProviderFactory);
+                var ownerProfileUrl = plugin.GetOwnerProfileUrl(GitHostingProviderFactory);
                 <div class="col-md-6 mb-4">
                     <div class="card h-100 plugin-card" data-type="community">
                         <div class="card-body">
@@ -116,7 +119,7 @@
 
                                         <div style="font-size: 0.875em; color: #6c757d;">
                                             <div style="margin-bottom: 3px;">
-                                                <span>by <a href="https://github.com/@owner" rel="noreferrer noopener" target="_blank">@owner</a></span>
+                                                <span>by @if (ownerProfileUrl != null) {<a href="@ownerProfileUrl" rel="noreferrer noopener" target="_blank">@owner</a>} else {@owner}</span>
                                             </div>
                                             <div>
                                                 Version: @plugin.Version - Published:

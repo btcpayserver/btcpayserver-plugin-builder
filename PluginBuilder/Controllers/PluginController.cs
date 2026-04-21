@@ -31,6 +31,7 @@ public class PluginController(
     IOutputCacheStore outputCacheStore,
     PluginOwnershipService ownershipService,
     VersionLifecycleService versionLifecycleService,
+    GitHostingProviderFactory gitHostingProviderFactory,
     ILogger<PluginController> logger)
     : Controller
 {
@@ -288,7 +289,7 @@ public class PluginController(
 
         try
         {
-            var identifier = await buildService.FetchIdentifierFromGithubCsprojAsync(model.GitRepository, model.GitRef, model.PluginDirectory);
+            var identifier = await buildService.FetchIdentifierFromCsprojAsync(model.GitRepository, model.GitRef, model.PluginDirectory);
             var owns = await conn.EnsureIdentifierOwnership(pluginSlug, identifier);
             if (!owns)
             {
@@ -582,7 +583,7 @@ public class PluginController(
         vm.Repository = buildInfo?.GitRepository;
         vm.GitRef = buildInfo?.GitRef;
         vm.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, pluginSlug.ToString());
-        vm.RepositoryLink = GetUrl(buildInfo);
+        vm.RepositoryLink = GetUrl(buildInfo, gitHostingProviderFactory);
         vm.DownloadLink = buildInfo?.Url;
         //vm.Error = buildInfo?.Error;
         vm.RequireGPGSignatureForRelease = pluginSetting?.RequireGPGSignatureForRelease ?? false;
@@ -730,7 +731,7 @@ public class PluginController(
             b.GitRef = buildInfo?.GitRef;
             b.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, pluginSlug.ToString());
             b.Date = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
-            b.RepositoryLink = GetUrl(buildInfo);
+            b.RepositoryLink = GetUrl(buildInfo, gitHostingProviderFactory);
             b.DownloadLink = buildInfo?.Url;
             b.Error = buildInfo?.Error;
         }
@@ -740,32 +741,35 @@ public class PluginController(
         return View(vm);
     }
 
-    public static string? GetUrl(BuildInfo? buildInfo)
+    public static string? GetUrl(BuildInfo? buildInfo, GitHostingProviderFactory? providerFactory = null)
     {
-        if (buildInfo?.GitRepository is string repo && buildInfo?.GitCommit is string commit)
+        if (buildInfo?.GitRepository is not string repo || buildInfo?.GitCommit is not string commit)
+            return null;
+
+        if (providerFactory != null)
         {
-            string? repoName = null;
-            // git@github.com:Kukks/btcpayserver.git
-            if (repo.StartsWith("git@github.com:", StringComparison.OrdinalIgnoreCase))
-                repoName = repo.Substring("git@github.com:".Length);
-            // https://github.com/Kukks/btcpayserver.git
-            // https://github.com/Kukks/btcpayserver
-            else if (repo.StartsWith("https://github.com/"))
-                repoName = repo.Substring("https://github.com/".Length);
-            if (repoName is not null)
-            {
-                // Kukks/btcpayserver
-                if (repoName.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
-                    repoName = repoName.Substring(0, repoName.Length - 4);
-                // https://github.com/Kukks/btcpayserver/tree/plugins/collection/Plugins/BTCPayServer.Plugins.AOPP
-                var link = $"https://github.com/{repoName}/tree/{commit}";
-                if (buildInfo?.PluginDir is string pluginDir)
-                    link += $"/{pluginDir}";
-                return link;
-            }
+            var provider = providerFactory.GetProvider(repo);
+            if (provider != null)
+                return provider.GetSourceUrl(repo, commit, buildInfo.PluginDir);
         }
 
-        return null;
+        // Fallback for backward compatibility (git@ URLs, etc.)
+        string? repoName = null;
+        if (repo.StartsWith("git@github.com:", StringComparison.OrdinalIgnoreCase))
+            repoName = repo.Substring("git@github.com:".Length);
+        else if (repo.StartsWith("https://github.com/"))
+            repoName = repo.Substring("https://github.com/".Length);
+
+        if (repoName is null)
+            return null;
+
+        if (repoName.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+            repoName = repoName.Substring(0, repoName.Length - 4);
+
+        var link = $"https://github.com/{repoName}/tree/{commit}";
+        if (buildInfo?.PluginDir is string pluginDir)
+            link += $"/{pluginDir}";
+        return link;
     }
 
     private static bool VersionEquals(PluginVersion? left, PluginVersion? right)
