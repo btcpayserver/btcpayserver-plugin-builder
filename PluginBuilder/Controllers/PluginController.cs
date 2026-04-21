@@ -142,7 +142,7 @@ public class PluginController(
 
         if (settingViewModel.Logo != null)
         {
-            if (!settingViewModel.Logo.ValidateUploadedImage(out var errorMessage))
+            if (!settingViewModel.Logo.ValidateImageFile(out var errorMessage))
             {
                 ModelState.AddModelError(nameof(settingViewModel.Logo), $"Image upload validation failed: {errorMessage}");
                 return View(settingViewModel);
@@ -177,7 +177,7 @@ public class PluginController(
             }
             foreach (var image in imagesToUpload)
             {
-                if (!image.ValidateUploadedImage(out var errorMessage))
+                if (!image.ValidateImageFile(out var errorMessage))
                 {
                     ModelState.AddModelError(nameof(settingViewModel.Images), $"Image upload validation failed: {errorMessage}");
                     return View(settingViewModel);
