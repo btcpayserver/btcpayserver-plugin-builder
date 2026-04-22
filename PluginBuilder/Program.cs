@@ -223,6 +223,7 @@ public class Program
         services.AddSingleton<EmailService>();
         services.AddSingleton<FirstBuildEvent>();
         services.AddSingleton<NostrService>();
+        services.AddSingleton<BtcMapsService>();
 
         // shared controller logic
         services.AddSingleton<AdminSettingsCache>();
