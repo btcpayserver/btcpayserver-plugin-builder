@@ -263,6 +263,17 @@ public class Program
                     QueueLimit = 0
                 });
             });
+            options.AddPolicy(Policies.BtcMapsSubmitRateLimit, httpContext =>
+            {
+                var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromHours(24),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                });
+            });
         });
 
         services.AddOutputCache(options =>

@@ -11,14 +11,8 @@ public class BtcMapsServiceTests
 {
     private static BtcMapsService MakeService() =>
         new BtcMapsService(
-            httpClientFactory: new DummyHttpClientFactory(),
             configuration: new ConfigurationBuilder().Build(),
             logger: NullLogger<BtcMapsService>.Instance);
-
-    private sealed class DummyHttpClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new HttpClient();
-    }
 
     [Fact]
     public void Validate_RequiresAtLeastOneAction_NotEnforcedHere()

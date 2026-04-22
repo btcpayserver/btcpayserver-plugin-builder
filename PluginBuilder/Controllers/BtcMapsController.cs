@@ -18,7 +18,7 @@ public sealed class BtcMapsController(
     public IActionResult Ping() => Ok(new { ok = true, service = "btcmaps", version = "v1" });
 
     [HttpPost("submit")]
-    [EnableRateLimiting(Policies.PublicApiRateLimit)]
+    [EnableRateLimiting(Policies.BtcMapsSubmitRateLimit)]
     public async Task<IActionResult> Submit(
         [FromBody] BtcMapsSubmitRequest? request,
         CancellationToken cancellationToken)
@@ -33,6 +33,7 @@ public sealed class BtcMapsController(
         if (errors.Count > 0)
             return BadRequest(new { errors });
 
+        var correlationId = Guid.NewGuid().ToString("N");
         var response = new BtcMapsSubmitResponse();
 
         if (request.SubmitToDirectory)
@@ -41,13 +42,14 @@ public sealed class BtcMapsController(
             {
                 response.Directory = await btcMapsService.SubmitToDirectoryAsync(request, cancellationToken);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogError(ex, "BTCMaps directory submission failed for {Name} ({Url})", request.Name, request.Url);
+                logger.LogError(ex, "BTCMaps directory submission failed (correlationId={CorrelationId}) for {Name} ({Url})",
+                    correlationId, request.Name, request.Url);
                 return StatusCode(StatusCodes.Status502BadGateway, new
                 {
                     error = "directory-upstream-failed",
-                    detail = ex.Message
+                    correlationId
                 });
             }
         }
@@ -58,14 +60,14 @@ public sealed class BtcMapsController(
             {
                 response.Osm = await btcMapsService.TagOnOsmAsync(request, cancellationToken);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogError(ex, "BTCMaps OSM tagging failed for {Name} node {NodeType}/{NodeId}",
-                    request.Name, request.OsmNodeType, request.OsmNodeId);
+                logger.LogError(ex, "BTCMaps OSM tagging failed (correlationId={CorrelationId}) for {Name} node {NodeType}/{NodeId}",
+                    correlationId, request.Name, request.OsmNodeType, request.OsmNodeId);
                 return StatusCode(StatusCodes.Status502BadGateway, new
                 {
                     error = "osm-upstream-failed",
-                    detail = ex.Message,
+                    correlationId,
                     partial = response
                 });
             }

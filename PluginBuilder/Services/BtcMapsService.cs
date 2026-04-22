@@ -159,6 +159,22 @@ public sealed class BtcMapsService
             }
         }
 
+        var marker = BuildUrlMarker(normalizedUrl);
+        var openPrSearch = await GetJsonAsync(
+            client,
+            $"search/issues?q={Uri.EscapeDataString($"repo:{repo} is:pr is:open in:body \"{marker}\"")}",
+            cancellationToken);
+        if (openPrSearch.TryGetProperty("total_count", out var totalCount) && totalCount.GetInt32() > 0)
+        {
+            var firstItem = openPrSearch.GetProperty("items")[0];
+            return new BtcMapsDirectoryResult
+            {
+                Skipped = "duplicate-open-pr",
+                PrUrl = firstItem.TryGetProperty("html_url", out var h) ? h.GetString() : null,
+                PrNumber = firstItem.TryGetProperty("number", out var n) ? n.GetInt32() : null
+            };
+        }
+
         var newEntry = BuildMerchantEntry(request);
         var updated = merchants
             .Select(e => (JsonElement?)e)
@@ -177,7 +193,8 @@ public sealed class BtcMapsService
         var baseSha = branchRef.GetProperty("object").GetProperty("sha").GetString()
             ?? throw new InvalidOperationException("base sha missing");
 
-        var branchName = $"btcmaps/{Slugify(request.Name!)}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+        var branchSuffix = Guid.NewGuid().ToString("N")[..8];
+        var branchName = $"btcmaps/{Slugify(request.Name!)}-{branchSuffix}";
         await PostJsonAsync(client, $"repos/{repo}/git/refs",
             new { @ref = $"refs/heads/{branchName}", sha = baseSha }, cancellationToken);
 
@@ -190,7 +207,7 @@ public sealed class BtcMapsService
                 branch = branchName
             }, cancellationToken);
 
-        var prBody = BuildPrBody(request);
+        var prBody = BuildPrBody(request, marker);
         var prResponse = await PostJsonAsync(client, $"repos/{repo}/pulls",
             new
             {
@@ -267,10 +284,11 @@ public sealed class BtcMapsService
         }
         finally
         {
+            using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             try
             {
                 await client.PutAsync($"changeset/{changesetId}/close",
-                    new StringContent(string.Empty), cancellationToken);
+                    new StringContent(string.Empty), closeCts.Token);
             }
             catch (Exception ex)
             {
@@ -317,7 +335,7 @@ public sealed class BtcMapsService
         return JsonDocument.Parse(ms).RootElement.Clone();
     }
 
-    private static string BuildPrBody(BtcMapsSubmitRequest request)
+    private static string BuildPrBody(BtcMapsSubmitRequest request, string urlMarker)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Automated submission from the BTCPay Server plugin-builder `/apis/btcmaps/v1/submit` endpoint.");
@@ -333,8 +351,13 @@ public sealed class BtcMapsService
         sb.AppendLine(request.Description);
         sb.AppendLine();
         sb.AppendLine("_Please review before merge — this PR was opened programmatically by a BTCMap-plugin merchant submission, not by a maintainer._");
+        sb.AppendLine();
+        sb.AppendLine($"<!-- {urlMarker} -->");
         return sb.ToString();
     }
+
+    private static string BuildUrlMarker(string normalizedUrl) =>
+        $"btcmaps-submit:url={normalizedUrl}";
 
     public static string NormalizeUrl(string url) =>
         url.Trim().TrimEnd('/').ToLowerInvariant();
