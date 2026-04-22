@@ -146,7 +146,8 @@ public class BtcMapsServiceTests
     }
 
     [Theory]
-    [InlineData("http://example.onion", false)]
+    [InlineData("http://example.onion", true)]
+    [InlineData("ftp://abc.onion", false)]
     [InlineData("https://abc.example", false)]
     [InlineData("http://abc.onion", true)]
     [InlineData("https://abc.onion", true)]

@@ -91,10 +91,11 @@ public sealed class BtcMapsService
             if (!string.IsNullOrWhiteSpace(request.OnionUrl))
             {
                 if (!Uri.TryCreate(request.OnionUrl.Trim(), UriKind.Absolute, out var onionUri) ||
+                    (onionUri.Scheme != Uri.UriSchemeHttp && onionUri.Scheme != Uri.UriSchemeHttps) ||
                     !onionUri.Host.EndsWith(".onion", StringComparison.OrdinalIgnoreCase))
                 {
                     errors.Add(new ValidationError(nameof(request.OnionUrl),
-                        "Must be a .onion URL."));
+                        "Must be an http(s) .onion URL."));
                 }
             }
         }
@@ -332,7 +333,8 @@ public sealed class BtcMapsService
             w.WriteEndObject();
         }
         ms.Position = 0;
-        return JsonDocument.Parse(ms).RootElement.Clone();
+        using var doc = JsonDocument.Parse(ms);
+        return doc.RootElement.Clone();
     }
 
     private static string BuildPrBody(BtcMapsSubmitRequest request, string urlMarker)
@@ -389,7 +391,8 @@ public sealed class BtcMapsService
         using var response = await client.GetAsync(path, ct);
         await EnsureSuccess(response, path, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
-        return JsonDocument.Parse(text).RootElement.Clone();
+        using var doc = JsonDocument.Parse(text);
+        return doc.RootElement.Clone();
     }
 
     private static async Task<JsonElement> PostJsonAsync(HttpClient client, string path, object body, CancellationToken ct)
@@ -398,7 +401,8 @@ public sealed class BtcMapsService
         using var response = await client.PostAsync(path, content, ct);
         await EnsureSuccess(response, path, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
-        return JsonDocument.Parse(text).RootElement.Clone();
+        using var doc = JsonDocument.Parse(text);
+        return doc.RootElement.Clone();
     }
 
     private static async Task<JsonElement> PutJsonAsync(HttpClient client, string path, object body, CancellationToken ct)
@@ -407,7 +411,8 @@ public sealed class BtcMapsService
         using var response = await client.PutAsync(path, content, ct);
         await EnsureSuccess(response, path, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
-        return JsonDocument.Parse(text).RootElement.Clone();
+        using var doc = JsonDocument.Parse(text);
+        return doc.RootElement.Clone();
     }
 
     private static async Task EnsureSuccess(HttpResponseMessage response, string path, CancellationToken ct)
