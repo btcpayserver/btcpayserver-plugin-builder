@@ -265,7 +265,11 @@ public sealed class BtcMapsService
 
             elementEl.SetAttributeValue("changeset", changesetId);
 
-            SetOsmTag(elementEl, "payment:bitcoin", "yes");
+            // Bitcoin acceptance: per OSM, payment:bitcoin=yes is deprecated in favor
+            // of currency:XBT=yes (XBT is ISO 4217). Lightning stays as payment:lightning=yes.
+            // Refs: https://wiki.openstreetmap.org/wiki/Key:currency:XBT and
+            // https://wiki.openstreetmap.org/wiki/Bitcoin
+            SetOsmTag(elementEl, "currency:XBT", "yes");
             if (!string.IsNullOrWhiteSpace(request.Url))
                 SetOsmTag(elementEl, "website", request.Url);
             SetOsmTag(elementEl, "payment:lightning", "yes");
