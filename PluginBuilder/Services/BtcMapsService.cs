@@ -358,7 +358,7 @@ public sealed class BtcMapsService
         sb.AppendLine("**Description:**");
         sb.AppendLine(request.Description);
         sb.AppendLine();
-        sb.AppendLine("_Please review before merge — this PR was opened programmatically by a BTCMap-plugin merchant submission, not by a maintainer._");
+        sb.AppendLine("_Please review before merge - this PR was opened programmatically by a BTCMap-plugin merchant submission, not by a maintainer._");
         sb.AppendLine();
         sb.AppendLine($"<!-- {urlMarker} -->");
         return sb.ToString();
