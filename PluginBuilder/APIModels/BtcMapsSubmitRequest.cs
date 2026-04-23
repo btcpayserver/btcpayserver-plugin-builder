@@ -18,4 +18,9 @@ public sealed class BtcMapsSubmitRequest
 
     public bool SubmitToDirectory { get; set; }
     public bool TagOnOsm { get; set; }
+
+    // Defaults to true: a BTCPay store accepts on-chain Bitcoin by definition,
+    // so currency:XBT=yes is always set. Lightning is per-store configuration,
+    // so the plugin must pass the actual store state.
+    public bool AcceptsLightning { get; set; } = true;
 }
