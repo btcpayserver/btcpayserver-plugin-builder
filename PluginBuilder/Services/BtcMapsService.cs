@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -102,14 +103,28 @@ public sealed class BtcMapsService
 
         if (request.TagOnOsm)
         {
-            if (request.OsmNodeId is null or <= 0)
-                errors.Add(new ValidationError(nameof(request.OsmNodeId),
-                    "Required for OSM tagging. Must be positive."));
+            if (request.OsmNodeId is null)
+            {
+                // Create-new path: lat + lon required; OsmNodeType defaults to "node"
+                // when the service creates the OSM element.
+                if (request.Latitude is null || request.Latitude < -90.0 || request.Latitude > 90.0)
+                    errors.Add(new ValidationError(nameof(request.Latitude),
+                        "Required when OsmNodeId is null. Must be in range [-90, 90]."));
+                if (request.Longitude is null || request.Longitude < -180.0 || request.Longitude > 180.0)
+                    errors.Add(new ValidationError(nameof(request.Longitude),
+                        "Required when OsmNodeId is null. Must be in range [-180, 180]."));
+            }
+            else
+            {
+                if (request.OsmNodeId <= 0)
+                    errors.Add(new ValidationError(nameof(request.OsmNodeId),
+                        "Must be positive."));
 
-            var nodeType = (request.OsmNodeType ?? string.Empty).Trim();
-            if (string.IsNullOrEmpty(nodeType) || !ValidOsmNodeTypes.Contains(nodeType))
-                errors.Add(new ValidationError(nameof(request.OsmNodeType),
-                    $"Required for OSM tagging. One of: {string.Join(", ", ValidOsmNodeTypes)}."));
+                var nodeType = (request.OsmNodeType ?? string.Empty).Trim();
+                if (string.IsNullOrEmpty(nodeType) || !ValidOsmNodeTypes.Contains(nodeType))
+                    errors.Add(new ValidationError(nameof(request.OsmNodeType),
+                        $"Required when OsmNodeId is set. One of: {string.Join(", ", ValidOsmNodeTypes)}."));
+            }
         }
 
         return errors;
@@ -235,19 +250,21 @@ public sealed class BtcMapsService
             return new BtcMapsOsmResult { Skipped = "osm-access-token-not-configured" };
 
         var apiBase = _configuration["BTCMAPS:OsmApiBase"] ?? DefaultOsmApiBase;
-        var nodeType = request.OsmNodeType!.ToLowerInvariant();
-        var nodeId = request.OsmNodeId!.Value;
+        var isCreate = request.OsmNodeId is null;
+        var nodeType = isCreate ? "node" : request.OsmNodeType!.ToLowerInvariant();
 
         using var client = new HttpClient { BaseAddress = new Uri(apiBase) };
         client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
+        var changesetComment = isCreate
+            ? $"Add {request.Name} as a bitcoin-accepting place via BTCPay Server"
+            : $"Tag {request.Name} as accepting bitcoin via BTCPay Server";
         var changesetXml = new XDocument(
             new XElement("osm",
                 new XElement("changeset",
                     new XElement("tag", new XAttribute("k", "created_by"), new XAttribute("v", UserAgent)),
-                    new XElement("tag", new XAttribute("k", "comment"),
-                        new XAttribute("v", $"Tag {request.Name} as accepting bitcoin via BTCPay Server")),
+                    new XElement("tag", new XAttribute("k", "comment"), new XAttribute("v", changesetComment)),
                     new XElement("tag", new XAttribute("k", "source"), new XAttribute("v", "BTCPay Server plugin-builder")))));
 
         var csResponse = await client.PutAsync("changeset/create",
@@ -257,36 +274,70 @@ public sealed class BtcMapsService
 
         try
         {
-            var elementPath = $"{nodeType}/{nodeId}";
-            var elementXmlText = await client.GetStringAsync(elementPath, cancellationToken);
-            var elementDoc = XDocument.Parse(elementXmlText);
-            var elementEl = elementDoc.Root?.Element(nodeType)
-                ?? throw new InvalidOperationException($"OSM element <{nodeType}> not found in response");
+            long nodeId;
+            int newVersion;
 
-            elementEl.SetAttributeValue("changeset", changesetId);
+            if (isCreate)
+            {
+                // Build a brand-new <node> with the merchant's tags. OSM accepts the
+                // POST /api/0.6/node body as <osm><node ...><tag .../></node></osm>
+                // and returns the freshly-allocated node ID as plain text.
+                var amenity = string.IsNullOrWhiteSpace(request.OsmCategory)
+                    ? "shop"
+                    : request.OsmCategory.Trim();
 
-            // Bitcoin acceptance: per OSM, payment:bitcoin=yes is deprecated in favor
-            // of currency:XBT=yes (XBT is ISO 4217). Lightning is gated on the
-            // request's AcceptsLightning flag (per-store config).
-            // Refs: https://wiki.openstreetmap.org/wiki/Key:currency:XBT and
-            // https://wiki.openstreetmap.org/wiki/Bitcoin
-            SetOsmTag(elementEl, "currency:XBT", "yes");
-            if (!string.IsNullOrWhiteSpace(request.Url))
-                SetOsmTag(elementEl, "website", request.Url);
-            if (request.AcceptsLightning)
-                SetOsmTag(elementEl, "payment:lightning", "yes");
+                var newNode = new XElement("node",
+                    new XAttribute("changeset", changesetId),
+                    new XAttribute("lat", request.Latitude!.Value.ToString("R", CultureInfo.InvariantCulture)),
+                    new XAttribute("lon", request.Longitude!.Value.ToString("R", CultureInfo.InvariantCulture)));
+                newNode.Add(new XElement("tag", new XAttribute("k", "name"), new XAttribute("v", request.Name!.Trim())));
+                newNode.Add(new XElement("tag", new XAttribute("k", "amenity"), new XAttribute("v", amenity)));
+                newNode.Add(new XElement("tag", new XAttribute("k", "currency:XBT"), new XAttribute("v", "yes")));
+                if (!string.IsNullOrWhiteSpace(request.Url))
+                    newNode.Add(new XElement("tag", new XAttribute("k", "website"), new XAttribute("v", request.Url.Trim())));
+                if (request.AcceptsLightning)
+                    newNode.Add(new XElement("tag", new XAttribute("k", "payment:lightning"), new XAttribute("v", "yes")));
 
-            var putResponse = await client.PutAsync(elementPath,
-                new StringContent(elementDoc.ToString(), Encoding.UTF8, "text/xml"), cancellationToken);
-            putResponse.EnsureSuccessStatusCode();
-            var newVersion = int.Parse(await putResponse.Content.ReadAsStringAsync(cancellationToken));
+                var createDoc = new XDocument(new XElement("osm", newNode));
+                var createResponse = await client.PutAsync("node/create",
+                    new StringContent(createDoc.ToString(), Encoding.UTF8, "text/xml"), cancellationToken);
+                createResponse.EnsureSuccessStatusCode();
+                nodeId = long.Parse(await createResponse.Content.ReadAsStringAsync(cancellationToken));
+                newVersion = 1;
+            }
+            else
+            {
+                nodeId = request.OsmNodeId!.Value;
+                var elementPath = $"{nodeType}/{nodeId}";
+                var elementXmlText = await client.GetStringAsync(elementPath, cancellationToken);
+                var elementDoc = XDocument.Parse(elementXmlText);
+                var elementEl = elementDoc.Root?.Element(nodeType)
+                    ?? throw new InvalidOperationException($"OSM element <{nodeType}> not found in response");
+
+                elementEl.SetAttributeValue("changeset", changesetId);
+
+                // Bitcoin acceptance: per OSM, payment:bitcoin=yes is deprecated in favor
+                // of currency:XBT=yes (XBT is ISO 4217). Lightning is gated on the
+                // request's AcceptsLightning flag (per-store config).
+                SetOsmTag(elementEl, "currency:XBT", "yes");
+                if (!string.IsNullOrWhiteSpace(request.Url))
+                    SetOsmTag(elementEl, "website", request.Url);
+                if (request.AcceptsLightning)
+                    SetOsmTag(elementEl, "payment:lightning", "yes");
+
+                var putResponse = await client.PutAsync(elementPath,
+                    new StringContent(elementDoc.ToString(), Encoding.UTF8, "text/xml"), cancellationToken);
+                putResponse.EnsureSuccessStatusCode();
+                newVersion = int.Parse(await putResponse.Content.ReadAsStringAsync(cancellationToken));
+            }
 
             return new BtcMapsOsmResult
             {
                 ChangesetId = changesetId,
                 NodeId = nodeId,
                 NodeType = nodeType,
-                NewVersion = newVersion
+                NewVersion = newVersion,
+                Created = isCreate
             };
         }
         finally

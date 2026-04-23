@@ -21,4 +21,10 @@ public sealed class BtcMapsOsmResult
     public string? NodeType { get; set; }
     public int? NewVersion { get; set; }
     public string? Skipped { get; set; }
+
+    // True when the node was created on this request (OsmNodeId was null in
+    // the request and the service POSTed /api/0.6/node). Plugin should
+    // persist NodeId back to the merchant record so future submissions take
+    // the existing-update path.
+    public bool Created { get; set; }
 }

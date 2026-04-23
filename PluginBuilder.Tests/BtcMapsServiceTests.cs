@@ -171,14 +171,15 @@ public class BtcMapsServiceTests
     }
 
     [Theory]
-    [InlineData(null, null, false)]
     [InlineData(123L, "node", true)]
     [InlineData(123L, "Node", true)]
     [InlineData(123L, "relation", true)]
     [InlineData(123L, "line", false)]
     [InlineData(-1L, "node", false)]
-    public void Validate_ChecksOsmTagFields(long? nodeId, string? nodeType, bool expectValid)
+    public void Validate_ChecksExistingNodeFields(long? nodeId, string? nodeType, bool expectValid)
     {
+        // Existing-update path: OsmNodeId is set, NodeType must be one of the
+        // known OSM types and the ID positive.
         var svc = MakeService();
         var req = new BtcMapsSubmitRequest
         {
@@ -196,6 +197,57 @@ public class BtcMapsServiceTests
             Assert.Empty(errors);
         else
             Assert.NotEmpty(errors);
+    }
+
+    [Theory]
+    [InlineData(40.7128, -74.0060, true)]
+    [InlineData(0.0, 0.0, true)]
+    [InlineData(-90.0, 180.0, true)]
+    [InlineData(90.0, -180.0, true)]
+    [InlineData(91.0, 0.0, false)]
+    [InlineData(-91.0, 0.0, false)]
+    [InlineData(0.0, 181.0, false)]
+    [InlineData(0.0, -181.0, false)]
+    public void Validate_CreatePath_RequiresValidLatLon(double lat, double lon, bool expectValid)
+    {
+        // Create-new path: OsmNodeId is null, lat + lon are required and must be
+        // in valid geographic ranges. NodeType is irrelevant on this path
+        // (server defaults the created element to a node).
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            OsmNodeId = null,
+            Latitude = lat,
+            Longitude = lon,
+            TagOnOsm = true
+        };
+        var errors = svc.Validate(req)
+            .Where(e => e.Path is nameof(BtcMapsSubmitRequest.Latitude) or nameof(BtcMapsSubmitRequest.Longitude))
+            .ToList();
+        if (expectValid)
+            Assert.Empty(errors);
+        else
+            Assert.NotEmpty(errors);
+    }
+
+    [Fact]
+    public void Validate_CreatePath_RejectsMissingCoordinates()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            OsmNodeId = null,
+            TagOnOsm = true
+        };
+        var errors = svc.Validate(req).ToList();
+        Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.Latitude));
+        Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.Longitude));
     }
 
     [Theory]

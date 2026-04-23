@@ -16,6 +16,16 @@ public sealed class BtcMapsSubmitRequest
     public long? OsmNodeId { get; set; }
     public string? OsmNodeType { get; set; }
 
+    // Required when TagOnOsm=true and OsmNodeId is null (create-new path).
+    // Plugin should pass the merchant's coordinates from the BTCPay store
+    // address or merchant-supplied input.
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+
+    // Optional. Maps to the OSM amenity= tag. Common values: shop, cafe,
+    // restaurant, bar, pub, fast_food. Defaults to "shop" when omitted.
+    public string? OsmCategory { get; set; }
+
     public bool SubmitToDirectory { get; set; }
     public bool TagOnOsm { get; set; }
 
