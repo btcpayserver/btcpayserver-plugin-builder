@@ -269,4 +269,98 @@ public class BtcMapsServiceTests
     {
         Assert.Equal(expected, BtcMapsService.Slugify(input));
     }
+
+    [Fact]
+    public void Validate_Unlist_RequiresOsmNodeIdAndType()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            UnlistFromOsm = true
+        };
+        var errors = svc.Validate(req).ToList();
+        Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.OsmNodeId));
+        Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.OsmNodeType));
+    }
+
+    [Fact]
+    public void Validate_Unlist_AcceptsNodeIdAndType()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            UnlistFromOsm = true,
+            OsmNodeId = 1234,
+            OsmNodeType = "node"
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Fact]
+    public void Validate_Unlist_RejectsCombinationWithTagOnOsm()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            UnlistFromOsm = true,
+            TagOnOsm = true,
+            OsmNodeId = 1234,
+            OsmNodeType = "node"
+        };
+        Assert.Contains(svc.Validate(req),
+            e => e.Path == nameof(BtcMapsSubmitRequest.UnlistFromOsm));
+    }
+
+    [Fact]
+    public void Validate_Unlist_RejectsCombinationWithSubmitToDirectory()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            UnlistFromOsm = true,
+            SubmitToDirectory = true,
+            Type = "merchants",
+            OsmNodeId = 1234,
+            OsmNodeType = "node"
+        };
+        Assert.Contains(svc.Validate(req),
+            e => e.Path == nameof(BtcMapsSubmitRequest.UnlistFromOsm));
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(-1, false)]
+    [InlineData(1, true)]
+    public void Validate_Unlist_RequiresPositiveNodeId(long id, bool expectValid)
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            UnlistFromOsm = true,
+            OsmNodeId = id,
+            OsmNodeType = "node"
+        };
+        var errors = svc.Validate(req)
+            .Where(e => e.Path == nameof(BtcMapsSubmitRequest.OsmNodeId))
+            .ToList();
+        if (expectValid)
+            Assert.Empty(errors);
+        else
+            Assert.NotEmpty(errors);
+    }
 }

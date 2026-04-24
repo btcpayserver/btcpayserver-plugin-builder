@@ -127,6 +127,28 @@ public sealed class BtcMapsService
             }
         }
 
+        if (request.UnlistFromOsm)
+        {
+            // Un-listing always targets an existing element - there is no "remove-from-new-node"
+            // path. Mutually exclusive with TagOnOsm (opposite intent) and with SubmitToDirectory
+            // (v1 scope is OSM-only; directory unlist is a separate flow).
+            if (request.TagOnOsm)
+                errors.Add(new ValidationError(nameof(request.UnlistFromOsm),
+                    "Cannot be combined with tagOnOsm (opposite intent)."));
+            if (request.SubmitToDirectory)
+                errors.Add(new ValidationError(nameof(request.UnlistFromOsm),
+                    "Cannot be combined with submitToDirectory (directory unlist is out of v1 scope)."));
+
+            if (request.OsmNodeId is null || request.OsmNodeId <= 0)
+                errors.Add(new ValidationError(nameof(request.OsmNodeId),
+                    "Required when unlistFromOsm is true. Must be positive."));
+
+            var nodeType = (request.OsmNodeType ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(nodeType) || !ValidOsmNodeTypes.Contains(nodeType))
+                errors.Add(new ValidationError(nameof(request.OsmNodeType),
+                    $"Required when unlistFromOsm is true. One of: {string.Join(", ", ValidOsmNodeTypes)}."));
+        }
+
         return errors;
     }
 
@@ -353,6 +375,113 @@ public sealed class BtcMapsService
                 _logger.LogWarning(ex, "Failed to close OSM changeset {ChangesetId}", changesetId);
             }
         }
+    }
+
+    // Bitcoin-acceptance tags this service removes when un-listing. Keeps `website`,
+    // `name`, `amenity`, and address tags intact since those are not bitcoin-specific
+    // (a venue may remain on OSM after it stops accepting bitcoin). payment:bitcoin
+    // is included for historical nodes tagged before the deprecation-vs-currency:XBT
+    // switch.
+    private static readonly string[] BitcoinAcceptanceTagKeys =
+    {
+        "currency:XBT",
+        "payment:bitcoin",
+        "payment:lightning",
+        "payment:onchain"
+    };
+
+    public async Task<BtcMapsOsmResult> UnlistFromOsmAsync(
+        BtcMapsSubmitRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var token = _configuration["BTCMAPS:OsmAccessToken"];
+        if (string.IsNullOrWhiteSpace(token))
+            return new BtcMapsOsmResult { Skipped = "osm-access-token-not-configured" };
+
+        var apiBase = _configuration["BTCMAPS:OsmApiBase"] ?? DefaultOsmApiBase;
+        var nodeType = request.OsmNodeType!.ToLowerInvariant();
+        var nodeId = request.OsmNodeId!.Value;
+        var elementPath = $"{nodeType}/{nodeId}";
+
+        using var client = new HttpClient { BaseAddress = new Uri(apiBase) };
+        client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Fetch first so we can skip the changeset entirely when the element already
+        // has none of the bitcoin-related tags we remove. Idempotency + 409 surface.
+        var elementXmlText = await client.GetStringAsync(elementPath, cancellationToken);
+        var elementDoc = XDocument.Parse(elementXmlText);
+        var elementEl = elementDoc.Root?.Element(nodeType)
+            ?? throw new InvalidOperationException($"OSM element <{nodeType}> not found in response");
+
+        var removableKeys = BitcoinAcceptanceTagKeys
+            .Where(k => elementEl.Elements("tag").Any(t => (string?)t.Attribute("k") == k))
+            .ToArray();
+
+        if (removableKeys.Length == 0)
+        {
+            // Nothing to remove - the element already carries no bitcoin-acceptance
+            // tags we own. Report it so the controller surfaces 409 to the plugin
+            // (distinguishes idempotent no-op from "removed just now").
+            return new BtcMapsOsmResult
+            {
+                NodeId = nodeId,
+                NodeType = nodeType,
+                Skipped = "already-unlisted"
+            };
+        }
+
+        var changesetXml = new XDocument(
+            new XElement("osm",
+                new XElement("changeset",
+                    new XElement("tag", new XAttribute("k", "created_by"), new XAttribute("v", UserAgent)),
+                    new XElement("tag", new XAttribute("k", "comment"), new XAttribute("v", $"Un-list {request.Name} from bitcoin-accepting places via BTCPay Server")),
+                    new XElement("tag", new XAttribute("k", "source"), new XAttribute("v", "BTCPay Server plugin-builder")))));
+
+        var csResponse = await client.PutAsync("changeset/create",
+            new StringContent(changesetXml.ToString(), Encoding.UTF8, "text/xml"), cancellationToken);
+        csResponse.EnsureSuccessStatusCode();
+        var changesetId = long.Parse(await csResponse.Content.ReadAsStringAsync(cancellationToken));
+
+        try
+        {
+            elementEl.SetAttributeValue("changeset", changesetId);
+            foreach (var key in removableKeys)
+                RemoveOsmTag(elementEl, key);
+
+            var putResponse = await client.PutAsync(elementPath,
+                new StringContent(elementDoc.ToString(), Encoding.UTF8, "text/xml"), cancellationToken);
+            putResponse.EnsureSuccessStatusCode();
+            var newVersion = int.Parse(await putResponse.Content.ReadAsStringAsync(cancellationToken));
+
+            return new BtcMapsOsmResult
+            {
+                ChangesetId = changesetId,
+                NodeId = nodeId,
+                NodeType = nodeType,
+                NewVersion = newVersion,
+                RemovedTags = removableKeys
+            };
+        }
+        finally
+        {
+            using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
+            {
+                await client.PutAsync($"changeset/{changesetId}/close",
+                    new StringContent(string.Empty), closeCts.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to close OSM changeset {ChangesetId}", changesetId);
+            }
+        }
+    }
+
+    private static void RemoveOsmTag(XElement element, string key)
+    {
+        var existing = element.Elements("tag").FirstOrDefault(t => (string?)t.Attribute("k") == key);
+        existing?.Remove();
     }
 
     private static void SetOsmTag(XElement element, string key, string value)

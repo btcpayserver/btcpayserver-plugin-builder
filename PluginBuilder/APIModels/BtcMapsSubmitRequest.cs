@@ -33,4 +33,12 @@ public sealed class BtcMapsSubmitRequest
     // so currency:XBT=yes is always set. Lightning is per-store configuration,
     // so the plugin must pass the actual store state.
     public bool AcceptsLightning { get; set; } = true;
+
+    // Opt-in un-listing: remove the bitcoin-related tags from an existing OSM
+    // element. Requires OsmNodeId + OsmNodeType. Mutually exclusive with TagOnOsm
+    // and SubmitToDirectory (v1 scope is OSM-only; directory unlist involves a
+    // separate merchant-row/PR/rebuild flow and is out of scope for this endpoint).
+    // If the target element no longer carries any of the bitcoin-related tags the
+    // service removes, the endpoint returns 409 Conflict.
+    public bool UnlistFromOsm { get; set; }
 }

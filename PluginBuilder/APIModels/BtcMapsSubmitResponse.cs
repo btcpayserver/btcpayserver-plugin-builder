@@ -27,4 +27,8 @@ public sealed class BtcMapsOsmResult
     // persist NodeId back to the merchant record so future submissions take
     // the existing-update path.
     public bool Created { get; set; }
+
+    // Populated on an un-list request (UnlistFromOsm=true) with the keys the
+    // service actually removed from the element. Null on a tag-on request.
+    public string[]? RemovedTags { get; set; }
 }

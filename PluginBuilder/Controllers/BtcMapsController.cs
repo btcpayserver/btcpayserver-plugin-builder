@@ -26,8 +26,8 @@ public sealed class BtcMapsController(
         if (request is null)
             return BadRequest(new { errors = new[] { new ValidationError("body", "Request body is required.") } });
 
-        if (!request.SubmitToDirectory && !request.TagOnOsm)
-            return BadRequest(new { errors = new[] { new ValidationError("action", "Set submitToDirectory and/or tagOnOsm to true.") } });
+        if (!request.SubmitToDirectory && !request.TagOnOsm && !request.UnlistFromOsm)
+            return BadRequest(new { errors = new[] { new ValidationError("action", "Set submitToDirectory, tagOnOsm, and/or unlistFromOsm to true.") } });
 
         var errors = btcMapsService.Validate(request);
         if (errors.Count > 0)
@@ -54,7 +54,39 @@ public sealed class BtcMapsController(
             }
         }
 
-        if (request.TagOnOsm)
+        if (request.UnlistFromOsm)
+        {
+            try
+            {
+                response.Osm = await btcMapsService.UnlistFromOsmAsync(request, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "BTCMaps OSM un-list failed (correlationId={CorrelationId}) for {Name} node {NodeType}/{NodeId}",
+                    correlationId, request.Name, request.OsmNodeType, request.OsmNodeId);
+                return StatusCode(StatusCodes.Status502BadGateway, new
+                {
+                    error = "osm-upstream-failed",
+                    correlationId,
+                    partial = response
+                });
+            }
+
+            // Conflict surface: when the element already carries none of the
+            // bitcoin-related tags the service removes, the service reports
+            // "already-unlisted" via Skipped. Return 409 so the plugin can
+            // distinguish idempotent no-op from "actually removed just now".
+            if (response.Osm?.Skipped == "already-unlisted")
+            {
+                return Conflict(new
+                {
+                    error = "already-unlisted",
+                    correlationId,
+                    partial = response
+                });
+            }
+        }
+        else if (request.TagOnOsm)
         {
             try
             {
