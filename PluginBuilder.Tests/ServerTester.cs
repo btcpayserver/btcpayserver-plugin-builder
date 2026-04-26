@@ -45,6 +45,8 @@ public class ServerTester : IAsyncDisposable
     public WebApplication WebApp => _WebApp ?? throw new InvalidOperationException("Webapp not initialized");
 
     public bool ReuseDatabase { get; set; } = true;
+    public bool CheatMode { get; set; }
+    public bool EnableLocalArtifactDownloadProxy { get; set; }
 
     public async ValueTask DisposeAsync()
     {
@@ -108,6 +110,8 @@ public class ServerTester : IAsyncDisposable
                 "--urls=http://127.0.0.1:0",
                 $"--postgres={connStr}",
                 $"--storage_connection_string={StorageConnectionString}",
+                $"--cheat_mode={CheatMode.ToString().ToLowerInvariant()}",
+                $"--enable_local_artifact_download_proxy={EnableLocalArtifactDownloadProxy.ToString().ToLowerInvariant()}",
             ]
         });
 
