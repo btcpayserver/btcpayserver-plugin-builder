@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.Extensions.Configuration;
@@ -59,12 +60,14 @@ public sealed class BtcMapsService
         else if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps)
             errors.Add(new ValidationError(nameof(request.Url), "Must be a valid https:// URL."));
 
-        var description = (request.Description ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(description) || description.Length > 1000)
-            errors.Add(new ValidationError(nameof(request.Description), "Required, 1-1000 characters."));
-
         if (request.SubmitToDirectory)
         {
+            // Description is only consumed by the directory PR body; not required for
+            // tagOnOsm-only or unlistFromOsm-only requests.
+            var description = (request.Description ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(description) || description.Length > 1000)
+                errors.Add(new ValidationError(nameof(request.Description), "Required, 1-1000 characters."));
+
             var type = (request.Type ?? string.Empty).Trim();
             if (string.IsNullOrEmpty(type) || !ValidTypes.Contains(type))
                 errors.Add(new ValidationError(nameof(request.Type),
@@ -222,7 +225,16 @@ public sealed class BtcMapsService
             .Select(e => e!.Value)
             .ToList();
 
-        var updatedJson = JsonSerializer.Serialize(updated, new JsonSerializerOptions { WriteIndented = true }) + "\n";
+        // Use UnsafeRelaxedJsonEscaping so non-ASCII codepoints and HTML-only "unsafe"
+        // chars (`&`, `'`, `<`, `>`) are written raw in the file, matching the upstream
+        // merchants.json convention. The default JavaScriptEncoder is HTML-safe and
+        // would re-encode every entry containing `'` or non-ASCII as `\uXXXX`, which
+        // shows up as a noisy full-file diff on every append.
+        var updatedJson = JsonSerializer.Serialize(updated, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        }) + "\n";
 
         var branchRef = await GetJsonAsync(
             client,
@@ -532,7 +544,14 @@ public sealed class BtcMapsService
         sb.AppendLine($"- **URL:** {request.Url}");
         sb.AppendLine($"- **Type:** {request.Type}{(string.IsNullOrWhiteSpace(request.SubType) ? string.Empty : " / " + request.SubType)}");
         if (!string.IsNullOrWhiteSpace(request.Country)) sb.AppendLine($"- **Country:** {request.Country}");
-        if (!string.IsNullOrWhiteSpace(request.Twitter)) sb.AppendLine($"- **Twitter:** {request.Twitter}");
+        if (!string.IsNullOrWhiteSpace(request.Twitter))
+        {
+            // Render as an explicit https://x.com/<handle> link so GitHub markdown does
+            // not auto-resolve a bare `@handle` to github.com/<handle>.
+            var raw = request.Twitter.Trim();
+            var handle = raw.StartsWith("@") ? raw[1..] : raw;
+            sb.AppendLine($"- **Twitter:** [@{handle}](https://x.com/{handle})");
+        }
         if (!string.IsNullOrWhiteSpace(request.Github)) sb.AppendLine($"- **GitHub:** {request.Github}");
         sb.AppendLine();
         sb.AppendLine("**Description:**");

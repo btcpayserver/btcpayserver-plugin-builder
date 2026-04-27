@@ -56,16 +56,69 @@ public class BtcMapsServiceTests
     }
 
     [Fact]
-    public void Validate_RejectsOverlongDescription()
+    public void Validate_RejectsOverlongDescription_OnDirectorySubmit()
     {
         var svc = MakeService();
         var req = new BtcMapsSubmitRequest
         {
             Name = "Shop",
             Url = "https://shop.example",
-            Description = new string('x', 1001)
+            Description = new string('x', 1001),
+            Type = "merchants",
+            SubmitToDirectory = true
         };
         Assert.Contains(svc.Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Description));
+    }
+
+    [Fact]
+    public void Validate_RequiresDescription_OnDirectorySubmit()
+    {
+        // Description is the directory PR body content; required only when actually
+        // submitting to the directory.
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Type = "merchants",
+            SubmitToDirectory = true
+        };
+        Assert.Contains(svc.Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Description));
+    }
+
+    [Fact]
+    public void Validate_AllowsMissingDescription_WhenTagOnOsmOnly()
+    {
+        // tagOnOsm-only requests do not consume Description (the OSM tag set is
+        // name + amenity + currency:XBT + payment:lightning + website). Description
+        // is exclusively a directory-PR field.
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            OsmNodeId = 12345,
+            OsmNodeType = "node",
+            TagOnOsm = true
+        };
+        Assert.DoesNotContain(svc.Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Description));
+    }
+
+    [Fact]
+    public void Validate_AllowsMissingDescription_WhenUnlistOnly()
+    {
+        // unlistFromOsm-only requests strip tags from an existing OSM element; no
+        // Description path on the wire.
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            UnlistFromOsm = true,
+            OsmNodeId = 12345,
+            OsmNodeType = "node"
+        };
+        Assert.Empty(svc.Validate(req));
     }
 
     [Theory]
