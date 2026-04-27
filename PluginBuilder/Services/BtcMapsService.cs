@@ -300,8 +300,8 @@ public sealed class BtcMapsService
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         var changesetComment = isCreate
-            ? $"Add {request.Name} as a bitcoin-accepting place via BTCPay Server"
-            : $"Tag {request.Name} as accepting bitcoin via BTCPay Server";
+            ? $"Add {request.Name} as a bitcoin-accepting place via BTCPay Server #btcmap"
+            : $"Tag {request.Name} as accepting bitcoin via BTCPay Server #btcmap";
         var changesetXml = new XDocument(
             new XElement("osm",
                 new XElement("changeset",
@@ -464,7 +464,7 @@ public sealed class BtcMapsService
             new XElement("osm",
                 new XElement("changeset",
                     new XElement("tag", new XAttribute("k", "created_by"), new XAttribute("v", UserAgent)),
-                    new XElement("tag", new XAttribute("k", "comment"), new XAttribute("v", $"Un-list {request.Name} from bitcoin-accepting places via BTCPay Server")),
+                    new XElement("tag", new XAttribute("k", "comment"), new XAttribute("v", $"Un-list {request.Name} from bitcoin-accepting places via BTCPay Server #btcmap")),
                     new XElement("tag", new XAttribute("k", "source"), new XAttribute("v", "BTCPay Server plugin-builder")))));
 
         var csResponse = await client.PutAsync("changeset/create",
@@ -574,8 +574,9 @@ public sealed class BtcMapsService
             w.WriteString("type", request.Type!.Trim());
             if (!string.IsNullOrWhiteSpace(request.SubType))
                 w.WriteString("subType", request.SubType.Trim());
-            if (!string.IsNullOrWhiteSpace(request.Country))
-                w.WriteString("country", request.Country.Trim());
+            var directoryCountry = ResolveDirectoryCountry(request);
+            if (!string.IsNullOrWhiteSpace(directoryCountry))
+                w.WriteString("country", directoryCountry);
             if (!string.IsNullOrWhiteSpace(request.Twitter))
             {
                 var t = request.Twitter.Trim();
@@ -592,6 +593,22 @@ public sealed class BtcMapsService
         return doc.RootElement.Clone();
     }
 
+    // Plugins centralise the merchant's country in one form field. The directory
+    // submission consumes top-level `country`; OSM addr:country reads
+    // `Address.Country`. If only one is sent, fall back to the other so the
+    // merchant.json entry carries the country regardless of which field the
+    // plugin populated. Top-level wins because it allows the directory-only
+    // GLOBAL pseudonym (e.g. online-only services) which has no OSM addr:*
+    // equivalent.
+    public static string? ResolveDirectoryCountry(BtcMapsSubmitRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.Country))
+            return request.Country.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Address?.Country))
+            return request.Address!.Country!.Trim();
+        return null;
+    }
+
     private static string BuildPrBody(BtcMapsSubmitRequest request, string urlMarker)
     {
         var sb = new StringBuilder();
@@ -600,7 +617,8 @@ public sealed class BtcMapsService
         sb.AppendLine($"- **Name:** {request.Name}");
         sb.AppendLine($"- **URL:** {request.Url}");
         sb.AppendLine($"- **Type:** {request.Type}{(string.IsNullOrWhiteSpace(request.SubType) ? string.Empty : " / " + request.SubType)}");
-        if (!string.IsNullOrWhiteSpace(request.Country)) sb.AppendLine($"- **Country:** {request.Country}");
+        var prBodyCountry = ResolveDirectoryCountry(request);
+        if (!string.IsNullOrWhiteSpace(prBodyCountry)) sb.AppendLine($"- **Country:** {prBodyCountry}");
         if (!string.IsNullOrWhiteSpace(request.Twitter))
         {
             // Render as an explicit https://x.com/<handle> link so GitHub markdown does

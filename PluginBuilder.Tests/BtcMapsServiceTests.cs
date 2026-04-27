@@ -393,6 +393,50 @@ public class BtcMapsServiceTests
     }
 
     [Fact]
+    public void ResolveDirectoryCountry_PrefersTopLevelCountry()
+    {
+        var req = new BtcMapsSubmitRequest
+        {
+            Country = "DE",
+            Address = new BtcMapsSubmitAddress { Country = "FR" }
+        };
+        Assert.Equal("DE", BtcMapsService.ResolveDirectoryCountry(req));
+    }
+
+    [Fact]
+    public void ResolveDirectoryCountry_FallsBackToAddressCountry()
+    {
+        // Plugin centralises country in the address block only; the directory
+        // entry should still carry the country code.
+        var req = new BtcMapsSubmitRequest
+        {
+            Address = new BtcMapsSubmitAddress { Country = "FR" }
+        };
+        Assert.Equal("FR", BtcMapsService.ResolveDirectoryCountry(req));
+    }
+
+    [Fact]
+    public void ResolveDirectoryCountry_FallsBackThroughWhitespace()
+    {
+        var req = new BtcMapsSubmitRequest
+        {
+            Country = "   ",
+            Address = new BtcMapsSubmitAddress { Country = " IT " }
+        };
+        Assert.Equal("IT", BtcMapsService.ResolveDirectoryCountry(req));
+    }
+
+    [Fact]
+    public void ResolveDirectoryCountry_NullWhenNeitherProvided()
+    {
+        var req = new BtcMapsSubmitRequest
+        {
+            Address = new BtcMapsSubmitAddress { City = "Munich" }
+        };
+        Assert.Null(BtcMapsService.ResolveDirectoryCountry(req));
+    }
+
+    [Fact]
     public void Validate_AllowsRequestWithoutAddress()
     {
         var svc = MakeService();
