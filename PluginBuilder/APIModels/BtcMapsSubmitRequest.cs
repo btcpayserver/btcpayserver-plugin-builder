@@ -41,4 +41,10 @@ public sealed class BtcMapsSubmitRequest
     // If the target element no longer carries any of the bitcoin-related tags the
     // service removes, the endpoint returns 409 Conflict.
     public bool UnlistFromOsm { get; set; }
+
+    // Optional structured address. Consumed by the OSM tag writer (addr:*).
+    // Each field nullable; only populated keys are written to the node. Plugin
+    // is responsible for splitting raw street strings into HouseNumber + Street
+    // at the merchant-form boundary.
+    public BtcMapsSubmitAddress? Address { get; set; }
 }

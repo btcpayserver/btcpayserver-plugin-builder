@@ -130,6 +130,14 @@ public sealed class BtcMapsService
             }
         }
 
+        if (request.Address is not null && !string.IsNullOrWhiteSpace(request.Address.Country))
+        {
+            var addrCountry = request.Address.Country.Trim();
+            if (!(addrCountry.Length == 2 && addrCountry.All(char.IsUpper)))
+                errors.Add(new ValidationError($"{nameof(request.Address)}.{nameof(request.Address.Country)}",
+                    "Must be ISO 3166-1 alpha-2."));
+        }
+
         if (request.UnlistFromOsm)
         {
             // Un-listing always targets an existing element - there is no "remove-from-new-node"
@@ -327,10 +335,15 @@ public sealed class BtcMapsService
                 newNode.Add(new XElement("tag", new XAttribute("k", "name"), new XAttribute("v", request.Name!.Trim())));
                 newNode.Add(new XElement("tag", new XAttribute("k", "amenity"), new XAttribute("v", amenity)));
                 newNode.Add(new XElement("tag", new XAttribute("k", "currency:XBT"), new XAttribute("v", "yes")));
+                // BTC Map verification stamp - bumped on every tag operation per
+                // https://gitea.btcmap.org/teambtcmap/btcmap-general/wiki/Verifying-Existing-Merchants
+                // Date-only UTC; the act of submitting through the plugin is itself the verification.
+                newNode.Add(new XElement("tag", new XAttribute("k", "check_date:currency:XBT"), new XAttribute("v", TodayUtcDate())));
                 if (!string.IsNullOrWhiteSpace(request.Url))
                     newNode.Add(new XElement("tag", new XAttribute("k", "website"), new XAttribute("v", request.Url.Trim())));
                 if (request.AcceptsLightning)
                     newNode.Add(new XElement("tag", new XAttribute("k", "payment:lightning"), new XAttribute("v", "yes")));
+                AddAddressTagsToNewNode(newNode, request.Address);
 
                 var createDoc = new XDocument(new XElement("osm", newNode));
                 var createResponse = await client.PutAsync("node/create",
@@ -354,10 +367,14 @@ public sealed class BtcMapsService
                 // of currency:XBT=yes (XBT is ISO 4217). Lightning is gated on the
                 // request's AcceptsLightning flag (per-store config).
                 SetOsmTag(elementEl, "currency:XBT", "yes");
+                // BTC Map verification stamp - same date-only UTC stamp as the create
+                // path, bumped here on re-verify or on any tag-update flow.
+                SetOsmTag(elementEl, "check_date:currency:XBT", TodayUtcDate());
                 if (!string.IsNullOrWhiteSpace(request.Url))
                     SetOsmTag(elementEl, "website", request.Url);
                 if (request.AcceptsLightning)
                     SetOsmTag(elementEl, "payment:lightning", "yes");
+                ApplyAddressTags(elementEl, request.Address);
 
                 var putResponse = await client.PutAsync(elementPath,
                     new StringContent(elementDoc.ToString(), Encoding.UTF8, "text/xml"), cancellationToken);
@@ -503,6 +520,46 @@ public sealed class BtcMapsService
             existing.SetAttributeValue("v", value);
         else
             element.Add(new XElement("tag", new XAttribute("k", key), new XAttribute("v", value)));
+    }
+
+    private static string TodayUtcDate() =>
+        DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    // OSM addr:* writers. Plugin-side splits the raw merchant address into
+    // structured components; the server writes only the keys whose values are
+    // populated, never inferring or synthesising. This is the create-path
+    // helper (appends new <tag> children to a fresh <node>).
+    private static void AddAddressTagsToNewNode(XElement newNode, BtcMapsSubmitAddress? address)
+    {
+        if (address is null) return;
+        foreach (var (key, raw) in EnumerateAddressTags(address))
+        {
+            var value = raw.Trim();
+            if (value.Length == 0) continue;
+            newNode.Add(new XElement("tag", new XAttribute("k", key), new XAttribute("v", value)));
+        }
+    }
+
+    // Update-path helper: applies addr:* via SetOsmTag so existing values get
+    // overwritten in-place rather than producing duplicate <tag> children.
+    private static void ApplyAddressTags(XElement element, BtcMapsSubmitAddress? address)
+    {
+        if (address is null) return;
+        foreach (var (key, raw) in EnumerateAddressTags(address))
+        {
+            var value = raw.Trim();
+            if (value.Length == 0) continue;
+            SetOsmTag(element, key, value);
+        }
+    }
+
+    private static IEnumerable<(string Key, string Value)> EnumerateAddressTags(BtcMapsSubmitAddress address)
+    {
+        if (!string.IsNullOrWhiteSpace(address.HouseNumber)) yield return ("addr:housenumber", address.HouseNumber);
+        if (!string.IsNullOrWhiteSpace(address.Street))      yield return ("addr:street",      address.Street);
+        if (!string.IsNullOrWhiteSpace(address.City))        yield return ("addr:city",        address.City);
+        if (!string.IsNullOrWhiteSpace(address.Postcode))    yield return ("addr:postcode",    address.Postcode);
+        if (!string.IsNullOrWhiteSpace(address.Country))     yield return ("addr:country",     address.Country);
     }
 
     private static JsonElement BuildMerchantEntry(BtcMapsSubmitRequest request)

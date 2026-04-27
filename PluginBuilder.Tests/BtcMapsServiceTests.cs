@@ -392,6 +392,94 @@ public class BtcMapsServiceTests
             e => e.Path == nameof(BtcMapsSubmitRequest.UnlistFromOsm));
     }
 
+    [Fact]
+    public void Validate_AllowsRequestWithoutAddress()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            OsmNodeId = 12345,
+            OsmNodeType = "node",
+            TagOnOsm = true
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Fact]
+    public void Validate_AcceptsFullAddressWithIsoCountry()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            OsmNodeId = 12345,
+            OsmNodeType = "node",
+            TagOnOsm = true,
+            Address = new BtcMapsSubmitAddress
+            {
+                HouseNumber = "12",
+                Street = "Main St",
+                City = "Munich",
+                Postcode = "80331",
+                Country = "DE"
+            }
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Fact]
+    public void Validate_AcceptsPartialAddress()
+    {
+        // Only some addr:* keys provided. Server writes whichever the plugin
+        // populated; nothing inferred. Empty / missing fields are not errors.
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            OsmNodeId = 12345,
+            OsmNodeType = "node",
+            TagOnOsm = true,
+            Address = new BtcMapsSubmitAddress
+            {
+                City = "Munich",
+                Country = "DE"
+            }
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Theory]
+    [InlineData("DE", true)]
+    [InlineData("US", true)]
+    [InlineData("de", false)]
+    [InlineData("DEU", false)]
+    [InlineData("D", false)]
+    [InlineData("GLOBAL", false)] // GLOBAL is valid for the directory's top-level Country, NOT for OSM addr:country.
+    public void Validate_AddressCountry_MustBeIsoAlpha2(string country, bool expectValid)
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            OsmNodeId = 12345,
+            OsmNodeType = "node",
+            TagOnOsm = true,
+            Address = new BtcMapsSubmitAddress { Country = country }
+        };
+        var errors = svc.Validate(req)
+            .Where(e => e.Path.EndsWith(nameof(BtcMapsSubmitAddress.Country)))
+            .ToList();
+        if (expectValid)
+            Assert.Empty(errors);
+        else
+            Assert.NotEmpty(errors);
+    }
+
     [Theory]
     [InlineData(0, false)]
     [InlineData(-1, false)]
