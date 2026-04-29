@@ -26,7 +26,9 @@ public class ApiController(
     BuildService buildService,
     VersionLifecycleService versionLifecycleService,
     UserManager<IdentityUser> userManager,
-    UserVerifiedLogic userVerifiedLogic)
+    UserVerifiedLogic userVerifiedLogic,
+    IHttpClientFactory httpClientFactory,
+    ServerEnvironment serverEnvironment)
     : ControllerBase
 {
     private sealed class BuildRow
@@ -241,17 +243,57 @@ public class ApiController(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion version)
     {
+        var url = await GetArtifactUrl(pluginSlug, version);
+        if (url is null)
+            return NotFound();
+
         await using var conn = await connectionFactory.Open();
-        var url = await conn.ExecuteScalarAsync<string?>(
+        await conn.InsertEvent("Download", new JObject { ["pluginSlug"] = pluginSlug.ToString(), ["version"] = version.ToString() });
+        if (serverEnvironment.EnableLocalArtifactDownloadProxy && Uri.TryCreate(url, UriKind.Absolute, out var artifactUri) && artifactUri.IsLoopback)
+        {
+            return RedirectToAction(
+                nameof(DownloadLoopbackArtifact),
+                new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
+        }
+
+        return Redirect(url);
+    }
+
+    [AllowAnonymous]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [HttpGet("plugins/{pluginSlug}/versions/{version}/download-loopback")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
+    public async Task<IActionResult> DownloadLoopbackArtifact(
+        [ModelBinder(typeof(PluginSlugModelBinder))]
+        PluginSlug pluginSlug,
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion version)
+    {
+        if (!serverEnvironment.EnableLocalArtifactDownloadProxy)
+            return NotFound();
+
+        var url = await GetArtifactUrl(pluginSlug, version);
+        if (url is null || !Uri.TryCreate(url, UriKind.Absolute, out var artifactUri) || !artifactUri.IsLoopback)
+            return NotFound();
+
+        using var response = await httpClientFactory.CreateClient().GetAsync(artifactUri, HttpContext.RequestAborted);
+        if (!response.IsSuccessStatusCode)
+            return StatusCode((int)response.StatusCode);
+
+        var package = await response.Content.ReadAsByteArrayAsync(HttpContext.RequestAborted);
+        var contentType = response.Content.Headers.ContentType?.ToString() ?? "application/zip";
+        var fileName = Path.GetFileName(artifactUri.LocalPath);
+        return File(package, contentType, fileName);
+    }
+
+    private async Task<string?> GetArtifactUrl(PluginSlug pluginSlug, PluginVersion version)
+    {
+        await using var conn = await connectionFactory.Open();
+        return await conn.ExecuteScalarAsync<string?>(
             "SELECT b.build_info->>'url' FROM versions v " +
             "JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id " +
             "WHERE v.plugin_slug=@plugin_slug AND v.ver=@version",
             new { plugin_slug = pluginSlug.ToString(), version = version.VersionParts });
-        if (url is null)
-            return NotFound();
-
-        await conn.InsertEvent("Download", new JObject { ["pluginSlug"] = pluginSlug.ToString(), ["version"] = version.ToString() });
-        return Redirect(url);
     }
 
     [HttpPost("plugins/{pluginSlug}/builds")]
