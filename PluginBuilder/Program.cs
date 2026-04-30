@@ -223,6 +223,7 @@ public class Program
         services.AddSingleton<EmailService>();
         services.AddSingleton<FirstBuildEvent>();
         services.AddSingleton<NostrService>();
+        services.AddSingleton<BtcMapsService>();
 
         // shared controller logic
         services.AddSingleton<AdminSettingsCache>();
@@ -258,6 +259,17 @@ public class Program
                 {
                     PermitLimit = cache.RateLimitPermitLimit,
                     Window = TimeSpan.FromSeconds(cache.RateLimitWindowSeconds),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                });
+            });
+            options.AddPolicy(Policies.BtcMapsSubmitRateLimit, httpContext =>
+            {
+                var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromHours(24),
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                     QueueLimit = 0
                 });

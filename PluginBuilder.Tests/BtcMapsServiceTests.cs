@@ -1,0 +1,551 @@
+using System.Linq;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using PluginBuilder.APIModels;
+using PluginBuilder.Services;
+using Xunit;
+
+namespace PluginBuilder.Tests;
+
+public class BtcMapsServiceTests
+{
+    private static BtcMapsService MakeService() =>
+        new BtcMapsService(
+            configuration: new ConfigurationBuilder().Build(),
+            logger: NullLogger<BtcMapsService>.Instance);
+
+    [Fact]
+    public void Validate_RequiresAtLeastOneAction_NotEnforcedHere()
+    {
+        // The controller enforces (submitToDirectory || tagOnOsm). The service
+        // validator focuses on field-level validity, so an all-false request
+        // with only core fields should still pass Validate cleanly.
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Good Shop",
+            Url = "https://goodshop.example",
+            Description = "A very good shop."
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Fact]
+    public void Validate_RejectsMissingName()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Url = "https://shop.example",
+            Description = "desc"
+        };
+        Assert.Contains(svc.Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Name));
+    }
+
+    [Fact]
+    public void Validate_RejectsNonHttpsUrl()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "http://plain.example",
+            Description = "desc"
+        };
+        Assert.Contains(svc.Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Url));
+    }
+
+    [Fact]
+    public void Validate_RejectsOverlongDescription_OnDirectorySubmit()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = new string('x', 1001),
+            Type = "merchants",
+            SubmitToDirectory = true
+        };
+        Assert.Contains(svc.Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Description));
+    }
+
+    [Fact]
+    public void Validate_RequiresDescription_OnDirectorySubmit()
+    {
+        // Description is the directory PR body content; required only when actually
+        // submitting to the directory.
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Type = "merchants",
+            SubmitToDirectory = true
+        };
+        Assert.Contains(svc.Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Description));
+    }
+
+    [Fact]
+    public void Validate_AllowsMissingDescription_WhenTagOnOsmOnly()
+    {
+        // tagOnOsm-only requests do not consume Description (the OSM tag set is
+        // name + amenity + currency:XBT + payment:lightning + website). Description
+        // is exclusively a directory-PR field.
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            OsmNodeId = 12345,
+            OsmNodeType = "node",
+            TagOnOsm = true
+        };
+        Assert.DoesNotContain(svc.Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Description));
+    }
+
+    [Fact]
+    public void Validate_AllowsMissingDescription_WhenUnlistOnly()
+    {
+        // unlistFromOsm-only requests strip tags from an existing OSM element; no
+        // Description path on the wire.
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            UnlistFromOsm = true,
+            OsmNodeId = 12345,
+            OsmNodeType = "node"
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Theory]
+    [InlineData("merchants", "books", true)]
+    [InlineData("merchants", "not-a-subtype", false)]
+    [InlineData("apps", "not-a-subtype", true)]
+    public void Validate_ChecksMerchantSubType(string type, string subType, bool expectValid)
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            Type = type,
+            SubType = subType,
+            SubmitToDirectory = true
+        };
+        var errors = svc.Validate(req);
+        if (expectValid)
+            Assert.DoesNotContain(errors, e => e.Path == nameof(BtcMapsSubmitRequest.SubType));
+        else
+            Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.SubType));
+    }
+
+    [Fact]
+    public void Validate_RejectsUnknownType_OnDirectorySubmit()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            Type = "unicorns",
+            SubmitToDirectory = true
+        };
+        Assert.Contains(svc.Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Type));
+    }
+
+    [Fact]
+    public void Validate_SkipsDirectoryFieldsWhenNotSubmitting()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            Type = "unicorns",
+            SubmitToDirectory = false
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Theory]
+    [InlineData("GLOBAL", true)]
+    [InlineData("US", true)]
+    [InlineData("us", false)]
+    [InlineData("USA", false)]
+    public void Validate_ChecksCountryOnDirectorySubmit(string country, bool expectValid)
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            Type = "merchants",
+            Country = country,
+            SubmitToDirectory = true
+        };
+        var errors = svc.Validate(req);
+        if (expectValid)
+            Assert.DoesNotContain(errors, e => e.Path == nameof(BtcMapsSubmitRequest.Country));
+        else
+            Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.Country));
+    }
+
+    [Theory]
+    [InlineData("http://example.onion", true)]
+    [InlineData("ftp://abc.onion", false)]
+    [InlineData("https://abc.example", false)]
+    [InlineData("http://abc.onion", true)]
+    [InlineData("https://abc.onion", true)]
+    public void Validate_ChecksOnionUrl(string onion, bool expectValid)
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            Type = "merchants",
+            OnionUrl = onion,
+            SubmitToDirectory = true
+        };
+        var errors = svc.Validate(req);
+        if (expectValid)
+            Assert.DoesNotContain(errors, e => e.Path == nameof(BtcMapsSubmitRequest.OnionUrl));
+        else
+            Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.OnionUrl));
+    }
+
+    [Theory]
+    [InlineData(123L, "node", true)]
+    [InlineData(123L, "Node", true)]
+    [InlineData(123L, "relation", true)]
+    [InlineData(123L, "line", false)]
+    [InlineData(-1L, "node", false)]
+    public void Validate_ChecksExistingNodeFields(long? nodeId, string? nodeType, bool expectValid)
+    {
+        // Existing-update path: OsmNodeId is set, NodeType must be one of the
+        // known OSM types and the ID positive.
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            OsmNodeId = nodeId,
+            OsmNodeType = nodeType,
+            TagOnOsm = true
+        };
+        var errors = svc.Validate(req)
+            .Where(e => e.Path is nameof(BtcMapsSubmitRequest.OsmNodeId) or nameof(BtcMapsSubmitRequest.OsmNodeType))
+            .ToList();
+        if (expectValid)
+            Assert.Empty(errors);
+        else
+            Assert.NotEmpty(errors);
+    }
+
+    [Theory]
+    [InlineData(40.7128, -74.0060, true)]
+    [InlineData(0.0, 0.0, true)]
+    [InlineData(-90.0, 180.0, true)]
+    [InlineData(90.0, -180.0, true)]
+    [InlineData(91.0, 0.0, false)]
+    [InlineData(-91.0, 0.0, false)]
+    [InlineData(0.0, 181.0, false)]
+    [InlineData(0.0, -181.0, false)]
+    public void Validate_CreatePath_RequiresValidLatLon(double lat, double lon, bool expectValid)
+    {
+        // Create-new path: OsmNodeId is null, lat + lon are required and must be
+        // in valid geographic ranges. NodeType is irrelevant on this path
+        // (server defaults the created element to a node).
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            OsmNodeId = null,
+            Latitude = lat,
+            Longitude = lon,
+            TagOnOsm = true
+        };
+        var errors = svc.Validate(req)
+            .Where(e => e.Path is nameof(BtcMapsSubmitRequest.Latitude) or nameof(BtcMapsSubmitRequest.Longitude))
+            .ToList();
+        if (expectValid)
+            Assert.Empty(errors);
+        else
+            Assert.NotEmpty(errors);
+    }
+
+    [Fact]
+    public void Validate_CreatePath_RejectsMissingCoordinates()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            OsmNodeId = null,
+            TagOnOsm = true
+        };
+        var errors = svc.Validate(req).ToList();
+        Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.Latitude));
+        Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.Longitude));
+    }
+
+    [Theory]
+    [InlineData("https://shop.example/", "https://shop.example/", true)]
+    [InlineData("https://shop.example", "https://shop.example/", true)]
+    [InlineData("https://Shop.Example/", "https://shop.example", true)]
+    [InlineData("https://shop.example/a", "https://shop.example/b", false)]
+    public void NormalizeUrl_IgnoresTrailingSlashAndCase(string a, string b, bool equal)
+    {
+        Assert.Equal(equal, BtcMapsService.NormalizeUrl(a) == BtcMapsService.NormalizeUrl(b));
+    }
+
+    [Theory]
+    [InlineData("9 Bravos", "9-bravos")]
+    [InlineData("Altair Technology", "altair-technology")]
+    [InlineData("!!!", "merchant")]
+    [InlineData("  leading and trailing  ", "leading-and-trailing")]
+    public void Slugify_ProducesUrlSafeSlug(string input, string expected)
+    {
+        Assert.Equal(expected, BtcMapsService.Slugify(input));
+    }
+
+    [Fact]
+    public void Validate_Unlist_RequiresOsmNodeIdAndType()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            UnlistFromOsm = true
+        };
+        var errors = svc.Validate(req).ToList();
+        Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.OsmNodeId));
+        Assert.Contains(errors, e => e.Path == nameof(BtcMapsSubmitRequest.OsmNodeType));
+    }
+
+    [Fact]
+    public void Validate_Unlist_AcceptsNodeIdAndType()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            UnlistFromOsm = true,
+            OsmNodeId = 1234,
+            OsmNodeType = "node"
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Fact]
+    public void Validate_Unlist_RejectsCombinationWithTagOnOsm()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            UnlistFromOsm = true,
+            TagOnOsm = true,
+            OsmNodeId = 1234,
+            OsmNodeType = "node"
+        };
+        Assert.Contains(svc.Validate(req),
+            e => e.Path == nameof(BtcMapsSubmitRequest.UnlistFromOsm));
+    }
+
+    [Fact]
+    public void Validate_Unlist_RejectsCombinationWithSubmitToDirectory()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            UnlistFromOsm = true,
+            SubmitToDirectory = true,
+            Type = "merchants",
+            OsmNodeId = 1234,
+            OsmNodeType = "node"
+        };
+        Assert.Contains(svc.Validate(req),
+            e => e.Path == nameof(BtcMapsSubmitRequest.UnlistFromOsm));
+    }
+
+    [Fact]
+    public void ResolveDirectoryCountry_PrefersTopLevelCountry()
+    {
+        var req = new BtcMapsSubmitRequest
+        {
+            Country = "DE",
+            Address = new BtcMapsSubmitAddress { Country = "FR" }
+        };
+        Assert.Equal("DE", BtcMapsService.ResolveDirectoryCountry(req));
+    }
+
+    [Fact]
+    public void ResolveDirectoryCountry_FallsBackToAddressCountry()
+    {
+        // Plugin centralises country in the address block only; the directory
+        // entry should still carry the country code.
+        var req = new BtcMapsSubmitRequest
+        {
+            Address = new BtcMapsSubmitAddress { Country = "FR" }
+        };
+        Assert.Equal("FR", BtcMapsService.ResolveDirectoryCountry(req));
+    }
+
+    [Fact]
+    public void ResolveDirectoryCountry_FallsBackThroughWhitespace()
+    {
+        var req = new BtcMapsSubmitRequest
+        {
+            Country = "   ",
+            Address = new BtcMapsSubmitAddress { Country = " IT " }
+        };
+        Assert.Equal("IT", BtcMapsService.ResolveDirectoryCountry(req));
+    }
+
+    [Fact]
+    public void ResolveDirectoryCountry_NullWhenNeitherProvided()
+    {
+        var req = new BtcMapsSubmitRequest
+        {
+            Address = new BtcMapsSubmitAddress { City = "Munich" }
+        };
+        Assert.Null(BtcMapsService.ResolveDirectoryCountry(req));
+    }
+
+    [Fact]
+    public void Validate_AllowsRequestWithoutAddress()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            OsmNodeId = 12345,
+            OsmNodeType = "node",
+            TagOnOsm = true
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Fact]
+    public void Validate_AcceptsFullAddressWithIsoCountry()
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            OsmNodeId = 12345,
+            OsmNodeType = "node",
+            TagOnOsm = true,
+            Address = new BtcMapsSubmitAddress
+            {
+                HouseNumber = "12",
+                Street = "Main St",
+                City = "Munich",
+                Postcode = "80331",
+                Country = "DE"
+            }
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Fact]
+    public void Validate_AcceptsPartialAddress()
+    {
+        // Only some addr:* keys provided. Server writes whichever the plugin
+        // populated; nothing inferred. Empty / missing fields are not errors.
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            OsmNodeId = 12345,
+            OsmNodeType = "node",
+            TagOnOsm = true,
+            Address = new BtcMapsSubmitAddress
+            {
+                City = "Munich",
+                Country = "DE"
+            }
+        };
+        Assert.Empty(svc.Validate(req));
+    }
+
+    [Theory]
+    [InlineData("DE", true)]
+    [InlineData("US", true)]
+    [InlineData("de", false)]
+    [InlineData("DEU", false)]
+    [InlineData("D", false)]
+    [InlineData("GLOBAL", false)] // GLOBAL is valid for the directory's top-level Country, NOT for OSM addr:country.
+    public void Validate_AddressCountry_MustBeIsoAlpha2(string country, bool expectValid)
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            OsmNodeId = 12345,
+            OsmNodeType = "node",
+            TagOnOsm = true,
+            Address = new BtcMapsSubmitAddress { Country = country }
+        };
+        var errors = svc.Validate(req)
+            .Where(e => e.Path.EndsWith(nameof(BtcMapsSubmitAddress.Country)))
+            .ToList();
+        if (expectValid)
+            Assert.Empty(errors);
+        else
+            Assert.NotEmpty(errors);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(-1, false)]
+    [InlineData(1, true)]
+    public void Validate_Unlist_RequiresPositiveNodeId(long id, bool expectValid)
+    {
+        var svc = MakeService();
+        var req = new BtcMapsSubmitRequest
+        {
+            Name = "Shop",
+            Url = "https://shop.example",
+            Description = "desc",
+            UnlistFromOsm = true,
+            OsmNodeId = id,
+            OsmNodeType = "node"
+        };
+        var errors = svc.Validate(req)
+            .Where(e => e.Path == nameof(BtcMapsSubmitRequest.OsmNodeId))
+            .ToList();
+        if (expectValid)
+            Assert.Empty(errors);
+        else
+            Assert.NotEmpty(errors);
+    }
+}
