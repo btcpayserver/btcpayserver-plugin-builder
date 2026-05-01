@@ -13,6 +13,17 @@
     var pluginUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = Model.Plugin.ProjectSlug }, Context.Request.Scheme, Context.Request.Host.ToString());
     var currentRating = Model.RatingFilter;
     DateTimeOffset.TryParse(Model.Plugin.BuildInfo?["buildDate"]?.ToString(), out var buildDate);
+
+    var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
+    var videoThumbUrl = Model.Plugin.VideoUrl.GetVideoThumbnailUrl();
+    var screenshots = Model.Plugin.Images?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList() ?? new List<string>();
+    var mediaItems = new List<(bool IsVideo, string MediaUrl, string? ThumbUrl, string Alt, string ThumbLabel)>();
+
+    if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
+        mediaItems.Add((true, videoEmbedUrl, videoThumbUrl, "Plugin video", "Show video"));
+
+    for (var i = 0; i < screenshots.Count; i++)
+        mediaItems.Add((false, screenshots[i], screenshots[i], $"{Model.Plugin.PluginTitle} screenshot {i + 1}", $"Show screenshot {i + 1}"));
 }
 
 @section Meta {
@@ -87,18 +98,6 @@
                 </div>
             </div>
 
-            @{
-                var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
-                var videoThumbUrl = Model.Plugin.VideoUrl.GetVideoThumbnailUrl();
-                var screenshots = Model.Plugin.Images?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList() ?? new List<string>();
-                var mediaItems = new List<(bool IsVideo, string MediaUrl, string? ThumbUrl, string Alt, string ThumbLabel)>();
-
-                if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
-                    mediaItems.Add((true, videoEmbedUrl, videoThumbUrl, "Plugin video", "Show video"));
-
-                for (var i = 0; i < screenshots.Count; i++)
-                    mediaItems.Add((false, screenshots[i], screenshots[i], $"{Model.Plugin.PluginTitle} screenshot {i + 1}", $"Show screenshot {i + 1}"));
-            }
             @if (mediaItems.Any())
             {
                 <div class="card mt-4">
@@ -107,10 +106,10 @@
                         <div id="plugin-media-carousel" class="plugin-media-carousel" tabindex="0" aria-label="Plugin media carousel">
                             <div class="plugin-media-stage ratio ratio-16x9 rounded overflow-hidden">
                                 <button type="button" class="plugin-media-nav plugin-media-nav-prev" data-media-nav="prev" aria-label="Previous media">
-                                    <i class="fa fa-chevron-left" aria-hidden="true"></i>
+                                    <vc:icon symbol="caret-left" />
                                 </button>
                                 <button type="button" class="plugin-media-nav plugin-media-nav-next" data-media-nav="next" aria-label="Next media">
-                                    <i class="fa fa-chevron-right" aria-hidden="true"></i>
+                                    <vc:icon symbol="caret-right" />
                                 </button>
                                 @for (var i = 0; i < mediaItems.Count; i++)
                                 {
@@ -457,7 +456,7 @@
                         <div class="row">
                             @foreach (var user in Model.Contributors)
                             {
-                                <div class="col-12 col-lg-6 d-flex align-items-center mb-3">
+                                <div class="col-12 d-flex align-items-center mb-3">
                                     <div class="me-3 flex-shrink-0">
                                         <img src="@user.AvatarUrl" class="rounded-circle" style="width: 48px; height: 48px;" alt="@user.Login avatar" loading="lazy" />
                                     </div>
