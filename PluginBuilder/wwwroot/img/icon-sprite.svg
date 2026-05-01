@@ -52,6 +52,9 @@
     <symbol id="caret-right" viewBox="0 0 24 24">
         <path d="M9.5 17L14.5 12L9.5 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     </symbol>
+    <symbol id="caret-left" viewBox="0 0 24 24">
+        <path d="M7.92303 12.0039C7.92303 12.3233 8.03989 12.5882 8.28919 12.8375L14.2881 18.704C14.4906 18.9065 14.7322 19 15.0204 19C15.6047 19 16.08 18.5403 16.08 17.956C16.08 17.6678 15.9553 17.4029 15.745 17.1925L10.4161 12.0117L15.745 6.81525C15.9553 6.6049 16.08 6.3478 16.08 6.05175C16.08 5.46745 15.6047 5 15.0204 5C14.7322 5 14.4906 5.10128 14.2881 5.30384L8.28919 11.1703C8.0321 11.4196 7.92303 11.6845 7.92303 12.0039Z" fill="currentColor"/>
+    </symbol>
     <symbol id="caret-down" viewBox="0 0 24 24">
         <path d="M7 9.5L12 14.5L17 9.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     </symbol>
