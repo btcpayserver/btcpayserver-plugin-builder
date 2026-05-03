@@ -98,7 +98,7 @@
         {
             <div class="mb-4">
                 <div class="text-muted fw-semibold small text-uppercase mb-2" style="letter-spacing:.05em;">Rejection Reason</div>
-                <p class="mb-0 text-danger">@Model.RejectionReason</p>
+                <p class="mb-0 text-danger" style="white-space: pre-wrap;">@Model.RejectionReason</p>
             </div>
         }
         <div class="mb-4">
@@ -135,9 +135,9 @@
                         <vc:icon symbol="@(owner.EmailVerified ? "checkmark" : "cross")" />
                         Email @(owner.EmailVerified ? "Verified" : "Not Verified")
                     </span>
-                    <span class="@(owner.GithubProfile != null ? "text-success" : "text-muted")">
-                        <vc:icon symbol="@(owner.GithubProfile != null ? "checkmark" : "cross")" />
-                        @if (owner.GithubProfile != null)
+                    <span class="@(!string.IsNullOrWhiteSpace(owner.GithubProfile) ? "text-success" : "text-muted")">
+                        <vc:icon symbol="@(!string.IsNullOrWhiteSpace(owner.GithubProfile) ? "checkmark" : "cross")" />
+                        @if (!string.IsNullOrWhiteSpace(owner.GithubProfile))
                         {
                             <a href="@owner.GithubProfile" target="_blank" rel="noopener" class="text-success text-decoration-none">GitHub Verified</a>
                         }
@@ -146,9 +146,9 @@
                             <span>GitHub Not Verified</span>
                         }
                     </span>
-                    <span class="@(owner.NostrProfile != null ? "text-success" : "text-muted")">
-                        <vc:icon symbol="@(owner.NostrProfile != null ? "checkmark" : "cross")" />
-                        @if (owner.NostrProfile != null)
+                    <span class="@(!string.IsNullOrWhiteSpace(owner.NostrProfile) ? "text-success" : "text-muted")">
+                        <vc:icon symbol="@(!string.IsNullOrWhiteSpace(owner.NostrProfile) ? "checkmark" : "cross")" />
+                        @if (!string.IsNullOrWhiteSpace(owner.NostrProfile))
                         {
                             <a href="@owner.NostrProfile" target="_blank" rel="noopener" class="text-success text-decoration-none">Nostr Verified</a>
                         }
