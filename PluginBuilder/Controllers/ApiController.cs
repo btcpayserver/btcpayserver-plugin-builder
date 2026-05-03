@@ -324,6 +324,26 @@ public class ApiController(
         if (!ModelState.IsValid)
             return ValidationErrorResult(ModelState);
 
+        try
+        {
+            var identifier = await buildService.FetchIdentifierFromCsprojAsync(
+                model.GitRepository,
+                model.GitRef,
+                model.PluginDirectory);
+
+            var owns = await conn.EnsureIdentifierOwnership(pluginSlug, identifier);
+            if (!owns)
+            {
+                ModelState.AddModelError(string.Empty, $"The plugin identifier {identifier} does not belong to plugin slug {pluginSlug}.");
+                return ValidationErrorResult(ModelState);
+            }
+        }
+        catch (BuildServiceException ex)
+        {
+            ModelState.AddModelError(string.Empty, $"Manifest validation failed: {ex.Message}");
+            return ValidationErrorResult(ModelState);
+        }
+
         var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
         var buildUrl = Url.ActionLink(nameof(PluginController.Build), "Plugin",
             new { pluginSlug = pluginSlug.ToString(), buildId });
