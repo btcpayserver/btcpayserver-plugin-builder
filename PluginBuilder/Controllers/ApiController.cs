@@ -1,5 +1,6 @@
 using System.Reflection;
 using Dapper;
+using MailKit;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -15,6 +16,7 @@ using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
+using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Controllers;
 
@@ -28,7 +30,8 @@ public class ApiController(
     UserManager<IdentityUser> userManager,
     UserVerifiedLogic userVerifiedLogic,
     IHttpClientFactory httpClientFactory,
-    ServerEnvironment serverEnvironment)
+    ServerEnvironment serverEnvironment,
+    TelemetryService telemetryService)
     : ControllerBase
 {
     private sealed class BuildRow
@@ -249,6 +252,9 @@ public class ApiController(
 
         await using var conn = await connectionFactory.Open();
         await conn.InsertEvent("Download", new JObject { ["pluginSlug"] = pluginSlug.ToString(), ["version"] = version.ToString() });
+
+        _ = telemetryService.RecordPluginDownload(pluginSlug.ToString(), version.ToString(), Request.Headers.UserAgent.ToString(), HttpContext.Connection.RemoteIpAddress?.ToString());
+
         if (serverEnvironment.EnableLocalArtifactDownloadProxy && Uri.TryCreate(url, UriKind.Absolute, out var artifactUri) && artifactUri.IsLoopback)
         {
             return RedirectToAction(
@@ -539,6 +545,39 @@ public class ApiController(
         ).ToList();
 
         return Ok(updates);
+    }
+
+
+    [AllowAnonymous]
+    [HttpPost("api/v1/telemetry/plugins")]
+    public async Task<IActionResult> ReportInstalledPlugins([FromBody] PluginTelemetryRequest request)
+    {
+        if (request?.Plugins is null || request.Plugins.Count == 0)
+            return Ok();
+
+        var userAgent = Request.Headers.UserAgent.ToString();
+
+        if (!TryParseBTCPayVersion(userAgent, out var btcpayVersion))
+            return Ok();
+
+        var remoteIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+
+        var plugins = request.Plugins.Where(p => !string.IsNullOrWhiteSpace(p.Slug) && !string.IsNullOrWhiteSpace(p.Version))
+            .Select(p => new PluginReport(p.Slug!, p.Version!)).ToList();
+
+        _ = telemetryService.RecordServerSnapshot(remoteIp, btcpayVersion, plugins);
+        return Ok();
+    }
+
+    private static bool TryParseBTCPayVersion(string userAgent, out string version)
+    {
+        version = string.Empty;
+        var match = System.Text.RegularExpressions.Regex.Match(
+            userAgent, @"^BTCPayServer/(\d+\.\d+\.\d+[\w.\-]*)");
+        if (!match.Success)
+            return false;
+        version = match.Groups[1].Value;
+        return true;
     }
 
     private IActionResult ValidationErrorResult(ModelStateDictionary modelState)
