@@ -72,7 +72,7 @@ public class UIControllerAntiforgeryTokenAttribute :
     private static bool ShouldValidate(AuthorizationFilterContext context)
     {
         var isUi = IsUi(context);
-        if (isUi is false)
+        if (isUi is not true)
             return false;
 
         var method = context.HttpContext.Request.Method;

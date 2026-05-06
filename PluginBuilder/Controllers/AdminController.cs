@@ -35,8 +35,7 @@ public class AdminController(
     ReferrerNavigationService referrerNavigation,
     PluginBuilderOptions pbOptions,
     IOutputCacheStore outputCacheStore,
-    PluginOwnershipService ownershipService,
-    ILogger<AdminController> logger)
+    PluginOwnershipService ownershipService)
     : Controller
 {
     // settings editor
@@ -171,8 +170,6 @@ public class AdminController(
         [FromForm] bool imagesUrlSubmitted = false,
         [FromForm] List<string>? imagesOrder = null)
     {
-        const long maxTotalBytes = 10 * 1024 * 1024;
-
         await using var conn = await connectionFactory.Open();
         model.ActiveTab = PluginEditTabs.Settings;
         if (!ModelState.IsValid)
@@ -181,18 +178,8 @@ public class AdminController(
             return View(model);
         }
 
-        var totalUploadBytes = Request.Form.Files.Sum(file => file.Length);
-        if (totalUploadBytes > maxTotalBytes)
-        {
-            ModelState.AddModelError(nameof(model.Images), "Total size of uploaded files cannot exceed 10MB.");
-            await PopulatePluginEditViewModel(conn, pluginSlug, model);
-            return View(model);
-        }
-
         var plugin = await conn.GetPluginDetails(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
-
-        var uploadedBlobNames = new List<string>();
 
         if (!string.IsNullOrEmpty(model.PluginSettings.VideoUrl))
         {
@@ -270,7 +257,6 @@ public class AdminController(
             {
                 var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.LogoFile.FileName)}";
                 pluginSettings.Logo = await azureStorageClient.UploadImageFile(model.LogoFile, uniqueBlobName);
-                uploadedBlobNames.Add(uniqueBlobName);
             }
             catch (Exception)
             {
@@ -292,15 +278,6 @@ public class AdminController(
         {
             if ((pluginSettings.Images?.Count ?? 0) + imagesToUpload.Count > 10)
             {
-                foreach (var blobName in uploadedBlobNames)
-                    try
-                    {
-                        await azureStorageClient.DeleteImageFileIfExists(blobName);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
-                    }
                 ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
@@ -309,15 +286,6 @@ public class AdminController(
             {
                 if (!image.ValidateUploadedImage(out var errorMessage))
                 {
-                    foreach (var blobName in uploadedBlobNames)
-                        try
-                        {
-                            await azureStorageClient.DeleteImageFileIfExists(blobName);
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.LogError(ex, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
-                        }
                     ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
                     await PopulatePluginEditViewModel(conn, pluginSlug, model);
                     return View(model);
@@ -325,25 +293,14 @@ public class AdminController(
             }
             try
             {
-                foreach (var image in imagesToUpload)
+                uploadedImages = (await Task.WhenAll(imagesToUpload.Select(async image =>
                 {
                     var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
-                    var uploadedImageUrl = await azureStorageClient.UploadImageFile(image, blobName);
-                    uploadedImages.Add(uploadedImageUrl);
-                    uploadedBlobNames.Add(blobName);
-                }
+                    return await azureStorageClient.UploadImageFile(image, blobName);
+                }))).ToList();
             }
             catch (Exception)
             {
-                foreach (var blobName in uploadedBlobNames)
-                    try
-                    {
-                        await azureStorageClient.DeleteImageFileIfExists(blobName);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
-                    }
                 ModelState.AddModelError(nameof(model.Images), "Could not complete settings upload. An error occurred while uploading images");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
@@ -376,19 +333,7 @@ public class AdminController(
 
         var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
         if (!setPluginSettings)
-        {
-            foreach (var blobName in uploadedBlobNames)
-                try
-                {
-                    await azureStorageClient.DeleteImageFileIfExists(blobName);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Failed to clean up uploaded image blob {BlobName} for plugin {PluginSlug}", blobName, pluginSlug);
-                }
-
             return NotFound();
-        }
 
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = "Plugin settings updated successfully";

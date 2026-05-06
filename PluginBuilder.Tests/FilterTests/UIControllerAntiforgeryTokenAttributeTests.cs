@@ -78,6 +78,22 @@ public class UIControllerAntiforgeryTokenAttributeTests
     }
 
     [Fact]
+    public async Task OnAuthorizationAsync_WithPostNonControllerRequest_DoesNotValidate()
+    {
+        var filter = new UIControllerAntiforgeryTokenAttribute();
+        var services = new ServiceCollection()
+            .AddSingleton<IAntiforgery, ThrowingAntiforgery>()
+            .BuildServiceProvider();
+
+        var context = CreateNonControllerContext(filter, HttpMethods.Post, services);
+
+        await filter.OnAuthorizationAsync(context);
+
+        Assert.Null(context.Result);
+        Assert.False(context.HttpContext.Items.ContainsKey(UIErrorController.ErrorDetailsKey));
+    }
+
+    [Fact]
     public async Task OnAuthorizationAsync_WithGetUiRequest_DoesNotValidate()
     {
         var filter = new UIControllerAntiforgeryTokenAttribute();
@@ -208,6 +224,21 @@ public class UIControllerAntiforgeryTokenAttributeTests
             .ToList();
 
         return new AuthorizationFilterContext(actionContext, orderedFilters);
+    }
+
+    private static AuthorizationFilterContext CreateNonControllerContext(
+        UIControllerAntiforgeryTokenAttribute filter,
+        string method,
+        IServiceProvider services)
+    {
+        var httpContext = new DefaultHttpContext
+        {
+            RequestServices = services
+        };
+        httpContext.Request.Method = method;
+
+        var actionContext = new ActionContext(httpContext, new RouteData(), new ActionDescriptor());
+        return new AuthorizationFilterContext(actionContext, new List<IFilterMetadata> { filter });
     }
 
     private sealed class DummyUiController : Controller;
