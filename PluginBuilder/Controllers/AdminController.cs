@@ -246,7 +246,7 @@ public class AdminController(
 
         if (model.LogoFile != null)
         {
-            if (!model.LogoFile.ValidateUploadedImage(out var errorMessage))
+            if (!model.LogoFile.ValidateImageFile(out var errorMessage))
             {
                 ModelState.AddModelError(nameof(model.LogoFile), $"Image upload validation failed: {errorMessage}");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
@@ -284,7 +284,7 @@ public class AdminController(
             }
             foreach (var image in imagesToUpload)
             {
-                if (!image.ValidateUploadedImage(out var errorMessage))
+                if (!image.ValidateImageFile(out var errorMessage))
                 {
                     ModelState.AddModelError(nameof(model.Images), $"Image upload validation failed: {errorMessage}");
                     await PopulatePluginEditViewModel(conn, pluginSlug, model);

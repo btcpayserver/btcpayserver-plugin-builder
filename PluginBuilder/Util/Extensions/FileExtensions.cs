@@ -5,7 +5,7 @@ public static class FileExtensions
     private const long _maxFileSize = 1024 * 1024;
     private static readonly string[] _permittedExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg" };
 
-    public static bool ValidateUploadedImage(this IFormFile file, out string error, long maxFileSizeInBytes = 1_000_000)
+    public static bool ValidateImageFile(this IFormFile file, out string error, long maxFileSizeInBytes = 1_000_000)
     {
         if (file == null || file.Length == 0)
         {

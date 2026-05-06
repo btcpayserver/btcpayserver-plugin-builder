@@ -167,4 +167,55 @@ public class UnitTest1 : UnitTestBase
         res = await client.GetPublishedVersions("2.1.0.0", false, searchPluginName: "rockstar");
         Assert.DoesNotContain(res, p => p.ProjectSlug == "rockstar-stylist");
     }
+    [Fact]
+    public async Task DownloadEndpoint_UsesInternalLoopbackRedirectWhenLocalArtifactProxyEnabled()
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        tester.EnableLocalArtifactDownloadProxy = true;
+        await tester.Start();
+
+        var ownerId = await tester.CreateFakeUserAsync();
+        await tester.CreateAndBuildPluginAsync(ownerId);
+
+        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+        client.BaseAddress = new Uri(tester.WebApp.Urls.First(), UriKind.Absolute);
+
+        using var response = await client.GetAsync("api/v1/plugins/rockstar-stylist/versions/1.0.2.0/download");
+
+        Assert.Equal(System.Net.HttpStatusCode.Found, response.StatusCode);
+        Assert.NotNull(response.Headers.Location);
+        Assert.Equal(
+            "/api/v1/plugins/rockstar-stylist/versions/1.0.2.0/download-loopback",
+            response.Headers.Location!.OriginalString);
+
+        using var proxiedResponse = await client.GetAsync(response.Headers.Location);
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, proxiedResponse.StatusCode);
+        Assert.Equal("application/zip", proxiedResponse.Content.Headers.ContentType?.MediaType);
+        Assert.True((await proxiedResponse.Content.ReadAsByteArrayAsync()).Length > 0);
+    }
+
+    [Fact]
+    public async Task DownloadEndpoint_DoesNotUseInternalLoopbackRedirectWhenLocalArtifactProxyDisabled()
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        await tester.Start();
+
+        var ownerId = await tester.CreateFakeUserAsync();
+        await tester.CreateAndBuildPluginAsync(ownerId);
+
+        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+        client.BaseAddress = new Uri(tester.WebApp.Urls.First(), UriKind.Absolute);
+
+        using var response = await client.GetAsync("api/v1/plugins/rockstar-stylist/versions/1.0.2.0/download");
+
+        Assert.Equal(System.Net.HttpStatusCode.Found, response.StatusCode);
+        Assert.NotNull(response.Headers.Location);
+        Assert.DoesNotContain("download-loopback", response.Headers.Location!.OriginalString, StringComparison.Ordinal);
+        Assert.True(response.Headers.Location.IsAbsoluteUri);
+        Assert.True(response.Headers.Location.IsLoopback);
+    }
+
 }

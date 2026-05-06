@@ -2,6 +2,7 @@
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using PluginBuilder.Services;
 
 namespace PluginBuilder.APIModels;
 
@@ -40,6 +41,40 @@ public class PublishedPlugin : PublishedVersion
 
     public PluginRatingSummary RatingSummary { get; set; } = new();
 
+    public string GetSourceUrl(GitHostingProviderFactory providerFactory)
+    {
+        if (gitRepository is null)
+            return null;
+        var commit = BuildInfo?["gitCommit"]?.ToString();
+        var dir = BuildInfo?["pluginDir"]?.ToString();
+        var provider = providerFactory?.GetProvider(gitRepository);
+        return provider?.GetSourceUrl(gitRepository, commit, dir);
+    }
+
+    public string GetOwnerName(GitHostingProviderFactory providerFactory)
+    {
+        if (gitRepository is null)
+            return null;
+        var provider = providerFactory?.GetProvider(gitRepository);
+        return provider?.ParseRepository(gitRepository)?.Owner;
+    }
+
+    public string GetOwnerProfileUrl(GitHostingProviderFactory providerFactory)
+    {
+        if (gitRepository is null)
+            return null;
+        var provider = providerFactory?.GetProvider(gitRepository);
+        var parsed = provider?.ParseRepository(gitRepository);
+        if (parsed is null)
+            return null;
+
+        // Build profile URL from the repository host, preserving port for self-hosted instances
+        if (Uri.TryCreate(gitRepository, UriKind.Absolute, out var uri))
+            return $"{uri.Scheme}://{uri.Authority}/{parsed.Value.Owner}";
+        return null;
+    }
+
+    // Kept for backward compatibility with existing code that uses this pattern
     public GithubRepository GetGithubRepository()
     {
         if (gitRepository is null)

@@ -6,228 +6,160 @@
     ViewData["Title"] = $"Listing Request - {Model.PluginTitle ?? Model.PluginSlug}";
 }
 
-<div class="d-flex align-items-center justify-content-between mb-4">
-    <h2 class="mb-0">@ViewData["Title"]</h2>
-    <div class="d-flex gap-2">
-        <a asp-action="ListingRequests" class="btn btn-secondary">Back to List</a>
-        @if (Model.Status == PluginListingRequestStatus.Pending)
+<div class="sticky-header">
+    <h2 class="my-1">@ViewData["Title"]</h2>
+    @if (Model.Status == PluginListingRequestStatus.Pending)
+    {
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveModal">Approve</button>
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal">Reject</button>
+        </div>
+    }
+    else
+    {
+        @switch (Model.Status)
         {
-            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveModal">
-                Approve
-            </button>
-            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal">
-                Reject
-            </button>
+            case PluginListingRequestStatus.Approved:
+                <span class="badge bg-success fs-6 px-3 py-2">Approved</span>
+                break;
+            case PluginListingRequestStatus.Rejected:
+                <span class="badge bg-danger fs-6 px-3 py-2">Rejected</span>
+                break;
         }
-    </div>
+    }
 </div>
 
-<div class="row">
-    <div class="col-lg-8">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">Request Status</h5>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <div class="col-sm-4 fw-semibold">Status:</div>
-                    <div class="col-sm-8">
-                        @switch (Model.Status)
-                        {
-                            case PluginListingRequestStatus.Pending:
-                                <span class="badge bg-warning">Pending</span>
-                                break;
-                            case PluginListingRequestStatus.Approved:
-                                <span class="badge bg-success">Approved</span>
-                                break;
-                            case PluginListingRequestStatus.Rejected:
-                                <span class="badge bg-danger">Rejected</span>
-                                break;
-                        }
-                    </div>
+<div class="row mt-0">
+    <div class="col-lg-6">
+        <div class="d-flex align-items-center gap-3 mb-5">
+            @if (!string.IsNullOrEmpty(Model.Logo))
+            {
+                <img src="@Model.Logo" alt="Logo" style="width:64px;height:64px;object-fit:contain;border-radius:12px;flex-shrink:0;" />
+            }
+            <div>
+                <h3 class="mb-0 fw-bold">@Model.PluginTitle</h3>
+                <div class="d-flex align-items-center gap-2 mt-1">
+                    <a asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@Model.PluginSlug" target="_blank" class="small">View Public Page</a>
                 </div>
-                <div class="row mb-3">
-                    <div class="col-sm-4 fw-semibold">Submitted:</div>
-                    <div class="col-sm-8">@Model.SubmittedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss UTC")</div>
-                </div>
-                @if (Model.ReviewedAt.HasValue)
+                @if (!string.IsNullOrEmpty(Model.PluginDescription))
                 {
-                    <div class="row mb-3">
-                        <div class="col-sm-4 fw-semibold">Reviewed:</div>
-                        <div class="col-sm-8">@Model.ReviewedAt.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss UTC")</div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-sm-4 fw-semibold">Reviewed By:</div>
-                        <div class="col-sm-8">@Model.ReviewedByEmail</div>
-                    </div>
-                }
-                @if (!string.IsNullOrEmpty(Model.RejectionReason))
-                {
-                    <div class="row mb-3">
-                        <div class="col-sm-4 fw-semibold">Rejection Reason:</div>
-                        <div class="col-sm-8">
-                            <div class="alert alert-danger mb-0">@Model.RejectionReason</div>
-                        </div>
-                    </div>
-                }
-                @if (Model.AnnouncementDate.HasValue)
-                {
-                    <div class="row">
-                        <div class="col-sm-4 fw-semibold">Announcement Date:</div>
-                        <div class="col-sm-8">@Model.AnnouncementDate.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm UTC")</div>
-                    </div>
+                    <p class="mt-2 mb-0 text-muted">@Model.PluginDescription</p>
                 }
             </div>
         </div>
 
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">Plugin Information</h5>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <div class="col-sm-4 fw-semibold">Plugin Slug:</div>
-                    <div class="col-sm-8">
-                        <code>@Model.PluginSlug</code>
-                        <a asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@Model.PluginSlug"
-                           target="_blank" class="ms-2">View Public Page</a>
-                    </div>
-                </div>
-                @if (!string.IsNullOrEmpty(Model.PluginTitle))
-                {
-                    <div class="row mb-3">
-                        <div class="col-sm-4 fw-semibold">Title:</div>
-                        <div class="col-sm-8">@Model.PluginTitle</div>
-                    </div>
-                }
-                @if (!string.IsNullOrEmpty(Model.PluginDescription))
-                {
-                    <div class="row mb-3">
-                        <div class="col-sm-4 fw-semibold">Description:</div>
-                        <div class="col-sm-8">@Model.PluginDescription</div>
-                    </div>
-                }
-                @if (!string.IsNullOrEmpty(Model.Logo))
-                {
-                    <div class="row mb-3">
-                        <div class="col-sm-4 fw-semibold">Logo:</div>
-                        <div class="col-sm-8">
-                            <img src="@Model.Logo" alt="Plugin Logo" style="max-width: 200px; max-height: 100px;" />
-                        </div>
-                    </div>
-                }
+        @if (!string.IsNullOrEmpty(Model.GitRepository) || !string.IsNullOrEmpty(Model.Documentation))
+        {
+            <div class="mb-5">
                 @if (!string.IsNullOrEmpty(Model.GitRepository))
                 {
-                    <div class="row mb-3">
-                        <div class="col-sm-4 fw-semibold">Repository:</div>
-                        <div class="col-sm-8">
-                            <a href="@Model.GitRepository" target="_blank" rel="noopener">@Model.GitRepository</a>
-                        </div>
+                    <div class="mb-3">
+                        <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Repository</div>
+                        <a href="@Model.GitRepository" target="_blank" rel="noopener" class="small">@Model.GitRepository</a>
                     </div>
                 }
                 @if (!string.IsNullOrEmpty(Model.Documentation))
                 {
-                    <div class="row">
-                        <div class="col-sm-4 fw-semibold">Documentation:</div>
-                        <div class="col-sm-8">
-                            <a href="@Model.Documentation" target="_blank" rel="noopener">@Model.Documentation</a>
-                        </div>
+                    <div>
+                        <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Documentation</div>
+                        <a href="@Model.Documentation" target="_blank" rel="noopener" class="small">@Model.Documentation</a>
                     </div>
                 }
             </div>
+        }
+
+        <div class="mb-5">
+            <div class="mb-3">
+                <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Submitted</div>
+                <span>@Model.SubmittedAt.UtcDateTime.ToString("MMM dd, yyyy · HH:mm UTC")</span>
+            </div>
+            <div class="mb-3">
+                <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Status</div>
+				<p class="mb-0">@Model.Status</p>
+            </div>
+            @if (Model.ReviewedAt.HasValue)
+            {
+                <div class="mb-3">
+                    <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Reviewed By</div>
+                    <span>@Model.ReviewedByEmail · @Model.ReviewedAt.Value.UtcDateTime.ToString("MMM dd, yyyy")</span>
+                </div>
+            }
+            @if (Model.AnnouncementDate.HasValue)
+            {
+                <div>
+                    <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Announcement</div>
+                    <span>@Model.AnnouncementDate.Value.UtcDateTime.ToString("MMM dd, yyyy · HH:mm UTC")</span>
+                </div>
+            }
         </div>
 
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">Listing Request Details</h5>
+        <h5 class="fw-bold mb-4">Listing Request Details</h5>
+		@if (!string.IsNullOrEmpty(Model.RejectionReason))
+        {
+            <div class="mb-4">
+                <div class="text-muted fw-semibold small text-uppercase mb-2" style="letter-spacing:.05em;">Rejection Reason</div>
+                <p class="mb-0 text-danger" style="white-space: pre-wrap;">@Model.RejectionReason</p>
             </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label class="fw-semibold">Release Note:</label>
-                    <p class="mt-2">@Model.ReleaseNote</p>
-                </div>
-                <div class="mb-3">
-                    <label class="fw-semibold">Telegram Verification:</label>
-                    <p class="mt-2">
-                        <a href="@Model.TelegramVerificationMessage" target="_blank" rel="noopener">
-                            @Model.TelegramVerificationMessage
-                        </a>
-                    </p>
-                </div>
-                <div>
-                    <label class="fw-semibold">User Reviews:</label>
-                    <p class="mt-2">@Model.UserReviews</p>
-                </div>
-            </div>
+        }
+        <div class="mb-4">
+            <div class="text-muted fw-semibold small text-uppercase mb-2" style="letter-spacing:.05em;">Release Note</div>
+            <p class="mb-0">@Model.ReleaseNote</p>
+        </div>
+
+        <div class="mb-4">
+            <div class="text-muted fw-semibold small text-uppercase mb-2" style="letter-spacing:.05em;">Telegram Verification</div>
+            <a href="@Model.TelegramVerificationMessage" target="_blank" rel="noopener" class="text-break">
+                @Model.TelegramVerificationMessage
+            </a>
+        </div>
+        <div>
+            <div class="text-muted fw-semibold small text-uppercase mb-2" style="letter-spacing:.05em;">User Reviews</div>
+            <p class="mb-0">@Model.UserReviews</p>
         </div>
     </div>
 
-    <div class="col-lg-4">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Plugin Owners</h5>
+    <div class="col-lg-3 offset-lg-1">
+        <h5 class="fw-bold mb-4">Plugin Owners</h5>
+        @foreach (var owner in Model.Owners)
+        {
+            <div class="mb-4">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="fw-semibold">@owner.Email</span>
+                    @if (owner.IsPrimary)
+                    {
+                        <span class="badge bg-primary">Primary</span>
+                    }
+                </div>
+                <div class="d-flex flex-column gap-1 small">
+                    <span class="@(owner.EmailVerified ? "text-success" : "text-muted")">
+                        <vc:icon symbol="@(owner.EmailVerified ? "checkmark" : "cross")" />
+                        Email @(owner.EmailVerified ? "Verified" : "Not Verified")
+                    </span>
+                    <span class="@(!string.IsNullOrWhiteSpace(owner.GithubProfile) ? "text-success" : "text-muted")">
+                        <vc:icon symbol="@(!string.IsNullOrWhiteSpace(owner.GithubProfile) ? "checkmark" : "cross")" />
+                        @if (!string.IsNullOrWhiteSpace(owner.GithubProfile))
+                        {
+                            <a href="@owner.GithubProfile" target="_blank" rel="noopener" class="text-success text-decoration-none">GitHub Verified</a>
+                        }
+                        else
+                        {
+                            <span>GitHub Not Verified</span>
+                        }
+                    </span>
+                    <span class="@(!string.IsNullOrWhiteSpace(owner.NostrProfile) ? "text-success" : "text-muted")">
+                        <vc:icon symbol="@(!string.IsNullOrWhiteSpace(owner.NostrProfile) ? "checkmark" : "cross")" />
+                        @if (!string.IsNullOrWhiteSpace(owner.NostrProfile))
+                        {
+                            <a href="@owner.NostrProfile" target="_blank" rel="noopener" class="text-success text-decoration-none">Nostr Verified</a>
+                        }
+                        else
+                        {
+                            <span>Nostr Not Verified</span>
+                        }
+                    </span>
+                </div>
             </div>
-            <div class="card-body">
-                @foreach (var owner in Model.Owners)
-                {
-                    <div class="mb-3 pb-3 @(owner != Model.Owners.Last() ? "border-bottom" : "")">
-                        <div class="d-flex align-items-center mb-2">
-                            <strong>@owner.Email</strong>
-                            @if (owner.IsPrimary)
-                            {
-                                <span class="badge bg-primary ms-2">Primary</span>
-                            }
-                        </div>
-                        <div class="small">
-                            <div class="d-flex align-items-center mb-1">
-                                @if (owner.EmailVerified)
-                                {
-                                    <vc:icon symbol="checkmark" css-class="text-success me-1" />
-                                    <a href="mailto:@owner.Email" class="text-decoration-none">
-                                        Email Verified
-                                    </a>
-                                }
-                                else
-                                {
-                                    <vc:icon symbol="cross" css-class="text-danger me-1" />
-                                    <span class="text-muted">Email Not Verified</span>
-                                }
-                            </div>
-
-                            <div class="d-flex align-items-center mb-1">
-                                @if (owner.GithubProfile != null)
-                                {
-                                    <vc:icon symbol="checkmark" css-class="text-success me-1" />
-                                    <a href="@owner.GithubProfile" target="_blank" rel="noopener" class="text-decoration-none">
-                                        GitHub Verified
-                                    </a>
-                                }
-                                else
-                                {
-                                    <vc:icon symbol="cross" css-class="text-danger me-1" />
-                                    <span class="text-muted">GitHub Not Verified</span>
-                                }
-                            </div>
-
-                            <div class="d-flex align-items-center">
-                                @if (owner.NostrProfile != null)
-                                {
-                                    <vc:icon symbol="checkmark" css-class="text-success me-1" />
-                                    <a href="@owner.NostrProfile" target="_blank" rel="noopener" class="text-decoration-none">
-                                        Nostr Verified
-                                    </a>
-                                }
-                                else
-                                {
-                                    <vc:icon symbol="cross" css-class="text-danger me-1" />
-                                    <span class="text-muted">Nostr Not Verified</span>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                }
-            </div>
-        </div>
+        }
     </div>
 </div>
 

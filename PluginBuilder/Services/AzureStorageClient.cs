@@ -78,34 +78,32 @@ public class AzureStorageClient
         }
     }
 
-    public virtual async Task<string> UploadImageFile(IFormFile file, string blobName, TimeSpan? timeout = null)
+    public virtual async Task<string> UploadImageFile(IFormFile file, string blobName)
     {
         var container = blobClient.GetContainerReference(DefaultContainer);
         var blob = container.GetBlockBlobReference(blobName);
         blob.Properties.ContentType = file.ContentType;
-        using var cts = timeout.HasValue ? new CancellationTokenSource(timeout.Value) : null;
         using var stream = file.OpenReadStream();
         await blob.UploadFromStreamAsync(
             stream,
             accessCondition: null,
             options: null,
             operationContext: null,
-            cancellationToken: cts?.Token ?? CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         return blob.Uri.ToString();
     }
 
-    public virtual async Task DeleteImageFileIfExists(string blobName, TimeSpan? timeout = null)
+    public virtual async Task DeleteImageFileIfExists(string blobName)
     {
         var container = blobClient.GetContainerReference(DefaultContainer);
         var blob = container.GetBlockBlobReference(blobName);
-        using var cts = timeout.HasValue ? new CancellationTokenSource(timeout.Value) : null;
         await blob.DeleteIfExistsAsync(
             deleteSnapshotsOption: DeleteSnapshotsOption.None,
             accessCondition: null,
             options: null,
             operationContext: null,
-            cancellationToken: cts?.Token ?? CancellationToken.None);
+            cancellationToken: CancellationToken.None);
     }
 
     public async Task<string> Upload(string volume, string fileInVolume, string blobName)

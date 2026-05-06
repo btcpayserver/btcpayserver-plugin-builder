@@ -26,13 +26,13 @@ namespace PluginBuilder.Controllers;
 public class HomeController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
-    IHttpClientFactory httpClientFactory,
     SignInManager<IdentityUser> signInManager,
     EmailService emailService,
     UserVerifiedLogic userVerifiedLogic,
     PluginBuilderOptions options,
     ServerEnvironment env,
     NostrService nostrService,
+    GitHostingProviderFactory gitHostingProviderFactory,
     ILogger<HomeController> logger,
     HealthCheckService healthCheckService)
     : Controller
@@ -83,7 +83,7 @@ public class HomeController(
             b.GitRef = buildInfo?.GitRef;
             b.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, row.slug);
             b.Date = (DateTimeOffset.UtcNow - row.created_at).ToTimeAgo();
-            b.RepositoryLink = PluginController.GetUrl(buildInfo);
+            b.RepositoryLink = PluginController.GetUrl(buildInfo, gitHostingProviderFactory);
             b.DownloadLink = buildInfo?.Url;
             b.Error = buildInfo?.Error;
             b.PluginSlug = row.slug;
@@ -482,13 +482,16 @@ public class HomeController(
         if (!string.IsNullOrWhiteSpace(ownerNpub))
             ownerNostrUrl = string.Format(ExternalProfileUrls.PrimalProfileFormat, Uri.EscapeDataString(ownerNpub));
 
-        var githubClient = httpClientFactory.CreateClient(HttpClientNames.GitHub);
         var pluginContributors = GithubService.LoadSnapshot(options.PluginDataDir, pluginSlug);
         if (pluginContributors.Count == 0)
         {
-            pluginContributors = await GithubService.GetContributorsAsync(githubClient, plugin.gitRepository, plugin.pluginDir);
-            if (pluginContributors.Count > 0)
-                await GithubService.SaveSnapshot(options.PluginDataDir, pluginSlug, pluginContributors);
+            var provider = gitHostingProviderFactory.GetProvider(plugin.gitRepository);
+            if (provider != null)
+            {
+                pluginContributors = await provider.GetContributorsAsync(plugin.gitRepository, plugin.pluginDir);
+                if (pluginContributors.Count > 0)
+                    await GithubService.SaveSnapshot(options.PluginDataDir, pluginSlug, pluginContributors);
+            }
         }
 
         var vm = new PluginDetailsViewModel

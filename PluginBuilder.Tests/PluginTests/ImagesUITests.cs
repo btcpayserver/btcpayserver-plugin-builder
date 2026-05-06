@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -18,42 +18,6 @@ namespace PluginBuilder.Tests.PluginTests;
 public class ImagesUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("ImagesUITests", output);
-
-    [Fact]
-    public async Task CreatePageEnforcesMax10Images()
-    {
-        await using var t = new PlaywrightTester(_log);
-        t.Server.ReuseDatabase = false;
-        await t.StartAsync();
-        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
-
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
-        var verfCache = t.Server.GetService<AdminSettingsCache>();
-        await verfCache.RefreshAllAdminSettings(conn);
-
-        await t.GoToUrl("/register");
-        var user = await t.RegisterNewUser();
-        await Expect(t.Page!).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
-        await t.VerifyUserAccounts(user);
-
-        await t.GoToUrl("/plugins/create");
-
-        var files = CreateTempImages(t, 11, "create-images");
-        try
-        {
-            await t.Page!.Locator("#create-images-input").SetInputFilesAsync(files);
-            await t.Page.Locator("#PluginSlug").FillAsync("images-create-" + PlaywrightTester.GetRandomUInt256()[..8]);
-            await t.Page.Locator("#PluginTitle").FillAsync("Images create test");
-            await t.Page.Locator("#Description").FillAsync("Create page max images validation.");
-            await t.Page.Locator("#Create").ClickAsync();
-
-            await Expect(t.Page.Locator("span[data-valmsg-for='Images']")).ToContainTextAsync("A maximum of 10 images is allowed per plugin.");
-        }
-        finally
-        {
-            DeleteFiles(files);
-        }
-    }
 
     [Fact]
     public async Task SettingsCanAddRemoveAndKeepNewImagesFirst()
