@@ -42,6 +42,18 @@ Thank you,
 BTCPay Server Plugin Builder Team
 ";
 
+    public const string ReviewerFeedbackTemplate = @"
+Hello Plugin Owner,
+
+Your plugin ""{0}"" has been reviewed and the reviewer has left the following feedback:
+
+{1}
+
+Please address the feedback and update your submission. Your listing request remains under review.
+
+Thank you,
+BTCPay Server Plugin Builder Team
+";
 
     public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText)
     {
@@ -169,6 +181,24 @@ BTCPay Server Plugin Builder";
         catch (Exception ex)
         {
             logger.LogError(ex, "ERROR prevent us sending email notification to {Email} for {EmailSubject} email", email, subject);
+        }
+    }
+
+    public async Task NotifyPluginOwnerOfReviewerFeedback(string email, string pluginTitle, string feedback)
+    {
+        var subject = $"Feedback on your plugin {pluginTitle}";
+        var body = string.Format(ReviewerFeedbackTemplate, pluginTitle, feedback);
+        try
+        {
+            await DeliverEmail(new[] { MailboxAddressValidator.Parse(email) }, subject, body);
+        }
+        catch (InvalidOperationException)
+        {
+            logger.LogInformation("Email settings not configured. Plugin owner {Email} will not receive feedback email", email);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send feedback email to {Email}", email);
         }
     }
 

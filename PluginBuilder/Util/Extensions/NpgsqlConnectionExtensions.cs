@@ -767,6 +767,7 @@ public static class NpgsqlConnectionExtensions
                            SELECT id AS "Id",
                                   plugin_slug AS "PluginSlug",
                                   release_note AS "ReleaseNote",
+                                  reviewer_feedback AS "ReviewerFeedback",
                                   telegram_verification_message AS "TelegramVerificationMessage",
                                   user_reviews AS "UserReviews",
                                   announcement_date AS "AnnouncementDate",
@@ -774,7 +775,8 @@ public static class NpgsqlConnectionExtensions
                                   submitted_at AS "SubmittedAt",
                                   reviewed_at AS "ReviewedAt",
                                   reviewed_by AS "ReviewedBy",
-                                  rejection_reason AS "RejectionReason"
+                                  rejection_reason AS "RejectionReason",
+                                  reviewer_feedback AS "ReviewerFeedback"
                            FROM plugin_listing_requests
                            WHERE id = @requestId
                            """;
@@ -795,7 +797,8 @@ public static class NpgsqlConnectionExtensions
                                   submitted_at AS "SubmittedAt",
                                   reviewed_at AS "ReviewedAt",
                                   reviewed_by AS "ReviewedBy",
-                                  rejection_reason AS "RejectionReason"
+                                  rejection_reason AS "RejectionReason",
+                                  reviewer_feedback AS "ReviewerFeedback"
                            FROM plugin_listing_requests
                            WHERE plugin_slug = @pluginSlug AND status = 'pending'
                            ORDER BY submitted_at DESC
@@ -821,10 +824,32 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
                            UPDATE plugin_listing_requests
                            SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy, rejection_reason = @rejectionReason
-                           WHERE id = @requestId AND status = 'pending'
+                           WHERE id = @requestId AND status IN ('pending', 'approved')
                            """;
 
         var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy, rejectionReason });
+        return affected == 1;
+    }
+
+    public static async Task<bool> SaveReviewerFeedback(this NpgsqlConnection connection, int requestId, string feedback)
+    {
+        var affected = await connection.ExecuteAsync("""
+        UPDATE plugin_listing_requests
+        SET reviewer_feedback = @feedback
+        WHERE id = @requestId
+          AND status IN ('pending', 'approved')
+        """, new { requestId, feedback });
+        return affected == 1;
+    }
+
+    public static async Task<bool> ReinstateListingRequest(this NpgsqlConnection connection, int requestId, string reviewedBy)
+    {
+        var affected = await connection.ExecuteAsync("""
+        UPDATE plugin_listing_requests
+        SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy, rejection_reason = NULL
+        WHERE id = @requestId AND status = 'rejected'
+        """,
+            new { requestId, reviewedBy });
         return affected == 1;
     }
 
@@ -850,7 +875,8 @@ public static class NpgsqlConnectionExtensions
                                   submitted_at AS "SubmittedAt",
                                   reviewed_at AS "ReviewedAt",
                                   reviewed_by AS "ReviewedBy",
-                                  rejection_reason AS "RejectionReason"
+                                  rejection_reason AS "RejectionReason",
+                                  reviewer_feedback AS "ReviewerFeedback"
                            FROM plugin_listing_requests
                            WHERE plugin_slug = @pluginSlug AND status = 'rejected'
                            ORDER BY submitted_at DESC
@@ -858,6 +884,30 @@ public static class NpgsqlConnectionExtensions
                            """;
 
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
+    }
+
+    public static async Task<List<PluginListingRequest>> GetAllListingRequestsForPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        const string sql = """
+                       SELECT id AS "Id",
+                              plugin_slug AS "PluginSlug",
+                              release_note AS "ReleaseNote",
+                              telegram_verification_message AS "TelegramVerificationMessage",
+                              user_reviews AS "UserReviews",
+                              announcement_date AS "AnnouncementDate",
+                              status AS "Status",
+                              submitted_at AS "SubmittedAt",
+                              reviewed_at AS "ReviewedAt",
+                              reviewed_by AS "ReviewedBy",
+                              rejection_reason AS "RejectionReason",
+                              reviewer_feedback AS "ReviewerFeedback"
+                       FROM plugin_listing_requests
+                       WHERE plugin_slug = @pluginSlug
+                       ORDER BY submitted_at DESC
+                       """;
+
+        var results = await connection.QueryAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
+        return results.ToList();
     }
 
     public static async Task<int> GetPendingListingRequestsCount(this NpgsqlConnection connection)

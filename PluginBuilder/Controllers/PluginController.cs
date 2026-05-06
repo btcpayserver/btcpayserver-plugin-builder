@@ -318,6 +318,36 @@ public class PluginController(
         return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
     }
 
+    [HttpGet("listing-history")]
+    public async Task<IActionResult> ListingHistory(
+    [ModelBinder(typeof(PluginSlugModelBinder))]
+    PluginSlug pluginSlug)
+    {
+        await using var conn = await connectionFactory.Open();
+        var plugin = await conn.GetPluginDetails(pluginSlug);
+        if (plugin is null)
+            return NotFound();
+
+        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
+        var requests = await conn.GetAllListingRequestsForPlugin(pluginSlug);
+        var vm = new ListingHistoryViewModel
+        {
+            PluginSlug = pluginSlug.ToString(),
+            PluginTitle = pluginSettings?.PluginTitle,
+            Requests = requests.Select(r => new ListingHistoryItemViewModel
+            {
+                Id = r.Id,
+                Status = r.Status,
+                ReleaseNote = r.ReleaseNote,
+                SubmittedAt = r.SubmittedAt,
+                ReviewedAt = r.ReviewedAt,
+                RejectionReason = r.RejectionReason,
+                ReviewerFeedback = r.ReviewerFeedback
+            }).ToList()
+        };
+        return View(vm);
+    }
+
     [HttpGet("request-listing")]
     public async Task<IActionResult> RequestListing(
         [ModelBinder(typeof(PluginSlugModelBinder))]
@@ -335,6 +365,7 @@ public class PluginController(
         if (plugin.Visibility == PluginVisibilityEnum.Hidden)
             return NotFound();
 
+        var allRequests = await conn.GetAllListingRequestsForPlugin(pluginSlug);
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
         var pendingRequest = await conn.GetPendingListingRequestForPlugin(pluginSlug);
@@ -342,6 +373,7 @@ public class PluginController(
 
         model.ReleaseNote = pluginSettings?.Description;
         model.HasPreviousRejection = rejectedRequest != null;
+        model.HasRequests = allRequests.Any();
 
         if (pendingRequest != null)
         {

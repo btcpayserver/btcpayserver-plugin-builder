@@ -1,0 +1,3 @@
+ALTER TABLE plugin_listing_requests
+ADD COLUMN IF NOT EXISTS reviewer_feedback TEXT,
+ADD COLUMN IF NOT EXISTS was_approved BOOLEAN NOT NULL DEFAULT FALSE;

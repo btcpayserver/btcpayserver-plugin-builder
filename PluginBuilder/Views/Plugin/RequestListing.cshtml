@@ -11,26 +11,28 @@
 }
 
 <div class="d-flex align-items-center justify-content-between mb-4">
-    <h2 class="mb-0">
-        @ViewData["Title"]
-    </h2>
-    @if (!Model.PendingListing)
-    {
-        <div class="d-flex gap-3 mt-3 mt-sm-0">
+    <h2 class="mb-0">@ViewData["Title"]</h2>
+    <div class="d-flex align-items-center gap-3 mt-3 mt-sm-0">
+        @if (Model.HasRequests)
+		{
+			<a asp-action="ListingHistory" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-outline-secondary btn-sm">
+				View History
+			</a>
+		}
+        @if (!Model.PendingListing)
+        {
             <button type="submit" form="request-listing-form" class="btn btn-success" @(Model.Step == RequestListingViewModel.State.Done ? "" : "disabled")>
                 @(Model.HasPreviousRejection ? "Re-submit" : "Submit")
             </button>
-        </div>
-    }
-    @if (Model.PendingListing && Model.CanSendEmailReminder)
-    {
-        <form asp-controller="Plugin" asp-action="SendReminder" asp-route-pluginSlug="@Model.PluginSlug" method="post" class="d-inline">
-            <button type="submit" class="btn btn-success">Send Reminder</button>
-        </form>
-    }
+        }
+        @if (Model.PendingListing && Model.CanSendEmailReminder)
+        {
+            <form asp-controller="Plugin" asp-action="SendReminder" asp-route-pluginSlug="@Model.PluginSlug" method="post" class="d-inline">
+                <button type="submit" class="btn btn-success">Send Reminder</button>
+            </form>
+        }
+    </div>
 </div>
-
-
 
 <div class="accordion" id="requestListingAccordion">
     <div class="accordion-item">

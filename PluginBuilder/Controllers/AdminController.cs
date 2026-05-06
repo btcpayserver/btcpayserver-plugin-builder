@@ -1203,6 +1203,7 @@ public class AdminController(
             SubmittedAt = request.SubmittedAt,
             ReviewedAt = request.ReviewedAt,
             ReviewedByEmail = reviewedByEmail,
+            ReviewerFeedback = request.ReviewerFeedback,
             RejectionReason = request.RejectionReason,
             Owners = ownerVerifications,
             PrimaryOwnerEmail = owners.FirstOrDefault(o => o.IsPrimary)?.Email ?? "Unknown"
@@ -1266,9 +1267,9 @@ public class AdminController(
         if (request == null)
             return NotFound();
 
-        if (request.Status != PluginListingRequestStatus.Pending)
+        if (request.Status == PluginListingRequestStatus.Rejected)
         {
-            TempData[TempDataConstant.WarningMessage] = "This request has already been processed";
+            TempData[TempDataConstant.WarningMessage] = "This request has already been rejected";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
 
@@ -1286,14 +1287,100 @@ public class AdminController(
             TempData[TempDataConstant.WarningMessage] = "Failed to reject the listing request";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
-
         var existingSettings = await conn.GetSettings(pluginSlug);
+        await conn.SetPluginSettings(pluginSlug, existingSettings, PluginVisibilityEnum.Unlisted);
+
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
         if (primaryOwner != null && !string.IsNullOrEmpty(primaryOwner.Email))
             await emailService.NotifyPluginOwnerForRequestListingStatus(primaryOwner.Email, existingSettings?.PluginTitle ?? pluginSlug.ToString(), false,
                 rejectionReason);
         TempData[TempDataConstant.SuccessMessage] = $"Plugin listing request for '{request.PluginSlug}' has been rejected";
+        return RedirectToAction(nameof(ListingRequests));
+    }
+
+    [HttpPost("listing-requests/{requestId}/feedback")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SendReviewerFeedback(int requestId, string reviewerFeedback)
+    {
+        await using var conn = await connectionFactory.Open();
+        var request = await conn.GetListingRequest(requestId);
+        if (request == null)
+            return NotFound();
+
+        if (request.Status == PluginListingRequestStatus.Rejected)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Cannot send feedback on a rejected request";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
+
+        if (string.IsNullOrWhiteSpace(reviewerFeedback))
+        {
+            TempData[TempDataConstant.WarningMessage] = "Feedback cannot be empty";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
+
+        var saved = await conn.SaveReviewerFeedback(requestId, reviewerFeedback.Trim());
+        if (!saved)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Failed to save feedback";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
+
+        var pluginSlug = new PluginSlug(request.PluginSlug);
+        var existingSettings = await conn.GetSettings(pluginSlug);
+        var pluginOwners = await conn.GetPluginOwners(pluginSlug);
+        var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
+        if (primaryOwner != null && !string.IsNullOrEmpty(primaryOwner.Email))
+        {
+            await emailService.NotifyPluginOwnerOfReviewerFeedback(primaryOwner.Email, existingSettings?.PluginTitle ?? pluginSlug.ToString(), reviewerFeedback.Trim());
+        }
+        TempData[TempDataConstant.SuccessMessage] = "Feedback sent to plugin owner";
+        return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+    }
+
+    [HttpPost("listing-requests/{requestId}/reinstate")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReinstateListingRequest(int requestId)
+    {
+        await using var conn = await connectionFactory.Open();
+        var request = await conn.GetListingRequest(requestId);
+        if (request == null)
+            return NotFound();
+
+        if (request.Status != PluginListingRequestStatus.Rejected)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Only rejected requests can be reinstated";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
+
+        var userId = userManager.GetUserId(User)!;
+        var pluginSlug = new PluginSlug(request.PluginSlug);
+        var reinstated = await conn.ReinstateListingRequest(requestId, userId);
+        if (!reinstated)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Failed to reinstate the listing request";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
+
+        var existingSettings = await conn.GetSettings(pluginSlug);
+        await conn.SetPluginSettings(pluginSlug, existingSettings, PluginVisibilityEnum.Listed);
+
+        var pluginOwners = await conn.GetPluginOwners(pluginSlug);
+        var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
+        if (primaryOwner != null && !string.IsNullOrEmpty(primaryOwner.Email))
+        {
+            var pluginPublicUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug }, Request.Scheme);
+            if (pluginPublicUrl != null)
+                await emailService.NotifyPluginOwnerForRequestListingStatus(
+                    primaryOwner.Email,
+                    existingSettings?.PluginTitle ?? pluginSlug.ToString(),
+                    true,
+                    pluginPublicUrl);
+        }
+
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+        TempData[TempDataConstant.SuccessMessage] = $"Plugin '{request.PluginSlug}' has been reinstated and is now listed";
         return RedirectToAction(nameof(ListingRequests));
     }
 
