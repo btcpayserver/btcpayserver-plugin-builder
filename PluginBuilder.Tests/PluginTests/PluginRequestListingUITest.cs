@@ -145,7 +145,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await Expect(row.Locator(".badge.bg-warning:text('Pending')")).ToBeVisibleAsync();
 
         // Click to view details - scoped to the specific row
-        await row.Locator("a.btn.btn-sm.btn-primary:text('View Details')").ClickAsync();
+        await row.Locator($"a[href*='/admin/listing-requests/{requestId}']").ClickAsync();
         await Expect(t.Page).ToHaveURLAsync(new Regex($".*/admin/listing-requests/{requestId}", RegexOptions.IgnoreCase));
 
         // Verify request details are displayed
@@ -168,6 +168,134 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         Assert.NotNull(approvedRequest.ReviewedBy);
 
         // Verify plugin visibility was updated to listed
+        var plugin = await conn.GetPluginDetails(pluginSlug);
+        Assert.Equal(PluginVisibilityEnum.Listed, plugin!.Visibility);
+    }
+
+    [Fact]
+    public async Task Admin_Can_Reject_Pending_ListingRequest()
+    {
+        await using var t = new PlaywrightTester(_log);
+        t.Server.ReuseDatabase = false;
+        await t.StartAsync();
+        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
+
+        var pluginSlug = "test-plugin-" + PlaywrightTester.GetRandomUInt256()[..8];
+        var userId = await t.Server.CreateFakeUserAsync();
+        await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+
+        var requestId = await conn.CreateListingRequest(
+            pluginSlug,
+            "Test plugin release note",
+            "https://t.me/btcpayserver/12345",
+            "https://example.com/review",
+            null);
+
+        var adminEmail = await t.CreateServerAdminAsync();
+        await t.LogIn(adminEmail);
+        await t.GoToUrl($"/admin/listing-requests/{requestId}");
+
+        await t.Page.ClickAsync("button.btn.btn-danger:text('Reject')");
+        await t.Page.FillAsync("#rejectionReason", "Plugin does not meet quality standards");
+        await t.Page.ClickAsync("button[type='submit'].btn.btn-danger:text('Reject')");
+
+        await Expect(t.Page).ToHaveURLAsync(new Regex(".*/admin/listing-requests$", RegexOptions.IgnoreCase));
+
+        var rejected = await conn.GetListingRequest(requestId);
+        Assert.NotNull(rejected);
+        Assert.Equal(PluginListingRequestStatus.Rejected, rejected.Status);
+        Assert.Equal("Plugin does not meet quality standards", rejected.RejectionReason);
+
+        var plugin = await conn.GetPluginDetails(pluginSlug);
+        Assert.Equal(PluginVisibilityEnum.Unlisted, plugin!.Visibility);
+    }
+
+    [Fact]
+    public async Task Admin_Can_Reject_Approved_ListingRequest()
+    {
+        await using var t = new PlaywrightTester(_log);
+        t.Server.ReuseDatabase = false;
+        await t.StartAsync();
+        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
+
+        var pluginSlug = "test-plugin-" + PlaywrightTester.GetRandomUInt256()[..8];
+        var userId = await t.Server.CreateFakeUserAsync();
+        await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+
+        var requestId = await conn.CreateListingRequest(
+            pluginSlug,
+            "Test plugin release note",
+            "https://t.me/btcpayserver/12345",
+            "https://example.com/review",
+            null);
+
+        var adminEmail = await t.CreateServerAdminAsync();
+        await t.LogIn(adminEmail);
+
+        await t.GoToUrl($"/admin/listing-requests/{requestId}");
+        await t.Page.ClickAsync("button.btn.btn-success:text('Approve')");
+        await t.Page.ClickAsync("button[type='submit'].btn.btn-success:text('Approve')");
+        await Expect(t.Page).ToHaveURLAsync(new Regex(".*/admin/listing-requests$", RegexOptions.IgnoreCase));
+
+        await t.GoToUrl($"/admin/listing-requests/{requestId}");
+        await t.Page.ClickAsync("button.btn.btn-danger:text('Reject')");
+        await t.Page.FillAsync("#rejectionReason", "Critical bug found after approval");
+        await t.Page.ClickAsync("button[type='submit'].btn.btn-danger:text('Reject')");
+
+        await Expect(t.Page).ToHaveURLAsync(new Regex(".*/admin/listing-requests$", RegexOptions.IgnoreCase));
+
+        var rejected = await conn.GetListingRequest(requestId);
+        Assert.NotNull(rejected);
+        Assert.Equal(PluginListingRequestStatus.Rejected, rejected.Status);
+        Assert.Equal("Critical bug found after approval", rejected.RejectionReason);
+
+        var plugin = await conn.GetPluginDetails(pluginSlug);
+        Assert.Equal(PluginVisibilityEnum.Unlisted, plugin!.Visibility);
+    }
+
+    [Fact]
+    public async Task Admin_Can_Reinstate_Rejected_ListingRequest()
+    {
+        await using var t = new PlaywrightTester(_log);
+        t.Server.ReuseDatabase = false;
+        await t.StartAsync();
+        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
+
+        var pluginSlug = "test-plugin-" + PlaywrightTester.GetRandomUInt256()[..8];
+        var userId = await t.Server.CreateFakeUserAsync();
+        await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+
+        var requestId = await conn.CreateListingRequest(
+            pluginSlug,
+            "Test plugin release note",
+            "https://t.me/btcpayserver/12345",
+            "https://example.com/review",
+            null);
+
+        var adminEmail = await t.CreateServerAdminAsync();
+        await t.LogIn(adminEmail);
+
+        await t.GoToUrl($"/admin/listing-requests/{requestId}");
+        await t.Page.ClickAsync("button.btn.btn-success:text('Approve')");
+        await t.Page.ClickAsync("button[type='submit'].btn.btn-success:text('Approve')");
+
+        await t.GoToUrl($"/admin/listing-requests/{requestId}");
+        await t.Page.ClickAsync("button.btn.btn-danger:text('Reject')");
+        await t.Page.FillAsync("#rejectionReason", "Temporary issue");
+        await t.Page.ClickAsync("button[type='submit'].btn.btn-danger:text('Reject')");
+
+        await t.GoToUrl($"/admin/listing-requests/{requestId}");
+        await Expect(t.Page.Locator(".sticky-header button:text('Reinstate')")).ToBeVisibleAsync();
+        await t.Page.ClickAsync(".sticky-header button:text('Reinstate')");
+        await t.Page.ClickAsync("#reinstateModal button[type='submit'].btn.btn-success:text('Reinstate')");
+
+        await Expect(t.Page).ToHaveURLAsync(new Regex(".*/admin/listing-requests$", RegexOptions.IgnoreCase));
+
+        var reinstated = await conn.GetListingRequest(requestId);
+        Assert.NotNull(reinstated);
+        Assert.Equal(PluginListingRequestStatus.Approved, reinstated.Status);
+        Assert.Null(reinstated.RejectionReason);
+
         var plugin = await conn.GetPluginDetails(pluginSlug);
         Assert.Equal(PluginVisibilityEnum.Listed, plugin!.Visibility);
     }
