@@ -9,16 +9,16 @@ namespace PluginBuilder.Services;
 
 public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<TelemetryService> logger)
 {
-    private static readonly Regex BTCPayUserAgentRegex = new(@"^BTCPayServer/(\d+\.\d+\.\d+[\w.\-]*)", RegexOptions.Compiled);
+    private static readonly Regex BTCPayUserAgentRegex = new(@"^BTCPayServer/(\d+\.\d+\.\d+)", RegexOptions.Compiled);
 
-    public async Task RecordPluginDownload(string pluginSlug, string version, string? userAgent, string? remoteIp)
+    public async Task RecordPluginDownload(string pluginSlug, string version, string? userAgent, string? remoteIp, string? xOriginalFor = null, string? xForwardedFor = null)
     {
         try
         {
             if (!TryParseBTCPayUserAgent(userAgent, out var btcpayVersion))
                 return;
 
-            if (!TryGetPublicIp(remoteIp, out var ip))
+            if (!TryGetPublicIp(remoteIp, xOriginalFor, xForwardedFor, out var ip))
                 return;
 
             var hashedIp = HashIp(ip!);
@@ -77,11 +77,11 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
         }
     }
 
-    public async Task RecordServerSnapshot(string? remoteIp, string btcpayVersion, IEnumerable<PluginReport> plugins)
+    public async Task RecordServerSnapshot(string? remoteIp, string btcpayVersion, IEnumerable<PluginReport> plugins, string? xOriginalFor = null, string? xForwardedFor = null)
     {
         try
         {
-            if (!TryGetPublicIp(remoteIp, out var ip))
+            if (!TryGetPublicIp(remoteIp, xOriginalFor, xForwardedFor, out var ip))
                 return;
 
             var hashedIp = HashIp(ip!);
@@ -211,21 +211,34 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
         return true;
     }
 
-    private static bool TryGetPublicIp(string? remoteIp, out string? result)
+    private static bool TryGetPublicIp(string? remoteIp, string? xOriginalFor, string? xForwardedFor, out string? result)
     {
         result = null;
-        if (string.IsNullOrWhiteSpace(remoteIp))
-            return false;
+        var candidates = new[] { xOriginalFor, xForwardedFor, remoteIp };
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
 
-        if (!IPAddress.TryParse(remoteIp, out var ip))
-            return false;
+            var raw = candidate.Split(',')[0].Trim();
+            
+            if (raw.Contains("]:"))
+                raw = raw.Substring(1, raw.IndexOf(']') - 1);
+            else if (raw.Contains(':') && !raw.Contains('.'))
+                raw = raw.Split(':')[0];
 
-        if (IsPrivateOrLoopback(ip))
-            return false;
+            if (!IPAddress.TryParse(raw, out var ip))
+                continue;
 
-        result = remoteIp;
-        return true;
+            if (IsPrivateOrLoopback(ip))
+                continue;
+
+            result = raw;
+            return true;
+        }
+        return false;
     }
+
 
     private static bool IsPrivateOrLoopback(IPAddress ip)
     {

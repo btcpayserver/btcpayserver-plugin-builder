@@ -1,6 +1,5 @@
 using System.Reflection;
 using Dapper;
-using MailKit;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -16,7 +15,6 @@ using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
-using PluginBuilder.ViewModels.Plugin;
 
 namespace PluginBuilder.Controllers;
 
@@ -204,6 +202,29 @@ public class ApiController(
     }
 
     [AllowAnonymous]
+    [HttpPost("telemetry/plugins")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
+    public async Task<IActionResult> ReportInstalledPlugins([FromBody] List<InstalledPluginRequest> plugins)
+    {
+        if (plugins is null || plugins.Count == 0)
+            return Ok();
+
+        var userAgent = Request.Headers.UserAgent.ToString();
+        if (!TryParseBTCPayVersion(userAgent, out var btcpayVersion))
+            return Ok();
+
+        var remoteIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var xForwardedFor = Request.Headers["X-Forwarded-For"].ToString();
+        var xOriginalFor = Request.Headers["X-Original-For"].ToString();
+
+        var pluginReports = plugins.Where(p => !string.IsNullOrWhiteSpace(p.Identifier) && !string.IsNullOrWhiteSpace(p.Version))
+            .Select(p => new PluginReport(p.Identifier, p.Version)).ToList();
+
+        _ = telemetryService.RecordServerSnapshot(remoteIp, btcpayVersion, pluginReports, xOriginalFor, xForwardedFor);
+        return Ok();
+    }
+
+    [AllowAnonymous]
     [HttpGet("plugins/{pluginSlug}/versions/{version}")]
     [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> GetPlugin(
@@ -253,7 +274,8 @@ public class ApiController(
         await using var conn = await connectionFactory.Open();
         await conn.InsertEvent("Download", new JObject { ["pluginSlug"] = pluginSlug.ToString(), ["version"] = version.ToString() });
 
-        _ = telemetryService.RecordPluginDownload(pluginSlug.ToString(), version.ToString(), Request.Headers.UserAgent.ToString(), HttpContext.Connection.RemoteIpAddress?.ToString());
+        _ = telemetryService.RecordPluginDownload(pluginSlug.ToString(), version.ToString(), Request.Headers.UserAgent.ToString(),
+                HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers["X-Original-For"].ToString(), Request.Headers["X-Forwarded-For"].ToString());
 
         if (serverEnvironment.EnableLocalArtifactDownloadProxy && Uri.TryCreate(url, UriKind.Absolute, out var artifactUri) && artifactUri.IsLoopback)
         {
@@ -545,28 +567,6 @@ public class ApiController(
         ).ToList();
 
         return Ok(updates);
-    }
-
-
-    [AllowAnonymous]
-    [HttpPost("api/v1/telemetry/plugins")]
-    public async Task<IActionResult> ReportInstalledPlugins([FromBody] PluginTelemetryRequest request)
-    {
-        if (request?.Plugins is null || request.Plugins.Count == 0)
-            return Ok();
-
-        var userAgent = Request.Headers.UserAgent.ToString();
-
-        if (!TryParseBTCPayVersion(userAgent, out var btcpayVersion))
-            return Ok();
-
-        var remoteIp = HttpContext.Connection.RemoteIpAddress?.ToString();
-
-        var plugins = request.Plugins.Where(p => !string.IsNullOrWhiteSpace(p.Slug) && !string.IsNullOrWhiteSpace(p.Version))
-            .Select(p => new PluginReport(p.Slug!, p.Version!)).ToList();
-
-        _ = telemetryService.RecordServerSnapshot(remoteIp, btcpayVersion, plugins);
-        return Ok();
     }
 
     private static bool TryParseBTCPayVersion(string userAgent, out string version)
