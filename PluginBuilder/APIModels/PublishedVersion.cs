@@ -39,6 +39,7 @@ public class PublishedPlugin : PublishedVersion
         get => BuildInfo?["pluginDir"]?.ToString();
     }
 
+    public bool IsUnlisted { get; set; }
     public PluginRatingSummary RatingSummary { get; set; } = new();
 
     public string GetSourceUrl(GitHostingProviderFactory providerFactory)

@@ -111,6 +111,10 @@
                                         <h3 style="margin-top: 0; margin-bottom: 5px;">
                                             <a asp-action="GetPluginDetails"
                                                asp-route-pluginSlug="@plugin.ProjectSlug">@plugin.PluginTitle</a>
+                                            @if (plugin.IsUnlisted)
+                                            {
+                                                <span class="badge bg-secondary ms-2" title="This plugin is not publicly listed">Unlisted</span>
+                                            }
                                         </h3>
 
                                         <p style="margin-bottom: 5px;">
