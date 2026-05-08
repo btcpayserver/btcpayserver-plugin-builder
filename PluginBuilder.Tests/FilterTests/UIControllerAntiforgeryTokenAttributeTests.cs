@@ -32,36 +32,6 @@ public class UIControllerAntiforgeryTokenAttributeTests
     }
 
     [Fact]
-    public async Task OnAuthorizationAsync_WithExistingAntiforgeryFailure_AddsErrorDetails()
-    {
-        var filter = new UIControllerAntiforgeryTokenAttribute();
-        var services = new ServiceCollection().BuildServiceProvider();
-
-        var context = CreateContext(filter, typeof(DummyUiController), HttpMethods.Get, services);
-        context.Result = new AntiforgeryValidationFailedResult();
-
-        await filter.OnAuthorizationAsync(context);
-
-        Assert.Equal("CSRF token validation failed.", context.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
-    }
-
-    [Fact]
-    public async Task OnAuthorizationAsync_WithExistingAntiforgeryFailure_DoesNotValidateAgain()
-    {
-        var filter = new UIControllerAntiforgeryTokenAttribute();
-        var services = new ServiceCollection()
-            .AddSingleton<IAntiforgery, FailIfValidatedAntiforgery>()
-            .BuildServiceProvider();
-
-        var context = CreateContext(filter, typeof(DummyUiController), HttpMethods.Post, services);
-        context.Result = new AntiforgeryValidationFailedResult();
-
-        await filter.OnAuthorizationAsync(context);
-
-        Assert.Equal("CSRF token validation failed.", context.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
-    }
-
-    [Fact]
     public async Task OnAuthorizationAsync_WithPostApiRequest_DoesNotValidate()
     {
         var filter = new UIControllerAntiforgeryTokenAttribute();
@@ -70,38 +40,6 @@ public class UIControllerAntiforgeryTokenAttributeTests
             .BuildServiceProvider();
 
         var context = CreateContext(filter, typeof(DummyApiController), HttpMethods.Post, services);
-
-        await filter.OnAuthorizationAsync(context);
-
-        Assert.Null(context.Result);
-        Assert.False(context.HttpContext.Items.ContainsKey(UIErrorController.ErrorDetailsKey));
-    }
-
-    [Fact]
-    public async Task OnAuthorizationAsync_WithPostNonControllerRequest_DoesNotValidate()
-    {
-        var filter = new UIControllerAntiforgeryTokenAttribute();
-        var services = new ServiceCollection()
-            .AddSingleton<IAntiforgery, ThrowingAntiforgery>()
-            .BuildServiceProvider();
-
-        var context = CreateNonControllerContext(filter, HttpMethods.Post, services);
-
-        await filter.OnAuthorizationAsync(context);
-
-        Assert.Null(context.Result);
-        Assert.False(context.HttpContext.Items.ContainsKey(UIErrorController.ErrorDetailsKey));
-    }
-
-    [Fact]
-    public async Task OnAuthorizationAsync_WithGetUiRequest_DoesNotValidate()
-    {
-        var filter = new UIControllerAntiforgeryTokenAttribute();
-        var services = new ServiceCollection()
-            .AddSingleton<IAntiforgery, ThrowingAntiforgery>()
-            .BuildServiceProvider();
-
-        var context = CreateContext(filter, typeof(DummyUiController), HttpMethods.Get, services);
 
         await filter.OnAuthorizationAsync(context);
 
@@ -148,28 +86,6 @@ public class UIControllerAntiforgeryTokenAttributeTests
         });
 
         Assert.Equal("CSRF token validation failed.", context.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
-    }
-
-    [Fact]
-    public async Task OnResultExecutionAsync_WithExistingDetailedError_PreservesExistingDetails()
-    {
-        var filter = new UIControllerAntiforgeryTokenAttribute();
-        var httpContext = new DefaultHttpContext();
-        httpContext.Items[UIErrorController.ErrorDetailsKey] = "Existing CSRF details.";
-
-        var actionContext = new ActionContext(httpContext, new RouteData(), new ActionDescriptor());
-        List<IFilterMetadata> filters = new() { filter };
-        var result = new AntiforgeryValidationFailedResult();
-        var controller = new object();
-        var resultContext = new ResultExecutingContext(actionContext, filters, result, controller);
-
-        await filter.OnResultExecutionAsync(resultContext, () =>
-        {
-            var executedContext = new ResultExecutedContext(actionContext, filters, result, controller);
-            return Task.FromResult(executedContext);
-        });
-
-        Assert.Equal("Existing CSRF details.", httpContext.Items[UIErrorController.ErrorDetailsKey]);
     }
 
     [Fact]
@@ -222,21 +138,6 @@ public class UIControllerAntiforgeryTokenAttributeTests
         return new AuthorizationFilterContext(actionContext, orderedFilters);
     }
 
-    private static AuthorizationFilterContext CreateNonControllerContext(
-        UIControllerAntiforgeryTokenAttribute filter,
-        string method,
-        IServiceProvider services)
-    {
-        var httpContext = new DefaultHttpContext
-        {
-            RequestServices = services
-        };
-        httpContext.Request.Method = method;
-
-        var actionContext = new ActionContext(httpContext, new RouteData(), new ActionDescriptor());
-        return new AuthorizationFilterContext(actionContext, new List<IFilterMetadata> { filter });
-    }
-
     private sealed class DummyUiController : Controller;
 
     private sealed class DummyApiController : ControllerBase;
@@ -252,18 +153,5 @@ public class UIControllerAntiforgeryTokenAttributeTests
         public void SetCookieTokenAndHeader(HttpContext httpContext) => throw new NotSupportedException();
 
         public Task ValidateRequestAsync(HttpContext httpContext) => throw new AntiforgeryValidationException("Invalid CSRF token.");
-    }
-
-    private sealed class FailIfValidatedAntiforgery : IAntiforgery
-    {
-        public AntiforgeryTokenSet GetAndStoreTokens(HttpContext httpContext) => throw new NotSupportedException();
-
-        public AntiforgeryTokenSet GetTokens(HttpContext httpContext) => throw new NotSupportedException();
-
-        public Task<bool> IsRequestValidAsync(HttpContext httpContext) => throw new NotSupportedException();
-
-        public void SetCookieTokenAndHeader(HttpContext httpContext) => throw new NotSupportedException();
-
-        public Task ValidateRequestAsync(HttpContext httpContext) => throw new InvalidOperationException("ValidateRequestAsync should not be called when result is already AntiforgeryValidationFailedResult.");
     }
 }

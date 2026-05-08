@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using PluginBuilder.Controllers;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -175,22 +174,17 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Fact]
-    public async Task GenericErrorPage_WithErrorDetails_ShowsCsrfDetails()
+    public async Task ForgotPassword_WithoutAntiforgeryToken_ShowsCsrfDetails()
     {
-        await using var tester = Create();
-        tester.ConfigureApplication = app =>
-            app.MapPost("/throw/csrf", (HttpContext context) =>
-            {
-                context.Items[UIErrorController.ErrorDetailsKey] = "CSRF token validation failed.";
-                return Results.StatusCode(StatusCodes.Status400BadRequest);
-            });
-        await tester.Start();
-
+        await using var tester = await Start();
         var client = tester.CreateHttpClient();
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
 
-        using var content = new StringContent(string.Empty);
-        var response = await client.PostAsync("/throw/csrf", content);
+        using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Email"] = "test@example.com"
+        });
+        var response = await client.PostAsync("/forgotpassword", content);
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
