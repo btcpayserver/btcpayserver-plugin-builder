@@ -28,7 +28,7 @@ public class UIControllerAntiforgeryTokenAttributeTests
         await filter.OnAuthorizationAsync(context);
 
         Assert.IsType<AntiforgeryValidationFailedResult>(context.Result);
-        Assert.Equal("Invalid CSRF token.", context.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
+        Assert.Equal("CSRF token validation failed.", context.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
     }
 
     [Fact]
@@ -154,16 +154,12 @@ public class UIControllerAntiforgeryTokenAttributeTests
     public async Task OnResultExecutionAsync_WithExistingDetailedError_PreservesExistingDetails()
     {
         var filter = new UIControllerAntiforgeryTokenAttribute();
-        var services = new ServiceCollection()
-            .AddSingleton<IAntiforgery, ThrowingAntiforgery>()
-            .BuildServiceProvider();
+        var httpContext = new DefaultHttpContext();
+        httpContext.Items[UIErrorController.ErrorDetailsKey] = "Existing CSRF details.";
 
-        var authorizationContext = CreateContext(filter, typeof(DummyUiController), HttpMethods.Post, services);
-        await filter.OnAuthorizationAsync(authorizationContext);
-
-        var actionContext = new ActionContext(authorizationContext.HttpContext, new RouteData(), new ActionDescriptor());
+        var actionContext = new ActionContext(httpContext, new RouteData(), new ActionDescriptor());
         List<IFilterMetadata> filters = new() { filter };
-        var result = authorizationContext.Result ?? new AntiforgeryValidationFailedResult();
+        var result = new AntiforgeryValidationFailedResult();
         var controller = new object();
         var resultContext = new ResultExecutingContext(actionContext, filters, result, controller);
 
@@ -173,7 +169,7 @@ public class UIControllerAntiforgeryTokenAttributeTests
             return Task.FromResult(executedContext);
         });
 
-        Assert.Equal("Invalid CSRF token.", authorizationContext.HttpContext.Items[UIErrorController.ErrorDetailsKey]);
+        Assert.Equal("Existing CSRF details.", httpContext.Items[UIErrorController.ErrorDetailsKey]);
     }
 
     [Fact]

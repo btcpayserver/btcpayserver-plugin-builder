@@ -37,10 +37,10 @@ public class UIControllerAntiforgeryTokenAttribute :
             {
                 await antiforgery.ValidateRequestAsync(context.HttpContext);
             }
-            catch (AntiforgeryValidationException ex)
+            catch (AntiforgeryValidationException)
             {
                 context.Result = new AntiforgeryValidationFailedResult();
-                AddErrorDetails(context.HttpContext, ex.Message);
+                AddErrorDetails(context.HttpContext);
             }
         }
     }
