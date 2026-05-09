@@ -31,8 +31,18 @@ ASSEMBLY_NAME="${ASSEMBLY_NAME/.csproj/}"
 
 # PluginPacker crash because of no gpg, but we don't use it anyway...
 /build-tools/PluginPacker/BTCPayServer.PluginPacker "/tmp/publish" "${ASSEMBLY_NAME}" "/tmp/publish-package" || true
-cp /tmp/publish-package/*/*/*btcpay /out
-cp /tmp/publish-package/*/*/*btcpay.json /out
+shopt -s nullglob
+btcpay_files=(/tmp/publish-package/*/*/*.btcpay)
+metadata_files=(/tmp/publish-package/*/*/*.btcpay.json)
+shopt -u nullglob
+if (( ${#btcpay_files[@]} == 0 )); then
+  echo "No .btcpay artifacts were produced" >&2
+  exit 1
+fi
+cp "${btcpay_files[@]}" /out
+if (( ${#metadata_files[@]} > 0 )); then
+  cp "${metadata_files[@]}" /out
+fi
 
 BUILD_DATE=$(date --iso-8601=seconds --utc)
 # To UTC
