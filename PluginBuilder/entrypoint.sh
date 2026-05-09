@@ -31,8 +31,8 @@ ASSEMBLY_NAME="${ASSEMBLY_NAME/.csproj/}"
 
 # PluginPacker crash because of no gpg, but we don't use it anyway...
 /build-tools/PluginPacker/BTCPayServer.PluginPacker "/tmp/publish" "${ASSEMBLY_NAME}" "/tmp/publish-package" || true
-cp /tmp/publish-package/*/*/* /out
-rm -f /out/SHA256SUMS.asc /out/SHA256SUMS
+cp /tmp/publish-package/*/*/*btcpay /out
+cp /tmp/publish-package/*/*/*btcpay.json /out
 
 BUILD_DATE=$(date --iso-8601=seconds --utc)
 # To UTC
