@@ -192,6 +192,7 @@ public class Program
         services.AddHostedService<UserCleanupHostedService>();
 
         services.AddSingleton<DBConnectionFactory>();
+        services.AddScoped<TelemetryService>();
         services.AddScoped<PluginCleanupRunner>();
         services.AddScoped<UserCleanupRunner>();
         services.AddSingleton<BuildService>();
