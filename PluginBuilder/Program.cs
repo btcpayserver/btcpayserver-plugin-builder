@@ -241,6 +241,7 @@ public class Program
         });
         services.AddScoped<PluginOwnershipService>();
         services.AddScoped<VersionLifecycleService>();
+        services.AddSingleton<BtcMapsService>();
 
         services.AddRateLimiter(options =>
         {
@@ -262,6 +263,20 @@ public class Program
                 {
                     PermitLimit = cache.RateLimitPermitLimit,
                     Window = TimeSpan.FromSeconds(cache.RateLimitWindowSeconds),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                });
+            });
+            options.AddPolicy(Policies.BtcMapsSubmitRateLimit, httpContext =>
+            {
+                // Per-source-IP fixed window: 5 submissions per 24h. Caps automation
+                // abuse of /apis/btcmaps/v1/submit without throttling honest single
+                // submissions from a merchant.
+                var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromHours(24),
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                     QueueLimit = 0
                 });
