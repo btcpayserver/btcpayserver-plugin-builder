@@ -769,7 +769,6 @@ public class PluginController(
         }
 
         var pluginSettings = await conn.GetPluginDetails(pluginSlug);
-        vm.RequestListing = pluginSettings?.Visibility == PluginVisibilityEnum.Unlisted;
         return View(vm);
     }
 

@@ -12,4 +12,5 @@ public class MainNavViewModel
     public List<PluginVersionViewModel> Versions { get; set; } = new();
 
     public int PendingListingRequestsCount { get; set; }
+    public bool RequestListing { get; set; }
 }

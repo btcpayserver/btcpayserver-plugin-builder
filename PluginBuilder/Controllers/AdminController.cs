@@ -1299,46 +1299,6 @@ public class AdminController(
         return RedirectToAction(nameof(ListingRequests));
     }
 
-    [HttpPost("listing-requests/{requestId}/feedback")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> SendReviewerFeedback(int requestId, string reviewerFeedback)
-    {
-        await using var conn = await connectionFactory.Open();
-        var request = await conn.GetListingRequest(requestId);
-        if (request == null)
-            return NotFound();
-
-        if (request.Status == PluginListingRequestStatus.Rejected)
-        {
-            TempData[TempDataConstant.WarningMessage] = "Cannot send feedback on a rejected request";
-            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
-        }
-
-        if (string.IsNullOrWhiteSpace(reviewerFeedback))
-        {
-            TempData[TempDataConstant.WarningMessage] = "Feedback cannot be empty";
-            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
-        }
-
-        var saved = await conn.SaveReviewerFeedback(requestId, reviewerFeedback.Trim());
-        if (!saved)
-        {
-            TempData[TempDataConstant.WarningMessage] = "Failed to save feedback";
-            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
-        }
-
-        var pluginSlug = new PluginSlug(request.PluginSlug);
-        var existingSettings = await conn.GetSettings(pluginSlug);
-        var pluginOwners = await conn.GetPluginOwners(pluginSlug);
-        var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
-        if (primaryOwner != null && !string.IsNullOrEmpty(primaryOwner.Email))
-        {
-            await emailService.NotifyPluginOwnerOfReviewerFeedback(primaryOwner.Email, existingSettings?.PluginTitle ?? pluginSlug.ToString(), reviewerFeedback.Trim());
-        }
-        TempData[TempDataConstant.SuccessMessage] = "Feedback sent to plugin owner";
-        return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
-    }
-
     [HttpPost("listing-requests/{requestId}/reinstate")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ReinstateListingRequest(int requestId)

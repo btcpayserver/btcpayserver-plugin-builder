@@ -19,6 +19,16 @@
                                     <span>Builds</span>
                                 </a>
                             </li>
+							@if (Model.RequestListing && Model.Versions.Any())
+							{
+								<li class="nav-item">
+									<a asp-area="" asp-controller="Plugin" asp-action="RequestListing" asp-route-pluginSlug="@Model.PluginSlug"
+									   class="nav-link js-scroll-trigger" id="StoreNav-RequestListing">
+										<vc:icon symbol="notification" />
+										<span>Request Listing</span>
+									</a>
+								</li>
+							}
                             <li class="nav-item">
                                 <a asp-area="" asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug"
                                    class="nav-link js-scroll-trigger @ViewData.IsActivePage(PluginNavPages.Settings)" id="StoreNav-Settings">

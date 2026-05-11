@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PluginBuilder.Components.PluginVersion;
+using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
@@ -42,6 +43,10 @@ public class MainNav : ViewComponent
                     Published = true,
                     HidePublishBadge = true
                 });
+
+            vm.RequestListing = await conn.ExecuteScalarAsync<string>(
+                "SELECT visibility FROM plugins WHERE slug=@pluginSlug",
+                new { pluginSlug = pluginSlug.ToString() }) == PluginVisibilityEnum.Unlisted.ToString().ToLower();
         }
 
         // Only load pending count for admins to avoid burdening database
