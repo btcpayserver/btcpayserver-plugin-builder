@@ -1,9 +1,12 @@
+using System.Globalization;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using PluginBuilder.APIModels;
+using PluginBuilder.DataModels;
 
 namespace PluginBuilder.Services;
 
@@ -11,7 +14,6 @@ public sealed class BtcMapsService
 {
     private const string DefaultDirectoryRepo = "btcpayserver/directory.btcpayserver.org";
     private const string DefaultDirectoryMerchantsPath = "src/data/merchants.json";
-    private const string UserAgent = "PluginBuilder-BtcMaps/1.0";
 
     private static readonly HashSet<string> ValidTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -27,15 +29,50 @@ public sealed class BtcMapsService
         "pets", "services", "software-video-games", "sports", "tools"
     };
 
+    // ISO 3166-1 alpha-2 codes derived from CultureInfo at startup. Cached because
+    // CultureInfo.GetCultures + RegionInfo enumeration is non-trivial and the set
+    // is stable for the process lifetime.
+    private static readonly HashSet<string> Iso3166Alpha2 = BuildIsoAlpha2Set();
+
+    private static HashSet<string> BuildIsoAlpha2Set()
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var culture in CultureInfo.GetCultures(CultureTypes.SpecificCultures))
+        {
+            try
+            {
+                var region = new RegionInfo(culture.Name);
+                if (region.TwoLetterISORegionName.Length == 2 &&
+                    region.TwoLetterISORegionName.All(c => c is >= 'A' and <= 'Z'))
+                {
+                    set.Add(region.TwoLetterISORegionName);
+                }
+            }
+            catch (ArgumentException)
+            {
+                // Some neutral cultures throw; skip.
+            }
+        }
+        return set;
+    }
+
     private readonly IConfiguration _configuration;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<BtcMapsService> _logger;
 
     public BtcMapsService(
         IConfiguration configuration,
+        IHttpClientFactory httpClientFactory,
         ILogger<BtcMapsService> logger)
     {
         _configuration = configuration;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
+    }
+
+    public sealed class DirectoryTokenMissingException : Exception
+    {
+        public DirectoryTokenMissingException() : base("BTCMAPS:DirectoryGithubToken is not configured.") { }
     }
 
     public IReadOnlyList<ValidationError> Validate(BtcMapsSubmitRequest request)
@@ -75,7 +112,9 @@ public sealed class BtcMapsService
         if (!string.IsNullOrWhiteSpace(request.Country))
         {
             var country = request.Country.Trim();
-            if (!(country == "GLOBAL" || (country.Length == 2 && country.All(char.IsUpper))))
+            // GLOBAL is the directory's pseudonym for online-only / multi-region merchants.
+            // Everything else must be an actual ISO 3166-1 alpha-2 code.
+            if (country != "GLOBAL" && !Iso3166Alpha2.Contains(country))
                 errors.Add(new ValidationError(nameof(request.Country),
                     "Must be ISO 3166-1 alpha-2 or GLOBAL."));
         }
@@ -100,24 +139,23 @@ public sealed class BtcMapsService
     {
         var token = _configuration["BTCMAPS:DirectoryGithubToken"];
         if (string.IsNullOrWhiteSpace(token))
-            return new BtcMapsDirectoryResult { Skipped = "directory-github-token-not-configured" };
+            throw new DirectoryTokenMissingException();
 
         var repo = _configuration["BTCMAPS:DirectoryRepo"] ?? DefaultDirectoryRepo;
         var merchantsPath = _configuration["BTCMAPS:DirectoryMerchantsPath"] ?? DefaultDirectoryMerchantsPath;
 
-        using var client = new HttpClient();
-        client.BaseAddress = new Uri("https://api.github.com/");
-        client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
-        client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
-        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var client = _httpClientFactory.CreateClient(HttpClientNames.BtcMapsDirectory);
+        // Auth is per-call: the named-client registration sets BaseAddress + User-Agent
+        // + Accept + Timeout, but the BTCMAPS token is distinct from the global
+        // PluginBuilder GitHub token and must not be baked into the singleton handler.
+        using var authClient = new HttpRequestAuth(client, token);
 
-        var repoInfo = await GetJsonAsync(client, $"repos/{repo}", cancellationToken);
+        var repoInfo = await GetJsonAsync(authClient, $"repos/{repo}", cancellationToken);
         var defaultBranch = repoInfo.GetProperty("default_branch").GetString()
             ?? throw new InvalidOperationException("default_branch missing");
 
         var fileInfo = await GetJsonAsync(
-            client,
+            authClient,
             $"repos/{repo}/contents/{merchantsPath}?ref={Uri.EscapeDataString(defaultBranch)}",
             cancellationToken);
         var contentB64 = fileInfo.GetProperty("content").GetString() ?? string.Empty;
@@ -139,21 +177,18 @@ public sealed class BtcMapsService
             }
         }
 
+        // Deterministic branch name derived from the normalized URL. Two concurrent
+        // submissions of the same URL collide on the git/refs create instead of
+        // racing through preflight and opening duplicate PRs.
+        var branchName = BuildBranchName(request.Name!, normalizedUrl);
         var marker = BuildUrlMarker(normalizedUrl);
-        var openPrSearch = await GetJsonAsync(
-            client,
-            $"search/issues?q={Uri.EscapeDataString($"repo:{repo} is:pr is:open in:body \"{marker}\"")}",
+
+        var branchRef = await GetJsonAsync(
+            authClient,
+            $"repos/{repo}/git/ref/heads/{Uri.EscapeDataString(defaultBranch)}",
             cancellationToken);
-        if (openPrSearch.TryGetProperty("total_count", out var totalCount) && totalCount.GetInt32() > 0)
-        {
-            var firstItem = openPrSearch.GetProperty("items")[0];
-            return new BtcMapsDirectoryResult
-            {
-                Skipped = "duplicate-open-pr",
-                PrUrl = firstItem.TryGetProperty("html_url", out var h) ? h.GetString() : null,
-                PrNumber = firstItem.TryGetProperty("number", out var n) ? n.GetInt32() : null
-            };
-        }
+        var baseSha = branchRef.GetProperty("object").GetProperty("sha").GetString()
+            ?? throw new InvalidOperationException("base sha missing");
 
         var newEntry = BuildMerchantEntry(request);
         var updated = merchants
@@ -175,19 +210,34 @@ public sealed class BtcMapsService
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         }) + "\n";
 
-        var branchRef = await GetJsonAsync(
-            client,
-            $"repos/{repo}/git/ref/heads/{Uri.EscapeDataString(defaultBranch)}",
+        var refCreateResponse = await PostJsonAllowConflictAsync(
+            authClient,
+            $"repos/{repo}/git/refs",
+            new { @ref = $"refs/heads/{branchName}", sha = baseSha },
             cancellationToken);
-        var baseSha = branchRef.GetProperty("object").GetProperty("sha").GetString()
-            ?? throw new InvalidOperationException("base sha missing");
+        if (refCreateResponse.IsConflict)
+        {
+            // Branch already exists. Look up the open PR keyed by the URL marker;
+            // if one is open, return its details; otherwise this is a stuck-branch
+            // from a prior failed run and we cannot safely reuse it.
+            var openPrSearch = await GetJsonAsync(
+                authClient,
+                $"search/issues?q={Uri.EscapeDataString($"repo:{repo} is:pr is:open in:body \"{marker}\"")}",
+                cancellationToken);
+            if (openPrSearch.TryGetProperty("total_count", out var totalCount) && totalCount.GetInt32() > 0)
+            {
+                var firstItem = openPrSearch.GetProperty("items")[0];
+                return new BtcMapsDirectoryResult
+                {
+                    Skipped = "duplicate-open-pr",
+                    PrUrl = firstItem.TryGetProperty("html_url", out var h) ? h.GetString() : null,
+                    PrNumber = firstItem.TryGetProperty("number", out var n) ? n.GetInt32() : null
+                };
+            }
+            return new BtcMapsDirectoryResult { Skipped = "branch-exists-no-open-pr", Branch = branchName };
+        }
 
-        var branchSuffix = Guid.NewGuid().ToString("N")[..8];
-        var branchName = $"btcmaps/{Slugify(request.Name!)}-{branchSuffix}";
-        await PostJsonAsync(client, $"repos/{repo}/git/refs",
-            new { @ref = $"refs/heads/{branchName}", sha = baseSha }, cancellationToken);
-
-        await PutJsonAsync(client, $"repos/{repo}/contents/{merchantsPath}",
+        await PutJsonAsync(authClient, $"repos/{repo}/contents/{merchantsPath}",
             new
             {
                 message = $"Add {request.Name}",
@@ -197,7 +247,7 @@ public sealed class BtcMapsService
             }, cancellationToken);
 
         var prBody = BuildPrBody(request, marker);
-        var prResponse = await PostJsonAsync(client, $"repos/{repo}/pulls",
+        var prResponse = await PostJsonAsync(authClient, $"repos/{repo}/pulls",
             new
             {
                 title = $"Add {request.Name}",
@@ -246,25 +296,34 @@ public sealed class BtcMapsService
 
     private static string BuildPrBody(BtcMapsSubmitRequest request, string urlMarker)
     {
+        // User-supplied fields are wrapped in inline code spans so a doctored merchant
+        // name (e.g. `[click here](https://attacker.example)`) can't render as a clickable
+        // link in the maintainer-facing PR description. The URL is its own line and is
+        // displayed via a plain markdown link with a sanitized label so the maintainer
+        // sees the bare URL, not a renamed target.
         var sb = new StringBuilder();
         sb.AppendLine("Automated submission from the BTCPay Server plugin-builder `/apis/btcmaps/v1/submit` endpoint.");
         sb.AppendLine();
-        sb.AppendLine($"- **Name:** {request.Name}");
-        sb.AppendLine($"- **URL:** {request.Url}");
-        sb.AppendLine($"- **Type:** {request.Type}{(string.IsNullOrWhiteSpace(request.SubType) ? string.Empty : " / " + request.SubType)}");
-        if (!string.IsNullOrWhiteSpace(request.Country)) sb.AppendLine($"- **Country:** {request.Country.Trim()}");
+        sb.AppendLine($"- **Name:** {EscapeInlineCode(request.Name)}");
+        sb.AppendLine($"- **URL:** <{request.Url}>");
+        sb.AppendLine($"- **Type:** {EscapeInlineCode(request.Type)}{(string.IsNullOrWhiteSpace(request.SubType) ? string.Empty : " / " + EscapeInlineCode(request.SubType))}");
+        if (!string.IsNullOrWhiteSpace(request.Country)) sb.AppendLine($"- **Country:** {EscapeInlineCode(request.Country.Trim())}");
         if (!string.IsNullOrWhiteSpace(request.Twitter))
         {
-            // Render as an explicit https://x.com/<handle> link so GitHub markdown does
-            // not auto-resolve a bare `@handle` to github.com/<handle>.
+            // The Twitter handle is rendered inside an inline code span so a hostile
+            // value like `]( <evil-url> )` cannot escape into an active link. The
+            // maintainer can copy the handle and visit manually.
             var raw = request.Twitter.Trim();
             var handle = raw.StartsWith("@") ? raw[1..] : raw;
-            sb.AppendLine($"- **Twitter:** [@{handle}](https://x.com/{handle})");
+            sb.AppendLine($"- **Twitter:** {EscapeInlineCode("@" + handle)}");
         }
-        if (!string.IsNullOrWhiteSpace(request.Github)) sb.AppendLine($"- **GitHub:** {request.Github}");
+        if (!string.IsNullOrWhiteSpace(request.Github)) sb.AppendLine($"- **GitHub:** {EscapeInlineCode(request.Github)}");
         sb.AppendLine();
         sb.AppendLine("**Description:**");
-        sb.AppendLine(request.Description);
+        sb.AppendLine();
+        sb.AppendLine("```");
+        sb.AppendLine(request.Description?.Replace("```", "``​`") ?? string.Empty);
+        sb.AppendLine("```");
         sb.AppendLine();
         sb.AppendLine("_Please review before merge - this PR was opened programmatically by a BTCMap-plugin merchant submission, not by a maintainer._");
         sb.AppendLine();
@@ -272,11 +331,66 @@ public sealed class BtcMapsService
         return sb.ToString();
     }
 
+    // Wrap user input as an inline code span. Use enough backticks to escape any
+    // backticks the input contains (CommonMark inline-code-fence rule).
+    private static string EscapeInlineCode(string? value)
+    {
+        var s = value ?? string.Empty;
+        if (s.Length == 0) return "``";
+        var longestRun = 0;
+        var current = 0;
+        foreach (var c in s)
+        {
+            if (c == '`') { current++; if (current > longestRun) longestRun = current; }
+            else current = 0;
+        }
+        var fence = new string('`', longestRun + 1);
+        // Pad with spaces if the value starts or ends with a backtick (CommonMark rule).
+        var needsPad = s.StartsWith("`") || s.EndsWith("`");
+        return needsPad ? $"{fence} {s} {fence}" : $"{fence}{s}{fence}";
+    }
+
     private static string BuildUrlMarker(string normalizedUrl) =>
         $"btcmaps-submit:url={normalizedUrl}";
 
-    public static string NormalizeUrl(string url) =>
-        url.Trim().TrimEnd('/').ToLowerInvariant();
+    public static string NormalizeUrl(string url)
+    {
+        // Normalize for duplicate detection without lying about case-sensitive parts.
+        // Scheme + host get lower-cased (DNS is case-insensitive, scheme is too); path
+        // and query are preserved as-is. Trailing slash is trimmed only when the path
+        // is the bare root, since /foo/ and /foo are sometimes distinct on real servers.
+        var trimmed = (url ?? string.Empty).Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var parsed))
+            return trimmed.TrimEnd('/');
+        var sb = new StringBuilder();
+        sb.Append(parsed.Scheme.ToLowerInvariant());
+        sb.Append("://");
+        sb.Append(parsed.Host.ToLowerInvariant());
+        if (!parsed.IsDefaultPort)
+        {
+            sb.Append(':');
+            sb.Append(parsed.Port);
+        }
+        var path = parsed.AbsolutePath;
+        if (path == "/")
+            sb.Append(path);
+        else
+            sb.Append(path.TrimEnd('/'));
+        if (!string.IsNullOrEmpty(parsed.Query))
+            sb.Append(parsed.Query);
+        return sb.ToString();
+    }
+
+    // Deterministic branch name from the normalized URL. Same URL always produces
+    // the same branch; second concurrent submission collides on the git/refs create
+    // and the controller surfaces the duplicate-open-PR shape.
+    public static string BuildBranchName(string name, string normalizedUrl)
+    {
+        var slug = Slugify(name);
+        var hash = SHA1.HashData(Encoding.UTF8.GetBytes(normalizedUrl));
+        var suffix = Convert.ToHexString(hash)[..8].ToLowerInvariant();
+        return $"btcmaps/{slug}-{suffix}";
+    }
 
     public static string Slugify(string input)
     {
@@ -300,29 +414,73 @@ public sealed class BtcMapsService
         return result.Length == 0 ? "merchant" : result;
     }
 
-    private static async Task<JsonElement> GetJsonAsync(HttpClient client, string path, CancellationToken ct)
+    // Lightweight wrapper that re-attaches the per-request Authorization header on
+    // each call. The named-client handler is reused (socket pool, factory rotation),
+    // but auth stays out of the singleton handler.
+    private sealed class HttpRequestAuth : IDisposable
     {
-        using var response = await client.GetAsync(path, ct);
+        public HttpClient Client { get; }
+        public string Token { get; }
+        public HttpRequestAuth(HttpClient client, string token) { Client = client; Token = token; }
+        public void Dispose() { /* HttpClient is owned by IHttpClientFactory; do not dispose */ }
+    }
+
+    private static HttpRequestMessage NewRequest(HttpMethod method, string path, string token)
+    {
+        var req = new HttpRequestMessage(method, path);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return req;
+    }
+
+    private static async Task<JsonElement> GetJsonAsync(HttpRequestAuth auth, string path, CancellationToken ct)
+    {
+        using var req = NewRequest(HttpMethod.Get, path, auth.Token);
+        using var response = await auth.Client.SendAsync(req, ct);
         await EnsureSuccess(response, path, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(text);
         return doc.RootElement.Clone();
     }
 
-    private static async Task<JsonElement> PostJsonAsync(HttpClient client, string path, object body, CancellationToken ct)
+    private static async Task<JsonElement> PostJsonAsync(HttpRequestAuth auth, string path, object body, CancellationToken ct)
     {
-        var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-        using var response = await client.PostAsync(path, content, ct);
+        using var req = NewRequest(HttpMethod.Post, path, auth.Token);
+        req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        using var response = await auth.Client.SendAsync(req, ct);
         await EnsureSuccess(response, path, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(text);
         return doc.RootElement.Clone();
     }
 
-    private static async Task<JsonElement> PutJsonAsync(HttpClient client, string path, object body, CancellationToken ct)
+    private readonly record struct ConflictAware(JsonElement? Body, bool IsConflict);
+
+    private static async Task<ConflictAware> PostJsonAllowConflictAsync(HttpRequestAuth auth, string path, object body, CancellationToken ct)
     {
-        var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-        using var response = await client.PutAsync(path, content, ct);
+        using var req = NewRequest(HttpMethod.Post, path, auth.Token);
+        req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        using var response = await auth.Client.SendAsync(req, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity)
+        {
+            // GitHub returns 422 "Reference already exists" when the branch ref is
+            // pre-claimed by a concurrent or earlier submission. That's the idempotency
+            // signal we want; surface it.
+            var conflictText = await response.Content.ReadAsStringAsync(ct);
+            if (conflictText.Contains("Reference already exists", StringComparison.OrdinalIgnoreCase))
+                return new ConflictAware(null, true);
+            throw new HttpRequestException($"GitHub {(int)response.StatusCode} {path}: {conflictText}");
+        }
+        await EnsureSuccess(response, path, ct);
+        var text = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(text);
+        return new ConflictAware(doc.RootElement.Clone(), false);
+    }
+
+    private static async Task<JsonElement> PutJsonAsync(HttpRequestAuth auth, string path, object body, CancellationToken ct)
+    {
+        using var req = NewRequest(HttpMethod.Put, path, auth.Token);
+        req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        using var response = await auth.Client.SendAsync(req, ct);
         await EnsureSuccess(response, path, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(text);

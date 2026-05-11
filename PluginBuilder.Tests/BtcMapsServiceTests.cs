@@ -1,4 +1,6 @@
+using System.Net.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using PluginBuilder.APIModels;
 using PluginBuilder.Services;
@@ -8,9 +10,15 @@ namespace PluginBuilder.Tests;
 
 public class BtcMapsServiceTests
 {
+    private sealed class StubHttpClientFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new HttpClient();
+    }
+
     private static BtcMapsService MakeService() =>
         new BtcMapsService(
             configuration: new ConfigurationBuilder().Build(),
+            httpClientFactory: new StubHttpClientFactory(),
             logger: NullLogger<BtcMapsService>.Instance);
 
     private static BtcMapsSubmitRequest MakeValid() => new()
@@ -132,6 +140,16 @@ public class BtcMapsServiceTests
     }
 
     [Fact]
+    public void Validate_RejectsNonAssignedTwoLetterCountry()
+    {
+        // ZZ is reserved / not assigned in ISO 3166-1, so the validator must
+        // reject it even though it passes the length + casing check.
+        var req = MakeValid();
+        req.Country = "ZZ";
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Country));
+    }
+
+    [Fact]
     public void Validate_AcceptsOnionHttpsUrl()
     {
         var req = MakeValid();
@@ -158,10 +176,44 @@ public class BtcMapsServiceTests
     }
 
     [Fact]
-    public void NormalizeUrl_TrimsTrailingSlashAndLowercases()
+    public void NormalizeUrl_LowercasesSchemeAndHostOnly()
     {
-        Assert.Equal("https://example.com", BtcMapsService.NormalizeUrl("HTTPS://Example.com/"));
-        Assert.Equal("https://example.com", BtcMapsService.NormalizeUrl("  https://example.com  "));
+        // Scheme + host are case-insensitive (DNS + RFC); path + query are not, so
+        // they must be preserved verbatim. Trailing slash is stripped only when the
+        // path is non-root.
+        Assert.Equal("https://example.com/", BtcMapsService.NormalizeUrl("HTTPS://Example.com/"));
+        Assert.Equal("https://example.com/", BtcMapsService.NormalizeUrl("  https://example.com  "));
+    }
+
+    [Fact]
+    public void NormalizeUrl_PreservesPathCase()
+    {
+        Assert.Equal("https://example.com/Foo/Bar",
+            BtcMapsService.NormalizeUrl("HTTPS://Example.com/Foo/Bar/"));
+    }
+
+    [Fact]
+    public void NormalizeUrl_PreservesQueryCase()
+    {
+        Assert.Equal("https://example.com/path?ID=ABC",
+            BtcMapsService.NormalizeUrl("https://EXAMPLE.com/path?ID=ABC"));
+    }
+
+    [Fact]
+    public void BuildBranchName_DeterministicForSameUrl()
+    {
+        var a = BtcMapsService.BuildBranchName("Good Shop", "https://example.com/foo");
+        var b = BtcMapsService.BuildBranchName("Good Shop", "https://example.com/foo");
+        Assert.Equal(a, b);
+        Assert.StartsWith("btcmaps/good-shop-", a);
+    }
+
+    [Fact]
+    public void BuildBranchName_DiffersForDifferentUrls()
+    {
+        var a = BtcMapsService.BuildBranchName("Good Shop", "https://example.com/foo");
+        var b = BtcMapsService.BuildBranchName("Good Shop", "https://example.com/bar");
+        Assert.NotEqual(a, b);
     }
 
     [Fact]

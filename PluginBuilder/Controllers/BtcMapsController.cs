@@ -37,6 +37,18 @@ public sealed class BtcMapsController(
         {
             directory = await btcMapsService.SubmitToDirectoryAsync(request, cancellationToken);
         }
+        catch (BtcMapsService.DirectoryTokenMissingException ex)
+        {
+            // Missing token is a server-side deployment / configuration outage,
+            // not a normal "skipped" outcome. Surface 503 so clients (and ops)
+            // can distinguish it from an accepted submission.
+            logger.LogError(ex, "BTCMaps directory submission rejected: token not configured (correlationId={CorrelationId})", correlationId);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                error = "directory-not-configured",
+                correlationId
+            });
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "BTCMaps directory submission failed (correlationId={CorrelationId}) for {Name} ({Url})",

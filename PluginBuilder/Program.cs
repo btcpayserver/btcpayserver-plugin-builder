@@ -211,6 +211,18 @@ public class Program
                 client.DefaultRequestHeaders.Authorization =
                     new AuthenticationHeaderValue("Bearer", token);
         });
+        services.AddHttpClient(HttpClientNames.BtcMapsDirectory, client =>
+        {
+            // Per-call timeout caps a single GitHub round-trip at 15s. The directory
+            // submission makes ~5-7 GitHub calls sequentially; with the default 100s
+            // timeout a hung remote could pin the request for ~10min and tie up a
+            // rate-limit slot. 15s per call keeps the worst case bounded.
+            client.BaseAddress = new Uri("https://api.github.com/");
+            client.DefaultRequestHeaders.Add("User-Agent", "PluginBuilder-BtcMaps/1.0");
+            client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
         services.AddHttpClient(HttpClientNames.GitLab, client =>
         {
             client.BaseAddress = new Uri("https://gitlab.com/api/v4/");
