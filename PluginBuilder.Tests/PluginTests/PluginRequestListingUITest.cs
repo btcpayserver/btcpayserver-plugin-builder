@@ -59,7 +59,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await t.Page.ClickAsync("button:text-is('Release')");
 
         await t.Page!.ClickAsync("#StoreNav-Dashboard");
-        await t.Page.ClickAsync("a.btn.btn-primary:text('Request Listing')");
+        await t.Page.ClickAsync("#StoreNav-RequestListing");
         await Expect(t.Page.Locator("#collapsePluginSettings")).ToBeVisibleAsync();
         await Expect(t.Page.Locator("#pluginSettingsHeader")).ToContainTextAsync("Update Plugin Settings");
         await Expect(t.Page.Locator("#collapseOwnerSettings")).Not.ToBeVisibleAsync();
@@ -78,7 +78,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await t.AssertNoError();
 
         await t.Page!.ClickAsync("#StoreNav-Dashboard");
-        await t.Page.ClickAsync("a.btn.btn-primary:text('Request Listing')");
+        await t.Page.ClickAsync("#StoreNav-RequestListing");
         await Expect(t.Page.Locator("#collapseRequestForm")).ToBeVisibleAsync();
         await Expect(t.Page.Locator("#collapsePluginSettings")).Not.ToBeVisibleAsync();
         await Expect(t.Page.Locator("#collapseOwnerSettings")).Not.ToBeVisibleAsync();
@@ -87,7 +87,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await t.Page.FillAsync("textarea[name='UserReviews']", "Great plugin, works as expected!");
         await t.Page.ClickAsync("button[type='submit']:text('Submit')");
         await t.AssertNoError();
-        await t.Page.ClickAsync("a.btn.btn-primary:text('Request Listing')");
+        await t.Page.ClickAsync("#StoreNav-RequestListing");
 
         await Expect(t.Page.Locator("#collapsePluginSettings")).Not.ToBeVisibleAsync();
         await Expect(t.Page.Locator("#collapseOwnerSettings")).Not.ToBeVisibleAsync();

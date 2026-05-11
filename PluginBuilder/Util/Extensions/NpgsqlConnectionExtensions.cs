@@ -767,7 +767,6 @@ public static class NpgsqlConnectionExtensions
                            SELECT id AS "Id",
                                   plugin_slug AS "PluginSlug",
                                   release_note AS "ReleaseNote",
-                                  reviewer_feedback AS "ReviewerFeedback",
                                   telegram_verification_message AS "TelegramVerificationMessage",
                                   user_reviews AS "UserReviews",
                                   announcement_date AS "AnnouncementDate",
