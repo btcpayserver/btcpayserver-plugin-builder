@@ -273,9 +273,15 @@ public sealed class BtcMapsService
             w.WriteString("name", request.Name!.Trim());
             w.WriteString("url", request.Url!.Trim());
             w.WriteString("description", request.Description!.Trim());
-            w.WriteString("type", request.Type!.Trim());
+            // type + subType are validated case-insensitively above
+            // (ValidTypes / ValidMerchantSubTypes use OrdinalIgnoreCase) but
+            // the upstream merchants.json convention is lowercase. Normalize
+            // on write so a submission of "Merchants" / "Books" lands as
+            // "merchants" / "books" in the file. Country uses a case-sensitive
+            // Ordinal set so the validator already rejects non-uppercase.
+            w.WriteString("type", request.Type!.Trim().ToLowerInvariant());
             if (!string.IsNullOrWhiteSpace(request.SubType))
-                w.WriteString("subType", request.SubType.Trim());
+                w.WriteString("subType", request.SubType.Trim().ToLowerInvariant());
             if (!string.IsNullOrWhiteSpace(request.Country))
                 w.WriteString("country", request.Country.Trim());
             if (!string.IsNullOrWhiteSpace(request.Twitter))

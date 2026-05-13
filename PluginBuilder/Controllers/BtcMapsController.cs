@@ -49,7 +49,28 @@ public sealed class BtcMapsController(
                 correlationId
             });
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
+        {
+            // Caller cancelled (client disconnect, request abort). Rethrow so
+            // the pipeline drops the connection without producing a response
+            // body the client will never read.
+            logger.LogInformation(ex, "BTCMaps directory submission cancelled by caller (correlationId={CorrelationId})", correlationId);
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            // OCE without caller cancellation = HttpClient.Timeout surfacing as
+            // TaskCanceledException. Treat as an upstream timeout, distinct
+            // from a generic 502 so ops + the plugin client can tell them apart.
+            logger.LogError(ex, "BTCMaps directory submission timed out upstream (correlationId={CorrelationId}) for {Name} ({Url})",
+                correlationId, request.Name, request.Url);
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new
+            {
+                error = "directory-upstream-timeout",
+                correlationId
+            });
+        }
+        catch (Exception ex)
         {
             logger.LogError(ex, "BTCMaps directory submission failed (correlationId={CorrelationId}) for {Name} ({Url})",
                 correlationId, request.Name, request.Url);
