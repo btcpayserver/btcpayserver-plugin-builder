@@ -873,8 +873,7 @@ public static class NpgsqlConnectionExtensions
                               submitted_at AS "SubmittedAt",
                               reviewed_at AS "ReviewedAt",
                               reviewed_by AS "ReviewedBy",
-                              rejection_reason AS "RejectionReason",
-                              reviewer_feedback AS "ReviewerFeedback"
+                              rejection_reason AS "RejectionReason"
                        FROM plugin_listing_requests
                        WHERE plugin_slug = @pluginSlug
                        ORDER BY submitted_at DESC
