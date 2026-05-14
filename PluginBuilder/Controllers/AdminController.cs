@@ -1288,8 +1288,13 @@ public class AdminController(
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
         var existingSettings = await conn.GetSettings(pluginSlug);
-        await conn.SetPluginSettings(pluginSlug, existingSettings, PluginVisibilityEnum.Unlisted);
-
+        var visibilityUpdated = await conn.SetPluginSettings(pluginSlug, existingSettings, PluginVisibilityEnum.Unlisted);
+        if (!visibilityUpdated)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Failed to update plugin visibility";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
+        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
         if (primaryOwner != null && !string.IsNullOrEmpty(primaryOwner.Email))
