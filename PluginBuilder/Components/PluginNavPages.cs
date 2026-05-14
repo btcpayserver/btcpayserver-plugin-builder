@@ -4,5 +4,6 @@ public enum PluginNavPages
 {
     Dashboard,
     Settings,
-    Owners
+    Owners,
+    RequestListing
 }

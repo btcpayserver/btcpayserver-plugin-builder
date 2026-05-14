@@ -2,7 +2,7 @@
 @model ListingRequestDetailViewModel
 @{
     Layout = "_Layout";
-    ViewData.SetActivePage(AdminNavPages.ListingRequests);
+	ViewData.SetActivePage(PluginNavPages.RequestListing, "Request Listing");
     ViewData["Title"] = $"Listing Request - {Model.PluginTitle ?? Model.PluginSlug}";
 }
 
@@ -13,18 +13,6 @@
         <div class="d-flex align-items-center gap-2">
             <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveModal">Approve</button>
             <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal">Reject</button>
-        </div>
-    }
-    else if (Model.Status == PluginListingRequestStatus.Approved)
-    {
-        <div class="d-flex align-items-center gap-2">
-            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal">Reject</button>
-        </div>
-    }
-    else if (Model.Status == PluginListingRequestStatus.Rejected)
-    {
-        <div class="d-flex align-items-center gap-2">
-            <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#reinstateModal">Reinstate</button>
         </div>
     }
 </div>
@@ -222,28 +210,6 @@
                 <div class="modal-footer border-0">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-danger">Reject</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="reinstateModal" tabindex="-1" aria-labelledby="reinstateModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header border-0">
-                <h5 class="modal-title" id="reinstateModalLabel">Reinstate Plugin</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form asp-action="ReinstateListingRequest" asp-route-requestId="@Model.Id" method="post">
-                @Html.AntiForgeryToken()
-                <div class="modal-body">
-                    <p>Are you sure you want to reinstate this plugin?</p>
-                    <p class="mb-0">The plugin <strong>@Model.PluginSlug</strong> will be <strong>Listed</strong> in the plugin directory again.</p>
-                </div>
-                <div class="modal-footer border-0">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-success">Reinstate</button>
                 </div>
             </form>
         </div>

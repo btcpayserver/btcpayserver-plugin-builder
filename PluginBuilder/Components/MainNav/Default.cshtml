@@ -23,7 +23,7 @@
 							{
 								<li class="nav-item">
 									<a asp-area="" asp-controller="Plugin" asp-action="RequestListing" asp-route-pluginSlug="@Model.PluginSlug"
-									   class="nav-link js-scroll-trigger" id="StoreNav-RequestListing">
+									   class="nav-link js-scroll-trigger @ViewData.IsActivePage(PluginNavPages.RequestListing)" id="StoreNav-RequestListing">
 										<vc:icon symbol="notification" />
 										<span>Request Listing</span>
 									</a>
