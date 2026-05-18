@@ -25,7 +25,7 @@ public class RequestListingViewModel
     [Required]
     [Display(Name = "User Reviews")]
     public string UserReviews { get; set; } = string.Empty;
-
+    public bool HasRequests { get; set; }
     public bool PendingListing { get; set; }
     public bool HasPreviousRejection { get; set; }
     public bool CanSendEmailReminder { get; set; }

@@ -2,7 +2,7 @@
 @model ListingRequestDetailViewModel
 @{
     Layout = "_Layout";
-    ViewData.SetActivePage(AdminNavPages.ListingRequests);
+	ViewData.SetActivePage(PluginNavPages.RequestListing, "Request Listing");
     ViewData["Title"] = $"Listing Request - {Model.PluginTitle ?? Model.PluginSlug}";
 }
 
@@ -15,18 +15,6 @@
             <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal">Reject</button>
         </div>
     }
-    else
-    {
-        @switch (Model.Status)
-        {
-            case PluginListingRequestStatus.Approved:
-                <span class="badge bg-success fs-6 px-3 py-2">Approved</span>
-                break;
-            case PluginListingRequestStatus.Rejected:
-                <span class="badge bg-danger fs-6 px-3 py-2">Rejected</span>
-                break;
-        }
-    }
 </div>
 
 <div class="row mt-0">
@@ -37,13 +25,24 @@
                 <img src="@Model.Logo" alt="Logo" style="width:64px;height:64px;object-fit:contain;border-radius:12px;flex-shrink:0;" />
             }
             <div>
-                <h3 class="mb-0 fw-bold">@Model.PluginTitle</h3>
+				<div class="d-flex align-items-center gap-2">
+					<h3 class="mb-0 fw-bold">@Model.PluginTitle</h3>
+					@switch (Model.Status)
+					{
+						case PluginListingRequestStatus.Approved:
+							<span class="badge bg-success">Approved</span>
+							break;
+						case PluginListingRequestStatus.Rejected:
+							<span class="badge bg-danger">Rejected</span>
+							break;
+					}
+				</div>
                 <div class="d-flex align-items-center gap-2 mt-1">
                     <a asp-controller="Home" asp-action="GetPluginDetails" asp-route-pluginSlug="@Model.PluginSlug" target="_blank" class="small">View Public Page</a>
                 </div>
                 @if (!string.IsNullOrEmpty(Model.PluginDescription))
                 {
-                    <p class="mt-2 mb-0 text-muted">@Model.PluginDescription</p>
+                    <p class="mt-2 mb-0">@Model.PluginDescription</p>
                 }
             </div>
         </div>
@@ -94,7 +93,7 @@
         </div>
 
         <h5 class="fw-bold mb-4">Listing Request Details</h5>
-		@if (!string.IsNullOrEmpty(Model.RejectionReason))
+        @if (!string.IsNullOrEmpty(Model.RejectionReason))
         {
             <div class="mb-4">
                 <div class="text-muted fw-semibold small text-uppercase mb-2" style="letter-spacing:.05em;">Rejection Reason</div>
@@ -174,7 +173,7 @@
                 @Html.AntiForgeryToken()
                 <div class="modal-body">
                     <p>Are you sure you want to approve this listing request?</p>
-                    <p class="mb-0">The plugin <strong>@Model.PluginSlug</strong> will be set to <strong>Listed</strong> visibility.</p>
+                    <p class="mb-0">The plugin <strong>@Model.PluginSlug</strong> will be <strong>Listed</strong> in the plugin directory.</p>
                 </div>
                 <div class="modal-footer border-0">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>

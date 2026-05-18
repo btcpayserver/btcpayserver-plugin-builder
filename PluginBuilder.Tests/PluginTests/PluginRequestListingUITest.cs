@@ -59,7 +59,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await t.Page.ClickAsync("button:text-is('Release')");
 
         await t.Page!.ClickAsync("#StoreNav-Dashboard");
-        await t.Page.ClickAsync("a.btn.btn-primary:text('Request Listing')");
+        await t.Page.ClickAsync("#StoreNav-RequestListing");
         await Expect(t.Page.Locator("#collapsePluginSettings")).ToBeVisibleAsync();
         await Expect(t.Page.Locator("#pluginSettingsHeader")).ToContainTextAsync("Update Plugin Settings");
         await Expect(t.Page.Locator("#collapseOwnerSettings")).Not.ToBeVisibleAsync();
@@ -78,7 +78,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await t.AssertNoError();
 
         await t.Page!.ClickAsync("#StoreNav-Dashboard");
-        await t.Page.ClickAsync("a.btn.btn-primary:text('Request Listing')");
+        await t.Page.ClickAsync("#StoreNav-RequestListing");
         await Expect(t.Page.Locator("#collapseRequestForm")).ToBeVisibleAsync();
         await Expect(t.Page.Locator("#collapsePluginSettings")).Not.ToBeVisibleAsync();
         await Expect(t.Page.Locator("#collapseOwnerSettings")).Not.ToBeVisibleAsync();
@@ -87,7 +87,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await t.Page.FillAsync("textarea[name='UserReviews']", "Great plugin, works as expected!");
         await t.Page.ClickAsync("button[type='submit']:text('Submit')");
         await t.AssertNoError();
-        await t.Page.ClickAsync("a.btn.btn-primary:text('Request Listing')");
+        await t.Page.ClickAsync("#StoreNav-RequestListing");
 
         await Expect(t.Page.Locator("#collapsePluginSettings")).Not.ToBeVisibleAsync();
         await Expect(t.Page.Locator("#collapseOwnerSettings")).Not.ToBeVisibleAsync();
@@ -145,7 +145,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         await Expect(row.Locator(".badge.bg-warning:text('Pending')")).ToBeVisibleAsync();
 
         // Click to view details - scoped to the specific row
-        await row.Locator("a.btn.btn-sm.btn-primary:text('View Details')").ClickAsync();
+        await row.Locator($"a[href*='/admin/listing-requests/{requestId}']").ClickAsync();
         await Expect(t.Page).ToHaveURLAsync(new Regex($".*/admin/listing-requests/{requestId}", RegexOptions.IgnoreCase));
 
         // Verify request details are displayed
@@ -170,6 +170,44 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         // Verify plugin visibility was updated to listed
         var plugin = await conn.GetPluginDetails(pluginSlug);
         Assert.Equal(PluginVisibilityEnum.Listed, plugin!.Visibility);
+    }
+
+    [Fact]
+    public async Task Admin_Can_Reject_Pending_ListingRequest()
+    {
+        await using var t = new PlaywrightTester(_log);
+        t.Server.ReuseDatabase = false;
+        await t.StartAsync();
+        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
+
+        var pluginSlug = "test-plugin-" + PlaywrightTester.GetRandomUInt256()[..8];
+        var userId = await t.Server.CreateFakeUserAsync();
+        await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+
+        var requestId = await conn.CreateListingRequest(
+            pluginSlug,
+            "Test plugin release note",
+            "https://t.me/btcpayserver/12345",
+            "https://example.com/review",
+            null);
+
+        var adminEmail = await t.CreateServerAdminAsync();
+        await t.LogIn(adminEmail);
+        await t.GoToUrl($"/admin/listing-requests/{requestId}");
+
+        await t.Page.ClickAsync("button.btn.btn-danger:text('Reject')");
+        await t.Page.FillAsync("#rejectionReason", "Plugin does not meet quality standards");
+        await t.Page.ClickAsync("button[type='submit'].btn.btn-danger:text('Reject')");
+
+        await Expect(t.Page).ToHaveURLAsync(new Regex(".*/admin/listing-requests$", RegexOptions.IgnoreCase));
+
+        var rejected = await conn.GetListingRequest(requestId);
+        Assert.NotNull(rejected);
+        Assert.Equal(PluginListingRequestStatus.Rejected, rejected.Status);
+        Assert.Equal("Plugin does not meet quality standards", rejected.RejectionReason);
+
+        var plugin = await conn.GetPluginDetails(pluginSlug);
+        Assert.Equal(PluginVisibilityEnum.Unlisted, plugin!.Visibility);
     }
 
     [Fact]

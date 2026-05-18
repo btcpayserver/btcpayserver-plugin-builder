@@ -860,6 +860,29 @@ public static class NpgsqlConnectionExtensions
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
 
+    public static async Task<List<PluginListingRequest>> GetAllListingRequestsForPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        const string sql = """
+                       SELECT id AS "Id",
+                              plugin_slug AS "PluginSlug",
+                              release_note AS "ReleaseNote",
+                              telegram_verification_message AS "TelegramVerificationMessage",
+                              user_reviews AS "UserReviews",
+                              announcement_date AS "AnnouncementDate",
+                              status AS "Status",
+                              submitted_at AS "SubmittedAt",
+                              reviewed_at AS "ReviewedAt",
+                              reviewed_by AS "ReviewedBy",
+                              rejection_reason AS "RejectionReason"
+                       FROM plugin_listing_requests
+                       WHERE plugin_slug = @pluginSlug
+                       ORDER BY submitted_at DESC
+                       """;
+
+        var results = await connection.QueryAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
+        return results.ToList();
+    }
+
     public static async Task<int> GetPendingListingRequestsCount(this NpgsqlConnection connection)
     {
         const string sql = """
