@@ -24,7 +24,6 @@ else
                 <tr>
                     <th>Submitted</th>
                     <th>Release Note</th>
-                    <th>Reviewer Feedback</th>
                     <th>Rejection Reason</th>
                     <th>Reviewed</th>
                     <th>Status</th>
@@ -36,16 +35,6 @@ else
                     <tr>
                         <td class="text-nowrap small">@request.SubmittedAt.UtcDateTime.ToString("MMM dd, yyyy · HH:mm UTC")</td>
                         <td>@request.ReleaseNote</td>
-                        <td>
-                            @if (!string.IsNullOrEmpty(request.ReviewerFeedback))
-                            {
-                                <span style="white-space: pre-wrap;">@request.ReviewerFeedback</span>
-                            }
-                            else
-                            {
-                                <span class="text-muted">—</span>
-                            }
-                        </td>
                         <td>
                             @if (!string.IsNullOrEmpty(request.RejectionReason))
                             {

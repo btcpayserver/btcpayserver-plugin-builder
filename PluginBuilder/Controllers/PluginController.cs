@@ -341,8 +341,7 @@ public class PluginController(
                 ReleaseNote = r.ReleaseNote,
                 SubmittedAt = r.SubmittedAt,
                 ReviewedAt = r.ReviewedAt,
-                RejectionReason = r.RejectionReason,
-                ReviewerFeedback = r.ReviewerFeedback
+                RejectionReason = r.RejectionReason
             }).ToList()
         };
         return View(vm);

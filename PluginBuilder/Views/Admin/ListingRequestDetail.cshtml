@@ -93,14 +93,7 @@
         </div>
 
         <h5 class="fw-bold mb-4">Listing Request Details</h5>
-		@if (!string.IsNullOrEmpty(Model.ReviewerFeedback))
-		{
-			<div class="mb-4">
-				<div class="text-muted fw-semibold small text-uppercase mb-2" style="letter-spacing:.05em;">Reviewer Feedback</div>
-				<p class="mb-0" style="white-space: pre-wrap;">@Model.ReviewerFeedback</p>
-			</div>
-		}
-		@if (!string.IsNullOrEmpty(Model.RejectionReason))
+        @if (!string.IsNullOrEmpty(Model.RejectionReason))
         {
             <div class="mb-4">
                 <div class="text-muted fw-semibold small text-uppercase mb-2" style="letter-spacing:.05em;">Rejection Reason</div>

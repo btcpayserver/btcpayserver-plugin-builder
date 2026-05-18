@@ -1203,7 +1203,6 @@ public class AdminController(
             SubmittedAt = request.SubmittedAt,
             ReviewedAt = request.ReviewedAt,
             ReviewedByEmail = reviewedByEmail,
-            ReviewerFeedback = request.ReviewerFeedback,
             RejectionReason = request.RejectionReason,
             Owners = ownerVerifications,
             PrimaryOwnerEmail = owners.FirstOrDefault(o => o.IsPrimary)?.Email ?? "Unknown"
