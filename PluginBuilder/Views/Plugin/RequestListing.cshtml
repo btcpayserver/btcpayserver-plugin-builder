@@ -1,7 +1,7 @@
 @model RequestListingViewModel
 @{
     Layout = "_Layout";
-    ViewData.SetActivePage(PluginNavPages.Dashboard, "Plugin Listing Request");
+    ViewData.SetActivePage(PluginNavPages.RequestListing, "Plugin Listing Request");
     var step3Completed = Model.PendingListing;
     var step1Completed = Model.Step != RequestListingViewModel.State.UpdatePluginSettings;
     var step2Completed = Model.Step != RequestListingViewModel.State.UpdateOwnerAccountSettings && Model.Step != RequestListingViewModel.State.UpdatePluginSettings;
