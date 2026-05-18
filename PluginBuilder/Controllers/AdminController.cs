@@ -1267,9 +1267,9 @@ public class AdminController(
         if (request == null)
             return NotFound();
 
-        if (request.Status == PluginListingRequestStatus.Rejected)
+        if (request.Status != PluginListingRequestStatus.Pending)
         {
-            TempData[TempDataConstant.WarningMessage] = "This request has already been rejected";
+            TempData[TempDataConstant.WarningMessage] = "This request has already been processed";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
 
@@ -1288,13 +1288,6 @@ public class AdminController(
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
         var existingSettings = await conn.GetSettings(pluginSlug);
-        var visibilityUpdated = await conn.SetPluginSettings(pluginSlug, existingSettings, PluginVisibilityEnum.Unlisted);
-        if (!visibilityUpdated)
-        {
-            TempData[TempDataConstant.WarningMessage] = "Failed to update plugin visibility";
-            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
-        }
-        await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
         if (primaryOwner != null && !string.IsNullOrEmpty(primaryOwner.Email))

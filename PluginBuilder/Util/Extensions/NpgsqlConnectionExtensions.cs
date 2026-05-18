@@ -821,7 +821,7 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
                            UPDATE plugin_listing_requests
                            SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy, rejection_reason = @rejectionReason
-                           WHERE id = @requestId AND status IN ('pending', 'approved')
+                           WHERE id = @requestId AND status = 'pending'
                            """;
 
         var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy, rejectionReason });
