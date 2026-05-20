@@ -77,6 +77,7 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
     {
         try
         {
+            var pluginList = plugins.GroupBy(p => p.Slug, StringComparer.OrdinalIgnoreCase).Select(g => g.Last()).ToList();
             if (!TryParseBTCPayUserAgent(userAgent, out var btcpayVersion))
                 return;
 
@@ -85,18 +86,32 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
 
             var hashedIp = HashIp(ip!);
             var now = DateTimeOffset.UtcNow;
-            var pluginList = plugins.ToList();
-
             await using var conn = await connectionFactory.Open();
+
+            var resolvedPluginList = (await conn.QueryAsync<PluginReport>("""
+            SELECT p.slug AS Slug, i.version AS Version
+            FROM unnest(@Identifiers::text[], @Versions::text[]) AS i(identifier, version)
+            JOIN plugins p ON p.identifier = i.identifier
+            WHERE i.identifier IS NOT NULL AND i.version IS NOT NULL
+            """,
+            new
+            {
+                Identifiers = pluginList.Select(p => p.Slug).ToArray(),
+                Versions = pluginList.Select(p => p.Version).ToArray()
+            })).ToList();
+
+            if (resolvedPluginList.Count == 0)
+                return;
+
 
             var existing = (await conn.QueryAsync<PluginServerInstall>("""
                 SELECT * FROM plugin_server_installs WHERE hashed_ip = @HashedIp
                 """, new { HashedIp = hashedIp })).ToList();
 
-            var reportedSlugs = pluginList.Select(p => p.Slug).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var reportedSlugs = resolvedPluginList.Select(p => p.Slug).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var existingBySlug = existing.ToDictionary(x => x.PluginSlug, StringComparer.OrdinalIgnoreCase);
 
-            foreach (var plugin in pluginList)
+            foreach (var plugin in resolvedPluginList)
             {
                 if (existingBySlug.TryGetValue(plugin.Slug, out var existingInstall))
                 {
@@ -217,7 +232,7 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
             
             if (raw.Contains("]:"))
                 raw = raw.Substring(1, raw.IndexOf(']') - 1);
-            else if (raw.Contains(':') && !raw.Contains('.'))
+            else if (raw.Contains(':') && !raw.Contains('.') && raw.Count(c => c == ':') == 1)
                 raw = raw.Split(':')[0];
 
             if (!IPAddress.TryParse(raw, out var ip))

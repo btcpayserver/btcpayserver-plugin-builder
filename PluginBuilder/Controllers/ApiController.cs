@@ -216,6 +216,9 @@ public class ApiController(
 
         var pluginReports = plugins.Where(p => !string.IsNullOrWhiteSpace(p.Identifier) && !string.IsNullOrWhiteSpace(p.Version))
             .Select(p => new PluginReport(p.Identifier, p.Version)).ToList();
+        
+        if (pluginReports.Count == 0)
+            return Ok();
 
         _ = telemetryService.RecordServerSnapshot(remoteIp, userAgent, pluginReports, xOriginalFor, xForwardedFor);
         return Ok();
@@ -223,6 +226,7 @@ public class ApiController(
 
     [AllowAnonymous]
     [HttpGet("plugins/{pluginSlug}/stats")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> GetPluginStats(string pluginSlug)
     {
         var stats = await telemetryService.GetStats(pluginSlug);
