@@ -197,7 +197,6 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
             """, new { PluginSlug = pluginSlug })).ToList();
 
         return new PluginStats(
-            TotalInstalls: installStats.TotalInstalls,
             ActiveInstalls: installStats.ActiveInstalls,
             TotalUninstalls: installStats.TotalUninstalls,
             VersionBreakdown: versionBreakdown,
@@ -288,7 +287,6 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
 
 public record PluginReport(string Slug, string Version);
 public record PluginStats(
-        int TotalInstalls,
         int ActiveInstalls,
         int TotalUninstalls,
         List<VersionStat> VersionBreakdown,
