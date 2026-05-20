@@ -210,9 +210,6 @@ public class ApiController(
             return Ok();
 
         var userAgent = Request.Headers.UserAgent.ToString();
-        if (!TryParseBTCPayVersion(userAgent, out var btcpayVersion))
-            return Ok();
-
         var remoteIp = HttpContext.Connection.RemoteIpAddress?.ToString();
         var xForwardedFor = Request.Headers["X-Forwarded-For"].ToString();
         var xOriginalFor = Request.Headers["X-Original-For"].ToString();
@@ -220,8 +217,16 @@ public class ApiController(
         var pluginReports = plugins.Where(p => !string.IsNullOrWhiteSpace(p.Identifier) && !string.IsNullOrWhiteSpace(p.Version))
             .Select(p => new PluginReport(p.Identifier, p.Version)).ToList();
 
-        _ = telemetryService.RecordServerSnapshot(remoteIp, btcpayVersion, pluginReports, xOriginalFor, xForwardedFor);
+        _ = telemetryService.RecordServerSnapshot(remoteIp, userAgent, pluginReports, xOriginalFor, xForwardedFor);
         return Ok();
+    }
+
+    [AllowAnonymous]
+    [HttpGet("plugins/{pluginSlug}/stats")]
+    public async Task<IActionResult> GetPluginStats(string pluginSlug)
+    {
+        var stats = await telemetryService.GetStats(pluginSlug);
+        return Ok(stats);
     }
 
     [AllowAnonymous]
@@ -567,17 +572,6 @@ public class ApiController(
         ).ToList();
 
         return Ok(updates);
-    }
-
-    private static bool TryParseBTCPayVersion(string userAgent, out string version)
-    {
-        version = string.Empty;
-        var match = System.Text.RegularExpressions.Regex.Match(
-            userAgent, @"^BTCPayServer/(\d+\.\d+\.\d+[\w.\-]*)");
-        if (!match.Success)
-            return false;
-        version = match.Groups[1].Value;
-        return true;
     }
 
     private IActionResult ValidationErrorResult(ModelStateDictionary modelState)

@@ -11,7 +11,8 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
 {
     private static readonly Regex BTCPayUserAgentRegex = new(@"^BTCPayServer/(\d+\.\d+\.\d+)", RegexOptions.Compiled);
 
-    public async Task RecordPluginDownload(string pluginSlug, string version, string? userAgent, string? remoteIp, string? xOriginalFor = null, string? xForwardedFor = null)
+    public async Task RecordPluginDownload(string pluginSlug, string version, string? userAgent, string? remoteIp,
+        string? xOriginalFor = null, string? xForwardedFor = null)
     {
         try
         {
@@ -25,15 +26,8 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
             var now = DateTimeOffset.UtcNow;
 
             await using var conn = await connectionFactory.Open();
-            await conn.ExecuteAsync("""
-                INSERT INTO plugin_downloads (plugin_slug, version, timestamp, hashed_ip, btcpay_version)
-                VALUES (@PluginSlug, @Version, @Timestamp, @HashedIp, @BTCPayVersion)
-                """,
-                new { PluginSlug = pluginSlug, Version = version, Timestamp = now, HashedIp = hashedIp, BTCPayVersion = btcpayVersion });
-
             var existing = await conn.QueryFirstOrDefaultAsync<PluginServerInstall>("""
-                SELECT * FROM plugin_server_installs
-                WHERE hashed_ip = @HashedIp AND plugin_slug = @PluginSlug
+                SELECT * FROM plugin_server_installs WHERE hashed_ip = @HashedIp AND plugin_slug = @PluginSlug
                 """,
                 new { HashedIp = hashedIp, PluginSlug = pluginSlug });
 
@@ -77,10 +71,15 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
         }
     }
 
-    public async Task RecordServerSnapshot(string? remoteIp, string btcpayVersion, IEnumerable<PluginReport> plugins, string? xOriginalFor = null, string? xForwardedFor = null)
+
+    public async Task RecordServerSnapshot(string? remoteIp, string userAgent, IEnumerable<PluginReport> plugins,
+        string? xOriginalFor = null, string? xForwardedFor = null)
     {
         try
         {
+            if (!TryParseBTCPayUserAgent(userAgent, out var btcpayVersion))
+                return;
+
             if (!TryGetPublicIp(remoteIp, xOriginalFor, xForwardedFor, out var ip))
                 return;
 
@@ -137,7 +136,7 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
                 if (!reportedSlugs.Contains(install.PluginSlug))
                 {
                     await conn.ExecuteAsync("""
-                        UPDATE plugin_server_installs SET uninstalled_at = @Now
+                        UPDATE plugin_server_installs SET uninstalled_at = @Now, install_count = GREATEST(0, install_count - 1)
                         WHERE hashed_ip = @HashedIp AND plugin_slug = @PluginSlug
                         """,
                         new { HashedIp = hashedIp, PluginSlug = install.PluginSlug, Now = now });
@@ -153,43 +152,37 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
     public async Task<PluginStats> GetStats(string pluginSlug)
     {
         await using var conn = await connectionFactory.Open();
-        var totalDownloads = await conn.ExecuteScalarAsync<int>("""
-            SELECT COUNT(*) FROM plugin_downloads WHERE plugin_slug = @PluginSlug
-            """,
-            new { PluginSlug = pluginSlug });
 
         var installStats = await conn.QueryFirstOrDefaultAsync<(int TotalInstalls, int ActiveInstalls, int TotalUninstalls)>("""
             SELECT
                 COALESCE(SUM(install_count), 0) AS TotalInstalls,
-                COUNT(*) FILTER (WHERE uninstalled_at IS NULL) AS ActiveInstalls,
-                COUNT(*) FILTER (WHERE uninstalled_at IS NOT NULL) AS TotalUninstalls
-            FROM plugin_server_installs
-            WHERE plugin_slug = @PluginSlug
-            """,
-            new { PluginSlug = pluginSlug });
+                COALESCE(COUNT(*) FILTER (WHERE uninstalled_at IS NULL), 0) AS ActiveInstalls,
+                COALESCE(COUNT(*) FILTER (WHERE uninstalled_at IS NOT NULL), 0) AS TotalUninstalls
+            FROM plugin_server_installs WHERE plugin_slug = @PluginSlug
+            """, new { PluginSlug = pluginSlug });
+
+        var totalInstalls = installStats == default ? 0 : installStats.TotalInstalls;
+        var activeInstalls = installStats == default ? 0 : installStats.ActiveInstalls;
+        var totalUninstalls = installStats == default ? 0 : installStats.TotalUninstalls;
 
         var versionBreakdown = (await conn.QueryAsync<VersionStat>("""
-            SELECT version AS Version, COUNT(*) AS Count
+            SELECT COALESCE(version, 'unknown') AS Version, COALESCE(COUNT(*), 0) AS Count
             FROM plugin_server_installs
-            WHERE plugin_slug = @PluginSlug AND uninstalled_at IS NULL
+            WHERE plugin_slug = @PluginSlug AND uninstalled_at IS NULL AND version IS NOT NULL
             GROUP BY version
             ORDER BY Count DESC
-            """,
-            new { PluginSlug = pluginSlug })).ToList();
+            """, new { PluginSlug = pluginSlug })).ToList();
 
         var btcpayVersionBreakdown = (await conn.QueryAsync<VersionStat>("""
-            SELECT btcpay_version AS Version, COUNT(*) AS Count
+            SELECT COALESCE(btcpay_version, 'unknown') AS Version, COALESCE(COUNT(*), 0) AS Count
             FROM plugin_server_installs
-            WHERE plugin_slug = @PluginSlug AND uninstalled_at IS NULL
+            WHERE plugin_slug = @PluginSlug AND uninstalled_at IS NULL AND btcpay_version IS NOT NULL
             GROUP BY btcpay_version
             ORDER BY Count DESC
-            """,
-            new { PluginSlug = pluginSlug })).ToList();
+            """, new { PluginSlug = pluginSlug })).ToList();
 
         return new PluginStats(
-            TotalDownloads: totalDownloads,
             TotalInstalls: installStats.TotalInstalls,
-            TotalUpdates: Math.Max(0, totalDownloads - installStats.TotalInstalls),
             ActiveInstalls: installStats.ActiveInstalls,
             TotalUninstalls: installStats.TotalUninstalls,
             VersionBreakdown: versionBreakdown,
@@ -251,25 +244,19 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
         var bytes = ip.GetAddressBytes();
         if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
         {
-            // 10.0.0.0/8
             if (bytes[0] == 10)
                 return true;
-            // 172.16.0.0/12
             if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
                 return true;
-            // 192.168.0.0/16
             if (bytes[0] == 192 && bytes[1] == 168)
                 return true;
-            // 169.254.0.0/16 (link-local)
             if (bytes[0] == 169 && bytes[1] == 254)
                 return true;
         }
         if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
         {
-            // fc00::/7 (unique local)
             if ((bytes[0] & 0xFE) == 0xFC)
                 return true;
-            // fe80::/10 (link-local)
             if (bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80)
                 return true;
         }
@@ -282,19 +269,15 @@ public class TelemetryService(DBConnectionFactory connectionFactory, ILogger<Tel
         var hash = SHA256.HashData(bytes);
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
-
-
 }
 
 public record PluginReport(string Slug, string Version);
 public record PluginStats(
-        int TotalDownloads,
         int TotalInstalls,
-        int TotalUpdates,
         int ActiveInstalls,
         int TotalUninstalls,
         List<VersionStat> VersionBreakdown,
         List<VersionStat> BTCPayVersionBreakdown
     );
 
-public record VersionStat(string Version, int Count);
+public record VersionStat(string Version, long Count);
