@@ -279,12 +279,12 @@
                                     </div>
 
                                     <div class="ms-auto d-inline-flex align-items-center gap-3">
-                                        @if (review.IsReviewOwner)
+                                        @if (Model.EmbedMode || review.IsReviewOwner)
                                         {
-                                            <span class="test-upvote-disabled @voteBtn text-muted" aria-disabled="true" title="Authors can't vote their own review" style="cursor: default;">
+                                            <span class="test-upvote-disabled @voteBtn text-muted" aria-disabled="true" title="Open the plugin page to vote on reviews" style="cursor: default;">
                                                 <vc:icon symbol="thumb-up" /><span class="small ms-1">@review.UpCount</span>
                                             </span>
-                                            <span class="test-downvote-disabled @voteBtn text-muted" aria-disabled="true" title="Authors can't vote their own review" style="cursor: default;">
+                                            <span class="test-downvote-disabled @voteBtn text-muted" aria-disabled="true" title="Open the plugin page to vote on reviews" style="cursor: default;">
                                                 <vc:icon symbol="thumb-down" /><span class="small ms-1">@review.DownCount</span>
                                             </span>
                                         }
@@ -313,7 +313,7 @@
                                             <partial name="_MarkdownRender" model="review.Body" />
                                         }
                                     </div>
-                                    @if (review.IsReviewOwner || Model.IsAdmin)
+                                    @if (!Model.EmbedMode && (review.IsReviewOwner || Model.IsAdmin))
                                     {
                                         <button type="button" class="btn btn-link btn-sm p-0 text-danger align-self-start ms-2"
                                                 title="Delete" aria-label="Delete review"
@@ -334,7 +334,7 @@
                     <hr class="my-4" />
 
                     <a id="write-review"></a>
-                    @if (User.Identity?.IsAuthenticated == true)
+                    @if (!Model.EmbedMode && User.Identity?.IsAuthenticated == true)
                     {
                         @if (Model.IsOwner == true)
                         {
@@ -378,23 +378,30 @@
                     <div class="row mb-3">
                         <div class="col-6 d-flex align-items-center"><strong>Version</strong></div>
                         <div class="col-6 text-end">
-                            <div class="dropdown d-inline-block">
-                                <button id="version-dropdown-btn" class="btn btn-secondary btn-sm dropdown-toggle" type="button"
-                                        data-bs-toggle="dropdown" aria-expanded="false">
-                                    @string.Join(".", Model.Plugin.Version.Split('.').Take(3))
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end" style="max-height: 140px; overflow-y: auto;">
-                                    @foreach (var v in Model.PluginVersions)
-                                    {
-                                        var shortV = string.Join(".", v.Split('.').Take(3));
-                                        <li>
-                                            <a class="dropdown-item @(v == Model.Plugin.Version ? "active" : "")"
-                                            href="#" data-version="@v" data-display="@shortV">@shortV</a>
-                                        </li>
-                                    }
-                                </ul>
-                            </div>
-                            <input type="hidden" id="version-selector" name="Plugin.Version" value="@Model.Plugin.Version" />
+                            @if (Model.EmbedMode)
+                            {
+                                <span>@string.Join(".", Model.Plugin.Version.Split('.').Take(3))</span>
+                            }
+                            else
+                            {
+                                <div class="dropdown d-inline-block">
+                                    <button id="version-dropdown-btn" class="btn btn-secondary btn-sm dropdown-toggle" type="button"
+                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        @string.Join(".", Model.Plugin.Version.Split('.').Take(3))
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end" style="max-height: 140px; overflow-y: auto;">
+                                        @foreach (var v in Model.PluginVersions)
+                                        {
+                                            var shortV = string.Join(".", v.Split('.').Take(3));
+                                            <li>
+                                                <a class="dropdown-item @(v == Model.Plugin.Version ? "active" : "")"
+                                                href="#" data-version="@v" data-display="@shortV">@shortV</a>
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                                <input type="hidden" id="version-selector" name="Plugin.Version" value="@Model.Plugin.Version" />
+                            }
                         </div>
                     </div>
                     <div class="row mb-3">
