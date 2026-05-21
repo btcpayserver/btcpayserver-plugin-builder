@@ -24,6 +24,7 @@ public sealed class PluginDetailsViewModel : BasePagingViewModel
 
     public string? OwnerGithubUrl { get; set; }
     public string? OwnerNostrUrl { get; set; }
+    public bool EmbedMode { get; set; }
 }
 
 public class Review

@@ -7,11 +7,17 @@
     Layout = "_LayoutPublicModal";
     var desc = string.IsNullOrWhiteSpace(Model.Plugin.Description) ? "Plugin for BTCPay Server" : Model.Plugin.Description;
     ViewData["Title"] = Model.Plugin.PluginTitle + " - " + desc;
+    var embedRoute = Model.EmbedMode ? "1" : null;
+    var pluginIdentifier = Model.Plugin.ManifestInfo?["Identifier"]?.ToString();
     var owner = Model.Plugin.GetGithubRepository()?.Owner;
     var dependencies = Model.Plugin.ManifestInfo?["Dependencies"] as JArray;
     var sourceUrl = Model.Plugin.GetGithubRepository()?.GetSourceUrl(Model.Plugin.BuildInfo?["gitCommit"]?.ToString(), Model.Plugin.BuildInfo?["pluginDir"]?.ToString());
     var pluginUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = Model.Plugin.ProjectSlug }, Context.Request.Scheme, Context.Request.Host.ToString());
+    var writeReviewUrl = Model.EmbedMode ? $"{pluginUrl}#write-review" : "#write-review";
+    var writeReviewTarget = Model.EmbedMode ? "_blank" : null;
+    var writeReviewRel = Model.EmbedMode ? "noopener noreferrer" : null;
     var currentRating = Model.RatingFilter;
+    var containerClass = Model.EmbedMode ? "container-fluid px-0 plugin-directory-embed" : "container";
     DateTimeOffset.TryParse(Model.Plugin.BuildInfo?["buildDate"]?.ToString(), out var buildDate);
 
     var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
@@ -45,6 +51,16 @@
 
 <partial name="_PublicHeader" />
 
+@if (Model.EmbedMode)
+{
+    <style>
+        .plugin-directory-embed {
+            padding-left: 0;
+            padding-right: 0;
+        }
+    </style>
+}
+
 @if (Model.ShowHiddenNotice)
 {
     <div id="hidden-plugin-alert" class="alert alert-warning text-center mb-4" role="alert">
@@ -52,7 +68,10 @@
     </div>
 }
 
-<div class="container">
+<div class="@containerClass"
+     data-embed-page="details"
+     data-plugin-slug="@Model.Plugin.ProjectSlug"
+     data-plugin-identifier="@pluginIdentifier">
     <div class="row mb-4">
         <div class="col-12">
             <div class="rounded p-4" style="background: linear-gradient(135deg, var(--btcpay-body-bg) 0%, var(--btcpay-body-bg-medium) 100%);">
@@ -168,7 +187,7 @@
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
                         <h4 class="mb-0">Reviews</h4>
-                        <a class="btn btn-primary btn-sm ms-auto" href="#write-review">Write a review</a>
+                        <a class="btn btn-primary btn-sm ms-auto" href="@writeReviewUrl" target="@writeReviewTarget" rel="@writeReviewRel">Write a review</a>
                     </div>
 
                     <div class="mb-3">
@@ -180,6 +199,7 @@
                             <a class="text-decoration-none text-reset d-block"
                                asp-action="GetPluginDetails" asp-controller="Home"
                                asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                               asp-route-embed="@embedRoute"
                                asp-route-sort="@Model.Sort" asp-route-skip="0" asp-route-count="@Model.Count"
                                asp-route-RatingFilter="@(isActive ? null : star)" asp-fragment="reviews">
                                 <div class="d-flex align-items-center gap-2 mb-1 py-1 hover-bg @(isActive ? "bg-light border rounded px-2" : "")">
@@ -209,11 +229,13 @@
                                 <a class="dropdown-item @(Model.Sort == "newest" ? "active" : null)"
                                    asp-action="GetPluginDetails" asp-controller="Home"
                                    asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-sort="newest"
+                                   asp-route-embed="@embedRoute"
                                    asp-route-skip="0" asp-route-count="@Model.Count"
                                    asp-route-RatingFilter="@Model.RatingFilter" asp-fragment="reviews">Newest</a>
                                 <a class="dropdown-item @(Model.Sort == "helpful" ? "active" : null)"
                                    asp-action="GetPluginDetails" asp-controller="Home"
                                    asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-sort="helpful"
+                                   asp-route-embed="@embedRoute"
                                    asp-route-skip="0" asp-route-count="@Model.Count"
                                    asp-route-RatingFilter="@Model.RatingFilter" asp-fragment="reviews">Most helpful</a>
                             </div>
@@ -223,7 +245,7 @@
                     @if (!Model.Reviews.Any())
                     {
                         <div class="text-muted">
-                            No reviews yet. <a class="text-success fw-semibold text-decoration-none hover-underline" href="#write-review">Be the first to write one</a>.
+                            No reviews yet. <a class="text-success fw-semibold text-decoration-none hover-underline" href="@writeReviewUrl" target="@writeReviewTarget" rel="@writeReviewRel">Be the first to write one</a>.
                         </div>
                     }
                     else
@@ -278,13 +300,13 @@
                                         }
                                         else
                                         {
-                                            <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-id="@review.Id" asp-route-isHelpful="true" class="test-upvote-form d-inline">
+                                            <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-id="@review.Id" asp-route-embed="@embedRoute" asp-route-isHelpful="true" class="test-upvote-form d-inline">
                                                 @Html.AntiForgeryToken()
                                                 <button type="submit" class="@voteBtn vote-up @(review.UserVoteHelpful == true ? "text-success" : "text-secondary")" aria-label="Mark this review as helpful">
                                                     <vc:icon symbol="thumb-up" /><span class="small ms-1">@review.UpCount</span>
                                                 </button>
                                             </form>
-                                            <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-id="@review.Id" asp-route-isHelpful="false" class="test-downvote-form d-inline">
+                                            <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-id="@review.Id" asp-route-embed="@embedRoute" asp-route-isHelpful="false" class="test-downvote-form d-inline">
                                                 @Html.AntiForgeryToken()
                                                 <button type="submit" class="@voteBtn vote-down @(review.UserVoteHelpful == false ? "text-danger" : "text-secondary")" aria-label="Mark this review as not helpful">
                                                     <vc:icon symbol="thumb-down" /><span class="small ms-1">@review.DownCount</span>
@@ -306,7 +328,7 @@
                                         <button type="button" class="btn btn-link btn-sm p-0 text-danger align-self-start ms-2"
                                                 title="Delete" aria-label="Delete review"
                                                 data-bs-toggle="modal" data-bs-target="#ConfirmModal"
-                                                data-action='@Url.EnsureLocal(Url.Action("DeleteReview", "Home", new { pluginSlug = Model.Plugin.ProjectSlug, id = review.Id }), Context.Request)'
+                                                data-action='@Url.EnsureLocal(Url.Action("DeleteReview", "Home", new { pluginSlug = Model.Plugin.ProjectSlug, id = review.Id, embed = embedRoute }), Context.Request)'
                                                 data-title="Delete review"
                                                 data-description="Delete this review? This action cannot be undone."
                                                 data-confirm="Delete">
@@ -330,7 +352,7 @@
                         }
                         else
                         {
-                            <form id="review-form" method="post" asp-action="UpsertReview" asp-controller="Home" asp-route-pluginSlug="@Model.Plugin.ProjectSlug">
+                            <form id="review-form" method="post" asp-action="UpsertReview" asp-controller="Home" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-embed="@embedRoute">
                                 @Html.AntiForgeryToken()
                                 <div id="ratingStars" class="d-inline-flex align-items-center gap-1 fs-4 mb-3" role="radiogroup" aria-label="Rating (1 to 5)" tabindex="0">
                                     @for (var i = 1; i <= 5; i++)
@@ -349,9 +371,12 @@
                     }
                     else
                     {
-                        <div class="alert bg-info text-white">
-                            Please <a class="text-white text-decoration-underline fw-semibold" asp-action="Login" asp-controller="Home">sign in</a> to write a review.
-                        </div>
+                        @if (!Model.EmbedMode)
+                        {
+                            <div class="alert bg-info text-white">
+                                Please <a class="text-white text-decoration-underline fw-semibold" asp-action="Login" asp-controller="Home">sign in</a> to write a review.
+                            </div>
+                        }
                     }
                 </div>
             </div>
@@ -440,11 +465,14 @@
                             </span>
                         </div>
                     </div>
-                    <a id="download-btn"
-                       asp-action="Download" asp-controller="Api"
-                       asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                       asp-route-version="@Model.Plugin.Version"
-                       class="btn btn-primary w-100" target="_blank" rel="noopener noreferrer">Download</a>
+                    @if (!Model.EmbedMode)
+                    {
+                        <a id="download-btn"
+                           asp-action="Download" asp-controller="Api"
+                           asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                           asp-route-version="@Model.Plugin.Version"
+                           class="btn btn-primary w-100" target="_blank" rel="noopener noreferrer">Download</a>
+                    }
                 </div>
             </div>
 

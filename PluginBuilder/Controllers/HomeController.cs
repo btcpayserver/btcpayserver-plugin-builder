@@ -511,7 +511,8 @@ public class HomeController(
             Contributors = pluginContributors,
             RatingFilter = model.RatingFilter,
             OwnerGithubUrl = ownerGithubUrl,
-            OwnerNostrUrl = ownerNostrUrl
+            OwnerNostrUrl = ownerNostrUrl,
+            EmbedMode = string.Equals(Request.Query["embed"], "1", StringComparison.Ordinal)
         };
         return View(vm);
     }
@@ -520,7 +521,7 @@ public class HomeController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpsertReview(
         [ModelBinder(typeof(PluginSlugModelBinder))]
-        PluginSlug pluginSlug, int rating, string? body, string? pluginVersion)
+        PluginSlug pluginSlug, int rating, string? body, string? pluginVersion, string? embed = null)
     {
         if (rating is < 1 or > 5)
             return BadRequest("Invalid rating");
@@ -535,7 +536,7 @@ public class HomeController(
         if (isOwner)
         {
             TempData[TempDataConstant.WarningMessage] = "You cannot review your own plugin.";
-            return RedirectToAction(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString() });
+            return RedirectToAction(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString(), embed = string.IsNullOrEmpty(embed) ? null : embed });
         }
 
         var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
@@ -560,7 +561,12 @@ public class HomeController(
         await conn.UpsertPluginReview(reviewViewModel);
 
         var sort = Request.Query["sort"].ToString();
-        var url = Url.Action(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString(), sort = string.IsNullOrEmpty(sort) ? null : sort });
+        var url = Url.Action(nameof(GetPluginDetails), "Home", new
+        {
+            pluginSlug = pluginSlug.ToString(),
+            sort = string.IsNullOrEmpty(sort) ? null : sort,
+            embed = string.IsNullOrEmpty(embed) ? null : embed
+        });
         return Redirect((url ?? "/") + "#reviews");
     }
 
@@ -620,7 +626,8 @@ public class HomeController(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
         long id,
-        bool isHelpful)
+        bool isHelpful,
+        string? embed = null)
     {
         var userId = userManager.GetUserId(User);
         if (string.IsNullOrEmpty(userId))
@@ -637,7 +644,11 @@ public class HomeController(
         if (!ok)
             TempData[TempDataConstant.WarningMessage] = "Error while updating review helpful vote";
 
-        var url = Url.Action(nameof(GetPluginDetails), new { pluginSlug = pluginSlug.ToString() });
+        var url = Url.Action(nameof(GetPluginDetails), new
+        {
+            pluginSlug = pluginSlug.ToString(),
+            embed = string.IsNullOrEmpty(embed) ? null : embed
+        });
         return Redirect((url ?? "/") + "#reviews");
     }
 
@@ -646,7 +657,8 @@ public class HomeController(
     public async Task<IActionResult> DeleteReview(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        long id)
+        long id,
+        string? embed = null)
     {
         var userId = userManager.GetUserId(User);
         if (string.IsNullOrEmpty(userId))
@@ -661,7 +673,11 @@ public class HomeController(
         if (!ok)
             TempData[TempDataConstant.WarningMessage] = "Error while deleting review";
 
-        var url = Url.Action(nameof(GetPluginDetails), new { pluginSlug = pluginSlug.ToString() });
+        var url = Url.Action(nameof(GetPluginDetails), new
+        {
+            pluginSlug = pluginSlug.ToString(),
+            embed = string.IsNullOrEmpty(embed) ? null : embed
+        });
         return Redirect((url ?? "/") + "#reviews");
     }
 
