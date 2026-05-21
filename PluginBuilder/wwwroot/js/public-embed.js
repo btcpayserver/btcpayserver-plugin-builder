@@ -121,6 +121,10 @@
     }
 
     function handleHostContext(event) {
+        if (event.source !== window.parent) {
+            return;
+        }
+
         const data = event.data;
         if (!data || typeof data !== "object" || data.type !== "btcpay:host-context") {
             return;
