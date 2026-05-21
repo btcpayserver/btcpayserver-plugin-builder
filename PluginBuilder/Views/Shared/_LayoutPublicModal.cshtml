@@ -1,5 +1,6 @@
 @{
     Layout = null;
+    var embedMode = string.Equals(Context.Request.Query["embed"], "1", StringComparison.Ordinal);
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -24,14 +25,23 @@
         .account-form h4 {
             margin-bottom: 1.5rem;
         }
+
+        body.embed-mode {
+            background: transparent;
+            overflow-x: hidden;
+        }
     </style>
 </head>
-<body class="d-flex flex-column min-vh-100">
+<body class="d-flex flex-column min-vh-100 @(embedMode ? "embed-mode" : null)">
 <section class="content-wrapper flex-grow-1">
     <div class="navbar-brand d-none"></div>
     <vc:status-message></vc:status-message>
     @RenderBody()
 </section>
 <script src="~/vendor/bootstrap/bootstrap.bundle.min.js" asp-append-version="true"></script>
+@if (embedMode)
+{
+    <script src="~/js/public-embed.js" asp-append-version="true"></script>
+}
 </body>
 </html>

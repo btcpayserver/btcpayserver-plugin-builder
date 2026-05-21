@@ -6,6 +6,8 @@
     const string title = "BTCPay Server Plugin Directory";
     const string desc = "Extend and customize your BTCPay Server with community and official plugins.";
     ViewData["Title"] = title;
+    var embedMode = Context.Request.Query["embed"] == "1";
+    var embedRoute = embedMode ? "1" : null;
 
     var currentSearch = Context.Request.Query["searchPluginName"].ToString();
     var currentSort = (string?)Context.Request.Query["sort"] ?? "smart";
@@ -18,6 +20,7 @@
         "alpha" => "Alphabetical",
         _ => "Relevance"
     };
+    var containerClass = embedMode ? "container-fluid px-0 plugin-directory-embed" : "container";
 }
 
 @section Meta {
@@ -35,17 +38,72 @@
 
 <partial name="_PublicHeader" />
 
-<div class="container">
-    <div class="row mb-4">
-        <div class="col-12 text-center">
-            <h3 class="display-5 fw-bold">BTCPay Server Plugin Directory</h3>
-            <p class="text-muted">Extend and customize your BTCPay Server with community and official plugins.</p>
+@if (embedMode)
+{
+    <style>
+        .plugin-directory-embed {
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        .plugin-directory-embed .plugin-directory-toolbar {
+            margin-bottom: 1.25rem;
+            margin-left: 0;
+            margin-right: 0;
+        }
+
+        .plugin-directory-embed .plugin-directory-toolbar > * {
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        .plugin-directory-embed .plugin-directory-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1.5rem;
+            margin-left: 0;
+            margin-right: 0;
+            margin-bottom: 0;
+        }
+
+        .plugin-directory-embed .plugin-directory-list > * {
+            width: auto;
+            max-width: none;
+            margin-bottom: 0;
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        .plugin-directory-embed [data-plugin-directory-empty-state] {
+            grid-column: 1 / -1;
+        }
+
+        @@media (max-width: 767.98px) {
+            .plugin-directory-embed .plugin-directory-list {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+}
+
+<div class="@containerClass" data-embed-page="list">
+    @if (!embedMode)
+    {
+        <div class="row mb-4">
+            <div class="col-12 text-center">
+                <h3 class="display-5 fw-bold">BTCPay Server Plugin Directory</h3>
+                <p class="text-muted">Extend and customize your BTCPay Server with community and official plugins.</p>
+            </div>
         </div>
-    </div>
-    <div class="row mb-4">
+    }
+    <div class="row plugin-directory-toolbar mb-4">
         <div>
             <form asp-action="AllPlugins" method="get" class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3">
                 <input type="hidden" name="sort" value="@currentSort" />
+                @if (embedMode)
+                {
+                    <input type="hidden" name="embed" value="1" />
+                }
 
                 <input type="text"
                        name="searchPluginName"
@@ -66,24 +124,28 @@
                         <a class="dropdown-item @(currentSort == "smart" ? "active" : "")"
                            asp-action="AllPlugins"
                            asp-route-searchPluginName="@currentSearch"
+                           asp-route-embed="@embedRoute"
                            asp-route-sort="smart">
                             Relevance
                         </a>
                         <a class="dropdown-item @(currentSort == "rating" ? "active" : "")"
                            asp-action="AllPlugins"
                            asp-route-searchPluginName="@currentSearch"
+                           asp-route-embed="@embedRoute"
                            asp-route-sort="rating">
                             Highest rated
                         </a>
                         <a class="dropdown-item @(currentSort == "recent" ? "active" : "")"
                            asp-action="AllPlugins"
                            asp-route-searchPluginName="@currentSearch"
+                           asp-route-embed="@embedRoute"
                            asp-route-sort="recent">
                             Most recent
                         </a>
                         <a class="dropdown-item @(currentSort == "alpha" ? "active" : "")"
                            asp-action="AllPlugins"
                            asp-route-searchPluginName="@currentSearch"
+                           asp-route-embed="@embedRoute"
                            asp-route-sort="alpha">
                             Alphabetical
                         </a>
@@ -92,14 +154,15 @@
             </form>
         </div>
     </div>
-    <div class="row">
+    <div class="row plugin-directory-list">
         @if (Model != null && Model.Any())
         {
             @foreach (var plugin in Model)
             {
                 var owner = plugin.GetOwnerName(GitHostingProviderFactory);
                 var ownerProfileUrl = plugin.GetOwnerProfileUrl(GitHostingProviderFactory);
-                <div class="col-md-6 mb-4">
+                var pluginIdentifier = plugin.ManifestInfo?["Identifier"]?.ToString();
+                <div class="col-md-6 mb-4" data-plugin-card data-plugin-identifier="@pluginIdentifier">
                     <div class="card h-100 plugin-card" data-type="community">
                         <div class="card-body">
                             @if (plugin.IsUnlisted)
@@ -116,6 +179,9 @@
                                     <div>
                                         <h3 style="margin-top: 0; margin-bottom: 5px;">
                                             <a asp-action="GetPluginDetails"
+                                               asp-route-embed="@embedRoute"
+                                               data-plugin-slug="@plugin.ProjectSlug"
+                                               data-plugin-identifier="@plugin.ManifestInfo?["Identifier"]?.ToString()"
                                                asp-route-pluginSlug="@plugin.ProjectSlug">@plugin.PluginTitle</a>
                                         </h3>
 
@@ -159,9 +225,19 @@
         {
             <div class="col-12 text-center py-5">
                 <h4>No plugins available yet</h4>
-                <p class="text-muted">Check back later, or
-                    <a asp-action="Login" asp-controller="Home" class="text-success text-decoration-none">login to upload one</a>
-                </p>
+                @if (!embedMode)
+                {
+                    <p class="text-muted">Check back later, or
+                        <a asp-action="Login" asp-controller="Home" class="text-success text-decoration-none">login to upload one</a>
+                    </p>
+                }
+            </div>
+        }
+
+        @if (embedMode && Model != null && Model.Any())
+        {
+            <div class="col-12 text-center py-5" data-plugin-directory-empty-state hidden>
+                <h4>All compatible plugins from the public directory are already installed or disabled on this server.</h4>
             </div>
         }
     </div>
