@@ -172,7 +172,6 @@
     });
 
     window.addEventListener("message", handleHostContext);
-    window.addEventListener("load", scheduleHeightPost);
     window.addEventListener("resize", scheduleHeightPost);
 
     if (window.ResizeObserver) {
@@ -180,16 +179,7 @@
         resizeObserver.observe(embedPage);
     }
 
-    if (window.MutationObserver) {
-        const mutationObserver = new window.MutationObserver(scheduleHeightPost);
-        mutationObserver.observe(embedPage, { childList: true, subtree: true, attributes: true });
-    }
-
     if (document.fonts && document.fonts.ready) {
         document.fonts.ready.then(scheduleHeightPost);
     }
-
-    window.setTimeout(scheduleHeightPost, 0);
-    window.setTimeout(scheduleHeightPost, 150);
-    window.setTimeout(scheduleHeightPost, 500);
 })();
