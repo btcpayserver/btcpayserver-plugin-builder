@@ -17,7 +17,7 @@
     var writeReviewTarget = Model.EmbedMode ? "_blank" : null;
     var writeReviewRel = Model.EmbedMode ? "noopener noreferrer" : null;
     var currentRating = Model.RatingFilter;
-    var containerClass = Model.EmbedMode ? "container-fluid px-0 plugin-directory-embed" : "container";
+    var containerClass = Model.EmbedMode ? "container-fluid px-0" : "container";
     DateTimeOffset.TryParse(Model.Plugin.BuildInfo?["buildDate"]?.ToString(), out var buildDate);
 
     var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
@@ -50,16 +50,6 @@
 }
 
 <partial name="_PublicHeader" />
-
-@if (Model.EmbedMode)
-{
-    <style>
-        .plugin-directory-embed {
-            padding-left: 0;
-            padding-right: 0;
-        }
-    </style>
-}
 
 @if (Model.ShowHiddenNotice)
 {

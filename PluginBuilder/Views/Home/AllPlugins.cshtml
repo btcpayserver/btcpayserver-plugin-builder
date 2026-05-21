@@ -20,7 +20,6 @@
         "alpha" => "Alphabetical",
         _ => "Relevance"
     };
-    var containerClass = embedMode ? "container-fluid px-0 plugin-directory-embed" : "container";
 }
 
 @section Meta {
@@ -38,55 +37,7 @@
 
 <partial name="_PublicHeader" />
 
-@if (embedMode)
-{
-    <style>
-        .plugin-directory-embed {
-            padding-left: 0;
-            padding-right: 0;
-        }
-
-        .plugin-directory-embed .plugin-directory-toolbar {
-            margin-bottom: 1.25rem;
-            margin-left: 0;
-            margin-right: 0;
-        }
-
-        .plugin-directory-embed .plugin-directory-toolbar > * {
-            padding-left: 0;
-            padding-right: 0;
-        }
-
-        .plugin-directory-embed .plugin-directory-list {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 1.5rem;
-            margin-left: 0;
-            margin-right: 0;
-            margin-bottom: 0;
-        }
-
-        .plugin-directory-embed .plugin-directory-list > * {
-            width: auto;
-            max-width: none;
-            margin-bottom: 0;
-            padding-left: 0;
-            padding-right: 0;
-        }
-
-        .plugin-directory-embed [data-plugin-directory-empty-state] {
-            grid-column: 1 / -1;
-        }
-
-        @@media (max-width: 767.98px) {
-            .plugin-directory-embed .plugin-directory-list {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
-}
-
-<div class="@containerClass" data-embed-page="list">
+<div class="@(embedMode ? "container-fluid px-0" : "container")" data-embed-page="list">
     @if (!embedMode)
     {
         <div class="row mb-4">
@@ -96,8 +47,8 @@
             </div>
         </div>
     }
-    <div class="row plugin-directory-toolbar mb-4">
-        <div>
+    <div class="@(embedMode ? "mb-4" : "row mb-4")">
+        <div class="@(embedMode ? "" : "col-12")">
             <form asp-action="AllPlugins" method="get" class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3">
                 <input type="hidden" name="sort" value="@currentSort" />
                 @if (embedMode)
@@ -154,7 +105,8 @@
             </form>
         </div>
     </div>
-    <div class="row plugin-directory-list">
+    <div class="@(embedMode ? "overflow-hidden" : "")">
+        <div class="@(embedMode ? "row row-cols-1 row-cols-md-2 g-4 mb-0" : "row")">
         @if (Model != null && Model.Any())
         {
             @foreach (var plugin in Model)
@@ -162,7 +114,7 @@
                 var owner = plugin.GetOwnerName(GitHostingProviderFactory);
                 var ownerProfileUrl = plugin.GetOwnerProfileUrl(GitHostingProviderFactory);
                 var pluginIdentifier = plugin.ManifestInfo?["Identifier"]?.ToString();
-                <div class="col-md-6 mb-4" data-plugin-card data-plugin-identifier="@pluginIdentifier">
+                <div class="@(embedMode ? "col" : "col-md-6 mb-4")" data-plugin-card data-plugin-identifier="@pluginIdentifier">
                     <div class="card h-100 plugin-card" data-type="community">
                         <div class="card-body">
                             @if (plugin.IsUnlisted)
@@ -240,5 +192,6 @@
                 <h4>All compatible plugins from the public directory are already installed or disabled on this server.</h4>
             </div>
         }
+        </div>
     </div>
 </div>
