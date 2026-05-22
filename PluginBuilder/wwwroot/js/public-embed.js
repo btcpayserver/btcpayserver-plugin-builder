@@ -7,6 +7,7 @@
     let lastHeight = 0;
     let heightPostQueued = false;
     let hiddenPluginIdentifiers = new Set();
+    let hostOrigin = null;
 
     function applyHostColorMode(colorMode) {
         if (colorMode !== "light" && colorMode !== "dark") {
@@ -114,6 +115,23 @@
         }, "*");
     }
 
+    function postInstallRequest() {
+        const identifier = embedPage.dataset.pluginIdentifier || "";
+        const slug = embedPage.dataset.pluginSlug || "";
+        const versionInput = document.getElementById("version-selector");
+        const version = versionInput ? versionInput.value : "";
+        if (!hostOrigin || !identifier || !version) {
+            return;
+        }
+
+        window.parent.postMessage({
+            type: "pb:install-requested",
+            identifier: identifier,
+            slug: slug || null,
+            version: version
+        }, hostOrigin);
+    }
+
     function buildDetailsUrl(slug) {
         const url = new URL("/public/plugins/" + encodeURIComponent(slug), window.location.origin);
         url.searchParams.set("embed", "1");
@@ -130,6 +148,7 @@
             return;
         }
 
+        hostOrigin = event.origin;
         hiddenPluginIdentifiers = normalizeHiddenPluginIdentifiers(data.hiddenPluginIdentifiers);
         applyHostColorMode(data.colorMode);
         applyHiddenPluginFilter();
@@ -168,6 +187,13 @@
 
             event.preventDefault();
             postSelection(link.dataset.pluginSlug || "", link.dataset.pluginIdentifier || "");
+        });
+    });
+
+    document.querySelectorAll("[data-plugin-install]").forEach(function (button) {
+        button.addEventListener("click", function (event) {
+            event.preventDefault();
+            postInstallRequest();
         });
     });
 

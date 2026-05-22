@@ -322,7 +322,12 @@ public class HomeController(
     public async Task<IActionResult> GetPluginDetails(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        [FromQuery] PluginDetailsViewModel? model)
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion? version = null,
+        [ModelBinder(typeof(BtcPayHostVersionModelBinder))]
+        PluginVersion? btcpayVersion = null,
+        bool includePreRelease = false,
+        [FromQuery] PluginDetailsViewModel? model = null)
     {
         if (pluginSlug is null)
             return NotFound();
@@ -341,9 +346,27 @@ public class HomeController(
             ? " (hv.up_count - hv.down_count) DESC, r.created_at DESC "
             : " r.created_at DESC ";
 
+        var versionFilter = version is null ? string.Empty : "AND v.ver = @version";
+        var versionSource = btcpayVersion is null
+            ? "versions v"
+            : "get_all_versions(@btcpayVersion, @includePreRelease) gv JOIN versions v ON v.plugin_slug = gv.plugin_slug AND v.ver = gv.ver";
+        var versionsQuery = btcpayVersion is null
+            ? """
+              SELECT array_agg(array_to_string(ver, '.') ORDER BY ver DESC)
+              FROM versions
+              WHERE plugin_slug = v.plugin_slug
+              """
+            : """
+              SELECT array_agg(array_to_string(gv.ver, '.') ORDER BY gv.ver DESC)
+              FROM get_all_versions(@btcpayVersion, @includePreRelease) gv
+              WHERE gv.plugin_slug = v.plugin_slug
+              """;
         var prms = new
         {
             pluginSlug = pluginSlug.ToString(),
+            version = version?.VersionParts,
+            btcpayVersion = btcpayVersion?.VersionParts,
+            includePreRelease,
             currentUserId = userId,
             isAdmin,
             skip = model.Skip,
@@ -370,15 +393,12 @@ public class HomeController(
                              WHERE b2.plugin_slug = v.plugin_slug
                              ORDER BY b2.id ASC
                              LIMIT 1) AS created_at,
-                           (
-                             SELECT array_agg(array_to_string(ver, '.') ORDER BY ver DESC)
-                             FROM versions
-                             WHERE plugin_slug = v.plugin_slug
-                           ) AS versions
-                         FROM versions v
+                           (" + versionsQuery + @") AS versions
+                         FROM " + versionSource + @"
                          JOIN builds  b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
                          JOIN plugins p ON b.plugin_slug = p.slug
                          WHERE v.plugin_slug = @pluginSlug
+                           " + versionFilter + @"
                            AND b.manifest_info IS NOT NULL
                            AND b.build_info  IS NOT NULL
                            AND (

@@ -16,6 +16,8 @@
     var writeReviewUrl = Model.EmbedMode ? $"{pluginUrl}#write-review" : "#write-review";
     var writeReviewTarget = Model.EmbedMode ? "_blank" : null;
     var writeReviewRel = Model.EmbedMode ? "noopener noreferrer" : null;
+    var btcpayVersionRoute = Context.Request.Query["btcpayVersion"].ToString();
+    var includePreReleaseRoute = Context.Request.Query["includePreRelease"].ToString();
     var currentRating = Model.RatingFilter;
     var containerClass = Model.EmbedMode ? "container-fluid px-0" : "container";
     DateTimeOffset.TryParse(Model.Plugin.BuildInfo?["buildDate"]?.ToString(), out var buildDate);
@@ -106,7 +108,112 @@
                     <p>@Model.Plugin.Description</p>
                 </div>
             </div>
+        </div>
 
+        <div class="col-12 col-lg-4 mt-4 mt-lg-0">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-6 d-flex align-items-center"><strong>Version</strong></div>
+                        <div class="col-6 text-end">
+                            <div class="dropdown d-inline-block">
+                                <button id="version-dropdown-btn" class="btn btn-secondary btn-sm dropdown-toggle" type="button"
+                                        data-bs-toggle="dropdown" aria-expanded="false">
+                                    @string.Join(".", Model.Plugin.Version.Split('.').Take(3))
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end" style="max-height: 140px; overflow-y: auto;">
+                                    @foreach (var v in Model.PluginVersions)
+                                    {
+                                        var shortV = string.Join(".", v.Split('.').Take(3));
+                                        <li>
+                                            <a class="dropdown-item @(v == Model.Plugin.Version ? "active" : "")"
+                                            href="#" data-version="@v" data-display="@shortV">@shortV</a>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                            <input type="hidden" id="version-selector" name="Plugin.Version" value="@Model.Plugin.Version" />
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6"><strong>Published</strong></div>
+                        <div class="col-6 text-end">
+                            <span id="plugin-published-date">@(buildDate != default ? buildDate.ToString("MMM dd, yyyy") : "")</span>
+                        </div>
+                    </div>
+                    <div id="plugin-repository-row" class="row mb-3 @(string.IsNullOrEmpty(sourceUrl) ? "d-none" : "")">
+                        <div class="col-6"><strong>Repository</strong></div>
+                        <div class="col-6 text-end">
+                            <a id="plugin-source-url" href="@sourceUrl" target="_blank" rel="noopener noreferrer">View Source</a>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(Model.Plugin.Documentation))
+                    {
+                        <div class="row mb-3">
+                            <div class="col-6"><strong>Documentation</strong></div>
+                            <div class="col-6 text-end">
+                                <a href="@Model.Plugin.Documentation" target="_blank" rel="noopener noreferrer">View Documentation</a>
+                            </div>
+                        </div>
+                    }
+                    <div id="plugin-min-btcpay-row" class="row mb-3 @(string.IsNullOrEmpty(Model.Plugin.BTCPayMinVersion) ? "d-none" : "")">
+                        <div class="col-6"><strong>Min. BTCPay Version</strong></div>
+                        <div class="col-6 text-end">
+                            <span id="plugin-min-btcpay-version">@Model.Plugin.BTCPayMinVersion</span>
+                        </div>
+                    </div>
+                    <div id="plugin-max-btcpay-row" class="row mb-3 @(string.IsNullOrEmpty(Model.Plugin.BTCPayMaxVersion) ? "d-none" : "")">
+                        <div class="col-6"><strong>Max. BTCPay Version</strong></div>
+                        <div class="col-6 text-end">
+                            <span id="plugin-max-btcpay-version">@Model.Plugin.BTCPayMaxVersion</span>
+                        </div>
+                    </div>
+                    @if (dependencies != null)
+                    {
+                        foreach (var dep in dependencies)
+                        {
+                            if (string.Equals(dep["Identifier"]?.ToString(), "BTCPayServer", StringComparison.OrdinalIgnoreCase)) continue;
+                            <div class="row mb-3">
+                                <div class="col-6"><strong>@dep["Identifier"]</strong></div>
+                                <div class="col-6 text-end">@dep["Condition"]</div>
+                            </div>
+                        }
+                    }
+                    <div class="row mb-3">
+                        <div class="col-6"><strong>Created</strong></div>
+                        <div class="col-6 text-end">@Model.Plugin.CreatedDate.ToString("MMM dd, yyyy")</div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6"><strong>Rating</strong></div>
+                        <div class="col-6 text-end">
+                            <span class="d-inline-flex align-items-center gap-1 lh-1">
+                                <span class="fw-semibold">@((Model.Plugin.RatingSummary?.Average ?? 0m).ToString("0.0"))</span>
+                                <span class="text-warning"><vc:icon symbol="star-fill" /></span>
+                                <span class="text-muted small">(@(Model.Plugin.RatingSummary?.TotalReviews ?? 0))</span>
+                            </span>
+                        </div>
+                    </div>
+                    @if (!Model.EmbedMode)
+                    {
+                        <a id="download-btn"
+                           asp-action="Download" asp-controller="Api"
+                           asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                           asp-route-version="@Model.Plugin.Version"
+                           class="btn btn-primary w-100" target="_blank" rel="noopener noreferrer">Download</a>
+                    }
+                    else
+                    {
+                        <button type="button"
+                                id="btcpay-install-plugin-btn"
+                                class="btn btn-primary w-100"
+                                data-plugin-install
+                                disabled="@(string.IsNullOrWhiteSpace(pluginIdentifier) ? "disabled" : null)">Install in BTCPay Server</button>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-8">
             @if (mediaItems.Any())
             {
                 <div class="card mt-4">
@@ -189,6 +296,9 @@
                             <a class="text-decoration-none text-reset d-block"
                                asp-action="GetPluginDetails" asp-controller="Home"
                                asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                               asp-route-version="@Model.Plugin.Version"
+                               asp-route-btcpayVersion="@btcpayVersionRoute"
+                               asp-route-includePreRelease="@includePreReleaseRoute"
                                asp-route-embed="@embedRoute"
                                asp-route-sort="@Model.Sort" asp-route-skip="0" asp-route-count="@Model.Count"
                                asp-route-RatingFilter="@(isActive ? null : star)" asp-fragment="reviews">
@@ -219,12 +329,18 @@
                                 <a class="dropdown-item @(Model.Sort == "newest" ? "active" : null)"
                                    asp-action="GetPluginDetails" asp-controller="Home"
                                    asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-sort="newest"
+                                   asp-route-version="@Model.Plugin.Version"
+                                   asp-route-btcpayVersion="@btcpayVersionRoute"
+                                   asp-route-includePreRelease="@includePreReleaseRoute"
                                    asp-route-embed="@embedRoute"
                                    asp-route-skip="0" asp-route-count="@Model.Count"
                                    asp-route-RatingFilter="@Model.RatingFilter" asp-fragment="reviews">Newest</a>
                                 <a class="dropdown-item @(Model.Sort == "helpful" ? "active" : null)"
                                    asp-action="GetPluginDetails" asp-controller="Home"
                                    asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-sort="helpful"
+                                   asp-route-version="@Model.Plugin.Version"
+                                   asp-route-btcpayVersion="@btcpayVersionRoute"
+                                   asp-route-includePreRelease="@includePreReleaseRoute"
                                    asp-route-embed="@embedRoute"
                                    asp-route-skip="0" asp-route-count="@Model.Count"
                                    asp-route-RatingFilter="@Model.RatingFilter" asp-fragment="reviews">Most helpful</a>
@@ -372,114 +488,13 @@
             </div>
         </div>
 
-        <div class="col-12 col-lg-4 mt-4 mt-lg-0">
-            <div class="card plugin-details-metadata">
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-6 d-flex align-items-center"><strong>Version</strong></div>
-                        <div class="col-6 text-end">
-                            @if (Model.EmbedMode)
-                            {
-                                <span>@string.Join(".", Model.Plugin.Version.Split('.').Take(3))</span>
-                            }
-                            else
-                            {
-                                <div class="dropdown d-inline-block">
-                                    <button id="version-dropdown-btn" class="btn btn-secondary btn-sm dropdown-toggle" type="button"
-                                            data-bs-toggle="dropdown" aria-expanded="false">
-                                        @string.Join(".", Model.Plugin.Version.Split('.').Take(3))
-                                    </button>
-                                    <ul class="dropdown-menu dropdown-menu-end" style="max-height: 140px; overflow-y: auto;">
-                                        @foreach (var v in Model.PluginVersions)
-                                        {
-                                            var shortV = string.Join(".", v.Split('.').Take(3));
-                                            <li>
-                                                <a class="dropdown-item @(v == Model.Plugin.Version ? "active" : "")"
-                                                href="#" data-version="@v" data-display="@shortV">@shortV</a>
-                                            </li>
-                                        }
-                                    </ul>
-                                </div>
-                                <input type="hidden" id="version-selector" name="Plugin.Version" value="@Model.Plugin.Version" />
-                            }
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-6"><strong>Published</strong></div>
-                        <div class="col-6 text-end">
-                            <span id="plugin-published-date">@(buildDate != default ? buildDate.ToString("MMM dd, yyyy") : "")</span>
-                        </div>
-                    </div>
-                    <div id="plugin-repository-row" class="row mb-3 @(string.IsNullOrEmpty(sourceUrl) ? "d-none" : "")">
-                        <div class="col-6"><strong>Repository</strong></div>
-                        <div class="col-6 text-end">
-                            <a id="plugin-source-url" href="@sourceUrl" target="_blank" rel="noopener noreferrer">View Source</a>
-                        </div>
-                    </div>
-                    @if (!string.IsNullOrEmpty(Model.Plugin.Documentation))
-                    {
-                        <div class="row mb-3">
-                            <div class="col-6"><strong>Documentation</strong></div>
-                            <div class="col-6 text-end">
-                                <a href="@Model.Plugin.Documentation" target="_blank" rel="noopener noreferrer">View Documentation</a>
-                            </div>
-                        </div>
-                    }
-                    <div id="plugin-min-btcpay-row" class="row mb-3 @(string.IsNullOrEmpty(Model.Plugin.BTCPayMinVersion) ? "d-none" : "")">
-                        <div class="col-6"><strong>Min. BTCPay Version</strong></div>
-                        <div class="col-6 text-end">
-                            <span id="plugin-min-btcpay-version">@Model.Plugin.BTCPayMinVersion</span>
-                        </div>
-                    </div>
-                    <div id="plugin-max-btcpay-row" class="row mb-3 @(string.IsNullOrEmpty(Model.Plugin.BTCPayMaxVersion) ? "d-none" : "")">
-                        <div class="col-6"><strong>Max. BTCPay Version</strong></div>
-                        <div class="col-6 text-end">
-                            <span id="plugin-max-btcpay-version">@Model.Plugin.BTCPayMaxVersion</span>
-                        </div>
-                    </div>
-                    @if (dependencies != null)
-                    {
-                        foreach (var dep in dependencies)
-                        {
-                            if (string.Equals(dep["Identifier"]?.ToString(), "BTCPayServer", StringComparison.OrdinalIgnoreCase)) continue;
-                            <div class="row mb-3">
-                                <div class="col-6"><strong>@dep["Identifier"]</strong></div>
-                                <div class="col-6 text-end">@dep["Condition"]</div>
-                            </div>
-                        }
-                    }
-                    <div class="row mb-3">
-                        <div class="col-6"><strong>Created</strong></div>
-                        <div class="col-6 text-end">@Model.Plugin.CreatedDate.ToString("MMM dd, yyyy")</div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-6"><strong>Rating</strong></div>
-                        <div class="col-6 text-end">
-                            <span class="d-inline-flex align-items-center gap-1 lh-1">
-                                <span class="fw-semibold">@((Model.Plugin.RatingSummary?.Average ?? 0m).ToString("0.0"))</span>
-                                <span class="text-warning"><vc:icon symbol="star-fill" /></span>
-                                <span class="text-muted small">(@(Model.Plugin.RatingSummary?.TotalReviews ?? 0))</span>
-                            </span>
-                        </div>
-                    </div>
-                    @if (!Model.EmbedMode)
-                    {
-                        <a id="download-btn"
-                           asp-action="Download" asp-controller="Api"
-                           asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                           asp-route-version="@Model.Plugin.Version"
-                           class="btn btn-primary w-100" target="_blank" rel="noopener noreferrer">Download</a>
-                    }
-                </div>
-            </div>
-
+        <div class="col-12 col-lg-4">
             <div class="card mt-4 @(string.IsNullOrEmpty(Model.Plugin.Changelog) ? "d-none" : "")" id="plugin-changelog-card">
                 <div class="card-body">
                     <h4>Release notes</h4>
                     <p id="plugin-changelog-text" class="small mb-0" style="white-space: pre-wrap;">@Model.Plugin.Changelog</p>
                 </div>
             </div>
-
             @if (Model.Contributors?.Any() == true)
             {
                 <div class="card mt-4">
