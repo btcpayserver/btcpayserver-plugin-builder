@@ -12,4 +12,5 @@ public sealed class BtcMapsSubmitRequest
     public string? Twitter { get; set; }
     public string? Github { get; set; }
     public string? OnionUrl { get; set; }
+    public string? Phone { get; set; }
 }
