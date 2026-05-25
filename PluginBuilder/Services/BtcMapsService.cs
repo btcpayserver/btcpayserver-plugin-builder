@@ -88,44 +88,66 @@ public sealed class BtcMapsService
     {
         var errors = new List<ValidationError>();
 
+        // Name is the only field both lanes need - btcmap submit_place requires it
+        // as part of the params payload, and the directory merchants.json keys
+        // entries by name.
         var name = (request.Name ?? string.Empty).Trim();
         if (string.IsNullOrEmpty(name) || name.Length > 200)
             errors.Add(new ValidationError(nameof(request.Name), "Required, 1-200 characters."));
 
-        var url = (request.Url ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(url))
-            errors.Add(new ValidationError(nameof(request.Url), "Required."));
-        else if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps)
-            errors.Add(new ValidationError(nameof(request.Url), "Must be a valid https:// URL."));
-
-        var description = (request.Description ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(description) || description.Length > 1000)
-            errors.Add(new ValidationError(nameof(request.Description), "Required, 1-1000 characters."));
-
-        var type = (request.Type ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(type) || !ValidTypes.Contains(type))
-            errors.Add(new ValidationError(nameof(request.Type),
-                $"Required. One of: {string.Join(", ", ValidTypes)}."));
-
-        if (!string.IsNullOrWhiteSpace(request.SubType))
+        // Directory-lane required fields. Skip when the caller opted out of the
+        // directory submission so a btcmap-only call doesn't need to fill in
+        // unrelated directory metadata.
+        if (request.SubmitToDirectory)
         {
-            var subType = request.SubType.Trim();
-            if (string.Equals(type, "merchants", StringComparison.OrdinalIgnoreCase) &&
-                !ValidMerchantSubTypes.Contains(subType))
+            var url = (request.Url ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(url))
+                errors.Add(new ValidationError(nameof(request.Url), "Required when SubmitToDirectory=true."));
+            else if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps)
+                errors.Add(new ValidationError(nameof(request.Url), "Must be a valid https:// URL."));
+
+            var description = (request.Description ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(description) || description.Length > 1000)
+                errors.Add(new ValidationError(nameof(request.Description), "Required when SubmitToDirectory=true. 1-1000 characters."));
+
+            var type = (request.Type ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(type) || !ValidTypes.Contains(type))
+                errors.Add(new ValidationError(nameof(request.Type),
+                    $"Required when SubmitToDirectory=true. One of: {string.Join(", ", ValidTypes)}."));
+
+            if (!string.IsNullOrWhiteSpace(request.SubType))
             {
-                errors.Add(new ValidationError(nameof(request.SubType),
-                    "Invalid merchant subtype."));
+                var subType = request.SubType.Trim();
+                if (string.Equals(type, "merchants", StringComparison.OrdinalIgnoreCase) &&
+                    !ValidMerchantSubTypes.Contains(subType))
+                {
+                    errors.Add(new ValidationError(nameof(request.SubType),
+                        "Invalid merchant subtype."));
+                }
             }
         }
 
+        // Country format check applies to either lane. GLOBAL is the directory's
+        // pseudonym for online-only / multi-region merchants but it is NOT a valid
+        // physical-place country code for the btcmap directory map (every place
+        // there is geocoded). Reject GLOBAL when the btcmap lane is on; allow it
+        // when only the directory lane is in play.
         if (!string.IsNullOrWhiteSpace(request.Country))
         {
             var country = request.Country.Trim();
-            // GLOBAL is the directory's pseudonym for online-only / multi-region merchants.
-            // Everything else must be an actual ISO 3166-1 alpha-2 code.
-            if (country != "GLOBAL" && !Iso3166Alpha2.Contains(country))
+            if (country == "GLOBAL")
+            {
+                if (request.SubmitToBtcMap)
+                {
+                    errors.Add(new ValidationError(nameof(request.Country),
+                        "Country=GLOBAL is incompatible with SubmitToBtcMap=true (btcmap places are physical locations). Use an ISO 3166-1 alpha-2 code or omit Country."));
+                }
+            }
+            else if (!Iso3166Alpha2.Contains(country))
+            {
                 errors.Add(new ValidationError(nameof(request.Country),
                     "Must be ISO 3166-1 alpha-2 or GLOBAL."));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(request.OnionUrl))
