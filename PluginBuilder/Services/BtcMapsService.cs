@@ -245,8 +245,8 @@ public sealed class BtcMapsService
         // Payment-rail flags. Plugin sets per the store's enabled rails - omit
         // when null or false so a Lightning-only store doesn't claim on-chain
         // support (or vice versa).
-        if (request.AcceptsOnchain == true) extraFields["payment:onchain"] = "yes";
-        if (request.AcceptsLightning == true) extraFields["payment:lightning"] = "yes";
+        if (request.AcceptsOnchain == true) extraFields["osm:payment:onchain"] = "yes";
+        if (request.AcceptsLightning == true) extraFields["osm:payment:lightning"] = "yes";
 
         var rpcParams = new Dictionary<string, object?>
         {
