@@ -29,6 +29,15 @@ public sealed class BtcMapsSubmitRequest
     public string? City { get; set; }
     public string? Postcode { get; set; }
 
+    // Email - first-class field on btcmap rest/v4/places.md. Plain key, no prefix.
+    public string? Email { get; set; }
+
+    // Payment-rail flags. Plugin sets these per the store's enabled rails;
+    // each true value emits the corresponding `payment:onchain=yes` /
+    // `payment:lightning=yes` marker in extra_fields. Null / false = omitted.
+    public bool? AcceptsOnchain { get; set; }
+    public bool? AcceptsLightning { get; set; }
+
     // Routing flags. Default-true preserves the existing call-site semantics
     // for SubmitToDirectory; SubmitToBtcMap defaults false so callers must
     // opt in to the new path.

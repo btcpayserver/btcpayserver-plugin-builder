@@ -203,18 +203,33 @@ public sealed class BtcMapsService
         // emit payment:onchain + payment:lightning instead of payment:bitcoin since
         // BTCPay merchants run both rails.
         var extraFields = new Dictionary<string, object?>();
+        // First-class btcmap fields (plain keys per rest/v4/places.md).
         if (!string.IsNullOrWhiteSpace(request.Url)) extraFields["website"] = request.Url.Trim();
         if (!string.IsNullOrWhiteSpace(request.Description)) extraFields["description"] = request.Description.Trim();
         if (!string.IsNullOrWhiteSpace(request.Phone)) extraFields["phone"] = request.Phone.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Email)) extraFields["email"] = request.Email.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Twitter))
+        {
+            // btcmap's `twitter` field is documented as a URL. Normalize the @handle
+            // shape the rest of the API accepts (with or without leading @) into
+            // the URL form the directory map expects.
+            var t = request.Twitter.Trim();
+            var handle = t.StartsWith("@") ? t[1..] : t;
+            extraFields["twitter"] = handle.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? handle
+                : $"https://x.com/{handle}";
+        }
+        // OSM custom tags use osm:<tag_name> per the same doc.
         if (!string.IsNullOrWhiteSpace(request.HouseNumber)) extraFields["osm:addr:housenumber"] = request.HouseNumber.Trim();
         if (!string.IsNullOrWhiteSpace(request.Street)) extraFields["osm:addr:street"] = request.Street.Trim();
         if (!string.IsNullOrWhiteSpace(request.City)) extraFields["osm:addr:city"] = request.City.Trim();
         if (!string.IsNullOrWhiteSpace(request.Postcode)) extraFields["osm:addr:postcode"] = request.Postcode.Trim();
-        // BTCPay stores accept both on-chain and Lightning by default. Emit both as
-        // explicit yes markers so btcmap can route the place correctly without a
-        // separate disambiguation pass.
-        extraFields["payment:onchain"] = "yes";
-        extraFields["payment:lightning"] = "yes";
+        if (!string.IsNullOrWhiteSpace(request.Country)) extraFields["osm:addr:country"] = request.Country.Trim();
+        // Payment-rail flags. Plugin sets per the store's enabled rails - omit
+        // when null or false so a Lightning-only store doesn't claim on-chain
+        // support (or vice versa).
+        if (request.AcceptsOnchain == true) extraFields["payment:onchain"] = "yes";
+        if (request.AcceptsLightning == true) extraFields["payment:lightning"] = "yes";
 
         var rpcParams = new Dictionary<string, object?>
         {
