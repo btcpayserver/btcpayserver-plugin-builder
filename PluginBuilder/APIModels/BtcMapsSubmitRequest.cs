@@ -22,6 +22,13 @@ public sealed class BtcMapsSubmitRequest
     public string? Category { get; set; }
     public string? ExternalId { get; set; }
 
+    // Address fields. Optional; forwarded to btcmap as osm:addr:* tags per the
+    // BTC Map import-RPC doc's osm:<tag_name> custom-field convention.
+    public string? HouseNumber { get; set; }
+    public string? Street { get; set; }
+    public string? City { get; set; }
+    public string? Postcode { get; set; }
+
     // Routing flags. Default-true preserves the existing call-site semantics
     // for SubmitToDirectory; SubmitToBtcMap defaults false so callers must
     // opt in to the new path.

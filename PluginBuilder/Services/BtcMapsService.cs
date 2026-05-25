@@ -194,26 +194,27 @@ public sealed class BtcMapsService
         var client = _httpClientFactory.CreateClient(HttpClientNames.BtcMap);
 
         // BTC Map import-RPC takes a JSON-RPC 2.0 envelope at /rpc with method=submit_place.
-        // Required params: origin, external_id, lat, lon, category, name. extra_fields is
-        // an OSM-style tag bag we use to forward the optional surface (website, phone, twitter,
-        // github, onion, description) so a future btcmap-side reviewer has full merchant context
-        // without re-querying us.
+        // Required params: origin, external_id, lat, lon, category, name. extra_fields uses
+        // the documented first-class keys (phone, website, description) and the osm:<tag_name>
+        // convention for granular OSM tags (osm:addr:*). Field shape coordinated with
+        // rollforsats msg 69 in -1003792698025: keep website/description/phone, drop
+        // twitter/github/onion (not directly useful for the directory map), drop
+        // addr:country in favor of granular osm:addr:* tags the plugin captures, and
+        // emit payment:onchain + payment:lightning instead of payment:bitcoin since
+        // BTCPay merchants run both rails.
         var extraFields = new Dictionary<string, object?>();
         if (!string.IsNullOrWhiteSpace(request.Url)) extraFields["website"] = request.Url.Trim();
         if (!string.IsNullOrWhiteSpace(request.Description)) extraFields["description"] = request.Description.Trim();
         if (!string.IsNullOrWhiteSpace(request.Phone)) extraFields["phone"] = request.Phone.Trim();
-        if (!string.IsNullOrWhiteSpace(request.Country)) extraFields["addr:country"] = request.Country.Trim();
-        if (!string.IsNullOrWhiteSpace(request.Twitter))
-        {
-            var t = request.Twitter.Trim();
-            extraFields["contact:twitter"] = t.StartsWith("@") ? t : "@" + t;
-        }
-        if (!string.IsNullOrWhiteSpace(request.Github)) extraFields["contact:github"] = request.Github.Trim();
-        if (!string.IsNullOrWhiteSpace(request.OnionUrl)) extraFields["contact:onion"] = request.OnionUrl.Trim();
-        // Surface payment intent so btcmap can route the place into the right bucket
-        // even before a reviewer touches it. Every submission through this endpoint
-        // is by definition a Bitcoin-accepting merchant.
-        extraFields["payment:bitcoin"] = "yes";
+        if (!string.IsNullOrWhiteSpace(request.HouseNumber)) extraFields["osm:addr:housenumber"] = request.HouseNumber.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Street)) extraFields["osm:addr:street"] = request.Street.Trim();
+        if (!string.IsNullOrWhiteSpace(request.City)) extraFields["osm:addr:city"] = request.City.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Postcode)) extraFields["osm:addr:postcode"] = request.Postcode.Trim();
+        // BTCPay stores accept both on-chain and Lightning by default. Emit both as
+        // explicit yes markers so btcmap can route the place correctly without a
+        // separate disambiguation pass.
+        extraFields["payment:onchain"] = "yes";
+        extraFields["payment:lightning"] = "yes";
 
         var rpcParams = new Dictionary<string, object?>
         {
