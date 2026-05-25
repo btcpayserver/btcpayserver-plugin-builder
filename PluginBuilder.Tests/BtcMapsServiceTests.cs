@@ -175,6 +175,116 @@ public class BtcMapsServiceTests
         Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.OnionUrl));
     }
 
+    // BTC Map import-RPC fields are mandatory only when SubmitToBtcMap=true. The
+    // default-false path preserves the directory-only callers untouched.
+
+    private static BtcMapsSubmitRequest MakeValidBtcMap()
+    {
+        var req = MakeValid();
+        req.SubmitToBtcMap = true;
+        req.Lat = 51.5074;
+        req.Lon = -0.1278;
+        req.Category = "cafe";
+        req.ExternalId = "store.example.com:abc123";
+        return req;
+    }
+
+    [Fact]
+    public void Validate_AcceptsValidBtcMapSubmission()
+    {
+        Assert.Empty(MakeService().Validate(MakeValidBtcMap()));
+    }
+
+    [Fact]
+    public void Validate_DoesNotRequireBtcMapFieldsByDefault()
+    {
+        // Directory-only callers (the pre-existing shape) must not break: a
+        // request with SubmitToBtcMap unset (default false) and no Lat / Lon /
+        // Category / ExternalId is still valid.
+        Assert.Empty(MakeService().Validate(MakeValid()));
+    }
+
+    [Fact]
+    public void Validate_RejectsMissingLatWhenSubmitToBtcMap()
+    {
+        var req = MakeValidBtcMap();
+        req.Lat = null;
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Lat));
+    }
+
+    [Fact]
+    public void Validate_RejectsOutOfRangeLat()
+    {
+        var req = MakeValidBtcMap();
+        req.Lat = 91.0;
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Lat));
+    }
+
+    [Fact]
+    public void Validate_RejectsNaNLat()
+    {
+        var req = MakeValidBtcMap();
+        req.Lat = double.NaN;
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Lat));
+    }
+
+    [Fact]
+    public void Validate_RejectsMissingLonWhenSubmitToBtcMap()
+    {
+        var req = MakeValidBtcMap();
+        req.Lon = null;
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Lon));
+    }
+
+    [Fact]
+    public void Validate_RejectsOutOfRangeLon()
+    {
+        var req = MakeValidBtcMap();
+        req.Lon = -180.5;
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Lon));
+    }
+
+    [Fact]
+    public void Validate_RejectsMissingCategoryWhenSubmitToBtcMap()
+    {
+        var req = MakeValidBtcMap();
+        req.Category = null;
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Category));
+    }
+
+    [Fact]
+    public void Validate_RejectsUppercaseCategoryWhenSubmitToBtcMap()
+    {
+        // BTC Map docs: "Use a short, single-word (if possible), lowercase identifier."
+        var req = MakeValidBtcMap();
+        req.Category = "Cafe";
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Category));
+    }
+
+    [Fact]
+    public void Validate_RejectsCategoryWithInvalidCharacters()
+    {
+        var req = MakeValidBtcMap();
+        req.Category = "cafe!";
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.Category));
+    }
+
+    [Fact]
+    public void Validate_RejectsMissingExternalIdWhenSubmitToBtcMap()
+    {
+        var req = MakeValidBtcMap();
+        req.ExternalId = null;
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.ExternalId));
+    }
+
+    [Fact]
+    public void Validate_RejectsOverlongExternalId()
+    {
+        var req = MakeValidBtcMap();
+        req.ExternalId = new string('x', 201);
+        Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.ExternalId));
+    }
+
     [Fact]
     public void NormalizeUrl_LowercasesSchemeAndHostOnly()
     {

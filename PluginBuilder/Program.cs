@@ -223,6 +223,16 @@ public class Program
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             client.Timeout = TimeSpan.FromSeconds(15);
         });
+        services.AddHttpClient(HttpClientNames.BtcMap, client =>
+        {
+            // BTC Map import RPC is a single JSON-RPC 2.0 dispatch endpoint.
+            // Per-call timeout caps a single round-trip at 15s, matching the
+            // BtcMapsDirectory budget so a hung remote can't pin the request
+            // longer than the per-IP rate-limit window.
+            client.DefaultRequestHeaders.Add("User-Agent", "PluginBuilder-BtcMap/1.0");
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
         services.AddHttpClient(HttpClientNames.GitLab, client =>
         {
             client.BaseAddress = new Uri("https://gitlab.com/api/v4/");

@@ -75,6 +75,15 @@ public sealed class BtcMapsService
         public DirectoryTokenMissingException() : base("BTCMAPS:DirectoryGithubToken is not configured.") { }
     }
 
+    public sealed class BtcMapTokenMissingException : Exception
+    {
+        public BtcMapTokenMissingException() : base("BTCMAPS:BtcMapImportToken is not configured.") { }
+    }
+
+    private const string DefaultBtcMapImportEndpoint = "https://api.btcmap.org/rpc";
+    private const string BtcMapImportOrigin = "btcpayserver";
+    private const string BtcMapImportMethod = "submit_place";
+
     public IReadOnlyList<ValidationError> Validate(BtcMapsSubmitRequest request)
     {
         var errors = new List<ValidationError>();
@@ -130,7 +139,119 @@ public sealed class BtcMapsService
             }
         }
 
+        // BTC Map import RPC fields become mandatory only when the caller
+        // opts into that lane via SubmitToBtcMap=true. Directory-only callers
+        // (the existing PR #224 shape) are unaffected.
+        if (request.SubmitToBtcMap)
+        {
+            if (!request.Lat.HasValue || request.Lat.Value is < -90 or > 90 || double.IsNaN(request.Lat.Value))
+                errors.Add(new ValidationError(nameof(request.Lat),
+                    "Required when SubmitToBtcMap=true. Must be in [-90, 90]."));
+
+            if (!request.Lon.HasValue || request.Lon.Value is < -180 or > 180 || double.IsNaN(request.Lon.Value))
+                errors.Add(new ValidationError(nameof(request.Lon),
+                    "Required when SubmitToBtcMap=true. Must be in [-180, 180]."));
+
+            var category = (request.Category ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(category) || category.Length > 50 ||
+                !category.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-' or '_'))
+            {
+                errors.Add(new ValidationError(nameof(request.Category),
+                    "Required when SubmitToBtcMap=true. Short lowercase identifier (a-z, 0-9, -, _; max 50 chars)."));
+            }
+
+            var externalId = (request.ExternalId ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(externalId) || externalId.Length > 200)
+                errors.Add(new ValidationError(nameof(request.ExternalId),
+                    "Required when SubmitToBtcMap=true. 1-200 characters."));
+        }
+
         return errors;
+    }
+
+    public async Task<BtcMapsBtcMapResult> SubmitToBtcMapAsync(
+        BtcMapsSubmitRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var token = _configuration["BTCMAPS:BtcMapImportToken"];
+        if (string.IsNullOrWhiteSpace(token))
+            throw new BtcMapTokenMissingException();
+
+        var endpoint = _configuration["BTCMAPS:BtcMapImportEndpoint"] ?? DefaultBtcMapImportEndpoint;
+
+        var client = _httpClientFactory.CreateClient(HttpClientNames.BtcMap);
+
+        // BTC Map import-RPC takes a JSON-RPC 2.0 envelope at /rpc with method=submit_place.
+        // Required params: origin, external_id, lat, lon, category, name. extra_fields is
+        // an OSM-style tag bag we use to forward the optional surface (website, phone, twitter,
+        // github, onion, description) so a future btcmap-side reviewer has full merchant context
+        // without re-querying us.
+        var extraFields = new Dictionary<string, object?>();
+        if (!string.IsNullOrWhiteSpace(request.Url)) extraFields["website"] = request.Url.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Description)) extraFields["description"] = request.Description.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Phone)) extraFields["phone"] = request.Phone.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Country)) extraFields["addr:country"] = request.Country.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Twitter))
+        {
+            var t = request.Twitter.Trim();
+            extraFields["contact:twitter"] = t.StartsWith("@") ? t : "@" + t;
+        }
+        if (!string.IsNullOrWhiteSpace(request.Github)) extraFields["contact:github"] = request.Github.Trim();
+        if (!string.IsNullOrWhiteSpace(request.OnionUrl)) extraFields["contact:onion"] = request.OnionUrl.Trim();
+        // Surface payment intent so btcmap can route the place into the right bucket
+        // even before a reviewer touches it. Every submission through this endpoint
+        // is by definition a Bitcoin-accepting merchant.
+        extraFields["payment:bitcoin"] = "yes";
+
+        var rpcParams = new Dictionary<string, object?>
+        {
+            ["origin"] = BtcMapImportOrigin,
+            ["external_id"] = request.ExternalId!.Trim(),
+            ["lat"] = request.Lat!.Value,
+            ["lon"] = request.Lon!.Value,
+            ["category"] = request.Category!.Trim().ToLowerInvariant(),
+            ["name"] = request.Name!.Trim(),
+            ["extra_fields"] = extraFields
+        };
+
+        var envelope = new Dictionary<string, object?>
+        {
+            ["jsonrpc"] = "2.0",
+            ["method"] = BtcMapImportMethod,
+            ["params"] = rpcParams,
+            ["id"] = 1
+        };
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, endpoint);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        req.Content = new StringContent(JsonSerializer.Serialize(envelope), Encoding.UTF8, "application/json");
+
+        using var response = await client.SendAsync(req, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"BtcMap RPC {(int)response.StatusCode} {endpoint}: {body}");
+
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+
+        // JSON-RPC 2.0 response shape: either {result: {...}} on success or {error: {...}}.
+        // 2xx status with an error body is a legal JSON-RPC outcome we must surface.
+        if (root.TryGetProperty("error", out var errorElement))
+        {
+            var errorJson = errorElement.GetRawText();
+            throw new HttpRequestException($"BtcMap RPC error response: {errorJson}");
+        }
+
+        if (!root.TryGetProperty("result", out var result))
+            throw new HttpRequestException($"BtcMap RPC missing result: {body}");
+
+        return new BtcMapsBtcMapResult
+        {
+            Id = result.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number ? id.GetInt64() : null,
+            Origin = result.TryGetProperty("origin", out var origin) ? origin.GetString() : null,
+            ExternalId = result.TryGetProperty("external_id", out var ext) ? ext.GetString() : null
+        };
     }
 
     public async Task<BtcMapsDirectoryResult> SubmitToDirectoryAsync(
