@@ -285,6 +285,51 @@ public class BtcMapsServiceTests
         Assert.Contains(MakeService().Validate(req), e => e.Path == nameof(BtcMapsSubmitRequest.ExternalId));
     }
 
+    private static BtcMapsService MakeServiceWithConfig(IDictionary<string, string?> config) =>
+        new BtcMapsService(
+            configuration: new ConfigurationBuilder().AddInMemoryCollection(config).Build(),
+            httpClientFactory: new StubHttpClientFactory(),
+            logger: NullLogger<BtcMapsService>.Instance);
+
+    [Fact]
+    public async System.Threading.Tasks.Task SubmitToBtcMapAsync_RejectsHttpEndpoint()
+    {
+        // Bearer token must never cross the wire over plaintext http://. Misconfigured
+        // endpoint surfaces as InvalidOperationException before HttpClient.SendAsync,
+        // so the token is never built into a request header.
+        var service = MakeServiceWithConfig(new Dictionary<string, string?>
+        {
+            ["BTCMAPS:BtcMapImportToken"] = "test-token",
+            ["BTCMAPS:BtcMapImportEndpoint"] = "http://api.btcmap.org/rpc"
+        });
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.SubmitToBtcMapAsync(MakeValidBtcMap()));
+        Assert.Contains("https", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task SubmitToBtcMapAsync_RejectsNonAbsoluteEndpoint()
+    {
+        var service = MakeServiceWithConfig(new Dictionary<string, string?>
+        {
+            ["BTCMAPS:BtcMapImportToken"] = "test-token",
+            ["BTCMAPS:BtcMapImportEndpoint"] = "/rpc"
+        });
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.SubmitToBtcMapAsync(MakeValidBtcMap()));
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task SubmitToBtcMapAsync_ThrowsTokenMissingWhenUnset()
+    {
+        // Token unset is the ops-deployment-pending shape; controller maps this to
+        // 503 btcmap-not-configured. Test the underlying exception type so the
+        // controller exception ladder stays wired.
+        var service = MakeServiceWithConfig(new Dictionary<string, string?>());
+        await Assert.ThrowsAsync<BtcMapsService.BtcMapTokenMissingException>(
+            () => service.SubmitToBtcMapAsync(MakeValidBtcMap()));
+    }
+
     [Fact]
     public void NormalizeUrl_LowercasesSchemeAndHostOnly()
     {

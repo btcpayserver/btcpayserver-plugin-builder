@@ -177,7 +177,19 @@ public sealed class BtcMapsService
         if (string.IsNullOrWhiteSpace(token))
             throw new BtcMapTokenMissingException();
 
-        var endpoint = _configuration["BTCMAPS:BtcMapImportEndpoint"] ?? DefaultBtcMapImportEndpoint;
+        // Bearer tokens MUST NOT cross the wire over http://; an operator-
+        // misconfigured endpoint would silently leak the scoped token to
+        // anyone on the network path. Parse the configured value into an
+        // absolute https URI before we even create the request, so a bad
+        // BTCMAPS:BtcMapImportEndpoint fails loudly with the offending
+        // value in the message instead of producing a quiet credential leak.
+        var endpoint = (_configuration["BTCMAPS:BtcMapImportEndpoint"] ?? DefaultBtcMapImportEndpoint).Trim();
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) ||
+            endpointUri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new InvalidOperationException(
+                $"BTCMAPS:BtcMapImportEndpoint must be an absolute https:// URL (got '{endpoint}').");
+        }
 
         var client = _httpClientFactory.CreateClient(HttpClientNames.BtcMap);
 
@@ -222,7 +234,7 @@ public sealed class BtcMapsService
             ["id"] = 1
         };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, endpoint);
+        using var req = new HttpRequestMessage(HttpMethod.Post, endpointUri);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         req.Content = new StringContent(JsonSerializer.Serialize(envelope), Encoding.UTF8, "application/json");
 
@@ -230,7 +242,7 @@ public sealed class BtcMapsService
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"BtcMap RPC {(int)response.StatusCode} {endpoint}: {body}");
+            throw new HttpRequestException($"BtcMap RPC {(int)response.StatusCode} {endpointUri}: {body}");
 
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
