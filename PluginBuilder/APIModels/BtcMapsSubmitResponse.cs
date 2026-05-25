@@ -19,4 +19,10 @@ public sealed class BtcMapsBtcMapResult
     public long? Id { get; set; }
     public string? Origin { get; set; }
     public string? ExternalId { get; set; }
+
+    // BTC Map treats import-RPC submissions as queued places that go through
+    // their reviewer workflow before appearing on the public directory map.
+    // A successful submit_place call means "submission accepted for review",
+    // not "place is live." Constant for clients to key off.
+    public string Status { get; set; } = "submitted-for-review";
 }
