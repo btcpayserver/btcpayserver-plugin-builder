@@ -196,12 +196,7 @@ public sealed class BtcMapsService
         // BTC Map import-RPC takes a JSON-RPC 2.0 envelope at /rpc with method=submit_place.
         // Required params: origin, external_id, lat, lon, category, name. extra_fields uses
         // the documented first-class keys (phone, website, description) and the osm:<tag_name>
-        // convention for granular OSM tags (osm:addr:*). Field shape coordinated with
-        // rollforsats msg 69 in -1003792698025: keep website/description/phone, drop
-        // twitter/github/onion (not directly useful for the directory map), drop
-        // addr:country in favor of granular osm:addr:* tags the plugin captures, and
-        // emit payment:onchain + payment:lightning instead of payment:bitcoin since
-        // BTCPay merchants run both rails.
+        // convention for granular OSM tags (osm:addr:*).
         var extraFields = new Dictionary<string, object?>();
         // First-class btcmap fields (plain keys per rest/v4/places.md).
         if (!string.IsNullOrWhiteSpace(request.Url)) extraFields["website"] = request.Url.Trim();
