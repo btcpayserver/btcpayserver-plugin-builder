@@ -291,13 +291,16 @@ public class Program
             });
             options.AddPolicy(Policies.BtcMapsSubmitRateLimit, httpContext =>
             {
-                // Per-source-IP fixed window: 5 submissions per 24h. Caps automation
+                // Per-source-IP fixed window: 3 submissions per 24h. Caps automation
                 // abuse of /apis/btcmaps/v1/submit without throttling honest single
-                // submissions from a merchant.
+                // submissions from a merchant. Tightened from 5/24h with the
+                // multi-vendor BTC Map import-RPC lane (PR #226) since that path
+                // forwards into a moderator review queue and rate-limit is the
+                // primary spam control on the public endpoint.
                 var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
                 return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = 5,
+                    PermitLimit = 3,
                     Window = TimeSpan.FromHours(24),
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                     QueueLimit = 0
