@@ -11,6 +11,10 @@
 
     var currentSearch = Context.Request.Query["searchPluginName"].ToString();
     var currentSort = (string?)Context.Request.Query["sort"] ?? "smart";
+    var currentBtcpayVersion = Context.Request.Query["btcpayVersion"].ToString();
+    var currentIncludePreRelease = Context.Request.Query["includePreRelease"].ToString();
+    var btcpayVersionRoute = string.IsNullOrEmpty(currentBtcpayVersion) ? null : currentBtcpayVersion;
+    var includePreReleaseRoute = string.IsNullOrEmpty(currentIncludePreRelease) ? null : currentIncludePreRelease;
     if (string.IsNullOrEmpty(currentSort)) currentSort = "smart";
 
     var sortLabel = currentSort switch
@@ -55,6 +59,14 @@
                 {
                     <input type="hidden" name="embed" value="1" />
                 }
+                @if (!string.IsNullOrEmpty(currentBtcpayVersion))
+                {
+                    <input type="hidden" name="btcpayVersion" value="@currentBtcpayVersion" />
+                }
+                @if (!string.IsNullOrEmpty(currentIncludePreRelease))
+                {
+                    <input type="hidden" name="includePreRelease" value="@currentIncludePreRelease" />
+                }
 
                 <input type="text"
                        name="searchPluginName"
@@ -75,6 +87,8 @@
                         <a class="dropdown-item @(currentSort == "smart" ? "active" : "")"
                            asp-action="AllPlugins"
                            asp-route-searchPluginName="@currentSearch"
+                           asp-route-btcpayVersion="@btcpayVersionRoute"
+                           asp-route-includePreRelease="@includePreReleaseRoute"
                            asp-route-embed="@embedRoute"
                            asp-route-sort="smart">
                             Relevance
@@ -82,6 +96,8 @@
                         <a class="dropdown-item @(currentSort == "rating" ? "active" : "")"
                            asp-action="AllPlugins"
                            asp-route-searchPluginName="@currentSearch"
+                           asp-route-btcpayVersion="@btcpayVersionRoute"
+                           asp-route-includePreRelease="@includePreReleaseRoute"
                            asp-route-embed="@embedRoute"
                            asp-route-sort="rating">
                             Highest rated
@@ -89,6 +105,8 @@
                         <a class="dropdown-item @(currentSort == "recent" ? "active" : "")"
                            asp-action="AllPlugins"
                            asp-route-searchPluginName="@currentSearch"
+                           asp-route-btcpayVersion="@btcpayVersionRoute"
+                           asp-route-includePreRelease="@includePreReleaseRoute"
                            asp-route-embed="@embedRoute"
                            asp-route-sort="recent">
                             Most recent
@@ -96,6 +114,8 @@
                         <a class="dropdown-item @(currentSort == "alpha" ? "active" : "")"
                            asp-action="AllPlugins"
                            asp-route-searchPluginName="@currentSearch"
+                           asp-route-btcpayVersion="@btcpayVersionRoute"
+                           asp-route-includePreRelease="@includePreReleaseRoute"
                            asp-route-embed="@embedRoute"
                            asp-route-sort="alpha">
                             Alphabetical
@@ -132,6 +152,8 @@
                                         <h3 style="margin-top: 0; margin-bottom: 5px;">
                                             <a asp-action="GetPluginDetails"
                                                asp-route-embed="@embedRoute"
+                                               asp-route-btcpayVersion="@btcpayVersionRoute"
+                                               asp-route-includePreRelease="@includePreReleaseRoute"
                                                data-plugin-slug="@plugin.ProjectSlug"
                                                data-plugin-identifier="@plugin.ManifestInfo?["Identifier"]?.ToString()"
                                                asp-route-pluginSlug="@plugin.ProjectSlug">@plugin.PluginTitle</a>

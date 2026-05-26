@@ -81,6 +81,49 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
+    public async Task PluginDetails_EmbedSelection_PreservesCompatibilityQuery()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        await tester.StartAsync();
+
+        var ownerId = await tester.Server.CreateFakeUserAsync("embed-selection-owner@x.com", confirmEmail: true, githubVerified: true);
+        const string firstSlug = "embed-select-a";
+        const string secondSlug = "embed-select-b";
+        await tester.Server.CreateAndBuildPluginAsync(ownerId, firstSlug);
+        await tester.Server.CreateAndBuildPluginAsync(ownerId, secondSlug);
+
+        var detailsUrl = new Uri(tester.ServerUri!, $"/public/plugins/{firstSlug}?embed=1&btcpayVersion=2.3.6&includePreRelease=true");
+        await tester.Page!.SetContentAsync($"""
+                                            <iframe id="details" src="{detailsUrl}"></iframe>
+                                            """);
+
+        await tester.Page.WaitForFunctionAsync("""
+                                               () => document.querySelector('#details')?.contentWindow?.document?.querySelector('[data-embed-page="details"]')
+                                               """);
+
+        await tester.Page.EvaluateAsync($$"""
+                                        () => document.querySelector('#details').contentWindow.postMessage({
+                                            type: 'btcpay:host-context',
+                                            selectedSlug: '{{secondSlug}}'
+                                        }, window.location.origin)
+                                        """);
+
+        var finalUrlHandle = await tester.Page.WaitForFunctionAsync($$"""
+                                                                       () => {
+                                                                           const href = document.querySelector('#details')?.contentWindow?.location?.href || '';
+                                                                           return href.includes('/public/plugins/{{secondSlug}}') ? href : false;
+                                                                       }
+                                                                       """);
+        var finalUrl = await finalUrlHandle.JsonValueAsync<string>();
+
+        Assert.Contains($"/public/plugins/{secondSlug}", finalUrl);
+        Assert.Contains("embed=1", finalUrl);
+        Assert.Contains("btcpayVersion=2.3.6", finalUrl);
+        Assert.Contains("includePreRelease=true", finalUrl);
+    }
+
+    [Fact]
     public async Task PluginDetails_Reviews_Flow_Works()
     {
         await using var tester = new PlaywrightTester(_log);

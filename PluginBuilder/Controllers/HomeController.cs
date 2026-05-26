@@ -210,8 +210,8 @@ public class HomeController(
     [HttpGet("public/plugins")]
     [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> AllPlugins(
-        [ModelBinder(typeof(PluginVersionModelBinder))]
-        PluginVersion? btcpayVersion = null, string? searchPluginName = null, string sort = "smart")
+        [ModelBinder(typeof(BtcPayHostVersionModelBinder))]
+        PluginVersion? btcpayVersion = null, bool includePreRelease = false, string? searchPluginName = null, string sort = "smart")
     {
         searchPluginName = searchPluginName.StripControlCharacters();
 
@@ -285,7 +285,7 @@ public class HomeController(
                 new
                 {
                     btcpayVersion = btcpayVersion?.VersionParts,
-                    includePreRelease = false,
+                    includePreRelease,
                     searchPattern = $"%{searchPluginName}%",
                     hasSearchTerm = !string.IsNullOrWhiteSpace(searchPluginName)
                 });

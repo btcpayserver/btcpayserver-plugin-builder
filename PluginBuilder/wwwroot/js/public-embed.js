@@ -134,6 +134,13 @@
 
     function buildDetailsUrl(slug) {
         const url = new URL("/public/plugins/" + encodeURIComponent(slug), window.location.origin);
+        const currentUrl = new URL(window.location.href);
+        ["btcpayVersion", "includePreRelease"].forEach(function (param) {
+            const value = currentUrl.searchParams.get(param);
+            if (value) {
+                url.searchParams.set(param, value);
+            }
+        });
         url.searchParams.set("embed", "1");
         return url.toString();
     }
