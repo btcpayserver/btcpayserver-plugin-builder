@@ -15,6 +15,72 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
     private readonly XUnitLogger _log = new("PluginDetailsUITests", output);
 
     [Fact]
+    public async Task PluginDetails_NonEmbed_KeepsReviewsStackedUnderDescription()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        await tester.StartAsync();
+
+        var ownerId = await tester.Server.CreateFakeUserAsync("layout-owner@x.com", confirmEmail: true, githubVerified: true);
+        const string slug = "plugin-details-layout";
+        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
+
+        await tester.Page!.SetViewportSizeAsync(1600, 1000);
+        await tester.GoToUrl($"/public/plugins/{slug}");
+        await tester.AssertNoError();
+
+        var descriptionCard = tester.Page.Locator(".card").Filter(new LocatorFilterOptions { HasText = "Description" });
+        var detailsCard = tester.Page.Locator("#download-btn").Locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]");
+        var reviewsCard = tester.Page.Locator("#reviews");
+
+        await Expect(descriptionCard).ToHaveCountAsync(1);
+        await Expect(detailsCard).ToHaveCountAsync(1);
+        await Expect(reviewsCard).ToHaveCountAsync(1);
+
+        var descriptionBox = await descriptionCard.BoundingBoxAsync() ?? throw new InvalidOperationException("Description card was not visible.");
+        var detailsBox = await detailsCard.BoundingBoxAsync() ?? throw new InvalidOperationException("Details card was not visible.");
+        var reviewsBox = await reviewsCard.BoundingBoxAsync() ?? throw new InvalidOperationException("Reviews card was not visible.");
+
+        var reviewsGap = reviewsBox.Y - (descriptionBox.Y + descriptionBox.Height);
+        Assert.InRange(reviewsGap, 0, 80);
+        Assert.True(
+            reviewsBox.Y < detailsBox.Y + detailsBox.Height,
+            "Reviews should stack under the description column instead of waiting for the metadata card height.");
+    }
+
+    [Fact]
+    public async Task PluginDetails_EmbedNarrow_KeepsVersionBeforeReviews()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        await tester.StartAsync();
+
+        var ownerId = await tester.Server.CreateFakeUserAsync("embed-layout-owner@x.com", confirmEmail: true, githubVerified: true);
+        const string slug = "plugin-details-embed-layout";
+        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
+
+        await tester.Page!.SetViewportSizeAsync(700, 1000);
+        await tester.GoToUrl($"/public/plugins/{slug}?embed=1");
+        await tester.AssertNoError();
+
+        var descriptionCard = tester.Page.Locator(".plugin-details-description-card");
+        var detailsCard = tester.Page.Locator(".plugin-details-metadata-card");
+        var reviewsCard = tester.Page.Locator(".plugin-details-reviews-card");
+
+        await Expect(descriptionCard).ToHaveCountAsync(1);
+        await Expect(detailsCard).ToHaveCountAsync(1);
+        await Expect(reviewsCard).ToHaveCountAsync(1);
+        await Expect(tester.Page.Locator("#btcpay-install-plugin-btn")).ToHaveCountAsync(1);
+
+        var descriptionBox = await descriptionCard.BoundingBoxAsync() ?? throw new InvalidOperationException("Description card was not visible.");
+        var detailsBox = await detailsCard.BoundingBoxAsync() ?? throw new InvalidOperationException("Details card was not visible.");
+        var reviewsBox = await reviewsCard.BoundingBoxAsync() ?? throw new InvalidOperationException("Reviews card was not visible.");
+
+        Assert.True(descriptionBox.Y < detailsBox.Y, "Description should stay above metadata in embedded details.");
+        Assert.True(detailsBox.Y < reviewsBox.Y, "Metadata should stay above reviews in embedded details.");
+    }
+
+    [Fact]
     public async Task PluginDetails_Reviews_Flow_Works()
     {
         await using var tester = new PlaywrightTester(_log);
