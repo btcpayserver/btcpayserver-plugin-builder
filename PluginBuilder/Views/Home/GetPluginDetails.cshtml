@@ -16,8 +16,10 @@
     var writeReviewUrl = Model.EmbedMode ? $"{pluginUrl}#write-review" : "#write-review";
     var writeReviewTarget = Model.EmbedMode ? "_blank" : null;
     var writeReviewRel = Model.EmbedMode ? "noopener noreferrer" : null;
-    var btcpayVersionRoute = Context.Request.Query["btcpayVersion"].ToString();
-    var includePreReleaseRoute = Context.Request.Query["includePreRelease"].ToString();
+    var currentBtcpayVersion = Context.Request.Query["btcpayVersion"].ToString();
+    var currentIncludePreRelease = Context.Request.Query["includePreRelease"].ToString();
+    var btcpayVersionRoute = string.IsNullOrEmpty(currentBtcpayVersion) ? null : currentBtcpayVersion;
+    var includePreReleaseRoute = string.IsNullOrEmpty(currentIncludePreRelease) ? null : currentIncludePreRelease;
     var currentRating = Model.RatingFilter;
     var containerClass = Model.EmbedMode ? "container-fluid px-0" : "container";
     DateTimeOffset.TryParse(Model.Plugin.BuildInfo?["buildDate"]?.ToString(), out var buildDate);
@@ -412,7 +414,17 @@
                                         var shortV = string.Join(".", v.Split('.').Take(3));
                                         <li>
                                             <a class="dropdown-item @(v == Model.Plugin.Version ? "active" : "")"
-                                            href="#" data-version="@v" data-display="@shortV">@shortV</a>
+                                               asp-action="GetPluginDetails"
+                                               asp-controller="Home"
+                                               asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
+                                               asp-route-version="@v"
+                                               asp-route-btcpayVersion="@btcpayVersionRoute"
+                                               asp-route-includePreRelease="@includePreReleaseRoute"
+                                               asp-route-embed="@embedRoute"
+                                               asp-route-sort="@Model.Sort"
+                                               asp-route-skip="0"
+                                               asp-route-count="@Model.Count"
+                                               asp-route-RatingFilter="@Model.RatingFilter">@shortV</a>
                                         </li>
                                     }
                                 </ul>
@@ -591,72 +603,4 @@
         render(input.value);
     })();
 
-    (() => {
-        const input = document.getElementById('version-selector');
-        const btn = document.getElementById('version-dropdown-btn');
-        if (!input || !btn) return;
-
-        const slug = '@Html.Raw(Model.Plugin.ProjectSlug?.Replace("'", "\\'"))';
-        const base = '/api/v1/plugins/' + encodeURIComponent(slug) + '/versions/';
-        const cache = new Map();
-
-        document.querySelectorAll('[data-version]').forEach(item => {
-            item.addEventListener('click', async function (e) {
-                e.preventDefault();
-                const version = this.dataset.version;
-
-                btn.childNodes[0].textContent = this.dataset.display + ' ';
-                input.value = this.dataset.version;
-
-                document.querySelectorAll('[data-version]').forEach(el =>
-                    el.classList.toggle('active', el.dataset.version === version));
-
-                const downloadBtn = document.getElementById('download-btn');
-                if (downloadBtn) downloadBtn.href = base + encodeURIComponent(version) + '/download';
-
-                let data = cache.get(version);
-                if (!data) {
-                    try {
-                        const res = await fetch(base + encodeURIComponent(version), { headers: { 'Accept': 'application/json' } });
-                        if (!res.ok) return;
-                        data = await res.json();
-                        cache.set(version, data);
-                    } catch { return; }
-                }
-
-                const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-                const toggle = (id, show) => document.getElementById(id)?.classList.toggle('d-none', !show);
-
-                const dt = new Date(data?.buildInfo?.buildDate);
-                set('plugin-published-date', isNaN(dt) ? '' : dt.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }));
-
-                const src = (() => {
-                    const b = data?.buildInfo;
-                    if (!b?.gitRepository || !b?.gitCommit) return null;
-                    try {
-                        const u = new URL(b.gitRepository);
-                        if (u.hostname.toLowerCase() !== 'github.com') return null;
-                        const [owner, repo] = u.pathname.split('/').filter(Boolean);
-                        const dir = (b.pluginDir || '').split('/').filter(Boolean).map(encodeURIComponent).join('/');
-                        return `https://github.com/${owner}/${repo.replace(/\.git$/i, '')}/tree/${encodeURIComponent(b.gitCommit)}${dir ? '/' + dir : ''}`;
-                    } catch { return null; }
-                })();
-                const srcEl = document.getElementById('plugin-source-url');
-                if (srcEl) srcEl.href = src || '#';
-                toggle('plugin-repository-row', !!src);
-
-                const min = (data?.btcPayMinVersion || '').trim();
-                set('plugin-min-btcpay-version', min);
-                toggle('plugin-min-btcpay-row', !!min);
-
-                const max = (data?.btcPayMaxVersion || '').trim();
-                set('plugin-max-btcpay-version', max);
-                toggle('plugin-max-btcpay-row', !!max);
-
-                const changelog = (data?.changelog || '').trim();
-                set('plugin-changelog-text', changelog);
-                toggle('plugin-changelog-card', !!changelog);
-            });
-        });
-    })();
 </script>
