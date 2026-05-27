@@ -93,6 +93,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.Server.CreateAndBuildPluginAsync(ownerId, firstSlug);
         await tester.Server.CreateAndBuildPluginAsync(ownerId, secondSlug);
 
+        var embedOrigin = tester.ServerUri!.GetLeftPart(UriPartial.Authority);
+        await tester.GoToUrl("/");
         var detailsUrl = new Uri(tester.ServerUri!, $"/public/plugins/{firstSlug}?embed=1&btcpayVersion=2.3.6&includePreRelease=true");
         await tester.Page!.SetContentAsync($"""
                                             <iframe id="details" src="{detailsUrl}"></iframe>
@@ -106,7 +108,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
                                         () => document.querySelector('#details').contentWindow.postMessage({
                                             type: 'btcpay:host-context',
                                             selectedSlug: '{{secondSlug}}'
-                                        }, window.location.origin)
+                                        }, '{{embedOrigin}}')
                                         """);
 
         var finalUrlHandle = await tester.Page.WaitForFunctionAsync($$"""
