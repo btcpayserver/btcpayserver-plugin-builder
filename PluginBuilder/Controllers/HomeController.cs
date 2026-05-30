@@ -361,6 +361,18 @@ public class HomeController(
               FROM get_all_versions(@btcpayVersion, @includePreRelease) gv
               WHERE gv.plugin_slug = v.plugin_slug
               """;
+        var versionPreReleasesQuery = btcpayVersion is null
+            ? """
+              SELECT array_agg(pre_release ORDER BY ver DESC)
+              FROM versions
+              WHERE plugin_slug = v.plugin_slug
+              """
+            : """
+              SELECT array_agg(vv.pre_release ORDER BY gv.ver DESC)
+              FROM get_all_versions(@btcpayVersion, @includePreRelease) gv
+              JOIN versions vv ON vv.plugin_slug = gv.plugin_slug AND vv.ver = gv.ver
+              WHERE gv.plugin_slug = v.plugin_slug
+              """;
         var prms = new
         {
             pluginSlug = pluginSlug.ToString(),
@@ -393,7 +405,8 @@ public class HomeController(
                              WHERE b2.plugin_slug = v.plugin_slug
                              ORDER BY b2.id ASC
                              LIMIT 1) AS created_at,
-                           (" + versionsQuery + @") AS versions
+                           (" + versionsQuery + @") AS versions,
+                           (" + versionPreReleasesQuery + @") AS version_pre_releases
                          FROM " + versionSource + @"
                          JOIN builds  b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
                          JOIN plugins p ON b.plugin_slug = p.slug
@@ -465,7 +478,15 @@ public class HomeController(
         var pluginDetails = await multi.ReadFirstOrDefaultAsync<dynamic>();
         if (pluginDetails is null)
             return NotFound();
-        var versions = pluginDetails.versions as IEnumerable<string> ?? Enumerable.Empty<string>();
+        var versionLabels = (pluginDetails.versions as IEnumerable<string> ?? Enumerable.Empty<string>()).ToList();
+        var versionPreReleases = (pluginDetails.version_pre_releases as IEnumerable<bool> ?? Enumerable.Empty<bool>()).ToList();
+        var versions = versionLabels
+            .Select((v, i) => new PluginDetailsVersionViewModel
+            {
+                Version = v,
+                PreRelease = i < versionPreReleases.Count && versionPreReleases[i]
+            })
+            .ToList();
 
         //second
         var summary = await multi.ReadFirstOrDefaultAsync<PluginRatingSummary>() ?? new PluginRatingSummary();
@@ -526,7 +547,7 @@ public class HomeController(
             Reviews = items,
             IsAdmin = isAdmin,
             IsOwner = userId != null && userId == primaryOwnerId,
-            PluginVersions = versions.ToList(),
+            PluginVersions = versions,
             ShowHiddenNotice = Enum.Parse<PluginVisibilityEnum>((string)pluginDetails.visibility, true) == PluginVisibilityEnum.Hidden,
             Contributors = pluginContributors,
             RatingFilter = model.RatingFilter,

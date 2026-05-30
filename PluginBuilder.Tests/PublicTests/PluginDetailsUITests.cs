@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Dapper;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
 using PluginBuilder.DataModels;
@@ -123,6 +124,104 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         Assert.Contains("embed=1", finalUrl);
         Assert.Contains("btcpayVersion=2.3.6", finalUrl);
         Assert.Contains("includePreRelease=true", finalUrl);
+    }
+
+    [Fact]
+    public async Task PluginDetails_PreReleaseInstall_ConfirmsBeforePostingEmbedInstallRequest()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        await tester.StartAsync();
+
+        var ownerId = await tester.Server.CreateFakeUserAsync("pre-release-details-owner@x.com", confirmEmail: true, githubVerified: true);
+        const string slug = "plugin-details-pre-release";
+        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
+
+        await using (var conn = await tester.Server.GetService<DBConnectionFactory>().Open())
+        {
+            var manifestInfo = await conn.QuerySingleAsync<string>(
+                "SELECT manifest_info FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
+                new { pluginSlug = slug, buildId = fullBuildId.BuildId });
+            var manifest = PluginManifest.Parse(manifestInfo);
+            await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
+
+            await conn.ExecuteAsync(
+                """
+                INSERT INTO versions (plugin_slug, ver, build_id, btcpay_min_ver, btcpay_max_ver, pre_release)
+                VALUES (@pluginSlug, @version, @buildId, @btcpayMinVer, @btcpayMaxVer, TRUE)
+                """,
+                new
+                {
+                    pluginSlug = slug,
+                    version = PluginVersion.Parse("1.0.3.0").VersionParts,
+                    buildId = fullBuildId.BuildId,
+                    btcpayMinVer = manifest.BTCPayMinVersion?.VersionParts ?? PluginVersion.Zero.VersionParts,
+                    btcpayMaxVer = manifest.BTCPayMaxVersion?.VersionParts
+                });
+        }
+
+        var embedOrigin = tester.ServerUri!.GetLeftPart(UriPartial.Authority);
+        var detailsUrl = new Uri(tester.ServerUri!, $"/public/plugins/{slug}?btcpayVersion=1.4.6.0&includePreRelease=true&embed=1&sort=helpful&count=10");
+
+        await tester.GoToUrl("/");
+        await tester.Page!.SetContentAsync($"""
+                                            <iframe id="details" src="{detailsUrl}"></iframe>
+                                            """);
+        await tester.Page.WaitForFunctionAsync("""
+                                               () => document.querySelector('#details')?.contentWindow?.document?.querySelector('[data-embed-page="details"]')
+                                               """);
+        await tester.Page.EvaluateAsync("""
+                                        () => {
+                                            window.__installMessages = [];
+                                            window.addEventListener('message', event => {
+                                                if (event.data?.type === 'pb:install-requested') {
+                                                    window.__installMessages.push(event.data);
+                                                }
+                                            });
+                                        }
+                                        """);
+        await tester.Page.EvaluateAsync($$"""
+                                        () => document.querySelector('#details').contentWindow.postMessage({
+                                            type: 'btcpay:host-context',
+                                            colorMode: 'light'
+                                        }, '{{embedOrigin}}')
+                                        """);
+
+        var frame = tester.Page.FrameLocator("#details");
+        var versionButton = frame.Locator("#version-dropdown-btn");
+        await Expect(versionButton).ToContainTextAsync("1.0.3");
+        await Expect(frame.Locator("#btcpay-install-plugin-btn")).ToHaveTextAsync("Install in BTCPay Server");
+
+        await frame.Locator("#btcpay-install-plugin-btn").ClickAsync();
+        await Expect(frame.Locator("#pre-release-confirm-modal")).ToBeVisibleAsync();
+        Assert.Equal(0, await tester.Page.EvaluateAsync<int>("() => window.__installMessages.length"));
+
+        await frame.Locator("#pre-release-confirm-continue").ClickAsync();
+        await tester.Page.WaitForFunctionAsync("() => window.__installMessages.length === 1");
+        var installMessageJson = await tester.Page.EvaluateAsync<string>("() => JSON.stringify(window.__installMessages[0])");
+        Assert.Contains("\"version\":\"1.0.3.0\"", installMessageJson);
+        Assert.Contains("\"preRelease\":true", installMessageJson);
+
+        await versionButton.ClickAsync();
+        var versionMenu = frame.Locator("#version-dropdown-btn").Locator("xpath=following-sibling::ul[contains(@class, 'dropdown-menu')][1]");
+        var releaseItem = versionMenu.Locator("a.dropdown-item").Filter(new LocatorFilterOptions { HasText = "1.0.2" });
+
+        Assert.DoesNotContain("pre-release", await versionMenu.InnerTextAsync(), StringComparison.OrdinalIgnoreCase);
+
+        await releaseItem.ClickAsync();
+        var finalUrlHandle = await tester.Page.WaitForFunctionAsync("""
+                                                                    () => {
+                                                                        const href = document.querySelector('#details')?.contentWindow?.location?.href || '';
+                                                                        return href.includes('version=1.0.2.0') ? href : false;
+                                                                    }
+                                                                    """);
+        var finalUrl = await finalUrlHandle.JsonValueAsync<string>();
+
+        Assert.Contains("btcpayVersion=1.4.6.0", finalUrl);
+        Assert.Contains("includePreRelease=true", finalUrl);
+        Assert.Contains("embed=1", finalUrl);
+        Assert.Contains("sort=helpful", finalUrl);
+        Assert.Contains("count=10", finalUrl);
     }
 
     [Fact]

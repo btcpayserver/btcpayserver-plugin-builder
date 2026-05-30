@@ -128,7 +128,8 @@
             type: "pb:install-requested",
             identifier: identifier,
             slug: slug || null,
-            version: version
+            version: version,
+            preRelease: embedPage.dataset.pluginPreRelease === "true"
         }, hostOrigin);
     }
 

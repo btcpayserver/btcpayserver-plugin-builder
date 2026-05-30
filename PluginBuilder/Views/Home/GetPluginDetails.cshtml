@@ -23,6 +23,8 @@
     var currentRating = Model.RatingFilter;
     var containerClass = Model.EmbedMode ? "container-fluid px-0" : "container";
     DateTimeOffset.TryParse(Model.Plugin.BuildInfo?["buildDate"]?.ToString(), out var buildDate);
+    var currentVersion = Model.PluginVersions.FirstOrDefault(v => v.Version == Model.Plugin.Version);
+    var currentShortVersion = string.Join(".", Model.Plugin.Version.Split('.').Take(3));
 
     var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
     var videoThumbUrl = Model.Plugin.VideoUrl.GetVideoThumbnailUrl();
@@ -77,7 +79,8 @@
 <div class="@containerClass"
      data-embed-page="details"
      data-plugin-slug="@Model.Plugin.ProjectSlug"
-     data-plugin-identifier="@pluginIdentifier">
+     data-plugin-identifier="@pluginIdentifier"
+     data-plugin-pre-release="@((currentVersion?.PreRelease == true).ToString().ToLowerInvariant())">
     <div class="row mb-4">
         <div class="col-12">
             <div class="rounded p-4" style="background: linear-gradient(135deg, var(--btcpay-body-bg) 0%, var(--btcpay-body-bg-medium) 100%);">
@@ -406,18 +409,19 @@
                             <div class="dropdown d-inline-block">
                                 <button id="version-dropdown-btn" class="btn btn-secondary btn-sm dropdown-toggle" type="button"
                                         data-bs-toggle="dropdown" aria-expanded="false">
-                                    @string.Join(".", Model.Plugin.Version.Split('.').Take(3))
+                                    @currentShortVersion
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end" style="max-height: 140px; overflow-y: auto;">
                                     @foreach (var v in Model.PluginVersions)
                                     {
-                                        var shortV = string.Join(".", v.Split('.').Take(3));
+                                        var shortV = string.Join(".", v.Version.Split('.').Take(3));
                                         <li>
-                                            <a class="dropdown-item @(v == Model.Plugin.Version ? "active" : "")"
+                                            <a class="dropdown-item @(v.Version == Model.Plugin.Version ? "active" : "")"
+                                               data-version="@v.Version"
                                                asp-action="GetPluginDetails"
                                                asp-controller="Home"
                                                asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
-                                               asp-route-version="@v"
+                                               asp-route-version="@v.Version"
                                                asp-route-btcpayVersion="@btcpayVersionRoute"
                                                asp-route-includePreRelease="@includePreReleaseRoute"
                                                asp-route-embed="@embedRoute"
@@ -496,6 +500,7 @@
                            asp-action="Download" asp-controller="Api"
                            asp-route-pluginSlug="@Model.Plugin.ProjectSlug"
                            asp-route-version="@Model.Plugin.Version"
+                           data-pre-release-confirm="download"
                            class="btn btn-primary w-100" target="_blank" rel="noopener noreferrer">Download</a>
                     }
                     else
@@ -504,6 +509,7 @@
                                 id="btcpay-install-plugin-btn"
                                 class="btn btn-primary w-100"
                                 data-plugin-install
+                                data-pre-release-confirm="install"
                                 disabled="@(string.IsNullOrWhiteSpace(pluginIdentifier) ? "disabled" : null)">Install in BTCPay Server</button>
                     }
                 </div>
@@ -540,6 +546,29 @@
         </div>
     </div>
 </div>
+
+@if (currentVersion?.PreRelease == true)
+{
+    <div class="modal fade" id="pre-release-confirm-modal" tabindex="-1" aria-labelledby="pre-release-confirm-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="modal-title" id="pre-release-confirm-title">Pre-release version</h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                        <vc:icon symbol="close" />
+                    </button>
+                </div>
+                <div class="modal-body">
+                    This version is marked as pre-release and may be intended for testing. Continue only if you trust this plugin version.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="pre-release-confirm-continue">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 <partial name="_Confirm" model="@(new ConfirmModel("Delete review", "Are you sure?", "Delete"))" />
 
@@ -601,6 +630,38 @@
         group.addEventListener('mouseover', e => { const b = e.target.closest('.star-btn'); if (b) render(b.dataset.value); });
         group.addEventListener('mouseleave', () => render(input.value));
         render(input.value);
+    })();
+
+    (() => {
+        const page = document.querySelector('[data-embed-page="details"]');
+        const modalEl = document.getElementById('pre-release-confirm-modal');
+        const continueButton = document.getElementById('pre-release-confirm-continue');
+        if (!page || page.dataset.pluginPreRelease !== 'true' || !modalEl || !continueButton) return;
+
+        let pendingAction = null;
+
+        document.addEventListener('click', event => {
+            const action = event.target.closest('[data-pre-release-confirm]');
+            if (!action || action.dataset.preReleaseConfirmed === 'true') {
+                if (action) delete action.dataset.preReleaseConfirmed;
+                return;
+            }
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            pendingAction = action;
+            window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }, true);
+
+        continueButton.addEventListener('click', () => {
+            if (!pendingAction) return;
+
+            pendingAction.dataset.preReleaseConfirmed = 'true';
+            const action = pendingAction;
+            pendingAction = null;
+            window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            action.click();
+        });
     })();
 
 </script>

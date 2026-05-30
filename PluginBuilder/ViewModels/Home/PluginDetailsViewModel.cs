@@ -17,7 +17,7 @@ public sealed class PluginDetailsViewModel : BasePagingViewModel
 
     public bool IsAdmin { get; set; }
     public bool? IsOwner { get; set; }
-    public List<string>? PluginVersions { get; set; }
+    public List<PluginDetailsVersionViewModel> PluginVersions { get; set; } = new();
     public bool ShowHiddenNotice { get; set; }
     public List<GitHubContributor> Contributors { get; init; } = new();
     public int? RatingFilter { get; set; }
@@ -25,6 +25,12 @@ public sealed class PluginDetailsViewModel : BasePagingViewModel
     public string? OwnerGithubUrl { get; set; }
     public string? OwnerNostrUrl { get; set; }
     public bool EmbedMode { get; set; }
+}
+
+public sealed class PluginDetailsVersionViewModel
+{
+    public string Version { get; init; } = "";
+    public bool PreRelease { get; init; }
 }
 
 public class Review
