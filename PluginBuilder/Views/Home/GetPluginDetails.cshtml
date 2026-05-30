@@ -318,13 +318,13 @@
                                         }
                                         else
                                         {
-                                            <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-id="@review.Id" asp-route-embed="@embedRoute" asp-route-isHelpful="true" class="test-upvote-form d-inline">
+                                            <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-id="@review.Id" asp-route-isHelpful="true" class="test-upvote-form d-inline">
                                                 @Html.AntiForgeryToken()
                                                 <button type="submit" class="@voteBtn vote-up @(review.UserVoteHelpful == true ? "text-success" : "text-secondary")" aria-label="Mark this review as helpful">
                                                     <vc:icon symbol="thumb-up" /><span class="small ms-1">@review.UpCount</span>
                                                 </button>
                                             </form>
-                                            <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-id="@review.Id" asp-route-embed="@embedRoute" asp-route-isHelpful="false" class="test-downvote-form d-inline">
+                                            <form method="post" asp-action="VoteReview" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-id="@review.Id" asp-route-isHelpful="false" class="test-downvote-form d-inline">
                                                 @Html.AntiForgeryToken()
                                                 <button type="submit" class="@voteBtn vote-down @(review.UserVoteHelpful == false ? "text-danger" : "text-secondary")" aria-label="Mark this review as not helpful">
                                                     <vc:icon symbol="thumb-down" /><span class="small ms-1">@review.DownCount</span>
@@ -346,7 +346,7 @@
                                         <button type="button" class="btn btn-link btn-sm p-0 text-danger align-self-start ms-2"
                                                 title="Delete" aria-label="Delete review"
                                                 data-bs-toggle="modal" data-bs-target="#ConfirmModal"
-                                                data-action='@Url.EnsureLocal(Url.Action("DeleteReview", "Home", new { pluginSlug = Model.Plugin.ProjectSlug, id = review.Id, embed = embedRoute }), Context.Request)'
+                                                data-action='@Url.EnsureLocal(Url.Action("DeleteReview", "Home", new { pluginSlug = Model.Plugin.ProjectSlug, id = review.Id }), Context.Request)'
                                                 data-title="Delete review"
                                                 data-description="Delete this review? This action cannot be undone."
                                                 data-confirm="Delete">
@@ -370,7 +370,7 @@
                         }
                         else
                         {
-                            <form id="review-form" method="post" asp-action="UpsertReview" asp-controller="Home" asp-route-pluginSlug="@Model.Plugin.ProjectSlug" asp-route-embed="@embedRoute">
+                            <form id="review-form" method="post" asp-action="UpsertReview" asp-controller="Home" asp-route-pluginSlug="@Model.Plugin.ProjectSlug">
                                 @Html.AntiForgeryToken()
                                 <div id="ratingStars" class="d-inline-flex align-items-center gap-1 fs-4 mb-3" role="radiogroup" aria-label="Rating (1 to 5)" tabindex="0">
                                     @for (var i = 1; i <= 5; i++)

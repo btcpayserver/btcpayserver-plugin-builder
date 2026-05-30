@@ -562,7 +562,7 @@ public class HomeController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpsertReview(
         [ModelBinder(typeof(PluginSlugModelBinder))]
-        PluginSlug pluginSlug, int rating, string? body, string? pluginVersion, string? embed = null)
+        PluginSlug pluginSlug, int rating, string? body, string? pluginVersion)
     {
         if (rating is < 1 or > 5)
             return BadRequest("Invalid rating");
@@ -577,7 +577,7 @@ public class HomeController(
         if (isOwner)
         {
             TempData[TempDataConstant.WarningMessage] = "You cannot review your own plugin.";
-            return RedirectToAction(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString(), embed = string.IsNullOrEmpty(embed) ? null : embed });
+            return RedirectToAction(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString() });
         }
 
         var reviewerAccountDetails = await conn.GetAccountDetailSettings(userId) ?? new AccountSettings();
@@ -605,8 +605,7 @@ public class HomeController(
         var url = Url.Action(nameof(GetPluginDetails), "Home", new
         {
             pluginSlug = pluginSlug.ToString(),
-            sort = string.IsNullOrEmpty(sort) ? null : sort,
-            embed = string.IsNullOrEmpty(embed) ? null : embed
+            sort = string.IsNullOrEmpty(sort) ? null : sort
         });
         return Redirect((url ?? "/") + "#reviews");
     }
@@ -667,8 +666,7 @@ public class HomeController(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
         long id,
-        bool isHelpful,
-        string? embed = null)
+        bool isHelpful)
     {
         var userId = userManager.GetUserId(User);
         if (string.IsNullOrEmpty(userId))
@@ -687,8 +685,7 @@ public class HomeController(
 
         var url = Url.Action(nameof(GetPluginDetails), new
         {
-            pluginSlug = pluginSlug.ToString(),
-            embed = string.IsNullOrEmpty(embed) ? null : embed
+            pluginSlug = pluginSlug.ToString()
         });
         return Redirect((url ?? "/") + "#reviews");
     }
@@ -698,8 +695,7 @@ public class HomeController(
     public async Task<IActionResult> DeleteReview(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        long id,
-        string? embed = null)
+        long id)
     {
         var userId = userManager.GetUserId(User);
         if (string.IsNullOrEmpty(userId))
@@ -716,8 +712,7 @@ public class HomeController(
 
         var url = Url.Action(nameof(GetPluginDetails), new
         {
-            pluginSlug = pluginSlug.ToString(),
-            embed = string.IsNullOrEmpty(embed) ? null : embed
+            pluginSlug = pluginSlug.ToString()
         });
         return Redirect((url ?? "/") + "#reviews");
     }
