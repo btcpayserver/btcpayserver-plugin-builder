@@ -223,6 +223,16 @@ public class Program
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             client.Timeout = TimeSpan.FromSeconds(15);
         });
+        services.AddHttpClient(HttpClientNames.BtcMap, client =>
+        {
+            // BTC Map import RPC is a single JSON-RPC 2.0 dispatch endpoint.
+            // Per-call timeout caps a single round-trip at 15s, matching the
+            // BtcMapsDirectory budget so a hung remote can't pin the request
+            // longer than the per-IP rate-limit window.
+            client.DefaultRequestHeaders.Add("User-Agent", "PluginBuilder-BtcMap/1.0");
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
         services.AddHttpClient(HttpClientNames.GitLab, client =>
         {
             client.BaseAddress = new Uri("https://gitlab.com/api/v4/");
@@ -281,13 +291,16 @@ public class Program
             });
             options.AddPolicy(Policies.BtcMapsSubmitRateLimit, httpContext =>
             {
-                // Per-source-IP fixed window: 5 submissions per 24h. Caps automation
+                // Per-source-IP fixed window: 3 submissions per 24h. Caps automation
                 // abuse of /apis/btcmaps/v1/submit without throttling honest single
-                // submissions from a merchant.
+                // submissions from a merchant. Tightened from 5/24h with the
+                // multi-vendor BTC Map import-RPC lane (PR #226) since that path
+                // forwards into a moderator review queue and rate-limit is the
+                // primary spam control on the public endpoint.
                 var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
                 return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = 5,
+                    PermitLimit = 3,
                     Window = TimeSpan.FromHours(24),
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                     QueueLimit = 0

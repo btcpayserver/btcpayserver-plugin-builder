@@ -75,48 +75,79 @@ public sealed class BtcMapsService
         public DirectoryTokenMissingException() : base("BTCMAPS:DirectoryGithubToken is not configured.") { }
     }
 
+    public sealed class BtcMapTokenMissingException : Exception
+    {
+        public BtcMapTokenMissingException() : base("BTCMAPS:BtcMapImportToken is not configured.") { }
+    }
+
+    private const string DefaultBtcMapImportEndpoint = "https://api.btcmap.org/rpc";
+    private const string BtcMapImportOrigin = "btcpayserver";
+    private const string BtcMapImportMethod = "submit_place";
+
     public IReadOnlyList<ValidationError> Validate(BtcMapsSubmitRequest request)
     {
         var errors = new List<ValidationError>();
 
+        // Name is the only field both lanes need - btcmap submit_place requires it
+        // as part of the params payload, and the directory merchants.json keys
+        // entries by name.
         var name = (request.Name ?? string.Empty).Trim();
         if (string.IsNullOrEmpty(name) || name.Length > 200)
             errors.Add(new ValidationError(nameof(request.Name), "Required, 1-200 characters."));
 
-        var url = (request.Url ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(url))
-            errors.Add(new ValidationError(nameof(request.Url), "Required."));
-        else if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps)
-            errors.Add(new ValidationError(nameof(request.Url), "Must be a valid https:// URL."));
-
-        var description = (request.Description ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(description) || description.Length > 1000)
-            errors.Add(new ValidationError(nameof(request.Description), "Required, 1-1000 characters."));
-
-        var type = (request.Type ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(type) || !ValidTypes.Contains(type))
-            errors.Add(new ValidationError(nameof(request.Type),
-                $"Required. One of: {string.Join(", ", ValidTypes)}."));
-
-        if (!string.IsNullOrWhiteSpace(request.SubType))
+        // Directory-lane required fields. Skip when the caller opted out of the
+        // directory submission so a btcmap-only call doesn't need to fill in
+        // unrelated directory metadata.
+        if (request.SubmitToDirectory)
         {
-            var subType = request.SubType.Trim();
-            if (string.Equals(type, "merchants", StringComparison.OrdinalIgnoreCase) &&
-                !ValidMerchantSubTypes.Contains(subType))
+            var url = (request.Url ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(url))
+                errors.Add(new ValidationError(nameof(request.Url), "Required when SubmitToDirectory=true."));
+            else if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps)
+                errors.Add(new ValidationError(nameof(request.Url), "Must be a valid https:// URL."));
+
+            var description = (request.Description ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(description) || description.Length > 1000)
+                errors.Add(new ValidationError(nameof(request.Description), "Required when SubmitToDirectory=true. 1-1000 characters."));
+
+            var type = (request.Type ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(type) || !ValidTypes.Contains(type))
+                errors.Add(new ValidationError(nameof(request.Type),
+                    $"Required when SubmitToDirectory=true. One of: {string.Join(", ", ValidTypes)}."));
+
+            if (!string.IsNullOrWhiteSpace(request.SubType))
             {
-                errors.Add(new ValidationError(nameof(request.SubType),
-                    "Invalid merchant subtype."));
+                var subType = request.SubType.Trim();
+                if (string.Equals(type, "merchants", StringComparison.OrdinalIgnoreCase) &&
+                    !ValidMerchantSubTypes.Contains(subType))
+                {
+                    errors.Add(new ValidationError(nameof(request.SubType),
+                        "Invalid merchant subtype."));
+                }
             }
         }
 
+        // Country format check applies to either lane. GLOBAL is the directory's
+        // pseudonym for online-only / multi-region merchants but it is NOT a valid
+        // physical-place country code for the btcmap directory map (every place
+        // there is geocoded). Reject GLOBAL when the btcmap lane is on; allow it
+        // when only the directory lane is in play.
         if (!string.IsNullOrWhiteSpace(request.Country))
         {
             var country = request.Country.Trim();
-            // GLOBAL is the directory's pseudonym for online-only / multi-region merchants.
-            // Everything else must be an actual ISO 3166-1 alpha-2 code.
-            if (country != "GLOBAL" && !Iso3166Alpha2.Contains(country))
+            if (country == "GLOBAL")
+            {
+                if (request.SubmitToBtcMap)
+                {
+                    errors.Add(new ValidationError(nameof(request.Country),
+                        "Country=GLOBAL is incompatible with SubmitToBtcMap=true (btcmap places are physical locations). Use an ISO 3166-1 alpha-2 code or omit Country."));
+                }
+            }
+            else if (!Iso3166Alpha2.Contains(country))
+            {
                 errors.Add(new ValidationError(nameof(request.Country),
                     "Must be ISO 3166-1 alpha-2 or GLOBAL."));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(request.OnionUrl))
@@ -130,7 +161,142 @@ public sealed class BtcMapsService
             }
         }
 
+        // BTC Map import RPC fields become mandatory only when the caller
+        // opts into that lane via SubmitToBtcMap=true. Directory-only callers
+        // (the existing PR #224 shape) are unaffected.
+        if (request.SubmitToBtcMap)
+        {
+            if (!request.Lat.HasValue || request.Lat.Value is < -90 or > 90 || double.IsNaN(request.Lat.Value))
+                errors.Add(new ValidationError(nameof(request.Lat),
+                    "Required when SubmitToBtcMap=true. Must be in [-90, 90]."));
+
+            if (!request.Lon.HasValue || request.Lon.Value is < -180 or > 180 || double.IsNaN(request.Lon.Value))
+                errors.Add(new ValidationError(nameof(request.Lon),
+                    "Required when SubmitToBtcMap=true. Must be in [-180, 180]."));
+
+            var category = (request.Category ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(category) || category.Length > 50 ||
+                !category.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-' or '_'))
+            {
+                errors.Add(new ValidationError(nameof(request.Category),
+                    "Required when SubmitToBtcMap=true. Short lowercase identifier (a-z, 0-9, -, _; max 50 chars)."));
+            }
+
+            var externalId = (request.ExternalId ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(externalId) || externalId.Length > 200)
+                errors.Add(new ValidationError(nameof(request.ExternalId),
+                    "Required when SubmitToBtcMap=true. 1-200 characters."));
+        }
+
         return errors;
+    }
+
+    public async Task<BtcMapsBtcMapResult> SubmitToBtcMapAsync(
+        BtcMapsSubmitRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var token = _configuration["BTCMAPS:BtcMapImportToken"];
+        if (string.IsNullOrWhiteSpace(token))
+            throw new BtcMapTokenMissingException();
+
+        // Bearer tokens MUST NOT cross the wire over http://; an operator-
+        // misconfigured endpoint would silently leak the scoped token to
+        // anyone on the network path. Parse the configured value into an
+        // absolute https URI before we even create the request, so a bad
+        // BTCMAPS:BtcMapImportEndpoint fails loudly with the offending
+        // value in the message instead of producing a quiet credential leak.
+        var endpoint = (_configuration["BTCMAPS:BtcMapImportEndpoint"] ?? DefaultBtcMapImportEndpoint).Trim();
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) ||
+            endpointUri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new InvalidOperationException(
+                $"BTCMAPS:BtcMapImportEndpoint must be an absolute https:// URL (got '{endpoint}').");
+        }
+
+        var client = _httpClientFactory.CreateClient(HttpClientNames.BtcMap);
+
+        // BTC Map import-RPC takes a JSON-RPC 2.0 envelope at /rpc with method=submit_place.
+        // Required params: origin, external_id, lat, lon, category, name. extra_fields uses
+        // the documented first-class keys (phone, website, description) and the osm:<tag_name>
+        // convention for granular OSM tags (osm:addr:*).
+        var extraFields = new Dictionary<string, object?>();
+        // First-class btcmap fields (plain keys per rest/v4/places.md).
+        if (!string.IsNullOrWhiteSpace(request.Url)) extraFields["website"] = request.Url.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Description)) extraFields["description"] = request.Description.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Phone)) extraFields["phone"] = request.Phone.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Email)) extraFields["email"] = request.Email.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Twitter))
+        {
+            // btcmap's `twitter` field is documented as a URL. Normalize the @handle
+            // shape the rest of the API accepts (with or without leading @) into
+            // the URL form the directory map expects.
+            var t = request.Twitter.Trim();
+            var handle = t.StartsWith("@") ? t[1..] : t;
+            extraFields["twitter"] = handle.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? handle
+                : $"https://x.com/{handle}";
+        }
+        // OSM custom tags use osm:<tag_name> per the same doc.
+        if (!string.IsNullOrWhiteSpace(request.HouseNumber)) extraFields["osm:addr:housenumber"] = request.HouseNumber.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Street)) extraFields["osm:addr:street"] = request.Street.Trim();
+        if (!string.IsNullOrWhiteSpace(request.City)) extraFields["osm:addr:city"] = request.City.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Postcode)) extraFields["osm:addr:postcode"] = request.Postcode.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Country)) extraFields["osm:addr:country"] = request.Country.Trim();
+        // Payment-rail flags. Plugin sets per the store's enabled rails - omit
+        // when null or false so a Lightning-only store doesn't claim on-chain
+        // support (or vice versa).
+        if (request.AcceptsOnchain == true) extraFields["osm:payment:onchain"] = "yes";
+        if (request.AcceptsLightning == true) extraFields["osm:payment:lightning"] = "yes";
+
+        var rpcParams = new Dictionary<string, object?>
+        {
+            ["origin"] = BtcMapImportOrigin,
+            ["external_id"] = request.ExternalId!.Trim(),
+            ["lat"] = request.Lat!.Value,
+            ["lon"] = request.Lon!.Value,
+            ["category"] = request.Category!.Trim().ToLowerInvariant(),
+            ["name"] = request.Name!.Trim(),
+            ["extra_fields"] = extraFields
+        };
+
+        var envelope = new Dictionary<string, object?>
+        {
+            ["jsonrpc"] = "2.0",
+            ["method"] = BtcMapImportMethod,
+            ["params"] = rpcParams,
+            ["id"] = 1
+        };
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, endpointUri);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        req.Content = new StringContent(JsonSerializer.Serialize(envelope), Encoding.UTF8, "application/json");
+
+        using var response = await client.SendAsync(req, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"BtcMap RPC {(int)response.StatusCode} {endpointUri}: {body}");
+
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+
+        // JSON-RPC 2.0 response shape: either {result: {...}} on success or {error: {...}}.
+        // 2xx status with an error body is a legal JSON-RPC outcome we must surface.
+        if (root.TryGetProperty("error", out var errorElement))
+        {
+            var errorJson = errorElement.GetRawText();
+            throw new HttpRequestException($"BtcMap RPC error response: {errorJson}");
+        }
+
+        if (!root.TryGetProperty("result", out var result))
+            throw new HttpRequestException($"BtcMap RPC missing result: {body}");
+
+        return new BtcMapsBtcMapResult
+        {
+            Id = result.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number ? id.GetInt64() : null,
+            Origin = result.TryGetProperty("origin", out var origin) ? origin.GetString() : null,
+            ExternalId = result.TryGetProperty("external_id", out var ext) ? ext.GetString() : null
+        };
     }
 
     public async Task<BtcMapsDirectoryResult> SubmitToDirectoryAsync(
