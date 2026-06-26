@@ -230,6 +230,7 @@ public class HomeController(
                        lv.plugin_slug,
                        lv.ver,
                        p.settings,
+                       p.visibility,
                        b.id,
                        b.manifest_info,
                        b.build_info,
@@ -278,7 +279,7 @@ public class HomeController(
         }
 
         var rows = await conn
-            .QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, decimal avg_rating, int total_reviews
+            .QueryAsync<(string plugin_slug, int[] ver, string settings, PluginVisibilityEnum visibility, long id, string manifest_info, string build_info, decimal avg_rating, int total_reviews
                 )>(
                 query,
                 new
@@ -304,6 +305,7 @@ public class HomeController(
                 BuildInfo = JObject.Parse(r.build_info),
                 ManifestInfo = manifestInfo,
                 PluginLogo = settings?.Logo,
+                IsUnlisted = r.visibility == PluginVisibilityEnum.Unlisted,
                 RatingSummary = new PluginRatingSummary
                 {
                     Average = r.avg_rating,

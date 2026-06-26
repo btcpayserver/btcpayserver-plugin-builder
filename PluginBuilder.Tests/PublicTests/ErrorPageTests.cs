@@ -172,4 +172,23 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Contains("404 - Page not found", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("399 -", body, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task ForgotPassword_WithoutAntiforgeryToken_ShowsCsrfDetails()
+    {
+        await using var tester = await Start();
+        var client = tester.CreateHttpClient();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+
+        using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Email"] = "test@example.com"
+        });
+        var response = await client.PostAsync("/forgotpassword", content);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("400 - Bad Request", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CSRF token validation failed.", body, StringComparison.OrdinalIgnoreCase);
+    }
 }

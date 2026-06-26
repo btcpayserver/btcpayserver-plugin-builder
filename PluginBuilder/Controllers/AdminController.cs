@@ -1286,7 +1286,6 @@ public class AdminController(
             TempData[TempDataConstant.WarningMessage] = "Failed to reject the listing request";
             return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
         }
-
         var existingSettings = await conn.GetSettings(pluginSlug);
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var primaryOwner = pluginOwners.FirstOrDefault(o => o.IsPrimary);
@@ -1296,6 +1295,5 @@ public class AdminController(
         TempData[TempDataConstant.SuccessMessage] = $"Plugin listing request for '{request.PluginSlug}' has been rejected";
         return RedirectToAction(nameof(ListingRequests));
     }
-
     #endregion
 }

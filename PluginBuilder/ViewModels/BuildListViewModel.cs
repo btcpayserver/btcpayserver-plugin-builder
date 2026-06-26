@@ -5,7 +5,6 @@ namespace PluginBuilder.ViewModels;
 
 public class BuildListViewModel
 {
-    public bool RequestListing { get; set; }
     public List<BuildViewModel> Builds { get; set; } = [];
 
     public class BuildViewModel

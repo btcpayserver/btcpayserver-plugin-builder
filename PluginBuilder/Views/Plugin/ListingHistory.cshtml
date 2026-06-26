@@ -1,0 +1,77 @@
+@using PluginBuilder.DataModels
+@model ListingHistoryViewModel
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage(PluginNavPages.RequestListing, "Listing History");
+    ViewData["Title"] = "Listing History";
+}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <h2 class="mb-0">@ViewData["Title"]</h2>
+    <a asp-action="RequestListing" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-outline-primary btn-sm">
+        Back to Listing Request
+    </a>
+</div>
+
+@if (!Model.Requests.Any())
+{
+    <div class="alert alert-info">No listing requests have been submitted yet.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Submitted</th>
+                    <th>Release Note</th>
+                    <th>Rejection Reason</th>
+                    <th>Reviewed</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var request in Model.Requests)
+                {
+                    <tr>
+                        <td class="text-nowrap small">@request.SubmittedAt.UtcDateTime.ToString("MMM dd, yyyy · HH:mm UTC")</td>
+                        <td>@request.ReleaseNote</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(request.RejectionReason))
+                            {
+                                <span class="text-danger" style="white-space: pre-wrap;">@request.RejectionReason</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-nowrap small">
+                            @if (request.ReviewedAt.HasValue)
+                            {
+                                @request.ReviewedAt.Value.UtcDateTime.ToString("MMM dd, yyyy · HH:mm UTC")
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td>
+                            @switch (request.Status)
+                            {
+                                case PluginListingRequestStatus.Pending:
+                                    <span class="badge bg-warning">Pending</span>
+                                    break;
+                                case PluginListingRequestStatus.Approved:
+                                    <span class="badge bg-success">Approved</span>
+                                    break;
+                                case PluginListingRequestStatus.Rejected:
+                                    <span class="badge bg-danger">Rejected</span>
+                                    break;
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

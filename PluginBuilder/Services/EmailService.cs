@@ -42,7 +42,6 @@ Thank you,
 BTCPay Server Plugin Builder Team
 ";
 
-
     public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText)
     {
         List<InternetAddress> toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
@@ -171,7 +170,6 @@ BTCPay Server Plugin Builder";
             logger.LogError(ex, "ERROR prevent us sending email notification to {Email} for {EmailSubject} email", email, subject);
         }
     }
-
 
     public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb()
     {

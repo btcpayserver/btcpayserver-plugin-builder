@@ -17,6 +17,7 @@ using PluginBuilder.Authentication;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
+using PluginBuilder.Filters;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Hubs;
 using PluginBuilder.Services;
@@ -143,7 +144,10 @@ public class Program
 
     public void AddServices(IConfiguration configuration, IServiceCollection services, IHostEnvironment env)
     {
-        services.AddControllersWithViews()
+        services.AddControllersWithViews(options =>
+            {
+                options.Filters.Add(new UIControllerAntiforgeryTokenAttribute());
+            })
             .AddRazorRuntimeCompilation()
             .AddRazorOptions(options =>
             {
@@ -207,6 +211,28 @@ public class Program
                 client.DefaultRequestHeaders.Authorization =
                     new AuthenticationHeaderValue("Bearer", token);
         });
+        services.AddHttpClient(HttpClientNames.BtcMapsDirectory, client =>
+        {
+            // Per-call timeout caps a single GitHub round-trip at 15s. The directory
+            // submission makes ~5-7 GitHub calls sequentially; with the default 100s
+            // timeout a hung remote could pin the request for ~10min and tie up a
+            // rate-limit slot. 15s per call keeps the worst case bounded.
+            client.BaseAddress = new Uri("https://api.github.com/");
+            client.DefaultRequestHeaders.Add("User-Agent", "PluginBuilder-BtcMaps/1.0");
+            client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
+        services.AddHttpClient(HttpClientNames.BtcMap, client =>
+        {
+            // BTC Map import RPC is a single JSON-RPC 2.0 dispatch endpoint.
+            // Per-call timeout caps a single round-trip at 15s, matching the
+            // BtcMapsDirectory budget so a hung remote can't pin the request
+            // longer than the per-IP rate-limit window.
+            client.DefaultRequestHeaders.Add("User-Agent", "PluginBuilder-BtcMap/1.0");
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
         services.AddHttpClient(HttpClientNames.GitLab, client =>
         {
             client.BaseAddress = new Uri("https://gitlab.com/api/v4/");
@@ -237,6 +263,7 @@ public class Program
         });
         services.AddScoped<PluginOwnershipService>();
         services.AddScoped<VersionLifecycleService>();
+        services.AddSingleton<BtcMapsService>();
 
         services.AddRateLimiter(options =>
         {
@@ -258,6 +285,23 @@ public class Program
                 {
                     PermitLimit = cache.RateLimitPermitLimit,
                     Window = TimeSpan.FromSeconds(cache.RateLimitWindowSeconds),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                });
+            });
+            options.AddPolicy(Policies.BtcMapsSubmitRateLimit, httpContext =>
+            {
+                // Per-source-IP fixed window: 3 submissions per 24h. Caps automation
+                // abuse of /apis/btcmaps/v1/submit without throttling honest single
+                // submissions from a merchant. Tightened from 5/24h with the
+                // multi-vendor BTC Map import-RPC lane (PR #226) since that path
+                // forwards into a moderator review queue and rate-limit is the
+                // primary spam control on the public endpoint.
+                var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 3,
+                    Window = TimeSpan.FromHours(24),
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                     QueueLimit = 0
                 });

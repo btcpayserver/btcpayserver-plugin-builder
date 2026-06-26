@@ -164,6 +164,7 @@ public class AccountController(
     }
 
     [HttpPost("nostr/verify-nip07")]
+    [IgnoreAntiforgeryToken]
     public async Task<IActionResult> NostrVerifyNip07([FromBody] VerifyNip07Request req)
     {
         var user = await userManager.GetUserAsync(User) ?? throw new Exception("User not found");
