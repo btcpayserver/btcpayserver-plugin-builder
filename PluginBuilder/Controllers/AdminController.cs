@@ -912,7 +912,7 @@ public class AdminController(
         var link = Url.Action("VerifyEmailUpdate", "Home", new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
         var sent = await emailService.SendVerifyEmail(model.NewEmail, link);
         if (sent)
-            TempData[TempDataConstant.SuccessMessage] = "A verification email has been sent to user's new email address: " + model.PendingNewEmail;
+            TempData[TempDataConstant.SuccessMessage] = "A verification email has been sent to user's new email address: " + model.NewEmail;
         else
             TempData[TempDataConstant.WarningMessage] =
                 $"The email change is pending, but we couldn't send the verification email to {model.NewEmail}. The user won't receive the confirmation link until email delivery is working. Check the email settings and try again.";
