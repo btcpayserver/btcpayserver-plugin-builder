@@ -80,7 +80,7 @@ BTCPay Server Plugin Builder Team
             .All(email => !string.IsNullOrWhiteSpace(email) && Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
     }
 
-    public async Task SendVerifyEmail(string toEmail, string verifyUrl)
+    public async Task<bool> SendVerifyEmail(string toEmail, string verifyUrl)
     {
         var body = $@"
 Hello,
@@ -99,10 +99,12 @@ BTCPay Server Plugin Builder";
         try
         {
             await DeliverEmail(new[] { MailboxAddressValidator.Parse(toEmail) }, "Verify your account on BTCPay Server Plugin Builder", body);
+            return true;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error sending verification email to {Email}", toEmail);
+            return false;
         }
     }
 
