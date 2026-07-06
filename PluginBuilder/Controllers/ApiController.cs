@@ -214,7 +214,8 @@ public class ApiController(
                     SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info,
                            v.btcpay_min_ver,
                            v.btcpay_max_ver,
-                           v.signatureproof->>'fingerprint' AS fingerprint
+                           v.signatureproof->>'fingerprint' AS fingerprint,
+                           v.changelog
                     FROM versions v
                     JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
                     JOIN plugins p ON b.plugin_slug = p.slug
@@ -231,7 +232,7 @@ public class ApiController(
         var manifestInfo = JObject.Parse((string)r.manifest_info);
         var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
         return Ok(CreatePublishedVersion(pluginSlug.ToString(), (int[])r.ver, (int[])r.btcpay_min_ver, (int[]?)r.btcpay_max_ver,
-            (long)r.build_id, settings, manifestInfo, JObject.Parse((string)r.build_info), (string?)r.fingerprint));
+            (long)r.build_id, settings, manifestInfo, JObject.Parse((string)r.build_info), (string?)r.fingerprint, (string?)r.changelog));
     }
 
     [AllowAnonymous]
@@ -596,7 +597,8 @@ public class ApiController(
         PluginSettings? settings,
         JObject manifestInfo,
         JObject buildInfo,
-        string? fingerprint)
+        string? fingerprint,
+        string? changelog = null)
     {
         var effectiveManifestInfo = ApplyEffectiveBtcPayCompatibility(manifestInfo, btcpayMinVersion, btcpayMaxVersion);
 
@@ -610,6 +612,7 @@ public class ApiController(
             BTCPayMaxVersion = btcpayMaxVersion is { Length: > 0 } ? string.Join('.', btcpayMaxVersion) : null,
             BuildId = buildId,
             BuildInfo = buildInfo,
+            Changelog = changelog,
             ManifestInfo = effectiveManifestInfo,
             PluginLogo = settings?.Logo,
             Documentation = PluginPublicPage(pluginSlug),

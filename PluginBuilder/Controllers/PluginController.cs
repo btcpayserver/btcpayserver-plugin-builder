@@ -583,11 +583,11 @@ public class PluginController(
             await conn
                 .QueryFirstOrDefaultAsync<(string manifest_info, string build_info, string state, DateTimeOffset created_at, bool published, bool pre_release,
                     string signatureproof, int[]? btcpay_min_ver, bool btcpay_min_ver_override_enabled,
-                    int[]? btcpay_max_ver, bool btcpay_max_ver_override_enabled)>(
+                    int[]? btcpay_max_ver, bool btcpay_max_ver_override_enabled, string? changelog)>(
                     "SELECT manifest_info, build_info, state, created_at, v.ver IS NOT NULL, v.pre_release, v.signatureproof, v.btcpay_min_ver, " +
                     "v.btcpay_min_ver_override_enabled AS btcpay_min_ver_override_enabled, " +
                     "v.btcpay_max_ver, " +
-                    "v.btcpay_max_ver_override_enabled AS btcpay_max_ver_override_enabled FROM builds b " +
+                    "v.btcpay_max_ver_override_enabled AS btcpay_max_ver_override_enabled, v.changelog FROM builds b " +
                     "LEFT JOIN versions v ON b.plugin_slug=v.plugin_slug AND b.id=v.build_id " +
                     "WHERE b.plugin_slug=@pluginSlug AND id=@buildId " +
                     "LIMIT 1",
@@ -627,6 +627,7 @@ public class PluginController(
         vm.HasBTCPayCompatibilityOverride = row.btcpay_min_ver_override_enabled || row.btcpay_max_ver_override_enabled;
         vm.CanEditBTCPayCompatibility = vm.Version is not null;
         vm.OpenBTCPayCompatibilityModal = openCompatibilityModal;
+        vm.Changelog = row.changelog;
         if (logs != "")
             vm.Logs = logs;
         return View(vm);
@@ -732,6 +733,31 @@ public class PluginController(
         return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
     }
 
+    [HttpPost("builds/{buildId}/changelog")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateChangelog(
+    [ModelBinder(typeof(PluginSlugModelBinder))]
+    PluginSlug pluginSlug, long buildId, [FromForm] string? changelog)
+    {
+        await using var conn = await connectionFactory.Open();
+        var ver = await conn.QueryFirstOrDefaultAsync<int[]?>(
+            "SELECT ver FROM versions WHERE plugin_slug = @pluginSlug AND build_id = @buildId LIMIT 1", new { pluginSlug = pluginSlug.ToString(), buildId });
+
+        if (ver is null)
+        {
+            TempData[TempDataConstant.WarningMessage] = "This build isn't attached to a version yet";
+            return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
+        }
+        changelog = changelog?.Trim();
+        if (changelog?.Length > 4000)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Changelog must be 4000 characters or fewer.";
+            return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
+        }
+        await conn.UpdateVersionChangelog(pluginSlug, new PluginVersion(ver), string.IsNullOrEmpty(changelog) ? null : changelog);
+        TempData[TempDataConstant.SuccessMessage] = "Changelog saved";
+        return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
+    }
 
     [HttpGet("")]
     public async Task<IActionResult> Dashboard(

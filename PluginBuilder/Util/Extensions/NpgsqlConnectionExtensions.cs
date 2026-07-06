@@ -403,6 +403,14 @@ public static class NpgsqlConnectionExtensions
             new { plugin_slug = pluginSlug.ToString() });
     }
 
+    public static async Task<bool> UpdateVersionChangelog(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginVersion version, string? changelog)
+    {
+        var updated = await connection.ExecuteAsync(
+            "UPDATE versions SET changelog = @changelog WHERE plugin_slug = @pluginSlug AND ver = @version",
+            new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts, changelog });
+        return updated == 1;
+    }
+
     #endregion
 
 
