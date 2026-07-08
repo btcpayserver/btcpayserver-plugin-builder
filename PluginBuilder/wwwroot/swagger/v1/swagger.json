@@ -559,7 +559,7 @@
                 "nullable": true,
                 "description": "Release notes for this version.",
                 "example": "Added support for ..."
-            }
+            },
           "buildId": {
             "type": "integer",
             "format": "int64",
