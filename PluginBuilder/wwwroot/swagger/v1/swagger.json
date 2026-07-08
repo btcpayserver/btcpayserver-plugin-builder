@@ -548,12 +548,18 @@
             "description": "Effective minimum compatible BTCPay Server version.",
             "example": "1.9.0"
           },
-          "btcpayMaxVersion": {
-            "type": "string",
-            "nullable": true,
-            "description": "Effective maximum compatible BTCPay Server version.",
-            "example": "2.0.0"
-          },
+            "btcpayMaxVersion": {
+                "type": "string",
+                "nullable": true,
+                "description": "Effective maximum compatible BTCPay Server version.",
+                "example": "2.0.0"
+            },
+            "changelog": {
+                "type": "string",
+                "nullable": true,
+                "description": "Release notes for this version.",
+                "example": "Added support for ..."
+            }
           "buildId": {
             "type": "integer",
             "format": "int64",

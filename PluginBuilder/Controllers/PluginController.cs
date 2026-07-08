@@ -754,8 +754,8 @@ public class PluginController(
             TempData[TempDataConstant.WarningMessage] = "Changelog must be 4000 characters or fewer.";
             return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
         }
-        await conn.UpdateVersionChangelog(pluginSlug, new PluginVersion(ver), string.IsNullOrEmpty(changelog) ? null : changelog);
-        TempData[TempDataConstant.SuccessMessage] = "Changelog saved";
+        var updated = await conn.UpdateVersionChangelog(pluginSlug, new PluginVersion(ver), string.IsNullOrEmpty(changelog) ? null : changelog);
+        TempData[updated ? TempDataConstant.SuccessMessage : TempDataConstant.WarningMessage] = updated ? "Release notes saved" : "Release notes could not be saved";
         return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
     }
 
