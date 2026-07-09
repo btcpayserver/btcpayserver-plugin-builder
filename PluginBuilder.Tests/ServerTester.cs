@@ -21,6 +21,11 @@ public class ServerTester : IAsyncDisposable
     private const string StorageConnectionString =
         "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==";
 
+    // Host ports published by the mailpit service in PluginBuilder.Tests/docker-compose.yml.
+    public const string MailPitHost = "127.0.0.1";
+    public const int MailPitSmtpPort = 34219;
+    private const int MailPitHttpPort = 34218;
+
     private readonly List<IAsyncDisposable> disposables = new();
     private string? _dbname;
     private string? _serverConnString;
@@ -264,6 +269,50 @@ public class ServerTester : IAsyncDisposable
         finally
         {
             sub?.Dispose();
+        }
+    }
+
+    /// <summary>HTTP client pointed at the local Mailpit instance's REST API.</summary>
+    public MailPitClient GetMailPitClient()
+    {
+        var http = new HttpClient
+        {
+            BaseAddress = new Uri($"http://{MailPitHost}:{MailPitHttpPort}/")
+        };
+        return new MailPitClient(http);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> (which should trigger an email send with the given
+    /// <paramref name="subject"/>), then polls Mailpit until a message with that subject appears and
+    /// returns it. Throws on timeout.
+    /// </summary>
+    public async Task<MailPitClient.Message> AssertHasEmail(string subject, Func<Task> action, TimeSpan? timeout = null)
+    {
+        timeout ??= TimeSpan.FromSeconds(30);
+        var client = GetMailPitClient();
+
+        await action();
+
+        using var cts = new CancellationTokenSource(timeout.Value);
+        while (true)
+        {
+            var search = await client.Search($"subject:\"{subject}\"");
+            var summary = search.Messages.FirstOrDefault();
+            if (summary is not null)
+                return await client.GetMessage(summary.Id);
+
+            if (cts.IsCancellationRequested)
+                throw new InvalidOperationException($"No Mailpit message with subject '{subject}' arrived within {timeout.Value.TotalSeconds:0}s");
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(200), cts.Token);
+            }
+            catch (TaskCanceledException)
+            {
+                throw new InvalidOperationException($"No Mailpit message with subject '{subject}' arrived within {timeout.Value.TotalSeconds:0}s");
+            }
         }
     }
 }

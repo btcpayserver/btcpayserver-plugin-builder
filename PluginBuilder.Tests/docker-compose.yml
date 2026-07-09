@@ -16,3 +16,14 @@ services:
       LOCAL_STORAGE_ACCOUNT_KEY: Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==
     ports:
       - "32827:11002"
+
+  # Mock SMTP server for email tests. Captures mail locally, never relays.
+  # MP_SMTP_AUTH_* flags accept any/no credentials over plaintext.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "34218:8025"   # Web UI + HTTP API
+      - "34219:1025"   # SMTP
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
