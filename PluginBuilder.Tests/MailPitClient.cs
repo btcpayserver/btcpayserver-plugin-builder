@@ -9,13 +9,18 @@ namespace PluginBuilder.Tests;
 /// Trimmed to the fields our tests assert on. Runs against the mailpit service defined in
 /// PluginBuilder.Tests/docker-compose.yml.
 /// </summary>
-public class MailPitClient
+public class MailPitClient : IDisposable
 {
     private readonly HttpClient _client;
 
     public MailPitClient(HttpClient client)
     {
         _client = client;
+    }
+
+    public void Dispose()
+    {
+        _client.Dispose();
     }
 
     /// <summary>Fetch a single captured message by its Mailpit id.</summary>

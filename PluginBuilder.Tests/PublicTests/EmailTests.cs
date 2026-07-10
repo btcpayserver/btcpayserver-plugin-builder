@@ -28,7 +28,7 @@ public class EmailTests(ITestOutputHelper logs) : UnitTestBase(logs)
             DisableCertificateCheck = true
         });
 
-        const string subject = "Plugin Builder Mailpit smoke test";
+        var subject = $"Plugin Builder Mailpit smoke test {Guid.NewGuid():N}";
         const string body = "hello from the plugin builder test suite";
 
         var message = await tester.AssertHasEmail(subject, () =>

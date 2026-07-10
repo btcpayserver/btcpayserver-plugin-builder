@@ -290,7 +290,7 @@ public class ServerTester : IAsyncDisposable
     public async Task<MailPitClient.Message> AssertHasEmail(string subject, Func<Task> action, TimeSpan? timeout = null)
     {
         timeout ??= TimeSpan.FromSeconds(30);
-        var client = GetMailPitClient();
+        using var client = GetMailPitClient();
 
         await action();
 
