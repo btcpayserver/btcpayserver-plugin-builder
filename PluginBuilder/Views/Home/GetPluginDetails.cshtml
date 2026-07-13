@@ -448,6 +448,13 @@
                 </div>
             </div>
 
+            <div class="card mt-4 @(string.IsNullOrEmpty(Model.Plugin.Changelog) ? "d-none" : "")" id="plugin-changelog-card">
+                <div class="card-body">
+                    <h4>Release notes</h4>
+                    <p id="plugin-changelog-text" class="small mb-0" style="white-space: pre-wrap;">@Model.Plugin.Changelog</p>
+                </div>
+            </div>
+
             @if (Model.Contributors?.Any() == true)
             {
                 <div class="card mt-4">
@@ -596,6 +603,10 @@
                 const max = (data?.btcPayMaxVersion || '').trim();
                 set('plugin-max-btcpay-version', max);
                 toggle('plugin-max-btcpay-row', !!max);
+
+                const changelog = (data?.changelog || '').trim();
+                set('plugin-changelog-text', changelog);
+                toggle('plugin-changelog-card', !!changelog);
             });
         });
     })();

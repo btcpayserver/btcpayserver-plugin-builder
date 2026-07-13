@@ -25,4 +25,5 @@ public class BuildViewModel
     public bool HasBTCPayCompatibilityOverride { get; set; }
     public bool CanEditBTCPayCompatibility { get; set; }
     public bool OpenBTCPayCompatibilityModal { get; set; }
+    public string Changelog { get; set; }
 }
