@@ -1,4 +1,5 @@
 using PluginBuilder.Services;
+using PluginBuilder.Util;
 using PluginBuilder.ViewModels.Admin;
 using Xunit;
 using Xunit.Abstractions;
@@ -20,8 +21,8 @@ public class EmailTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var emailService = tester.GetService<EmailService>();
         await emailService.SaveEmailSettingsToDatabase(new EmailSettingsViewModel
         {
-            Server = ServerTester.MailPitHost,
-            Port = ServerTester.MailPitSmtpPort,
+            Server = MailpitDevSettings.Host,
+            Port = MailpitDevSettings.SmtpPort,
             From = "test@example.com",
             Username = "test@example.com",
             Password = "test@example.com",

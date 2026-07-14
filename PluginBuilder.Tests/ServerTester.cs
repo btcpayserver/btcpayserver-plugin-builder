@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using PluginBuilder.Events;
 using PluginBuilder.Services;
+using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Tests;
@@ -20,11 +21,6 @@ public class ServerTester : IAsyncDisposable
 
     private const string StorageConnectionString =
         "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==";
-
-    // Host ports published by the mailpit service in PluginBuilder.Tests/docker-compose.yml.
-    public const string MailPitHost = "127.0.0.1";
-    public const int MailPitSmtpPort = 34219;
-    private const int MailPitHttpPort = 34218;
 
     private readonly List<IAsyncDisposable> disposables = new();
     private string? _dbname;
@@ -118,6 +114,13 @@ public class ServerTester : IAsyncDisposable
                 $"--cheat_mode={CheatMode.ToString().ToLowerInvariant()}",
                 $"--enable_local_artifact_download_proxy={EnableLocalArtifactDownloadProxy.ToString().ToLowerInvariant()}",
             ]
+        });
+
+        // Added after the app's AddEnvironmentVariables("PB_") so it wins over any ambient PB_CHEAT_MODE,
+        // keeping this tester's CheatMode authoritative (read lazily via ServerEnvironment at request time).
+        webappBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["CHEAT_MODE"] = CheatMode.ToString().ToLowerInvariant()
         });
 
         webappBuilder.Services.AddHttpClient();
@@ -277,7 +280,7 @@ public class ServerTester : IAsyncDisposable
     {
         var http = new HttpClient
         {
-            BaseAddress = new Uri($"http://{MailPitHost}:{MailPitHttpPort}/")
+            BaseAddress = new Uri($"http://{MailpitDevSettings.Host}:{MailpitDevSettings.HttpPort}/")
         };
         return new MailPitClient(http);
     }
