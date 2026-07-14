@@ -305,9 +305,6 @@ public class ServerTester : IAsyncDisposable
             if (summary is not null)
                 return await client.GetMessage(summary.Id);
 
-            if (cts.IsCancellationRequested)
-                throw new InvalidOperationException($"No Mailpit message with subject '{subject}' arrived within {timeout.Value.TotalSeconds:0}s");
-
             try
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(200), cts.Token);
