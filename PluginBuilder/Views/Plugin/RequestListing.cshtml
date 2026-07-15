@@ -2,32 +2,63 @@
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(PluginNavPages.RequestListing, "Plugin Listing Request");
-    var step3Completed = Model.PendingListing;
-    var step1Completed = Model.Step != RequestListingViewModel.State.UpdatePluginSettings;
-    var step2Completed = Model.Step != RequestListingViewModel.State.UpdateOwnerAccountSettings && Model.Step != RequestListingViewModel.State.UpdatePluginSettings;
-    var step1Expanded = !step1Completed;
-    var step2Expanded = step1Completed && !step2Completed;
-    var step3Expanded = step1Completed && step2Completed && !step3Completed;
+
+    var settingsComplete = Model.PluginSettingsComplete;
+    var ownersComplete = Model.OwnerAccountsComplete;
+    var formSubmitted = Model.PendingListing;
+    var prerequisitesComplete = settingsComplete && ownersComplete;
+
+    var listingFormFields = new[]
+    {
+        nameof(Model.ReleaseNote),
+        nameof(Model.TelegramVerificationMessage),
+        nameof(Model.UserReviews),
+        nameof(Model.AnnouncementDate)
+    };
+    var formHasErrors = listingFormFields.Any(field =>
+        ViewData.ModelState.TryGetValue(field, out var state) && state.Errors.Count > 0);
+    var formComplete = formSubmitted || (Model.ListingFormComplete && !formHasErrors);
+    var canSubmit = Model.CanSubmit && !formHasErrors;
+
+    var settingsRequirements = new[]
+    {
+        (Id: "plugin-requirement-description", Label: "Description", Complete: Model.HasDescription, HasDivider: true),
+        (Id: "plugin-requirement-git-repository", Label: "Git Repository", Complete: Model.HasGitRepository, HasDivider: true),
+        (Id: "plugin-requirement-documentation", Label: "Documentation URL", Complete: Model.HasDocumentation, HasDivider: true),
+        (Id: "plugin-requirement-video-url", Label: "Video URL", Complete: Model.HasVideoUrl, HasDivider: true),
+        (Id: "plugin-requirement-logo", Label: "Logo", Complete: Model.HasLogo, HasDivider: false)
+    };
+
+    var settingsExpanded = !formSubmitted && !settingsComplete;
+    var ownersExpanded = !formSubmitted && settingsComplete && !ownersComplete;
+    var formExpanded = !formSubmitted && settingsComplete && ownersComplete;
 }
 
-<div class="d-flex align-items-center justify-content-between mb-4">
-    <h2 class="mb-0">@ViewData["Title"]</h2>
-    <div class="d-flex align-items-center gap-3 mt-3 mt-sm-0">
+<div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+        <h2 class="mb-2">@ViewData["Title"]</h2>
+        <p class="text-muted mb-0">
+            Complete all required steps below to submit your plugin for listing.
+        </p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center justify-content-end gap-3 mt-1 ms-auto">
         @if (Model.HasRequests)
-		{
-			<a asp-action="ListingHistory" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-outline-secondary btn-sm">
-				View History
-			</a>
-		}
+        {
+            <a asp-action="ListingHistory" asp-route-pluginSlug="@Model.PluginSlug" class="btn btn-outline-secondary btn-sm">
+                View History
+            </a>
+        }
         @if (!Model.PendingListing)
         {
-            <button type="submit" form="request-listing-form" class="btn btn-success" @(Model.Step == RequestListingViewModel.State.Done ? "" : "disabled")>
+            <button id="SubmitListing" type="submit" form="request-listing-form" class="btn btn-success"
+                    disabled="@(!canSubmit)">
                 @(Model.HasPreviousRejection ? "Re-submit" : "Submit")
             </button>
         }
         @if (Model.PendingListing && Model.CanSendEmailReminder)
         {
-            <form asp-controller="Plugin" asp-action="SendReminder" asp-route-pluginSlug="@Model.PluginSlug" method="post" class="d-inline">
+            <form id="send-listing-reminder-form" asp-controller="Plugin" asp-action="SendReminder"
+                  asp-route-pluginSlug="@Model.PluginSlug" method="post" class="d-inline">
                 <button type="submit" class="btn btn-success">Send Reminder</button>
             </form>
         }
@@ -37,120 +68,197 @@
 <div class="accordion" id="requestListingAccordion">
     <div class="accordion-item">
         <h3 class="accordion-header" id="pluginSettingsHeader">
-            <button class="accordion-button @(step1Expanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse"
+            <button class="accordion-button @(settingsExpanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse"
                     data-bs-target="#collapsePluginSettings"
-                    aria-expanded="@step1Expanded" aria-controls="collapsePluginSettings">
-                <h5>
-                    @if (step1Completed)
-                    {
-                        <vc:icon symbol="checkmark" />
-                    }
-                    else
-                    {
-                        <vc:icon symbol="cross" />
-                    }
-                    <span>Update Plugin Settings</span>
-                </h5>
-                <vc:icon symbol="caret-down" />
+                    aria-expanded="@settingsExpanded" aria-controls="collapsePluginSettings">
+                <span class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
+                    <span class="requirement-status-icon @(settingsComplete ? "text-success" : "text-danger")" aria-hidden="true">
+                        <vc:icon symbol="@(settingsComplete ? "checkmark" : "cross")" />
+                    </span>
+                    <span class="fw-semibold">Update Plugin Settings</span>
+                    <span id="plugin-settings-status" class="badge @(settingsComplete ? "bg-success text-black" : "bg-danger")">
+                        @(settingsComplete ? "Complete" : "Incomplete")
+                    </span>
+                </span>
+                <span class="ms-auto" aria-hidden="true"><vc:icon symbol="caret-down" /></span>
             </button>
         </h3>
-        <div id="collapsePluginSettings" class="accordion-collapse collapse @(step1Expanded ? "show" : "")" aria-labelledby="pluginSettingsHeader"
-             data-bs-parent="#requestListingAccordion">
+        <div id="collapsePluginSettings" class="accordion-collapse collapse @(settingsExpanded ? "show" : "")"
+            aria-labelledby="pluginSettingsHeader" data-bs-parent="#requestListingAccordion">
             <div class="accordion-body">
-                <p>
-                    Your plugin must include Logo, Documentation URL, Video URL and Git Repository. Click
-                    <a asp-controller="Plugin" asp-action="Settings" asp-route-pluginSlug="@Model.PluginSlug" class="text-success text-decoration-none">this
-                        link</a>
-                    to go to your plugin settings to complete the process
+                <p class="text-muted mb-3">
+                    Complete every required field in your
+                    <a id="UpdatePluginSettingsLink" asp-controller="Plugin" asp-action="Settings"
+                       asp-route-pluginSlug="@Model.PluginSlug">plugin settings</a>.
                 </p>
+                <div class="d-flex flex-column mb-3">
+                    @foreach (var requirement in settingsRequirements)
+                    {
+                        <div id="@requirement.Id" class="d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 @(requirement.HasDivider ? "border-bottom" : "")">
+                            <span class="d-inline-flex align-items-center gap-2 fw-semibold">
+                                <span class="@(requirement.Complete ? "text-success" : "text-danger")" aria-hidden="true">
+                                    <vc:icon symbol="@(requirement.Complete ? "checkmark" : "cross")" />
+                                </span>
+                                @requirement.Label
+                            </span>
+                            <span class="small @(requirement.Complete ? "text-success" : "text-danger")">@(requirement.Complete ? "Complete" : "Missing")</span>
+                        </div>
+                    }
+                </div>
             </div>
         </div>
     </div>
 
     <div class="accordion-item">
         <h3 class="accordion-header" id="ownerSettingsHeader">
-            <button class="accordion-button @(step2Expanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOwnerSettings"
-                    aria-expanded="@step2Expanded" aria-controls="collapseOwnerSettings">
-                <h5>
-                    @if (step2Completed)
-                    {
-                        <vc:icon symbol="checkmark" />
-                    }
-                    else
-                    {
-                        <vc:icon symbol="cross" />
-                    }
-                    <span>Verify Social Accounts for Plugin Owners</span>
-                </h5>
-                <vc:icon symbol="caret-down" />
+            <button class="accordion-button @(ownersExpanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#collapseOwnerSettings"
+                    aria-expanded="@ownersExpanded" aria-controls="collapseOwnerSettings">
+                <span class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
+                    <span class="requirement-status-icon @(ownersComplete ? "text-success" : "text-danger")" aria-hidden="true">
+                        <vc:icon symbol="@(ownersComplete ? "checkmark" : "cross")" />
+                    </span>
+                    <span class="fw-semibold">Verify Social Accounts for Plugin Owners</span>
+                    <span id="owner-settings-status" class="badge @(ownersComplete ? "bg-success text-black" : "bg-danger")">
+                        @(ownersComplete ? "Complete" : "Incomplete")
+                    </span>
+                </span>
+                <span class="ms-auto" aria-hidden="true"><vc:icon symbol="caret-down" /></span>
             </button>
         </h3>
-        <div id="collapseOwnerSettings" class="accordion-collapse collapse @(step2Expanded ? "show" : "")" aria-labelledby="ownerSettingsHeader"
-             data-bs-parent="#requestListingAccordion">
+        <div id="collapseOwnerSettings" class="accordion-collapse collapse @(ownersExpanded ? "show" : "")"
+             aria-labelledby="ownerSettingsHeader" data-bs-parent="#requestListingAccordion">
             <div class="accordion-body">
-                <p>
-                    All plugin owners must verify Email, Nostr, and GitHub. Click
-                    <a asp-controller="Account" asp-action="AccountDetails" class="text-success text-decoration-none">this link</a> to verify your accounts.
-                    If you have other owners, kindly ask them to do the same.
-                </p>
+                <p class="text-muted mb-3">Every plugin owner must verify Email, GitHub, and Nostr.</p>
+                @if (Model.Owners.Count == 0)
+                {
+                    <p class="text-danger mb-3">At least one plugin owner is required.</p>
+                }
+                else
+                {
+                    <div class="d-flex flex-column mb-3">
+                        @for (var ownerIndex = 0; ownerIndex < Model.Owners.Count; ownerIndex++)
+                        {
+                            var owner = Model.Owners[ownerIndex];
+                            var ownerLabel = string.IsNullOrWhiteSpace(owner.Email) ? owner.UserId : owner.Email;
+                            var ownerVerifications = new[]
+                            {
+                                (Key: "email", Label: "Email", Verified: owner.EmailVerified),
+                                (Key: "github", Label: "GitHub", Verified: owner.GithubVerified),
+                                (Key: "nostr", Label: "Nostr", Verified: owner.NostrVerified)
+                            };
+                            <div class="py-3 @(ownerIndex < Model.Owners.Count - 1 ? "border-bottom" : "")" data-owner-id="@owner.UserId">
+                                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                    <span class="fw-semibold text-break">@ownerLabel</span>
+                                    @if (owner.IsCurrentUser)
+                                    {
+                                        <span class="badge bg-secondary">You</span>
+                                    }
+                                    @if (owner.IsPrimary)
+                                    {
+                                        <span class="badge bg-primary text-black">Primary</span>
+                                    }
+                                </div>
+                                <div class="d-flex flex-column gap-1">
+                                    @foreach (var verification in ownerVerifications)
+                                    {
+                                        <div data-verification="@verification.Key" class="d-flex flex-wrap align-items-center justify-content-between gap-2 small">
+                                            <span class="d-inline-flex align-items-center gap-2">
+                                                <span class="@(verification.Verified ? "text-success" : "text-danger")" aria-hidden="true">
+                                                    <vc:icon symbol="@(verification.Verified ? "checkmark" : "cross")" />
+                                                </span>
+                                                @verification.Label
+                                            </span>
+                                            <span class="@(verification.Verified ? "text-success" : "text-danger")">@(verification.Verified ? "Verified" : "Not verified")</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (Model.Owners.Any(owner => owner.IsCurrentUser && !owner.Complete))
+                {
+                    <a asp-controller="Account" asp-action="AccountDetails" class="btn btn-outline-secondary btn-sm">
+                        Verify my accounts
+                    </a>
+                }
             </div>
         </div>
     </div>
 
     <div class="accordion-item">
         <h3 class="accordion-header" id="requestFormHeader">
-            <button class="accordion-button @(step3Expanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRequestForm"
-                    aria-expanded="@step3Expanded" aria-controls="collapseRequestForm">
-                <h5>
-                    @if (step3Completed)
-                    {
-                        <vc:icon symbol="checkmark" />
-                    }
-                    else
-                    {
-                        <vc:icon symbol="cross" />
-                    }
-                    <span>Plugin Listing Form</span>
-                </h5>
-                <vc:icon symbol="caret-down" />
+            <button class="accordion-button @(formExpanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#collapseRequestForm"
+                    aria-expanded="@formExpanded" aria-controls="collapseRequestForm">
+                <span class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
+                    <span class="requirement-status-icon" aria-hidden="true">
+                        <span id="request-form-icon-complete" class="text-success @(formComplete ? "" : "d-none")">
+                            <vc:icon symbol="checkmark" />
+                        </span>
+                        <span id="request-form-icon-incomplete" class="text-danger @(formComplete ? "d-none" : "")">
+                            <vc:icon symbol="cross" />
+                        </span>
+                    </span>
+                    <span class="fw-semibold">Plugin Listing Form</span>
+                    <span id="request-form-status"
+                          class="badge @(formComplete ? "bg-success text-black" : "bg-danger")"
+                          aria-live="polite">
+                        @(formSubmitted ? "Submitted" : formComplete ? "Complete" : "Incomplete")
+                    </span>
+                </span>
+                <span class="ms-auto" aria-hidden="true"><vc:icon symbol="caret-down" /></span>
             </button>
         </h3>
 
-        <div id="collapseRequestForm" class="accordion-collapse collapse @(step3Expanded ? "show" : "")" aria-labelledby="requestFormHeader"
-             data-bs-parent="#requestListingAccordion">
+        <div id="collapseRequestForm" class="accordion-collapse collapse @(formExpanded ? "show" : "")"
+             aria-labelledby="requestFormHeader" data-bs-parent="#requestListingAccordion">
             <div class="accordion-body">
                 <div class="col-xl-8 col-xxl-constrain">
-                    <form id="request-listing-form" asp-action="RequestListing" method="post" enctype="multipart/form-data">
+                    <form id="request-listing-form" asp-action="RequestListing" method="post">
                         <div asp-validation-summary="ModelOnly" class="text-danger"></div>
                         <div class="form-group">
-                            <label asp-for="ReleaseNote" class="form-label" data-required>Release Note <span
-                                    class="text-muted">(max 200 characters)</span></label>
-                            <textarea asp-for="ReleaseNote" rows="2" maxlength="200" class="form-control" required></textarea>
+                            <label asp-for="ReleaseNote" class="form-label" data-required>
+                                Release Note <span class="text-muted">(max 200 characters)</span>
+                            </label>
+                            <textarea asp-for="ReleaseNote" rows="2" maxlength="200" class="form-control" required
+                                      readonly="@formSubmitted"></textarea>
                             <span asp-validation-for="ReleaseNote" class="text-danger"></span>
                             <div class="text-muted">We will use this in BTCPay Server's social post. Refine it as an elevator pitch.
-                                <a href="https://x.com/BtcpayServer/status/1981029395818025195" target="_blank">Example</a>
+                                <a href="https://x.com/BtcpayServer/status/1981029395818025195" target="_blank" rel="noopener">Example</a>
                             </div>
                         </div>
                         <div class="form-group">
                             <label asp-for="TelegramVerificationMessage" class="form-label" data-required></label>
-                            <input asp-for="TelegramVerificationMessage" class="form-control" required />
-                            <span asp-validation-for="TelegramVerificationMessage" class="text-danger"></span>
+                            <input asp-for="TelegramVerificationMessage" type="url" class="form-control" required
+                                   readonly="@formSubmitted"
+                                   aria-describedby="telegram-verification-message-error" />
+                            <span asp-validation-for="TelegramVerificationMessage" id="telegram-verification-message-error"
+                                  class="text-danger"
+                                  data-client-message="Use a BTCPay Server Telegram message link (https://t.me/btcpayserver/...)."></span>
                             <div class="text-muted">Join our Telegram channel so we can be in touch and post a bit about your plugin.
-                                <a href="https://t.me/btcpayserver/91512" target="_blank">Example</a>
+                                <a href="https://t.me/btcpayserver/91512" target="_blank" rel="noopener">Example</a>
                             </div>
                         </div>
                         <div class="form-group">
                             <label asp-for="UserReviews" class="form-label" data-required></label>
-                            <textarea asp-for="UserReviews" class="form-control" rows="4" required></textarea>
+                            <textarea asp-for="UserReviews" class="form-control" rows="4" required
+                                      readonly="@formSubmitted"></textarea>
                             <span asp-validation-for="UserReviews" class="text-danger"></span>
                             <div class="text-muted">Link at least one publicly posted review (Nostr, X, or user websites) from a reputable Bitcoiner who tested
                                 the plugin.
-                                <a href="https://primal.net/e/nevent1qqsqkw7c5qmlue0qvyz784ywrpkvnz2v33js4ajkj2dj0xdjdn6n2qqem7auc" target="_blank">Example</a>
+                                <a href="https://primal.net/e/nevent1qqsqkw7c5qmlue0qvyz784ywrpkvnz2v33js4ajkj2dj0xdjdn6n2qqem7auc"
+                                   target="_blank" rel="noopener">Example</a>
                             </div>
                         </div>
                         <div class="form-group">
-                            <label asp-for="AnnouncementDate" class="form-label">Announcement Date & Time (optional)</label>
-                            <input asp-for="AnnouncementDate" type="datetime-local" class="form-control" />
+                            <label asp-for="AnnouncementDate" class="form-label">
+                                Announcement Date &amp; Time <span class="text-muted">(optional)</span>
+                            </label>
+                            <input asp-for="AnnouncementDate" type="datetime-local" class="form-control"
+                                   readonly="@formSubmitted" />
                             <span asp-validation-for="AnnouncementDate" class="text-danger"></span>
                             <div class="text-muted">
                                 You may specify when this announcement should go live (include date, time)<br />
@@ -166,21 +274,79 @@
 
 @section HeaderScripts {
     <style>
-        .accordion-button h5 svg {
-            transition: none !important;
-            transform: none !important;
-        }
-
-        .accordion-button h5 svg.icon-checkmark {
-            color: var(--btcpay-success, #28a745);
-        }
-
-        .accordion-button h5 svg.icon-cross {
-            color: var(--btcpay-danger, #dc3545);
+        #requestListingAccordion .requirement-status-icon svg.icon {
+            width: 1.25rem;
+            height: 1.25rem;
+            margin-left: 0;
+            transform: none;
         }
     </style>
 }
 
 @section FooterScripts {
-    <partial name="_ValidationScriptsPartial" />
+    @if (!formSubmitted)
+    {
+        <script>
+            document.addEventListener("DOMContentLoaded", () => {
+                const form = document.getElementById("request-listing-form");
+                const releaseNote = document.getElementById("ReleaseNote");
+                const telegram = document.getElementById("TelegramVerificationMessage");
+                const telegramFeedback = document.getElementById("telegram-verification-message-error");
+                const userReviews = document.getElementById("UserReviews");
+                const formStatus = document.getElementById("request-form-status");
+                const completeIcon = document.getElementById("request-form-icon-complete");
+                const incompleteIcon = document.getElementById("request-form-icon-incomplete");
+                const submitButton = document.getElementById("SubmitListing");
+                const prerequisitesComplete = @(prerequisitesComplete ? "true" : "false");
+                let telegramHasServerError = telegramFeedback.textContent.trim().length > 0;
+
+                const telegramIsValid = value => {
+                    const trimmed = value.trim();
+                    if (!trimmed) return false;
+
+                    try {
+                        const url = new URL(trimmed);
+                        const path = url.pathname.split("/").filter(Boolean).join("/");
+                        return url.protocol === "https:" &&
+                               url.hostname.toLowerCase() === "t.me" &&
+                               path.toLowerCase().startsWith("btcpayserver");
+                    } catch {
+                        return false;
+                    }
+                };
+
+                const updateFormState = () => {
+                    const releaseNoteValue = releaseNote.value.trim();
+                    const telegramValue = telegram.value.trim();
+                    const telegramValid = telegramIsValid(telegramValue);
+                    const telegramInvalid = telegramValue.length > 0 && !telegramValid;
+                    if (!telegramHasServerError) {
+                        telegramFeedback.textContent = telegramInvalid ? telegramFeedback.dataset.clientMessage : "";
+                    }
+                    const telegramHasError = telegramHasServerError || telegramInvalid;
+                    const complete = form.checkValidity() && releaseNoteValue.length > 0 &&
+                                     telegramValid && !telegramHasError &&
+                                     userReviews.value.trim().length > 0;
+
+                    telegram.classList.toggle("is-invalid", telegramHasError);
+                    telegram.setAttribute("aria-invalid", telegramHasError.toString());
+
+                    formStatus.textContent = complete ? "Complete" : "Incomplete";
+                    formStatus.classList.toggle("bg-success", complete);
+                    formStatus.classList.toggle("bg-danger", !complete);
+                    formStatus.classList.toggle("text-black", complete);
+                    completeIcon.classList.toggle("d-none", !complete);
+                    incompleteIcon.classList.toggle("d-none", complete);
+
+                    submitButton.disabled = !complete || !prerequisitesComplete;
+                };
+
+                form.addEventListener("input", event => {
+                    if (event.target === telegram) telegramHasServerError = false;
+                    updateFormState();
+                });
+                updateFormState();
+            });
+        </script>
+    }
 }

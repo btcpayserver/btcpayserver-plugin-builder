@@ -118,19 +118,6 @@ public static class NpgsqlConnectionExtensions
         return !string.IsNullOrEmpty(githubGistUrl);
     }
 
-    public static async Task<bool> IsSocialAccountsVerified(this NpgsqlConnection connection, string userId)
-    {
-        var result = await connection.QuerySingleOrDefaultAsync<(string GithubGistUrl, string AccountDetail)>(
-            "SELECT \"GithubGistUrl\", \"AccountDetail\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId AND \"EmailConfirmed\" = true",
-            new { userId });
-
-        if (string.IsNullOrEmpty(result.AccountDetail) || string.IsNullOrEmpty(result.GithubGistUrl))
-            return false;
-
-        var accountSettings = SafeJson.Deserialize<AccountSettings>(result.AccountDetail);
-        return !string.IsNullOrWhiteSpace(accountSettings?.Nostr?.Npub);
-    }
-
     #endregion
 
 
@@ -192,7 +179,8 @@ public static class NpgsqlConnectionExtensions
                                up.is_primary_owner  AS "IsPrimary",
                                u."Email",
                                u."AccountDetail",
-                               u."EmailConfirmed"
+                               u."EmailConfirmed",
+                               u."GithubGistUrl"
                            FROM users_plugins up
                            JOIN "AspNetUsers" u ON u."Id" = up.user_id
                            WHERE up.plugin_slug = @slug
@@ -780,6 +768,7 @@ public static class NpgsqlConnectionExtensions
                                   announcement_date AS "AnnouncementDate",
                                   status AS "Status",
                                   submitted_at AS "SubmittedAt",
+                                  last_reminder_at AS "LastReminderAt",
                                   reviewed_at AS "ReviewedAt",
                                   reviewed_by AS "ReviewedBy",
                                   rejection_reason AS "RejectionReason"
@@ -801,6 +790,7 @@ public static class NpgsqlConnectionExtensions
                                   announcement_date AS "AnnouncementDate",
                                   status AS "Status",
                                   submitted_at AS "SubmittedAt",
+                                  last_reminder_at AS "LastReminderAt",
                                   reviewed_at AS "ReviewedAt",
                                   reviewed_by AS "ReviewedBy",
                                   rejection_reason AS "RejectionReason"
@@ -845,27 +835,17 @@ public static class NpgsqlConnectionExtensions
         return await connection.ExecuteScalarAsync<bool>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
 
-    public static async Task<PluginListingRequest?> GetLatestRejectedListingRequestForPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    public static async Task<bool> TryReserveListingRequestReminder(this NpgsqlConnection connection, int requestId, TimeSpan cooldown)
     {
         const string sql = """
-                           SELECT id AS "Id",
-                                  plugin_slug AS "PluginSlug",
-                                  release_note AS "ReleaseNote",
-                                  telegram_verification_message AS "TelegramVerificationMessage",
-                                  user_reviews AS "UserReviews",
-                                  announcement_date AS "AnnouncementDate",
-                                  status AS "Status",
-                                  submitted_at AS "SubmittedAt",
-                                  reviewed_at AS "ReviewedAt",
-                                  reviewed_by AS "ReviewedBy",
-                                  rejection_reason AS "RejectionReason"
-                           FROM plugin_listing_requests
-                           WHERE plugin_slug = @pluginSlug AND status = 'rejected'
-                           ORDER BY submitted_at DESC
-                           LIMIT 1
+                           UPDATE plugin_listing_requests
+                           SET last_reminder_at = CURRENT_TIMESTAMP
+                           WHERE id = @requestId
+                             AND status = 'pending'
+                             AND COALESCE(last_reminder_at, submitted_at) <= CURRENT_TIMESTAMP - @cooldown
                            """;
 
-        return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
+        return await connection.ExecuteAsync(sql, new { requestId, cooldown }) == 1;
     }
 
     public static async Task<List<PluginListingRequest>> GetAllListingRequestsForPlugin(this NpgsqlConnection connection, PluginSlug pluginSlug)
@@ -879,6 +859,7 @@ public static class NpgsqlConnectionExtensions
                               announcement_date AS "AnnouncementDate",
                               status AS "Status",
                               submitted_at AS "SubmittedAt",
+                              last_reminder_at AS "LastReminderAt",
                               reviewed_at AS "ReviewedAt",
                               reviewed_by AS "ReviewedBy",
                               rejection_reason AS "RejectionReason"
