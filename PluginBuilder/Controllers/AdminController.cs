@@ -35,7 +35,8 @@ public class AdminController(
     ReferrerNavigationService referrerNavigation,
     PluginBuilderOptions pbOptions,
     IOutputCacheStore outputCacheStore,
-    PluginOwnershipService ownershipService)
+    PluginOwnershipService ownershipService,
+    ServerEnvironment serverEnvironment)
     : Controller
 {
     // settings editor
@@ -925,6 +926,26 @@ public class AdminController(
     [HttpPost("emailsettings")]
     public async Task<IActionResult> EmailSettings(EmailSettingsViewModel model, bool passwordSet, string? command)
     {
+        // Cheat-mode convenience: one-click fill the SMTP settings for the local Mailpit dev instance.
+        if (command?.Equals("mailpit", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            if (!serverEnvironment.CheatMode)
+                return NotFound();
+
+            await emailService.SaveEmailSettingsToDatabase(new EmailSettingsViewModel
+            {
+                Server = MailpitDevSettings.Host,
+                Port = MailpitDevSettings.SmtpPort,
+                Username = "plugin-builder@example.com",
+                From = "plugin-builder@example.com",
+                Password = "password",
+                DisableCertificateCheck = true
+            });
+            TempData[TempDataConstant.SuccessMessage] =
+                $"Mailpit SMTP settings saved. View captured mail at http://{MailpitDevSettings.Host}:{MailpitDevSettings.HttpPort}";
+            return RedirectToAction(nameof(EmailSettings));
+        }
+
         if (passwordSet)
         {
             var dbModel = await emailService.GetEmailSettingsFromDb();

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using PluginBuilder.Events;
 using PluginBuilder.Services;
+using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Tests;
@@ -113,6 +114,13 @@ public class ServerTester : IAsyncDisposable
                 $"--cheat_mode={CheatMode.ToString().ToLowerInvariant()}",
                 $"--enable_local_artifact_download_proxy={EnableLocalArtifactDownloadProxy.ToString().ToLowerInvariant()}",
             ]
+        });
+
+        // Added after the app's AddEnvironmentVariables("PB_") so it wins over any ambient PB_CHEAT_MODE,
+        // keeping this tester's CheatMode authoritative (read lazily via ServerEnvironment at request time).
+        webappBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["CHEAT_MODE"] = CheatMode.ToString().ToLowerInvariant()
         });
 
         webappBuilder.Services.AddHttpClient();
@@ -264,6 +272,47 @@ public class ServerTester : IAsyncDisposable
         finally
         {
             sub?.Dispose();
+        }
+    }
+
+    /// <summary>HTTP client pointed at the local Mailpit instance's REST API.</summary>
+    public MailPitClient GetMailPitClient()
+    {
+        var http = new HttpClient
+        {
+            BaseAddress = new Uri($"http://{MailpitDevSettings.Host}:{MailpitDevSettings.HttpPort}/")
+        };
+        return new MailPitClient(http);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> (which should trigger an email send with the given
+    /// <paramref name="subject"/>), then polls Mailpit until a message with that subject appears and
+    /// returns it. Throws on timeout.
+    /// </summary>
+    public async Task<MailPitClient.Message> AssertHasEmail(string subject, Func<Task> action, TimeSpan? timeout = null)
+    {
+        timeout ??= TimeSpan.FromSeconds(30);
+        using var client = GetMailPitClient();
+
+        await action();
+
+        using var cts = new CancellationTokenSource(timeout.Value);
+        while (true)
+        {
+            var search = await client.Search($"subject:\"{subject}\"");
+            var summary = search.Messages.FirstOrDefault();
+            if (summary is not null)
+                return await client.GetMessage(summary.Id);
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(200), cts.Token);
+            }
+            catch (TaskCanceledException)
+            {
+                throw new InvalidOperationException($"No Mailpit message with subject '{subject}' arrived within {timeout.Value.TotalSeconds:0}s");
+            }
         }
     }
 }
