@@ -70,7 +70,7 @@
         <h3 class="accordion-header" id="pluginSettingsHeader">
             <button class="accordion-button @(settingsExpanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse"
                     data-bs-target="#collapsePluginSettings"
-                    aria-expanded="@settingsExpanded" aria-controls="collapsePluginSettings">
+                    aria-expanded="@(settingsExpanded ? "true" : "false")" aria-controls="collapsePluginSettings">
                 <span class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
                     <span class="requirement-status-icon @(settingsComplete ? "text-success" : "text-danger")" aria-hidden="true">
                         <vc:icon symbol="@(settingsComplete ? "checkmark" : "cross")" />
@@ -113,7 +113,7 @@
         <h3 class="accordion-header" id="ownerSettingsHeader">
             <button class="accordion-button @(ownersExpanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse"
                     data-bs-target="#collapseOwnerSettings"
-                    aria-expanded="@ownersExpanded" aria-controls="collapseOwnerSettings">
+                    aria-expanded="@(ownersExpanded ? "true" : "false")" aria-controls="collapseOwnerSettings">
                 <span class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
                     <span class="requirement-status-icon @(ownersComplete ? "text-success" : "text-danger")" aria-hidden="true">
                         <vc:icon symbol="@(ownersComplete ? "checkmark" : "cross")" />
@@ -192,7 +192,7 @@
         <h3 class="accordion-header" id="requestFormHeader">
             <button class="accordion-button @(formExpanded ? "" : "collapsed")" type="button" data-bs-toggle="collapse"
                     data-bs-target="#collapseRequestForm"
-                    aria-expanded="@formExpanded" aria-controls="collapseRequestForm">
+                    aria-expanded="@(formExpanded ? "true" : "false")" aria-controls="collapseRequestForm">
                 <span class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
                     <span class="requirement-status-icon" aria-hidden="true">
                         <span id="request-form-icon-complete" class="text-success @(formComplete ? "" : "d-none")">
