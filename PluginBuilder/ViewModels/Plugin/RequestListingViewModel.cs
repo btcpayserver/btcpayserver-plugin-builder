@@ -42,11 +42,15 @@ public class RequestListingViewModel
 
     public static bool IsValidTelegramVerificationMessage(string? value)
     {
-        return !string.IsNullOrWhiteSpace(value) &&
-               Uri.TryCreate(value, UriKind.Absolute, out var telegramUri) &&
-               telegramUri.Scheme == Uri.UriSchemeHttps &&
+        if (string.IsNullOrWhiteSpace(value) ||
+            !Uri.TryCreate(value, UriKind.Absolute, out var telegramUri))
+            return false;
+
+        var segments = telegramUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return telegramUri.Scheme == Uri.UriSchemeHttps &&
                telegramUri.Host.Equals("t.me", StringComparison.OrdinalIgnoreCase) &&
-               telegramUri.AbsolutePath.Trim('/').StartsWith("btcpayserver", StringComparison.OrdinalIgnoreCase);
+               segments.Length >= 2 &&
+               segments[0].Equals("btcpayserver", StringComparison.OrdinalIgnoreCase);
     }
 }
 

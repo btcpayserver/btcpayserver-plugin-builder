@@ -21,9 +21,12 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
 
     [Theory]
     [InlineData("https://t.me/btcpayserver/1234", true)]
+    [InlineData("https://t.me/BTCPayServer/1234", true)]
     [InlineData("http://t.me/btcpayserver/1234", false)]
     [InlineData("https://example.com/btcpayserver/1234", false)]
     [InlineData("https://t.me/not-btcpayserver/1234", false)]
+    [InlineData("https://t.me/btcpayserver-fake/1234", false)]
+    [InlineData("https://t.me/btcpayserver", false)]
     public void TelegramVerificationMessageValidation_MatchesServerContract(string value, bool expected)
     {
         Assert.Equal(expected, RequestListingViewModel.IsValidTelegramVerificationMessage(value));
@@ -205,7 +208,9 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         {
             "http://t.me/btcpayserver/1234",
             "https://example.com/btcpayserver/1234",
-            "https://t.me/not-btcpayserver/1234"
+            "https://t.me/not-btcpayserver/1234",
+            "https://t.me/btcpayserver-fake/1234",
+            "https://t.me/btcpayserver"
         };
         foreach (var invalidTelegramUrl in invalidTelegramUrls)
         {

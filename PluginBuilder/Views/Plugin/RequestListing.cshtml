@@ -306,10 +306,11 @@
 
                     try {
                         const url = new URL(trimmed);
-                        const path = url.pathname.split("/").filter(Boolean).join("/");
+                        const segments = url.pathname.split("/").filter(Boolean);
                         return url.protocol === "https:" &&
                                url.hostname.toLowerCase() === "t.me" &&
-                               path.toLowerCase().startsWith("btcpayserver");
+                               segments.length >= 2 &&
+                               segments[0].toLowerCase() === "btcpayserver";
                     } catch {
                         return false;
                     }
