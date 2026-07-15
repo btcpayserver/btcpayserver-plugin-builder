@@ -42,7 +42,9 @@ public class OwnersUITests(ITestOutputHelper output) : PageTest
         await t.GoToUrl($"/plugins/{slug}/owners");
         await t.AssertNoError();
         await Expect(t.Page.Locator("table tbody tr")).ToContainTextAsync(userA);
-        await Expect(t.Page.Locator("table tbody tr")).ToContainTextAsync("Primary Owner");
+        var primaryOwnerBadge = t.Page.Locator(".badge:text-is('Primary Owner')");
+        await Expect(primaryOwnerBadge).ToHaveClassAsync(new Regex("\\bbg-primary\\b"));
+        await Expect(primaryOwnerBadge).ToHaveClassAsync(new Regex("\\btext-black\\b"));
 
         await t.Logout();
         await t.GoToUrl("/register");
