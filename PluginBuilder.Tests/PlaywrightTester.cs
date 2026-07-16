@@ -12,6 +12,7 @@ using PluginBuilder.DataModels;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
+using PluginBuilder.ViewModels.Admin;
 using Xunit;
 
 namespace PluginBuilder.Tests;
@@ -141,6 +142,36 @@ public class PlaywrightTester : IAsyncDisposable
         }
         return email;
     }
+
+    /// <summary>Creates a user with a confirmed email and returns its id.</summary>
+    public async Task<string> CreateConfirmedUser(string email, string password = "123456")
+    {
+        using var scope = Server.WebApp.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var user = new IdentityUser { UserName = email, Email = email, EmailConfirmed = true };
+        var result = await userManager.CreateAsync(user, password);
+        if (!result.Succeeded)
+        {
+            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+            throw new InvalidOperationException($"Failed to create user {email}: {errors}");
+        }
+        return user.Id;
+    }
+
+    /// <summary>Points outgoing email at the local Mailpit instance.</summary>
+    public Task ConfigureMailpitSmtp() =>
+        Server.GetService<EmailService>().SaveEmailSettingsToDatabase(new EmailSettingsViewModel
+        {
+            Server = MailpitDevSettings.Host,
+            Port = MailpitDevSettings.SmtpPort,
+            Username = "plugin-builder@example.com",
+            From = "plugin-builder@example.com",
+            Password = "password",
+            DisableCertificateCheck = true
+        });
+
+    /// <summary>Navigates to an emailed absolute link by its path, staying on the test server's origin.</summary>
+    public Task<IResponse?> GoToEmailLink(string absoluteUrl) => GoToUrl(new Uri(absoluteUrl).PathAndQuery);
 
     public async Task EnableGithubVerificationAsync(NpgsqlConnection conn)
     {
