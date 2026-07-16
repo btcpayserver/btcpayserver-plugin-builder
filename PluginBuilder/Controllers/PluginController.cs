@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Controllers.Logic;
@@ -35,6 +34,8 @@ public class PluginController(
     ILogger<PluginController> logger)
     : Controller
 {
+    private static readonly TimeSpan _listingReminderCooldown = TimeSpan.FromDays(7);
+
     [HttpGet("settings")]
     public async Task<IActionResult> Settings(
         [ModelBinder(typeof(PluginSlugModelBinder))]
@@ -324,25 +325,11 @@ public class PluginController(
     PluginSlug pluginSlug)
     {
         await using var conn = await connectionFactory.Open();
-        var plugin = await conn.GetPluginDetails(pluginSlug);
-        if (plugin is null)
-            return NotFound();
-
-        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
         var requests = await conn.GetAllListingRequestsForPlugin(pluginSlug);
         var vm = new ListingHistoryViewModel
         {
             PluginSlug = pluginSlug.ToString(),
-            PluginTitle = pluginSettings?.PluginTitle,
-            Requests = requests.Select(r => new ListingHistoryItemViewModel
-            {
-                Id = r.Id,
-                Status = r.Status,
-                ReleaseNote = r.ReleaseNote,
-                SubmittedAt = r.SubmittedAt,
-                ReviewedAt = r.ReviewedAt,
-                RejectionReason = r.RejectionReason
-            }).ToList()
+            Requests = requests
         };
         return View(vm);
     }
@@ -353,6 +340,7 @@ public class PluginController(
         PluginSlug pluginSlug)
     {
         var model = new RequestListingViewModel { PluginSlug = pluginSlug.ToString() };
+        var currentUserId = userManager.GetUserId(User) ?? string.Empty;
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.GetPluginDetails(pluginSlug);
         if (plugin is null)
@@ -367,12 +355,12 @@ public class PluginController(
         var allRequests = await conn.GetAllListingRequestsForPlugin(pluginSlug);
         var pluginOwners = await conn.GetPluginOwners(pluginSlug);
         var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
-        var pendingRequest = await conn.GetPendingListingRequestForPlugin(pluginSlug);
-        var rejectedRequest = await conn.GetLatestRejectedListingRequestForPlugin(pluginSlug);
+        var pendingRequest = allRequests.FirstOrDefault(request => request.Status == PluginListingRequestStatus.Pending);
+        var rejectedRequest = allRequests.FirstOrDefault(request => request.Status == PluginListingRequestStatus.Rejected);
 
-        model.ReleaseNote = pluginSettings?.Description;
+        model.ReleaseNote = pluginSettings.Description;
         model.HasPreviousRejection = rejectedRequest != null;
-        model.HasRequests = allRequests.Any();
+        model.HasRequests = allRequests.Count != 0;
 
         if (pendingRequest != null)
         {
@@ -381,8 +369,8 @@ public class PluginController(
             model.UserReviews = pendingRequest.UserReviews;
             model.ReleaseNote = pendingRequest.ReleaseNote;
             model.AnnouncementDate = pendingRequest.AnnouncementDate;
-            var now = DateTimeOffset.UtcNow;
-            model.CanSendEmailReminder = now >= pendingRequest.SubmittedAt.AddDays(1);
+            var reminderCooldownStartedAt = pendingRequest.LastReminderAt ?? pendingRequest.SubmittedAt;
+            model.CanSendEmailReminder = DateTimeOffset.UtcNow >= reminderCooldownStartedAt.Add(_listingReminderCooldown);
             TempData[TempDataConstant.WarningMessage] = "Your listing request has been sent and is pending validation";
         }
         else if (rejectedRequest != null)
@@ -394,7 +382,7 @@ public class PluginController(
             model.AnnouncementDate = rejectedRequest.AnnouncementDate;
         }
 
-        model = await ListingRequirementsMet(conn, pluginSettings, pluginOwners, model);
+        PopulateListingRequirements(pluginSettings, pluginOwners, model, currentUserId);
         return View(model);
     }
 
@@ -405,75 +393,73 @@ public class PluginController(
     {
         await using var conn = await connectionFactory.Open();
         var plugin = await conn.GetPluginDetails(pluginSlug);
-        if (plugin is null)
-            return NotFound();
-
-        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
-        if (plugin.Visibility == PluginVisibilityEnum.Hidden)
+        if (plugin is null || plugin.Visibility == PluginVisibilityEnum.Hidden)
             return NotFound();
 
         if (plugin.Visibility == PluginVisibilityEnum.Listed)
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
 
-        if (string.IsNullOrWhiteSpace(model.ReleaseNote))
-            ModelState.AddModelError(nameof(model.ReleaseNote), "Description is required.");
+        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
+        if (await conn.HasPendingListingRequest(pluginSlug))
+            return RedirectToAction(nameof(RequestListing), new { pluginSlug });
 
-        if (string.IsNullOrWhiteSpace(model.TelegramVerificationMessage) ||
-            !Uri.TryCreate(model.TelegramVerificationMessage, UriKind.Absolute, out var telegramUri) ||
-            telegramUri.Scheme != Uri.UriSchemeHttps ||
-            !telegramUri.Host.Equals("t.me", StringComparison.OrdinalIgnoreCase) ||
-            !telegramUri.AbsolutePath.Trim('/').StartsWith("btcpayserver", StringComparison.OrdinalIgnoreCase))
+        var owners = await conn.GetPluginOwners(pluginSlug);
+        model.PluginSlug = pluginSlug.ToString();
+        var currentUserId = userManager.GetUserId(User) ?? string.Empty;
+        PopulateListingRequirements(pluginSettings, owners, model, currentUserId);
+
+        if (!model.PluginSettingsComplete)
+            ModelState.AddModelError(string.Empty, "Complete every required field in your plugin settings before submitting.");
+
+        if (!model.OwnerAccountsComplete)
+            ModelState.AddModelError(string.Empty, "Every plugin owner must verify Email, GitHub, and Nostr before submitting.");
+
+        if (!string.IsNullOrWhiteSpace(model.TelegramVerificationMessage) &&
+            !RequestListingViewModel.IsValidTelegramVerificationMessage(model.TelegramVerificationMessage))
             ModelState.AddModelError(nameof(model.TelegramVerificationMessage),
-                "Telegram verification message on BTCPay Server telegram (https://t.me/btcpayserver/... ) channel is required.");
-        if (string.IsNullOrWhiteSpace(model.UserReviews))
-            ModelState.AddModelError(nameof(model.UserReviews), "User-reviews link is required and must be an HTTPS URL.");
+                "Use a BTCPay Server Telegram message link (https://t.me/btcpayserver/...).");
 
         if (!ModelState.IsValid)
         {
-            var owners = await conn.GetPluginOwners(pluginSlug);
-            model.PendingListing = await conn.HasPendingListingRequest(pluginSlug);
-            model = await ListingRequirementsMet(conn, pluginSettings, owners, model);
+            var allRequests = await conn.GetAllListingRequestsForPlugin(pluginSlug);
+            model.HasRequests = allRequests.Count > 0;
+            model.HasPreviousRejection = allRequests.Any(request => request.Status == PluginListingRequestStatus.Rejected);
             return View(model);
         }
 
         await conn.CreateListingRequest(pluginSlug, model.ReleaseNote.Trim(), model.TelegramVerificationMessage.Trim(), model.UserReviews.Trim(),
             model.AnnouncementDate);
-        await SendRequestListingEmail(conn, pluginSlug.ToString());
+        await SendRequestListingEmail(conn, pluginSlug);
         TempData[TempDataConstant.SuccessMessage] = "Your listing request has been sent and is pending validation";
         return RedirectToAction(nameof(Dashboard), new { pluginSlug });
     }
 
-    private async Task<RequestListingViewModel> ListingRequirementsMet(NpgsqlConnection conn, PluginSettings pluginSettings, List<OwnerVm> owners,
-        RequestListingViewModel model)
+    private static void PopulateListingRequirements(PluginSettings pluginSettings, IReadOnlyCollection<OwnerVm> owners,
+        RequestListingViewModel model, string currentUserId)
     {
-        if (pluginSettings == null || owners == null || owners.Count == 0)
+        model.HasDescription = !string.IsNullOrWhiteSpace(pluginSettings.Description);
+        model.HasGitRepository = !string.IsNullOrWhiteSpace(pluginSettings.GitRepository);
+        model.HasDocumentation = !string.IsNullOrWhiteSpace(pluginSettings.Documentation);
+        model.HasVideoUrl = !string.IsNullOrWhiteSpace(pluginSettings.VideoUrl);
+        model.HasLogo = !string.IsNullOrWhiteSpace(pluginSettings.Logo);
+
+        model.Owners = owners.Select(owner =>
         {
-            model.Step = RequestListingViewModel.State.Invalid;
-            return model;
-        }
-
-        var docsMissing = string.IsNullOrWhiteSpace(pluginSettings?.GitRepository) || string.IsNullOrWhiteSpace(pluginSettings?.Documentation)
-                                                                                        || string.IsNullOrWhiteSpace(pluginSettings?.Logo)
-                                                                                        || string.IsNullOrWhiteSpace(pluginSettings?.Description)
-                                                                                        || string.IsNullOrWhiteSpace(pluginSettings?.VideoUrl);
-
-        var ownerNotVerified = false;
-        foreach (var owner in owners)
-            if (!await conn.IsSocialAccountsVerified(owner.UserId))
+            var accountSettings = SafeJson.Deserialize<AccountSettings>(owner.AccountDetail);
+            return new RequestListingOwnerViewModel
             {
-                ownerNotVerified = true;
-                break;
-            }
-
-        model.Step = (docsMissing, ownerNotVerified) switch
-        {
-            (true, _) => RequestListingViewModel.State.UpdatePluginSettings,
-            (false, true) => RequestListingViewModel.State.UpdateOwnerAccountSettings,
-            (false, false) => RequestListingViewModel.State.Done
-        };
-        return model;
+                UserId = owner.UserId,
+                Email = owner.Email,
+                IsPrimary = owner.IsPrimary,
+                IsCurrentUser = string.Equals(owner.UserId, currentUserId, StringComparison.Ordinal),
+                EmailVerified = owner.EmailConfirmed,
+                GithubVerified = !string.IsNullOrEmpty(owner.GithubGistUrl),
+                NostrVerified = !string.IsNullOrWhiteSpace(accountSettings.Nostr?.Npub)
+            };
+        }).ToList();
     }
 
+    [HttpPost]
     public async Task<IActionResult> SendReminder([ModelBinder(typeof(PluginSlugModelBinder))] PluginSlug pluginSlug)
     {
         await using var conn = await connectionFactory.Open();
@@ -488,21 +474,21 @@ public class PluginController(
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
         }
 
-        var now = DateTimeOffset.UtcNow;
-        if (now < request.SubmittedAt.AddDays(1))
+        if (!await conn.TryReserveListingRequestReminder(request.Id, _listingReminderCooldown))
         {
-            TempData[TempDataConstant.WarningMessage] = "Please wait 24 hours before sending another reminder";
+            TempData[TempDataConstant.WarningMessage] = "Please wait 7 days before sending another reminder";
             return RedirectToAction(nameof(Dashboard), new { pluginSlug });
         }
 
-        await SendRequestListingEmail(conn, pluginSlug.ToString());
+        await SendRequestListingEmail(conn, pluginSlug);
         TempData[TempDataConstant.SuccessMessage] = "Request listing reminders sent to admins";
         return RedirectToAction(nameof(RequestListing), new { pluginSlug });
     }
 
-    private async Task SendRequestListingEmail(NpgsqlConnection conn, string pluginSlug)
+    private async Task SendRequestListingEmail(NpgsqlConnection conn, PluginSlug pluginSlug)
     {
-        var pluginPublicUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug }, Request.Scheme);
+        var pluginPublicUrl = Url.Action(nameof(HomeController.GetPluginDetails), "Home",
+            new { pluginSlug = pluginSlug.ToString() }, Request.Scheme);
         var listingReviewUrl = Url.Action(nameof(AdminController.ListingRequests), "Admin", new { }, Request.Scheme);
         await emailService.NotifyAdminOnNewRequestListing(conn, pluginSlug, pluginPublicUrl!, listingReviewUrl!);
     }
