@@ -97,15 +97,9 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         var embedOrigin = tester.ServerUri!.GetLeftPart(UriPartial.Authority);
         await tester.GoToUrl("/");
         var detailsUrl = new Uri(tester.ServerUri!, $"/public/plugins/{firstSlug}?embed=1&btcpayVersion=2.3.6&includePreRelease=true");
-        await tester.Page!.SetContentAsync($"""
-                                            <iframe id="details" src="{detailsUrl}"></iframe>
-                                            """);
+        await LoadEmbedHostAsync(tester.Page!, detailsUrl, embedOrigin);
 
-        await tester.Page.WaitForFunctionAsync("""
-                                               () => document.querySelector('#details')?.contentWindow?.document?.querySelector('[data-embed-page="details"]')
-                                               """);
-
-        await tester.Page.EvaluateAsync($$"""
+        await tester.Page!.EvaluateAsync($$"""
                                         () => document.querySelector('#details').contentWindow.postMessage({
                                             type: 'btcpay:host-context',
                                             selectedSlug: '{{secondSlug}}'
@@ -164,13 +158,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         var detailsUrl = new Uri(tester.ServerUri!, $"/public/plugins/{slug}?btcpayVersion=1.4.6.0&includePreRelease=true&embed=1&sort=helpful&count=10");
 
         await tester.GoToUrl("/");
-        await tester.Page!.SetContentAsync($"""
-                                            <iframe id="details" src="{detailsUrl}"></iframe>
-                                            """);
-        await tester.Page.WaitForFunctionAsync("""
-                                               () => document.querySelector('#details')?.contentWindow?.document?.querySelector('[data-embed-page="details"]')
-                                               """);
-        await tester.Page.EvaluateAsync("""
+        await LoadEmbedHostAsync(tester.Page!, detailsUrl, embedOrigin);
+        await tester.Page!.EvaluateAsync("""
                                         () => {
                                             window.__installMessages = [];
                                             window.addEventListener('message', event => {
@@ -434,5 +423,24 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         // Test 6: Ensure trailing period is NOT part of the link
         Assert.DoesNotContain("r0ckstardev.</a>", innerHTML);
         Assert.Contains("r0ckstardev</a>.", innerHTML);
+    }
+
+    private static async Task LoadEmbedHostAsync(IPage page, Uri detailsUrl, string embedOrigin)
+    {
+        await page.SetContentAsync($$"""
+                                   <script>
+                                       window.__embedReady = false;
+                                       window.addEventListener('message', event => {
+                                           if (event.source === document.querySelector('#details')?.contentWindow &&
+                                               event.origin === '{{embedOrigin}}' &&
+                                               event.data?.type === 'pb:ready') {
+                                               window.__embedReady = true;
+                                           }
+                                       });
+                                   </script>
+                                   <iframe id="details" src="{{detailsUrl}}"></iframe>
+                                   """);
+
+        await page.WaitForFunctionAsync("() => window.__embedReady === true");
     }
 }
