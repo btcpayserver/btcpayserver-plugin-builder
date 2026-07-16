@@ -1,3 +1,6 @@
+@{
+    var embedMode = string.Equals(Context.Request.Query["embed"], "1", StringComparison.Ordinal);
+}
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -9,15 +12,18 @@
 <link href="~/main/site.css" asp-append-version="true" rel="stylesheet" />
 <link href="~/main/themes/default.css" rel="stylesheet" />
 <link href="~/main/themes/default-dark.css" id="DarkThemeLinkTag" rel="stylesheet" disabled asp-append-version="true" />
-<script>
-    (function(){
-        var theme = localStorage.getItem('btcpay-theme');
-        if (theme) document.documentElement.setAttribute('data-btcpay-theme', theme);
-        var isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        if (isDark) document.getElementById('DarkThemeLinkTag').disabled = false;
-    })();
-</script>
-<script src="~/js/theme-switch.js" asp-append-version="true"></script>
+@if (!embedMode)
+{
+    <script>
+        (function(){
+            var theme = localStorage.getItem('btcpay-theme');
+            if (theme) document.documentElement.setAttribute('data-btcpay-theme', theme);
+            var isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            if (isDark) document.getElementById('DarkThemeLinkTag').disabled = false;
+        })();
+    </script>
+    <script src="~/js/theme-switch.js" asp-append-version="true"></script>
+}
 <noscript>
     <style>
         .btcpay-theme-switch { 
