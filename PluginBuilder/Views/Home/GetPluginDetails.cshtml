@@ -570,7 +570,10 @@
     </div>
 }
 
-<partial name="_Confirm" model="@(new ConfirmModel("Delete review", "Are you sure?", "Delete"))" />
+@if (!Model.EmbedMode)
+{
+    <partial name="_Confirm" model="@(new ConfirmModel("Delete review", "Are you sure?", "Delete"))" />
+}
 
 <script>
     (() => {

@@ -60,6 +60,12 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         const string slug = "plugin-details-embed-layout";
         await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
 
+        using (var client = tester.Server.CreateHttpClient())
+        using (var response = await client.GetAsync($"/public/plugins/{slug}?embed=1"))
+        {
+            Assert.False(response.Headers.Contains("X-Frame-Options"));
+        }
+
         await tester.Page!.SetViewportSizeAsync(700, 1000);
         await tester.GoToUrl($"/public/plugins/{slug}?embed=1");
         await tester.AssertNoError();
