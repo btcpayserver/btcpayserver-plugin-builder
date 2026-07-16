@@ -112,11 +112,9 @@ public class EmailVerificationTests(ITestOutputHelper output) : PageTest
         await tester.GoToEmailLink(link.Value);
         await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
 
-        using var scope = tester.Server.WebApp.Services.CreateScope();
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-        var updated = await userManager.FindByIdAsync(userId);
-        Assert.NotNull(updated);
-        Assert.Equal(newEmail, updated!.Email);
+        await tester.Logout();
+        await tester.LogIn(newEmail);
+        await Expect(tester.Page).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
     }
 
     private static async Task RegisterViaUi(PlaywrightTester tester, string email)

@@ -43,8 +43,11 @@ public class PasswordResetTests(ITestOutputHelper output) : PageTest
         await tester.Page.ClickAsync("#ResetPassword");
         await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
 
-        Assert.True(await CheckPassword(tester, email, newPassword), "New password should be valid after reset");
-        Assert.False(await CheckPassword(tester, email, "123456"), "Old password should no longer be valid");
+        await tester.LogIn(email, newPassword);
+        await Expect(tester.Page).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
+
+        await tester.LogIn(email, "123456");
+        await Expect(tester.Page.Locator(".validation-summary-errors")).ToBeVisibleAsync();
     }
 
     [Fact]
