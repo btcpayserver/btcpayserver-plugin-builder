@@ -1,6 +1,6 @@
 @{
     var isAuth = User.Identity?.IsAuthenticated == true;
-    var embedMode = string.Equals(Context.Request.Query["embed"], "1", StringComparison.Ordinal);
+    var embedMode = Context.Request.IsEmbeddedMode();
 }
 @if (!embedMode)
 {

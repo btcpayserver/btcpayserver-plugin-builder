@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Npgsql;
@@ -129,7 +130,16 @@ public class Program
         });
 
         app.UseDefaultFiles();
-        app.UseStaticFiles();
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            OnPrepareResponse = ctx =>
+            {
+                // This allows resources such as fonts to load in an iframe
+                // we use iframes in BTCPay Server plugin page.
+                ctx.Context.Response.Headers.AccessControlAllowOrigin = "*";
+                ctx.Context.Response.Headers["Cross-Origin-Resource-Policy"] = "cross-origin";
+            }
+        });
         app.UseRouting();
         app.UseRateLimiter();
         app.UseAuthentication();

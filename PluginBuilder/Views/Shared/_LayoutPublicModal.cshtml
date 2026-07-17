@@ -1,6 +1,6 @@
 @{
     Layout = null;
-    var embedMode = string.Equals(Context.Request.Query["embed"], "1", StringComparison.Ordinal);
+    var embedMode = Context.Request.IsEmbeddedMode();
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -33,6 +33,10 @@
     </style>
 </head>
 <body class="d-flex flex-column min-vh-100 @(embedMode ? "embed-mode" : null)">
+@if (embedMode)
+{
+    <partial name="_IconSprite"></partial>
+}
 <section class="content-wrapper flex-grow-1">
     <div class="navbar-brand d-none"></div>
     <vc:status-message></vc:status-message>

@@ -6,7 +6,7 @@
     const string title = "BTCPay Server Plugin Directory";
     const string desc = "Extend and customize your BTCPay Server with community and official plugins.";
     ViewData["Title"] = title;
-    var embedMode = Context.Request.Query["embed"] == "1";
+    var embedMode = Context.Request.IsEmbeddedMode();
     var embedRoute = embedMode ? "1" : null;
 
     var currentSearch = Context.Request.Query["searchPluginName"].ToString();
