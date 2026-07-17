@@ -125,7 +125,7 @@ public class EmailVerificationTests(ITestOutputHelper output) : PageTest
         await tester.Page.FillAsync("#Password", "123456");
         await tester.Page.FillAsync("#ConfirmPassword", "123456");
         await tester.Page.ClickAsync("#RegisterButton");
-        await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+        await Assertions.Expect(tester.Page).Not.ToHaveURLAsync(new Regex(".*/register$", RegexOptions.IgnoreCase));
     }
 
     private static async Task<bool> IsEmailConfirmed(PlaywrightTester tester, string email)

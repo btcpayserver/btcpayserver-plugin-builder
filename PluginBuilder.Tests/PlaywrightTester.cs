@@ -144,19 +144,8 @@ public class PlaywrightTester : IAsyncDisposable
     }
 
     /// <summary>Creates a user with a confirmed email and returns its id.</summary>
-    public async Task<string> CreateConfirmedUser(string email, string password = "123456")
-    {
-        using var scope = Server.WebApp.Services.CreateScope();
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-        var user = new IdentityUser { UserName = email, Email = email, EmailConfirmed = true };
-        var result = await userManager.CreateAsync(user, password);
-        if (!result.Succeeded)
-        {
-            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-            throw new InvalidOperationException($"Failed to create user {email}: {errors}");
-        }
-        return user.Id;
-    }
+    public Task<string> CreateConfirmedUser(string email, string password = "123456") =>
+        Server.CreateFakeUserAsync(email, password, confirmEmail: true, githubVerified: false);
 
     /// <summary>Points outgoing email at the local Mailpit instance.</summary>
     public Task ConfigureMailpitSmtp() =>

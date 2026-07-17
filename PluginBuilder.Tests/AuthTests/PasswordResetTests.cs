@@ -41,7 +41,7 @@ public class PasswordResetTests(ITestOutputHelper output) : PageTest
         await tester.Page.FillAsync("#Password", newPassword);
         await tester.Page.FillAsync("#ConfirmPassword", newPassword);
         await tester.Page.ClickAsync("#ResetPassword");
-        await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+        await Expect(tester.Page).ToHaveURLAsync(new Regex(".*/login$", RegexOptions.IgnoreCase));
 
         await tester.LogIn(email, newPassword);
         await Expect(tester.Page).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
@@ -61,10 +61,9 @@ public class PasswordResetTests(ITestOutputHelper output) : PageTest
         var unknown = $"nobody-{Guid.NewGuid():N}@test.com";
 
         await SubmitForgotPassword(tester, unknown);
-        await tester.Page!.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
 
         // Success is shown regardless of account existence, but no email is sent.
-        await Expect(tester.Page.Locator("body"))
+        await Expect(tester.Page!.Locator("body"))
             .ToContainTextAsync("If an account exists for the email address you entered");
 
         using var client = tester.Server.GetMailPitClient();
@@ -88,7 +87,6 @@ public class PasswordResetTests(ITestOutputHelper output) : PageTest
         await tester.Page.FillAsync("#Password", "new-password-123");
         await tester.Page.FillAsync("#ConfirmPassword", "new-password-123");
         await tester.Page.ClickAsync("#ResetPassword");
-        await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
 
         await Expect(tester.Page.Locator(".validation-summary-errors")).ToContainTextAsync("Invalid token");
         Assert.True(await CheckPassword(tester, email, "123456"), "Password must be unchanged after an invalid-token reset");
@@ -100,7 +98,8 @@ public class PasswordResetTests(ITestOutputHelper output) : PageTest
         await tester.Page!.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
         await tester.Page.FillAsync("#Email", email);
         await tester.Page.ClickAsync("#ResetPassword");
-        await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+        await Assertions.Expect(tester.Page.Locator("body"))
+            .ToContainTextAsync("If an account exists for the email address you entered");
     }
 
     private static async Task<bool> CheckPassword(PlaywrightTester tester, string email, string password)
