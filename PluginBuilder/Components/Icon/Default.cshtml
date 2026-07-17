@@ -2,11 +2,13 @@
 @model PluginBuilder.Components.Icon.IconViewModel
 
 @{
-    var requestPathBase = ViewContext.HttpContext.Request.PathBase;
-    var spritePath = FileVersionProvider.AddFileVersionToPath(
-        requestPathBase,
-        "/img/icon-sprite.svg"
-    );
+    var embedMode = ViewContext.HttpContext.Request.IsEmbeddedMode();
+    var spritePath = embedMode
+        ? string.Empty
+        : FileVersionProvider.AddFileVersionToPath(
+            ViewContext.HttpContext.Request.PathBase,
+            "/img/icon-sprite.svg"
+        );
 }
 <svg role="img" class="icon icon-@Model.Symbol">
     <use href="@spritePath#@Model.Symbol"></use>

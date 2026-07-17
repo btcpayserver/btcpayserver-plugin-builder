@@ -1,5 +1,5 @@
 @{
-    var embedMode = string.Equals(Context.Request.Query["embed"], "1", StringComparison.Ordinal);
+    var embedMode = Context.Request.IsEmbeddedMode();
 }
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -26,14 +26,14 @@
 }
 <noscript>
     <style>
-        .btcpay-theme-switch { 
-            display: none !important; 
+        .btcpay-theme-switch {
+            display: none !important;
         }
-        .hide-when-js, [v-cloak] { 
-            display: block !important; 
+        .hide-when-js, [v-cloak] {
+            display: block !important;
         }
-        .only-for-js { 
-            display: none !important; 
+        .only-for-js {
+            display: none !important;
         }
     </style>
 </noscript>

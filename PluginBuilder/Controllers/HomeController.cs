@@ -553,7 +553,7 @@ public class HomeController(
             RatingFilter = model.RatingFilter,
             OwnerGithubUrl = ownerGithubUrl,
             OwnerNostrUrl = ownerNostrUrl,
-            EmbedMode = string.Equals(Request.Query["embed"], "1", StringComparison.Ordinal)
+            EmbedMode = Request.IsEmbeddedMode()
         };
         return View(vm);
     }

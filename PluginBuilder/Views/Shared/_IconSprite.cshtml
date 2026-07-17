@@ -1,0 +1,7 @@
+@inject IWebHostEnvironment WebHostEnvironment
+@{
+    var spriteFile = WebHostEnvironment.WebRootFileProvider.GetFileInfo("img/icon-sprite.svg");
+    await using var spriteStream = spriteFile.CreateReadStream();
+    using var reader = new System.IO.StreamReader(spriteStream);
+}
+@Html.Raw(await reader.ReadToEndAsync())
