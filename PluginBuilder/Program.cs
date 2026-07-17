@@ -148,7 +148,6 @@ public class Program
             {
                 options.Filters.Add(new UIControllerAntiforgeryTokenAttribute());
             })
-            .AddRazorRuntimeCompilation()
             .AddRazorOptions(options =>
             {
                 options.ViewLocationFormats.Add("/{0}.cshtml");
