@@ -6,7 +6,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>aspnet-PluginBuilder-4D3592EF-6E6A-41BD-960D-231C299188A2</UserSecretsId>
-    <RazorCompileOnBuild Condition="'$(Configuration)' == 'Debug'">false</RazorCompileOnBuild>
   </PropertyGroup>
   <ItemGroup>
     <AssemblyAttribute Condition="'$(GitCommit)' != ''" Include="PluginBuilder.GitCommitAttribute">
@@ -18,7 +17,6 @@
     <PackageReference Include="MailKit" Version="4.15.1" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.5" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="10.0.5" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" Version="10.0.5" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.201">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
