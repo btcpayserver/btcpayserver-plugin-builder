@@ -28,7 +28,8 @@ public class ApiController(
     UserManager<IdentityUser> userManager,
     UserVerifiedLogic userVerifiedLogic,
     IHttpClientFactory httpClientFactory,
-    ServerEnvironment serverEnvironment)
+    ServerEnvironment serverEnvironment,
+    TelemetryService telemetryService)
     : ControllerBase
 {
     private sealed class BuildRow
@@ -203,6 +204,38 @@ public class ApiController(
     }
 
     [AllowAnonymous]
+    [HttpPost("telemetry/plugins")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
+    public async Task<IActionResult> ReportInstalledPlugins([FromBody] List<InstalledPluginRequest> plugins)
+    {
+        if (plugins is null || plugins.Count == 0)
+            return Ok();
+
+        var userAgent = Request.Headers.UserAgent.ToString();
+        var remoteIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var xForwardedFor = Request.Headers["X-Forwarded-For"].ToString();
+        var xOriginalFor = Request.Headers["X-Original-For"].ToString();
+
+        var pluginReports = plugins.Where(p => !string.IsNullOrWhiteSpace(p.Identifier) && !string.IsNullOrWhiteSpace(p.Version))
+            .Select(p => new PluginReport(p.Identifier, p.Version)).ToList();
+        
+        if (pluginReports.Count == 0)
+            return Ok();
+
+        _ = telemetryService.RecordServerSnapshot(remoteIp, userAgent, pluginReports, xOriginalFor, xForwardedFor);
+        return Ok();
+    }
+
+    [AllowAnonymous]
+    [HttpGet("plugins/{pluginSlug}/stats")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
+    public async Task<IActionResult> GetPluginStats(string pluginSlug)
+    {
+        var stats = await telemetryService.GetStats(pluginSlug);
+        return Ok(stats);
+    }
+
+    [AllowAnonymous]
     [HttpGet("plugins/{pluginSlug}/versions/{version}")]
     [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> GetPlugin(
@@ -252,6 +285,10 @@ public class ApiController(
 
         await using var conn = await connectionFactory.Open();
         await conn.InsertEvent("Download", new JObject { ["pluginSlug"] = pluginSlug.ToString(), ["version"] = version.ToString() });
+
+        _ = telemetryService.RecordPluginDownload(pluginSlug.ToString(), version.ToString(), Request.Headers.UserAgent.ToString(),
+                HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers["X-Original-For"].ToString(), Request.Headers["X-Forwarded-For"].ToString());
+
         if (serverEnvironment.EnableLocalArtifactDownloadProxy && Uri.TryCreate(url, UriKind.Absolute, out var artifactUri) && artifactUri.IsLoopback)
         {
             return RedirectToAction(
