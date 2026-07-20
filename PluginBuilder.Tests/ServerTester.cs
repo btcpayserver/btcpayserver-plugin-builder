@@ -286,21 +286,25 @@ public class ServerTester : IAsyncDisposable
     }
 
     /// <summary>
-    /// Runs <paramref name="action"/> (which should trigger an email send with the given
-    /// <paramref name="subject"/>), then polls Mailpit until a message with that subject appears and
-    /// returns it. Throws on timeout.
+    /// Runs <paramref name="action"/>, then polls Mailpit until a message matching the subject (and
+    /// optional recipient) appears and returns it. Throws on timeout. Mailpit is shared and never
+    /// cleared, so pass <paramref name="to"/> when the subject is not unique to the test.
     /// </summary>
-    public async Task<MailPitClient.Message> AssertHasEmail(string subject, Func<Task> action, TimeSpan? timeout = null)
+    public Task<MailPitClient.Message> AssertHasEmail(string subject, Func<Task> action, TimeSpan? timeout = null) =>
+        AssertHasEmail(subject, null, action, timeout);
+
+    public async Task<MailPitClient.Message> AssertHasEmail(string subject, string? to, Func<Task> action, TimeSpan? timeout = null)
     {
         timeout ??= TimeSpan.FromSeconds(30);
         using var client = GetMailPitClient();
 
         await action();
 
+        var query = $"subject:\"{subject}\"" + (to is null ? "" : $" to:\"{to}\"");
         using var cts = new CancellationTokenSource(timeout.Value);
         while (true)
         {
-            var search = await client.Search($"subject:\"{subject}\"");
+            var search = await client.Search(query);
             var summary = search.Messages.FirstOrDefault();
             if (summary is not null)
                 return await client.GetMessage(summary.Id);
@@ -311,7 +315,7 @@ public class ServerTester : IAsyncDisposable
             }
             catch (TaskCanceledException)
             {
-                throw new InvalidOperationException($"No Mailpit message with subject '{subject}' arrived within {timeout.Value.TotalSeconds:0}s");
+                throw new InvalidOperationException($"No Mailpit message matching '{query}' arrived within {timeout.Value.TotalSeconds:0}s");
             }
         }
     }
