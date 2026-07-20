@@ -705,9 +705,12 @@ public class HomeController(
             return View("ConfirmEmail", model);
 
         var result = await userManager.ChangeEmailAsync(user, settings.PendingNewEmail, token);
-        var setUsernameResult = await userManager.SetUserNameAsync(user, settings.PendingNewEmail);
         model.Email = settings.PendingNewEmail;
-        model.EmailConfirmed = result.Succeeded && setUsernameResult.Succeeded;
+        if (!result.Succeeded)
+            return View("ConfirmEmail", model);
+
+        var setUsernameResult = await userManager.SetUserNameAsync(user, settings.PendingNewEmail);
+        model.EmailConfirmed = setUsernameResult.Succeeded;
         if (model.EmailConfirmed)
         {
             settings.PendingNewEmail = string.Empty;

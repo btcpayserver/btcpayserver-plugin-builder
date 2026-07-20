@@ -104,6 +104,7 @@ public class EmailVerificationTests(ITestOutputHelper output) : PageTest
             await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
             await tester.Page.FillAsync("#NewEmail", newEmail);
             await tester.Page.ClickAsync("#Submit");
+            await Expect(tester.Page).ToHaveURLAsync(new Regex(".*/admin/users$", RegexOptions.IgnoreCase));
         });
 
         var link = UpdateEmailLink.Match(message.Text);
@@ -115,6 +116,53 @@ public class EmailVerificationTests(ITestOutputHelper output) : PageTest
         await tester.Logout();
         await tester.LogIn(newEmail);
         await Expect(tester.Page).ToHaveURLAsync(new Regex(".*/dashboard$", RegexOptions.IgnoreCase));
+    }
+
+    [Fact]
+    public async Task EmailChange_InvalidToken_DoesNotChangeEmailOrUsername()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        await tester.StartAsync();
+
+        await tester.ConfigureMailpitSmtp();
+
+        var oldEmail = $"old-bad-{Guid.NewGuid():N}@test.com";
+        var newEmail = $"new-bad-{Guid.NewGuid():N}@test.com";
+        var userId = await tester.CreateConfirmedUser(oldEmail);
+
+        await tester.LogIn(await tester.CreateServerAdminAsync());
+        await tester.Page!.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+
+        var message = await tester.Server.AssertHasEmail(VerifySubject, newEmail, async () =>
+        {
+            await tester.GoToUrl($"/admin/userchangeemail?userId={userId}");
+            await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+            await tester.Page.FillAsync("#NewEmail", newEmail);
+            await tester.Page.ClickAsync("#Submit");
+            await Expect(tester.Page).ToHaveURLAsync(new Regex(".*/admin/users$", RegexOptions.IgnoreCase));
+        });
+
+        var link = UpdateEmailLink.Match(message.Text);
+        Assert.True(link.Success, $"No UpdateEmail link found in body:\n{message.Text}");
+
+        var tampered = Regex.Replace(link.Value, @"token=[^&]+", "token=not-a-valid-token");
+        Assert.NotEqual(link.Value, tampered);
+
+        var response = await tester.GoToEmailLink(tampered);
+        await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+
+        Assert.NotNull(response);
+        Assert.True(response.Ok, $"Expected rejection page, got HTTP {response.Status}");
+        await Expect(tester.Page.Locator("body")).ToContainTextAsync("We couldn't verify your email");
+
+        using var scope = tester.Server.WebApp.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var user = await userManager.FindByIdAsync(userId);
+
+        Assert.NotNull(user);
+        Assert.Equal(oldEmail, user.Email);
+        Assert.Equal(oldEmail, user.UserName);
     }
 
     private static async Task RegisterViaUi(PlaywrightTester tester, string email)
