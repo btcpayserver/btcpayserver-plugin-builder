@@ -98,20 +98,22 @@ public class EmailVerificationTests(ITestOutputHelper output) : PageTest
         await tester.LogIn(await tester.CreateServerAdminAsync());
         await tester.Page!.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
 
-        var message = await tester.Server.AssertHasEmail(VerifySubject, newEmail, async () =>
-        {
-            await tester.GoToUrl($"/admin/userchangeemail?userId={userId}");
-            await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-            await tester.Page.FillAsync("#NewEmail", newEmail);
-            await tester.Page.ClickAsync("#Submit");
-            await Expect(tester.Page).ToHaveURLAsync(new Regex(".*/admin/users$", RegexOptions.IgnoreCase));
-        });
+        var message = await tester.Server.AssertHasEmail(VerifySubject, newEmail,
+            () => SubmitEmailChangeViaUi(tester, userId, newEmail));
 
         var link = UpdateEmailLink.Match(message.Text);
         Assert.True(link.Success, $"No UpdateEmail link found in body:\n{message.Text}");
 
         await tester.GoToEmailLink(link.Value);
         await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+
+        using (var scope = tester.Server.WebApp.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = await userManager.FindByIdAsync(userId);
+            Assert.NotNull(user);
+            Assert.Equal(newEmail, user.UserName);
+        }
 
         await tester.Logout();
         await tester.LogIn(newEmail);
@@ -134,14 +136,8 @@ public class EmailVerificationTests(ITestOutputHelper output) : PageTest
         await tester.LogIn(await tester.CreateServerAdminAsync());
         await tester.Page!.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
 
-        var message = await tester.Server.AssertHasEmail(VerifySubject, newEmail, async () =>
-        {
-            await tester.GoToUrl($"/admin/userchangeemail?userId={userId}");
-            await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-            await tester.Page.FillAsync("#NewEmail", newEmail);
-            await tester.Page.ClickAsync("#Submit");
-            await Expect(tester.Page).ToHaveURLAsync(new Regex(".*/admin/users$", RegexOptions.IgnoreCase));
-        });
+        var message = await tester.Server.AssertHasEmail(VerifySubject, newEmail,
+            () => SubmitEmailChangeViaUi(tester, userId, newEmail));
 
         var link = UpdateEmailLink.Match(message.Text);
         Assert.True(link.Success, $"No UpdateEmail link found in body:\n{message.Text}");
@@ -163,6 +159,15 @@ public class EmailVerificationTests(ITestOutputHelper output) : PageTest
         Assert.NotNull(user);
         Assert.Equal(oldEmail, user.Email);
         Assert.Equal(oldEmail, user.UserName);
+    }
+
+    private static async Task SubmitEmailChangeViaUi(PlaywrightTester tester, string userId, string newEmail)
+    {
+        await tester.GoToUrl($"/admin/userchangeemail?userId={userId}");
+        await tester.Page!.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+        await tester.Page.FillAsync("#NewEmail", newEmail);
+        await tester.Page.ClickAsync("#Submit");
+        await Assertions.Expect(tester.Page).ToHaveURLAsync(new Regex(".*/admin/users$", RegexOptions.IgnoreCase));
     }
 
     private static async Task RegisterViaUi(PlaywrightTester tester, string email)
