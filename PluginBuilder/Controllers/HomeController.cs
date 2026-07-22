@@ -216,8 +216,8 @@ public class HomeController(
     [HttpGet("public/plugins")]
     [EnableRateLimiting(Policies.PublicApiRateLimit)]
     public async Task<IActionResult> AllPlugins(
-        [ModelBinder(typeof(PluginVersionModelBinder))]
-        PluginVersion? btcpayVersion = null, string? searchPluginName = null, string sort = "smart")
+        [ModelBinder(typeof(BtcPayHostVersionModelBinder))]
+        PluginVersion? btcpayVersion = null, bool includePreRelease = false, string? searchPluginName = null, string sort = "smart")
     {
         searchPluginName = searchPluginName.StripControlCharacters();
 
@@ -291,7 +291,7 @@ public class HomeController(
                 new
                 {
                     btcpayVersion = btcpayVersion?.VersionParts,
-                    includePreRelease = false,
+                    includePreRelease,
                     searchPattern = $"%{searchPluginName}%",
                     hasSearchTerm = !string.IsNullOrWhiteSpace(searchPluginName)
                 });
@@ -328,7 +328,12 @@ public class HomeController(
     public async Task<IActionResult> GetPluginDetails(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
-        [FromQuery] PluginDetailsViewModel? model)
+        [ModelBinder(typeof(PluginVersionModelBinder))]
+        PluginVersion? version = null,
+        [ModelBinder(typeof(BtcPayHostVersionModelBinder))]
+        PluginVersion? btcpayVersion = null,
+        bool includePreRelease = false,
+        [FromQuery] PluginDetailsViewModel? model = null)
     {
         if (pluginSlug is null)
             return NotFound();
@@ -347,9 +352,39 @@ public class HomeController(
             ? " (hv.up_count - hv.down_count) DESC, r.created_at DESC "
             : " r.created_at DESC ";
 
+        var versionFilter = version is null ? string.Empty : "AND v.ver = @version";
+        var versionSource = btcpayVersion is null
+            ? "versions v"
+            : "get_all_versions(@btcpayVersion, @includePreRelease) gv JOIN versions v ON v.plugin_slug = gv.plugin_slug AND v.ver = gv.ver";
+        var versionsQuery = btcpayVersion is null
+            ? """
+              SELECT array_agg(array_to_string(ver, '.') ORDER BY ver DESC)
+              FROM versions
+              WHERE plugin_slug = v.plugin_slug
+              """
+            : """
+              SELECT array_agg(array_to_string(gv.ver, '.') ORDER BY gv.ver DESC)
+              FROM get_all_versions(@btcpayVersion, @includePreRelease) gv
+              WHERE gv.plugin_slug = v.plugin_slug
+              """;
+        var versionPreReleasesQuery = btcpayVersion is null
+            ? """
+              SELECT array_agg(pre_release ORDER BY ver DESC)
+              FROM versions
+              WHERE plugin_slug = v.plugin_slug
+              """
+            : """
+              SELECT array_agg(vv.pre_release ORDER BY gv.ver DESC)
+              FROM get_all_versions(@btcpayVersion, @includePreRelease) gv
+              JOIN versions vv ON vv.plugin_slug = gv.plugin_slug AND vv.ver = gv.ver
+              WHERE gv.plugin_slug = v.plugin_slug
+              """;
         var prms = new
         {
             pluginSlug = pluginSlug.ToString(),
+            version = version?.VersionParts,
+            btcpayVersion = btcpayVersion?.VersionParts,
+            includePreRelease,
             currentUserId = userId,
             isAdmin,
             skip = model.Skip,
@@ -366,6 +401,7 @@ public class HomeController(
                            array_to_string(v.ver, '.') AS ver_str,
                            array_to_string(v.btcpay_min_ver, '.') AS btcpay_min_ver,
                            array_to_string(v.btcpay_max_ver, '.') AS btcpay_max_ver,
+                           v.changelog,
                            p.settings,
                            b.manifest_info,
                            b.build_info,
@@ -375,15 +411,13 @@ public class HomeController(
                              WHERE b2.plugin_slug = v.plugin_slug
                              ORDER BY b2.id ASC
                              LIMIT 1) AS created_at,
-                           (
-                             SELECT array_agg(array_to_string(ver, '.') ORDER BY ver DESC)
-                             FROM versions
-                             WHERE plugin_slug = v.plugin_slug
-                           ) AS versions
-                         FROM versions v
+                           (" + versionsQuery + @") AS versions,
+                           (" + versionPreReleasesQuery + @") AS version_pre_releases
+                         FROM " + versionSource + @"
                          JOIN builds  b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
                          JOIN plugins p ON b.plugin_slug = p.slug
                          WHERE v.plugin_slug = @pluginSlug
+                           " + versionFilter + @"
                            AND b.manifest_info IS NOT NULL
                            AND b.build_info  IS NOT NULL
                            AND (
@@ -450,7 +484,15 @@ public class HomeController(
         var pluginDetails = await multi.ReadFirstOrDefaultAsync<dynamic>();
         if (pluginDetails is null)
             return NotFound();
-        var versions = pluginDetails.versions as IEnumerable<string> ?? Enumerable.Empty<string>();
+        var versionLabels = (pluginDetails.versions as IEnumerable<string> ?? Enumerable.Empty<string>()).ToList();
+        var versionPreReleases = (pluginDetails.version_pre_releases as IEnumerable<bool> ?? Enumerable.Empty<bool>()).ToList();
+        var versions = versionLabels
+            .Select((v, i) => new PluginDetailsVersionViewModel
+            {
+                Version = v,
+                PreRelease = i < versionPreReleases.Count && versionPreReleases[i]
+            })
+            .ToList();
 
         //second
         var summary = await multi.ReadFirstOrDefaultAsync<PluginRatingSummary>() ?? new PluginRatingSummary();
@@ -467,6 +509,7 @@ public class HomeController(
             ProjectSlug = pluginSlug.ToString(),
             ManifestInfo = manifestInfo,
             PluginLogo = settings?.Logo,
+            Changelog = (string?)pluginDetails.changelog,
             Documentation = settings?.Documentation,
             VideoUrl = settings?.VideoUrl,
             Images = settings?.Images,
@@ -510,12 +553,13 @@ public class HomeController(
             Reviews = items,
             IsAdmin = isAdmin,
             IsOwner = userId != null && userId == primaryOwnerId,
-            PluginVersions = versions.ToList(),
+            PluginVersions = versions,
             ShowHiddenNotice = Enum.Parse<PluginVisibilityEnum>((string)pluginDetails.visibility, true) == PluginVisibilityEnum.Hidden,
             Contributors = pluginContributors,
             RatingFilter = model.RatingFilter,
             OwnerGithubUrl = ownerGithubUrl,
-            OwnerNostrUrl = ownerNostrUrl
+            OwnerNostrUrl = ownerNostrUrl,
+            EmbedMode = Request.IsEmbeddedMode()
         };
         return View(vm);
     }
@@ -564,7 +608,11 @@ public class HomeController(
         await conn.UpsertPluginReview(reviewViewModel);
 
         var sort = Request.Query["sort"].ToString();
-        var url = Url.Action(nameof(GetPluginDetails), "Home", new { pluginSlug = pluginSlug.ToString(), sort = string.IsNullOrEmpty(sort) ? null : sort });
+        var url = Url.Action(nameof(GetPluginDetails), "Home", new
+        {
+            pluginSlug = pluginSlug.ToString(),
+            sort = string.IsNullOrEmpty(sort) ? null : sort
+        });
         return Redirect((url ?? "/") + "#reviews");
     }
 
@@ -641,7 +689,10 @@ public class HomeController(
         if (!ok)
             TempData[TempDataConstant.WarningMessage] = "Error while updating review helpful vote";
 
-        var url = Url.Action(nameof(GetPluginDetails), new { pluginSlug = pluginSlug.ToString() });
+        var url = Url.Action(nameof(GetPluginDetails), new
+        {
+            pluginSlug = pluginSlug.ToString()
+        });
         return Redirect((url ?? "/") + "#reviews");
     }
 
@@ -665,7 +716,10 @@ public class HomeController(
         if (!ok)
             TempData[TempDataConstant.WarningMessage] = "Error while deleting review";
 
-        var url = Url.Action(nameof(GetPluginDetails), new { pluginSlug = pluginSlug.ToString() });
+        var url = Url.Action(nameof(GetPluginDetails), new
+        {
+            pluginSlug = pluginSlug.ToString()
+        });
         return Redirect((url ?? "/") + "#reviews");
     }
 
@@ -709,9 +763,12 @@ public class HomeController(
             return View("ConfirmEmail", model);
 
         var result = await userManager.ChangeEmailAsync(user, settings.PendingNewEmail, token);
-        var setUsernameResult = await userManager.SetUserNameAsync(user, settings.PendingNewEmail);
         model.Email = settings.PendingNewEmail;
-        model.EmailConfirmed = result.Succeeded && setUsernameResult.Succeeded;
+        if (!result.Succeeded)
+            return View("ConfirmEmail", model);
+
+        var setUsernameResult = await userManager.SetUserNameAsync(user, settings.PendingNewEmail);
+        model.EmailConfirmed = setUsernameResult.Succeeded;
         if (model.EmailConfirmed)
         {
             settings.PendingNewEmail = string.Empty;

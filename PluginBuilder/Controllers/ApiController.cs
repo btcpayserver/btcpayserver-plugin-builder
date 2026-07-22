@@ -109,7 +109,8 @@ public class ApiController(
                      SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info,
                             v.btcpay_min_ver,
                             v.btcpay_max_ver,
-                            v.signatureproof->>'fingerprint' AS fingerprint
+                            v.signatureproof->>'fingerprint' AS fingerprint,
+                            v.changelog
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN versions v ON v.plugin_slug = lv.plugin_slug AND v.ver = lv.ver
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
@@ -119,7 +120,7 @@ public class ApiController(
                      """;
         var rows =
             await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, int[] btcpay_min_ver,
-                int[]? btcpay_max_ver, string fingerprint)>(
+                int[]? btcpay_max_ver, string fingerprint, string? changelog)>(
                 query,
                 new
                 {
@@ -136,7 +137,7 @@ public class ApiController(
             var manifestInfo = JObject.Parse(r.manifest_info);
             var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
             return CreatePublishedVersion(r.plugin_slug, r.ver, r.btcpay_min_ver, r.btcpay_max_ver, r.id, settings, manifestInfo,
-                JObject.Parse(r.build_info), r.fingerprint);
+                JObject.Parse(r.build_info), r.fingerprint, r.changelog);
         }));
 
         return Ok(versions);
@@ -165,7 +166,8 @@ public class ApiController(
                      SELECT lv.plugin_slug, lv.ver, p.settings, b.id, b.manifest_info, b.build_info,
                             v.btcpay_min_ver,
                             v.btcpay_max_ver,
-                            v.signatureproof->>'fingerprint' AS fingerprint
+                            v.signatureproof->>'fingerprint' AS fingerprint,
+                            v.changelog
                      FROM {getVersions}(@btcpayVersion, @includePreRelease) lv
                      JOIN versions v ON v.plugin_slug = lv.plugin_slug AND v.ver = lv.ver
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
@@ -178,7 +180,7 @@ public class ApiController(
 
         var rows =
             await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, int[] btcpay_min_ver,
-                int[]? btcpay_max_ver, string fingerprint)>(
+                int[]? btcpay_max_ver, string fingerprint, string? changelog)>(
                 query,
                 new
                 {
@@ -194,7 +196,7 @@ public class ApiController(
             var manifestInfo = JObject.Parse(r.manifest_info);
             var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
             return CreatePublishedVersion(r.plugin_slug, r.ver, r.btcpay_min_ver, r.btcpay_max_ver, r.id, settings, manifestInfo,
-                JObject.Parse(r.build_info), r.fingerprint);
+                JObject.Parse(r.build_info), r.fingerprint, r.changelog);
         }));
 
         return Ok(versions);
@@ -214,7 +216,8 @@ public class ApiController(
                     SELECT v.plugin_slug, v.ver, p.settings, v.build_id, b.manifest_info, b.build_info,
                            v.btcpay_min_ver,
                            v.btcpay_max_ver,
-                           v.signatureproof->>'fingerprint' AS fingerprint
+                           v.signatureproof->>'fingerprint' AS fingerprint,
+                           v.changelog
                     FROM versions v
                     JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
                     JOIN plugins p ON b.plugin_slug = p.slug
@@ -231,7 +234,7 @@ public class ApiController(
         var manifestInfo = JObject.Parse((string)r.manifest_info);
         var settings = SafeJson.Deserialize<PluginSettings>((string?)r.settings);
         return Ok(CreatePublishedVersion(pluginSlug.ToString(), (int[])r.ver, (int[])r.btcpay_min_ver, (int[]?)r.btcpay_max_ver,
-            (long)r.build_id, settings, manifestInfo, JObject.Parse((string)r.build_info), (string?)r.fingerprint));
+            (long)r.build_id, settings, manifestInfo, JObject.Parse((string)r.build_info), (string?)r.fingerprint, (string?)r.changelog));
     }
 
     [AllowAnonymous]
@@ -526,7 +529,8 @@ public class ApiController(
                     SELECT lv.plugin_slug, lv.ver, p.identifier, p.settings, b.id, b.manifest_info, b.build_info,
                            v.btcpay_min_ver,
                            v.btcpay_max_ver,
-                           v.signatureproof->>'fingerprint' AS fingerprint
+                           v.signatureproof->>'fingerprint' AS fingerprint,
+                           v.changelog
                     FROM get_latest_versions(@btcpayVersion, @includePreRelease) lv
                     JOIN versions v ON v.plugin_slug = lv.plugin_slug AND v.ver = lv.ver
                     JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
@@ -539,8 +543,7 @@ public class ApiController(
 
         var rows = await conn
             .QueryAsync<(string plugin_slug, int[] ver, string identifier, string settings, long id, string manifest_info, string build_info,
-                int[] btcpay_min_ver, int[]? btcpay_max_ver, string fingerprint
-                )>(
+                int[] btcpay_min_ver, int[]? btcpay_max_ver, string fingerprint, string? changelog)>(
                 query,
                 new
                 {
@@ -555,7 +558,7 @@ public class ApiController(
             let manifestInfo = JObject.Parse(row.manifest_info)
             let settings = SafeJson.Deserialize<PluginSettings>((string?)row.settings)
             select CreatePublishedVersion(row.plugin_slug, row.ver, row.btcpay_min_ver, row.btcpay_max_ver, row.id, settings, manifestInfo,
-                JObject.Parse(row.build_info), row.fingerprint)
+                JObject.Parse(row.build_info), row.fingerprint, row.changelog)
         ).ToList();
 
         return Ok(updates);
@@ -596,7 +599,8 @@ public class ApiController(
         PluginSettings? settings,
         JObject manifestInfo,
         JObject buildInfo,
-        string? fingerprint)
+        string? fingerprint,
+        string? changelog)
     {
         var effectiveManifestInfo = ApplyEffectiveBtcPayCompatibility(manifestInfo, btcpayMinVersion, btcpayMaxVersion);
 
@@ -610,6 +614,7 @@ public class ApiController(
             BTCPayMaxVersion = btcpayMaxVersion is { Length: > 0 } ? string.Join('.', btcpayMaxVersion) : null,
             BuildId = buildId,
             BuildInfo = buildInfo,
+            Changelog = changelog,
             ManifestInfo = effectiveManifestInfo,
             PluginLogo = settings?.Logo,
             Documentation = PluginPublicPage(pluginSlug),

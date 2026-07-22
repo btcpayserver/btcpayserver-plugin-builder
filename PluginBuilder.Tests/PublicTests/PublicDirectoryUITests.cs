@@ -18,6 +18,45 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
     private readonly XUnitLogger _log = new("PublicDirectoryUITests", output);
 
     [Fact]
+    public async Task PublicDirectory_EmbedLinks_PreserveCompatibilityQuery()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        await tester.StartAsync();
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+
+        var ownerId = await tester.Server.CreateFakeUserAsync(confirmEmail: true, githubVerified: true);
+        const string pluginSlug = "public-directory-embed-query";
+        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+
+        var manifestInfoJson = await conn.QuerySingleAsync<string>(
+            "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
+            new { PluginSlug = pluginSlug, fullBuildId.BuildId });
+        var manifest = PluginManifest.Parse(manifestInfoJson);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
+        await conn.SetPluginSettings(pluginSlug, null, PluginVisibilityEnum.Listed);
+
+        await tester.GoToUrl("/public/plugins?embed=1&btcpayVersion=2.3.6-rc2&includePreRelease=true&sort=rating");
+        await tester.AssertNoError();
+
+        await Expect(tester.Page!.Locator("form input[name='btcpayVersion']")).ToHaveValueAsync("2.3.6-rc2");
+        await Expect(tester.Page.Locator("form input[name='includePreRelease']")).ToHaveValueAsync("true");
+
+        var detailsHref = await tester.Page.Locator($"a[data-plugin-slug='{pluginSlug}']").GetAttributeAsync("href");
+        Assert.NotNull(detailsHref);
+        Assert.Contains($"/public/plugins/{pluginSlug}", detailsHref);
+        Assert.Contains("embed=1", detailsHref);
+        Assert.Contains("btcpayVersion=2.3.6-rc2", detailsHref);
+        Assert.Contains("includePreRelease=true", detailsHref);
+
+        var alphaSortHref = await tester.Page.Locator("a.dropdown-item[href*='sort=alpha']").GetAttributeAsync("href");
+        Assert.NotNull(alphaSortHref);
+        Assert.Contains("embed=1", alphaSortHref);
+        Assert.Contains("btcpayVersion=2.3.6-rc2", alphaSortHref);
+        Assert.Contains("includePreRelease=true", alphaSortHref);
+    }
+
+    [Fact]
     public async Task PublicDirectory_RespectsPluginVisibility()
     {
         await using var tester = new PlaywrightTester(_log);

@@ -3,7 +3,7 @@
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(PluginNavPages.RequestListing, "Listing History");
-    ViewData["Title"] = "Listing History";
+    const int rejectionPreviewLength = 160;
 }
 <div class="d-flex align-items-center justify-content-between mb-4">
     <h2 class="mb-0">@ViewData["Title"]</h2>
@@ -32,13 +32,35 @@ else
             <tbody>
                 @foreach (var request in Model.Requests)
                 {
+                    var rejectionReason = request.RejectionReason;
+                    var showExpandableRejectionReason = !string.IsNullOrEmpty(rejectionReason) &&
+                                                        (rejectionReason.Length > rejectionPreviewLength ||
+                                                         rejectionReason.Contains('\n') ||
+                                                         rejectionReason.Contains('\r'));
                     <tr>
                         <td class="text-nowrap small">@request.SubmittedAt.UtcDateTime.ToString("MMM dd, yyyy · HH:mm UTC")</td>
                         <td>@request.ReleaseNote</td>
                         <td>
-                            @if (!string.IsNullOrEmpty(request.RejectionReason))
+                            @if (!string.IsNullOrEmpty(rejectionReason))
                             {
-                                <span class="text-danger" style="white-space: pre-wrap;">@request.RejectionReason</span>
+                                @if (showExpandableRejectionReason)
+                                {
+                                    <div class="listing-history-rejection-summary d-flex align-items-start gap-2">
+                                        <div id="rejectionReason-@request.Id"
+                                             class="listing-history-rejection-preview text-truncate text-break flex-grow-1">@rejectionReason</div>
+                                        <button type="button"
+                                                class="listing-history-rejection-toggle btn btn-sm p-1 border-0 text-muted flex-shrink-0"
+                                                data-rejection-reason-toggle
+                                                aria-expanded="false" aria-controls="rejectionReason-@request.Id"
+                                                aria-label="Expand rejection reason">
+                                            <vc:icon symbol="caret-down" />
+                                        </button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="listing-history-rejection text-break">@rejectionReason</div>
+                                }
                             }
                             else
                             {
@@ -59,10 +81,10 @@ else
                             @switch (request.Status)
                             {
                                 case PluginListingRequestStatus.Pending:
-                                    <span class="badge bg-warning">Pending</span>
+                                    <span class="badge bg-warning text-black">Pending</span>
                                     break;
                                 case PluginListingRequestStatus.Approved:
-                                    <span class="badge bg-success">Approved</span>
+                                    <span class="badge bg-success text-black">Approved</span>
                                     break;
                                 case PluginListingRequestStatus.Rejected:
                                     <span class="badge bg-danger">Rejected</span>
@@ -74,4 +96,48 @@ else
             </tbody>
         </table>
     </div>
+}
+
+@section HeaderScripts {
+    <style>
+        .listing-history-rejection,
+        .listing-history-rejection-summary {
+            max-width: 40rem;
+        }
+
+        .listing-history-rejection {
+            white-space: pre-wrap;
+        }
+
+        .listing-history-rejection-preview {
+            min-width: 0;
+        }
+
+        .listing-history-rejection-preview.is-expanded {
+            overflow: visible;
+            text-overflow: clip;
+            white-space: pre-wrap;
+        }
+
+        .listing-history-rejection-toggle svg.icon {
+            width: 1rem;
+            height: 1rem;
+            margin-left: 0;
+        }
+    </style>
+}
+
+@section FooterScripts {
+    <script>
+        document.querySelectorAll("[data-rejection-reason-toggle]").forEach(toggle => {
+            toggle.addEventListener("click", () => {
+                const reason = document.getElementById(toggle.getAttribute("aria-controls"));
+                const expanded = toggle.getAttribute("aria-expanded") === "true";
+
+                reason.classList.toggle("is-expanded", !expanded);
+                toggle.setAttribute("aria-expanded", (!expanded).toString());
+                toggle.setAttribute("aria-label", expanded ? "Expand rejection reason" : "Collapse rejection reason");
+            });
+        });
+    </script>
 }
