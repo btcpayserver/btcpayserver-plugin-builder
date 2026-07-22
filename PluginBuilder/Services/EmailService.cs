@@ -80,11 +80,32 @@ BTCPay Server Plugin Builder Team
             .All(email => !string.IsNullOrWhiteSpace(email) && Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
     }
 
-    public Task SendVerifyEmail(string toEmail, string verifyUrl)
+    public async Task<bool> SendVerifyEmail(string toEmail, string verifyUrl)
     {
-        var body = $"Please verify your account by visiting: {verifyUrl}";
+        var body = $@"
+Hello,
 
-        return SendEmail(toEmail, "Verify your account on BTCPay Server Plugin Builder", body);
+Thank you for using the BTCPay Server Plugin Builder.
+
+To complete your sign-in and keep your account secure, please verify your email address by clicking the link below:
+
+{verifyUrl}
+
+If you did not try to sign in or create an account, you can safely ignore this email and no changes will be made.
+
+Thank you,
+BTCPay Server Plugin Builder";
+
+        try
+        {
+            await DeliverEmail(new[] { MailboxAddressValidator.Parse(toEmail) }, "Verify your account on BTCPay Server Plugin Builder", body);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error sending verification email to {Email}", toEmail);
+            return false;
+        }
     }
 
     public async Task NotifyAdminOnNewRequestListing(NpgsqlConnection conn, PluginSlug pluginSlug, string pluginPublicUrl, string listingPageUrl)
