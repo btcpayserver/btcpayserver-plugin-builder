@@ -13,4 +13,5 @@ public class PluginBuildParameters
     public string? GitRef { get; set; }
     public string? PluginDirectory { get; set; }
     public string? BuildConfig { get; set; }
+    public string? BuildImage { get; set; }
 }

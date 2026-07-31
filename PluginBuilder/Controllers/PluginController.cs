@@ -288,13 +288,14 @@ public class PluginController(
             return RedirectToAction("AccountDetails", "Account");
         }
 
+        PluginProjectMetadata metadata;
         try
         {
-            var identifier = await buildService.FetchIdentifierFromCsprojAsync(model.GitRepository, model.GitRef, model.PluginDirectory);
-            var owns = await conn.EnsureIdentifierOwnership(pluginSlug, identifier);
+            metadata = await buildService.FetchProjectMetadataFromCsprojAsync(model.GitRepository, model.GitRef, model.PluginDirectory);
+            var owns = await conn.EnsureIdentifierOwnership(pluginSlug, metadata.Identifier);
             if (!owns)
             {
-                TempData[TempDataConstant.WarningMessage] = $"The plugin identifier '{identifier}' does not belong to plugin slug '{pluginSlug}'.";
+                TempData[TempDataConstant.WarningMessage] = $"The plugin identifier '{metadata.Identifier}' does not belong to plugin slug '{pluginSlug}'.";
                 return View(model);
             }
         }
@@ -304,7 +305,9 @@ public class PluginController(
             return View(model);
         }
 
-        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
+        var buildParameters = model.ToBuildParameter();
+        buildParameters.BuildImage = metadata.BuildImage;
+        var buildId = await conn.NewBuild(pluginSlug, buildParameters);
         if (buildId == 0)
         {
             var existingSetting = await conn.GetSettings(pluginSlug) ?? new PluginSettings();

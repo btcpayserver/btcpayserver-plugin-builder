@@ -16,6 +16,7 @@ public class BuildInfo
     public string Url { get; set; }
     public string Error { get; set; }
     public string BuildConfig { get; set; }
+    public string BuildImage { get; set; }
     public string AssemblyName { get; set; }
     public IDictionary<string, JToken> AdditionalObjects { get; set; }
 

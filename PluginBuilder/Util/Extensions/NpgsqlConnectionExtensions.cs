@@ -366,7 +366,8 @@ public static class NpgsqlConnectionExtensions
             BuildConfig = buildParameters.BuildConfig,
             GitRepository = buildParameters.GitRepository,
             GitRef = buildParameters.GitRef,
-            PluginDir = buildParameters.PluginDirectory
+            PluginDir = buildParameters.PluginDirectory,
+            BuildImage = buildParameters.BuildImage
         };
         var buildId = await connection.ExecuteScalarAsync<long>("" +
                                                                 "WITH cte AS " +

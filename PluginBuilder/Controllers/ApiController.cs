@@ -327,17 +327,18 @@ public class ApiController(
         if (!ModelState.IsValid)
             return ValidationErrorResult(ModelState);
 
+        PluginProjectMetadata metadata;
         try
         {
-            var identifier = await buildService.FetchIdentifierFromCsprojAsync(
+            metadata = await buildService.FetchProjectMetadataFromCsprojAsync(
                 model.GitRepository,
                 model.GitRef,
                 model.PluginDirectory);
 
-            var owns = await conn.EnsureIdentifierOwnership(pluginSlug, identifier);
+            var owns = await conn.EnsureIdentifierOwnership(pluginSlug, metadata.Identifier);
             if (!owns)
             {
-                ModelState.AddModelError(string.Empty, $"The plugin identifier {identifier} does not belong to plugin slug {pluginSlug}.");
+                ModelState.AddModelError(string.Empty, $"The plugin identifier {metadata.Identifier} does not belong to plugin slug {pluginSlug}.");
                 return ValidationErrorResult(ModelState);
             }
         }
@@ -347,7 +348,9 @@ public class ApiController(
             return ValidationErrorResult(ModelState);
         }
 
-        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
+        var buildParameters = model.ToBuildParameter();
+        buildParameters.BuildImage = metadata.BuildImage;
+        var buildId = await conn.NewBuild(pluginSlug, buildParameters);
         var buildUrl = Url.ActionLink(nameof(PluginController.Build), "Plugin",
             new { pluginSlug = pluginSlug.ToString(), buildId });
 
