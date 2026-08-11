@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
@@ -54,7 +53,7 @@ public class GitHubHostingProvider : IGitHostingProvider
         return link;
     }
 
-    public async Task<string> FetchIdentifierFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
+    public async Task<PluginProjectMetadata> FetchProjectMetadataFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
     {
         var client = _httpClientFactory.CreateClient(HttpClientNames.GitHub);
         var (owner, repoName) = ExtractOwnerRepo(repoUrl);
@@ -98,18 +97,7 @@ public class GitHubHostingProvider : IGitHostingProvider
             throw new BuildServiceException(
                 $"GitHub error downloading '{csprojs[0].name}' from {downloadUrl} (HTTP {(int)csprojResp.StatusCode}).\nBody: {csprojBody}");
 
-        XDocument doc;
-        try
-        {
-            doc = XDocument.Parse(csprojBody);
-        }
-        catch (System.Xml.XmlException ex)
-        {
-            throw new BuildServiceException($"Failed to parse '{csprojs[0].name}' as XML: {ex.Message}");
-        }
-        var assemblyName = doc.Descendants("AssemblyName").FirstOrDefault()?.Value ?? Path.GetFileNameWithoutExtension(csprojs[0].name);
-
-        return assemblyName;
+        return PluginProjectMetadata.Parse(csprojBody, csprojs[0].name);
     }
 
     public async Task<List<GitHubContributor>> GetContributorsAsync(string repoUrl, string pluginDir)

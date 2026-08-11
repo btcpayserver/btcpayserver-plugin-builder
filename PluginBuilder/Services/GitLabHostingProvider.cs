@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
@@ -75,7 +74,7 @@ public class GitLabHostingProvider : IGitHostingProvider
         return link;
     }
 
-    public async Task<string> FetchIdentifierFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
+    public async Task<PluginProjectMetadata> FetchProjectMetadataFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
     {
         var client = CreateClientForRepo(repoUrl);
         var projectId = GetProjectId(repoUrl);
@@ -125,18 +124,7 @@ public class GitLabHostingProvider : IGitHostingProvider
             throw new BuildServiceException(
                 $"GitLab error downloading '{csprojs[0].Name}' (HTTP {(int)fileResp.StatusCode}).\nBody: {csprojBody}");
 
-        XDocument doc;
-        try
-        {
-            doc = XDocument.Parse(csprojBody);
-        }
-        catch (System.Xml.XmlException ex)
-        {
-            throw new BuildServiceException($"Failed to parse '{csprojs[0].Name}' as XML: {ex.Message}");
-        }
-        var assemblyName = doc.Descendants("AssemblyName").FirstOrDefault()?.Value ?? Path.GetFileNameWithoutExtension(csprojs[0].Name);
-
-        return assemblyName;
+        return PluginProjectMetadata.Parse(csprojBody, csprojs[0].Name);
     }
 
     public async Task<List<GitHubContributor>> GetContributorsAsync(string repoUrl, string pluginDir)

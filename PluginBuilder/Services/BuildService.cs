@@ -65,6 +65,12 @@ public class BuildService
             {
                 // Then let's build by running our image plugin-builder (built in DockerStartupHostedService)
                 JObject info = new();
+                var buildImage = "plugin-builder";
+                if (buildParameters.BuildImage != null)
+                {
+                    buildImage = buildParameters.BuildImage;
+                    info["buildImage"] = buildImage;
+                }
 
                 args.Add("run");
                 args.AddRange(new[] { "--env", $"GIT_REPO={buildParameters.GitRepository}" });
@@ -90,7 +96,7 @@ public class BuildService
 
                 args.AddRange(new[] { "-v", $"{volume}:/out" });
                 args.AddRange(new[] { "--rm" });
-                args.Add("plugin-builder");
+                args.Add(buildImage);
                 await UpdateBuild(fullBuildId, BuildStates.Running, info);
             }
             catch (Exception err)
@@ -126,6 +132,8 @@ public class BuildService
 
                     var buildEnvStr = await ReadFileInVolume(volume, "build-env.json");
                     buildEnv = JObject.Parse(buildEnvStr);
+                    if (buildParameters.BuildImage != null)
+                        buildEnv["buildImage"] = buildParameters.BuildImage;
                 }
                 catch (Exception err)
                 {
@@ -275,13 +283,16 @@ public class BuildService
         EventAggregator.Publish(new BuildChanged(fullBuildId, newState) { BuildInfo = buildInfo?.ToString(), ManifestInfo = manifestInfo?.ToString() });
     }
 
-    public async Task<string> FetchIdentifierFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
+    public async Task<PluginProjectMetadata> FetchProjectMetadataFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
     {
         var provider = _providerFactory.GetProvider(repoUrl);
         if (provider == null)
             throw new BuildServiceException("Unsupported git hosting provider. Supported: GitHub, GitLab.");
-        return await provider.FetchIdentifierFromCsprojAsync(repoUrl, gitRef, pluginDir);
+        return await provider.FetchProjectMetadataFromCsprojAsync(repoUrl, gitRef, pluginDir);
     }
+
+    public async Task<string> FetchIdentifierFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null) =>
+        (await FetchProjectMetadataFromCsprojAsync(repoUrl, gitRef, pluginDir)).Identifier;
 
 
     public class BuildOutputCapture : IOutputCapture, IDisposable
