@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <None Remove="TestData\manifest.txt.asc"/>
+    <Compile Remove="TestData/NetworkCanary/**/*.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -32,6 +33,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PluginBuilder\PluginBuilder.csproj"/>
+    <ProjectReference Include="TestData/NetworkCanary/NetworkCanary.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <Target Name="CopyNetworkCanary" AfterTargets="Build">
+    <ItemGroup>
+      <NetworkCanaryFiles Include="TestData/NetworkCanary/bin/$(Configuration)/net10.0/NetworkCanary.dll;TestData/NetworkCanary/bin/$(Configuration)/net10.0/NetworkCanary.deps.json;TestData/NetworkCanary/bin/$(Configuration)/net10.0/NetworkCanary.runtimeconfig.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(NetworkCanaryFiles)" DestinationFolder="$(OutDir)network-canary-fixture" />
+  </Target>
 
 </Project>

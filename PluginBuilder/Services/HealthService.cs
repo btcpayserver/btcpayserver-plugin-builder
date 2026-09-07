@@ -1,16 +1,24 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
+using PluginBuilder.Controllers.Logic;
 
 namespace PluginBuilder.Services;
 
 public class HealthService : IHealthCheck
 {
-    public HealthService(DBConnectionFactory dbConnectionFactory, AzureStorageClient azureStorageClient, ProcessRunner processRunner, IHostApplicationLifetime lifetime)
+    public HealthService(
+        DBConnectionFactory dbConnectionFactory,
+        AzureStorageClient azureStorageClient,
+        ProcessRunner processRunner,
+        IHostApplicationLifetime lifetime,
+        AdminSettingsCache adminSettingsCache,
+        BuildExecutorState executorState)
     {
         DbConnectionFactory = dbConnectionFactory;
         AzureStorageClient = azureStorageClient;
         ProcessRunner = processRunner;
-
+        AdminSettingsCache = adminSettingsCache;
+        ExecutorState = executorState;
         _lifetime = lifetime;
     }
 
@@ -19,6 +27,8 @@ public class HealthService : IHealthCheck
     private DBConnectionFactory DbConnectionFactory { get; }
     private AzureStorageClient AzureStorageClient { get; }
     private ProcessRunner ProcessRunner { get; }
+    private AdminSettingsCache AdminSettingsCache { get; }
+    private BuildExecutorState ExecutorState { get; }
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
@@ -26,16 +36,25 @@ public class HealthService : IHealthCheck
             return HealthCheckResult.Unhealthy("Startup incomplete");
 
         var dbTask = IsDatabaseHealthy(cancellationToken);
-        var dockerTask = IsDockerHealthy(cancellationToken);
         var azureTask = AzureStorageClient.IsDefaultContainerAccessible(cancellationToken);
 
-        await Task.WhenAll(dbTask, dockerTask, azureTask);
+        await Task.WhenAll(dbTask, azureTask);
 
-        var isHealthy = dbTask.Result && dockerTask.Result && azureTask.Result;
+        if (!dbTask.Result || !azureTask.Result)
+            return HealthCheckResult.Unhealthy("Critical dependency unavailable");
 
-        return isHealthy
+        if (!AdminSettingsCache.NewBuildsEnabled)
+            return HealthCheckResult.Healthy();
+
+        var executor = ExecutorState.Snapshot;
+        if (!executor.IsReady)
+            return HealthCheckResult.Unhealthy("Build executor unavailable");
+
+        var dockerHealthy = await IsDockerHealthy(cancellationToken);
+
+        return dockerHealthy
             ? HealthCheckResult.Healthy()
-            : HealthCheckResult.Unhealthy("Critical dependency unavailable");
+            : HealthCheckResult.Unhealthy("Build executor Docker daemon unavailable");
     }
 
     private async Task<bool> IsDatabaseHealthy(CancellationToken cancellationToken)

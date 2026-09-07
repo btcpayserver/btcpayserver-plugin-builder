@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using System.Text;
 using Dapper;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Configuration;
@@ -13,53 +14,38 @@ public class BuildServiceException(string message) : Exception(message);
 
 public class BuildService
 {
-    private const int MaxBuildMetadataBytes = 1024 * 1024;
-    private const int BuildMetadataTooLargeExitCode = 42;
-    private const string BuildMetadataReadScript = """
-        set -eu
-        file="$1"
-        limit="$2"
-        tmp="$(mktemp)"
-        trap 'rm -f "$tmp"' EXIT
-
-        head -c "$((limit + 1))" -- "$file" > "$tmp"
-        if [ "$(wc -c < "$tmp")" -gt "$limit" ]; then
-            exit 42
-        fi
-
-        cat "$tmp"
-        """;
-
-    private static readonly TimeSpan BuildMetadataReadTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan DockerCleanupTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan DockerCleanupPollInterval = TimeSpan.FromMilliseconds(100);
-    private static readonly SemaphoreSlim _semaphore = new(5);
+    private const int MaxAdmittedBuilds = DockerBuildSandbox.MaxConcurrentBuilds * 2;
+    private static readonly SemaphoreSlim _semaphore = new(DockerBuildSandbox.MaxConcurrentBuilds);
+    private static readonly SemaphoreSlim _admission = new(MaxAdmittedBuilds, MaxAdmittedBuilds);
     private readonly GitHostingProviderFactory _providerFactory;
     private readonly PluginBuilderOptions _options;
     private readonly AdminSettingsCache _adminSettingsCache;
+    private readonly DockerBuildSandbox _dockerBuildSandbox;
+    private readonly BuildExecutorState _executorState;
 
     public BuildService(
         ILogger<BuildService> logger,
         PluginBuilderOptions options,
-        ProcessRunner processRunner,
         DBConnectionFactory connectionFactory,
         EventAggregator eventAggregator,
         AzureStorageClient azureStorageClient,
         GitHostingProviderFactory providerFactory,
-        AdminSettingsCache adminSettingsCache)
+        AdminSettingsCache adminSettingsCache,
+        DockerBuildSandbox dockerBuildSandbox,
+        BuildExecutorState executorState)
     {
         Logger = logger;
         _options = options;
-        ProcessRunner = processRunner;
         ConnectionFactory = connectionFactory;
         EventAggregator = eventAggregator;
         AzureStorageClient = azureStorageClient;
         _providerFactory = providerFactory;
         _adminSettingsCache = adminSettingsCache;
+        _dockerBuildSandbox = dockerBuildSandbox;
+        _executorState = executorState;
     }
 
     public ILogger<BuildService> Logger { get; }
-    public ProcessRunner ProcessRunner { get; }
     public DBConnectionFactory ConnectionFactory { get; }
     public EventAggregator EventAggregator { get; }
     public AzureStorageClient AzureStorageClient { get; }
@@ -72,141 +58,74 @@ public class BuildService
         if (await RejectBuildIfDisabled(fullBuildId, isWhitelisted))
             return;
 
-        BuildInfo buildParameters;
-        await _semaphore.WaitAsync();
+        await EnsureExecutorAvailable(fullBuildId);
+        if (!_admission.Wait(0))
+        {
+            const string error = "The isolated build queue is full. Please try again later.";
+            await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = error });
+            return;
+        }
+
+        BuildInfo? completedBuildParameters = null;
         try
         {
-            // A build may have been waiting for an execution slot when the setting changed.
-            if (await RejectBuildIfDisabled(fullBuildId, isWhitelisted))
-                return;
-
-            using BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory);
-            List<string> createArgs = new();
-            buildParameters = await GetBuildInfo(fullBuildId);
-            var containerName = $"plugin-builder-{Guid.NewGuid():N}";
-            string volume;
+            await _semaphore.WaitAsync();
             try
             {
-                // Build volumes are owned by a single build and cleaned at the end of this method.
-                volume = await CreateBuildVolume(fullBuildId);
-            }
-            catch (Exception err)
-            {
-                await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = err.Message });
-                throw;
-            }
+                // A build may have been waiting for an execution slot when the setting changed.
+                if (await RejectBuildIfDisabled(fullBuildId, isWhitelisted))
+                    return;
+                await EnsureExecutorAvailable(fullBuildId);
 
-            try
-            {
+                var buildParameters = await GetBuildInfo(fullBuildId);
+                await using BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory);
                 try
                 {
-                    // Then let's build by running our image plugin-builder (built in DockerStartupHostedService)
-                    JObject info = new();
-
-                    createArgs.AddRange(["container", "create"]);
-                    createArgs.AddRange(new[] { "--name", containerName });
-                    createArgs.AddRange(new[] { "--label", $"BTCPAY_PLUGIN_BUILD={fullBuildId}" });
-                    createArgs.AddRange(new[] { "--env", $"GIT_REPO={buildParameters.GitRepository}" });
-                    info["gitRepository"] = buildParameters.GitRepository;
-                    info["dockerVolume"] = volume;
-                    if (buildParameters.GitRef != null)
+                    await using var prepared = await _dockerBuildSandbox.PrepareAsync(fullBuildId, buildParameters);
+                    JObject runningInfo = new()
                     {
-                        createArgs.AddRange(new[] { "--env", $"GIT_REF={buildParameters.GitRef}" });
-                        info["gitRef"] = buildParameters.GitRef;
-                    }
+                        ["gitRepository"] = buildParameters.GitRepository,
+                        ["gitRef"] = buildParameters.GitRef,
+                        ["pluginDir"] = buildParameters.PluginDir,
+                        ["buildConfig"] = buildParameters.BuildConfig
+                    };
+                    await UpdateBuild(fullBuildId, BuildStates.Running, runningInfo);
 
-                    if (buildParameters.PluginDir != null)
-                    {
-                        createArgs.AddRange(new[] { "--env", $"PLUGIN_DIR={buildParameters.PluginDir}" });
-                        info["pluginDir"] = buildParameters.PluginDir;
-                    }
-
-                    if (buildParameters.BuildConfig != null)
-                    {
-                        createArgs.AddRange(new[] { "--env", $"BUILD_CONFIG={buildParameters.BuildConfig}" });
-                        info["buildConfig"] = buildParameters.BuildConfig;
-                    }
-
-                    createArgs.AddRange(new[] { "-v", $"{volume}:/out" });
-                    createArgs.Add("--rm");
-                    createArgs.Add("plugin-builder");
-                    OutputCapture createOutput = new();
-                    // Let resource creation settle before starting the worker timeout. Cancelling
-                    // this call can leave us unable to tell whether Docker created the container.
-                    var createCode = await ProcessRunner.RunAsync(new ProcessSpec
-                    {
-                        Executable = "docker",
-                        Arguments = createArgs.ToArray(),
-                        OutputCapture = createOutput,
-                        ErrorCapture = buildLogCapture
-                    }, CancellationToken.None);
-                    if (createCode != 0)
-                        throw new BuildServiceException("docker container create failed");
-
-                    await UpdateBuild(fullBuildId, BuildStates.Running, info);
-
-                    // The setting may have changed while Docker resources were being created.
+                    // The setting may have changed while sandbox resources were being prepared.
                     // Builds without an approved whitelist exception must still honor the flag.
                     if (await RejectBuildIfDisabled(fullBuildId, isWhitelisted))
-                    {
-                        if (!await ForceRemoveBuildContainer(containerName))
-                            throw new BuildServiceException(
-                                "Plugin builds were disabled and the build container could not be removed");
                         return;
-                    }
-                }
-                catch (Exception err)
-                {
-                    await ForceRemoveBuildContainer(containerName);
-                    await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = err.Message });
-                    throw;
-                }
 
-                JObject buildEnv;
-                try
-                {
-                    int code;
-                    using var timeout = new CancellationTokenSource(_options.BuildTimeout);
+                    var staged = await prepared.RunAndStageAsync(
+                        buildLogCapture,
+                        (_, eventArgs) => PublishLog(fullBuildId, eventArgs.Data),
+                        (_, eventArgs) => PublishLog(fullBuildId, eventArgs.Data));
+
+                    PluginManifest manifest;
                     try
                     {
-                        code = await ProcessRunner.RunAsync(new ProcessSpec
-                        {
-                            Executable = "docker",
-                            Arguments = ["container", "start", "--attach", containerName],
-                            OutputCapture = buildLogCapture,
-                            ErrorCapture = buildLogCapture,
-                            OnOutput = (_, eventArgs) =>
-                            {
-                                if (!string.IsNullOrEmpty(eventArgs.Data))
-                                    EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
-                            },
-                            OnError = (_, eventArgs) =>
-                            {
-                                if (!string.IsNullOrEmpty(eventArgs.Data))
-                                    EventAggregator.Publish(new BuildLogUpdated(fullBuildId, eventArgs.Data));
-                            }
-                        }, timeout.Token);
+                        manifest = PluginManifest.Parse(staged.ManifestJson, strictBTCPayVersionCondition: true);
                     }
-                    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+                    catch (Exception err)
                     {
-                        if (!await ForceRemoveBuildContainer(containerName))
-                            throw new BuildServiceException("Plugin build timed out and its container could not be removed");
-                        throw new BuildServiceException($"Plugin build timed out after {_options.BuildTimeout}");
-                    }
-                    catch
-                    {
-                        await ForceRemoveBuildContainer(containerName);
-                        throw;
+                        throw new BuildServiceException("Failed to parse plugin manifest: " + err.Message);
                     }
 
-                    if (code != 0)
-                    {
-                        await ForceRemoveBuildContainer(containerName);
-                        throw new BuildServiceException("docker build failed");
-                    }
+                    var uploadCancellation = _executorState.StopToken;
+                    if (!_executorState.Snapshot.IsReady || uploadCancellation.IsCancellationRequested)
+                        throw new BuildServiceException("The isolated build executor was stopped.");
 
-                    var buildEnvStr = await ReadFileInVolume(volume, "build-env.json");
-                    buildEnv = JObject.Parse(buildEnvStr);
+                    await UpdateBuild(fullBuildId, BuildStates.WaitingUpload, staged.BuildEnvironment, manifest);
+                    await UpdateBuild(fullBuildId, BuildStates.Uploading, null);
+                    var url = await AzureStorageClient.UploadStagedArtifact(
+                        staged.StagingVolume,
+                        $"{fullBuildId}/{staged.AssemblyName}.btcpay",
+                        uploadCancellation);
+
+                    // Cleanup is part of the security boundary and must succeed before publication.
+                    await prepared.DisposeAsync();
+                    await UpdateBuild(fullBuildId, BuildStates.Uploaded, new JObject { ["url"] = url });
+                    await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
                 }
                 catch (Exception err)
                 {
@@ -214,50 +133,37 @@ public class BuildService
                     throw;
                 }
 
-                string assemblyName;
-                PluginManifest manifest;
-                try
-                {
-                    assemblyName = buildEnv["assemblyName"]?.Value<string>()
-                        ?? throw new BuildServiceException("build-env.json missing assemblyName");
-                    var manifestStr = await ReadFileInVolume(volume, $"{assemblyName}.btcpay.json");
-                    manifest = PluginManifest.Parse(manifestStr, strictBTCPayVersionCondition: true);
-                    await UpdateBuild(fullBuildId, BuildStates.WaitingUpload, buildEnv, manifest);
-                }
-                catch (Exception err)
-                {
-                    await UpdateBuild(fullBuildId, BuildStates.Failed,
-                        new JObject { ["error"] = "Failed to read or parse plugin manifest: " + err.Message });
-                    throw;
-                }
-
-                await UpdateBuild(fullBuildId, BuildStates.Uploading, null);
-                string url;
-                try
-                {
-                    url = await AzureStorageClient.Upload(volume, $"{assemblyName}.btcpay",
-                        $"{fullBuildId}/{assemblyName}.btcpay");
-                }
-                catch (Exception err)
-                {
-                    await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = err.Message });
-                    throw;
-                }
-
-                await UpdateBuild(fullBuildId, BuildStates.Uploaded, new JObject { ["url"] = url });
-                await SetVersionBuild(fullBuildId, manifest, buildLogCapture);
+                completedBuildParameters = buildParameters;
             }
             finally
             {
-                await RemoveBuildVolume(volume);
+                _semaphore.Release();
             }
         }
         finally
         {
-            _semaphore.Release();
+            _admission.Release();
         }
 
-        await SavePluginContributorSnapshot(fullBuildId.PluginSlug, buildParameters);
+        // Contributor metadata is best-effort and should not occupy a scarce build slot.
+        if (completedBuildParameters is not null)
+            await SavePluginContributorSnapshot(fullBuildId.PluginSlug, completedBuildParameters);
+    }
+
+    private void PublishLog(FullBuildId fullBuildId, string? line)
+    {
+        if (!string.IsNullOrEmpty(line))
+            EventAggregator.Publish(new BuildLogUpdated(fullBuildId, line));
+    }
+
+    private async Task EnsureExecutorAvailable(FullBuildId fullBuildId)
+    {
+        if (_executorState.Snapshot.IsReady)
+            return;
+
+        const string error = "The isolated build executor is temporarily unavailable.";
+        await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = error });
+        throw new BuildServiceException(error);
     }
 
     private async Task<bool> RejectBuildIfDisabled(FullBuildId fullBuildId, bool isWhitelisted)
@@ -269,119 +175,6 @@ public class BuildService
         await UpdateBuild(fullBuildId, BuildStates.Failed,
             new JObject { ["error"] = "Plugin builds are temporarily disabled." });
         return true;
-    }
-
-    private async Task<string> CreateBuildVolume(FullBuildId fullBuildId)
-    {
-        var volume = $"plugin-builder-volume-{Guid.NewGuid():N}";
-        int code;
-        try
-        {
-            code = await ProcessRunner.RunAsync(
-                new ProcessSpec
-                {
-                    Executable = "docker",
-                    Arguments = ["volume", "create", "--label", $"BTCPAY_PLUGIN_BUILD={fullBuildId}", volume]
-                },
-                CancellationToken.None);
-        }
-        catch
-        {
-            await RemoveBuildVolume(volume);
-            throw;
-        }
-
-        if (code != 0)
-        {
-            await RemoveBuildVolume(volume);
-            throw new BuildServiceException("docker volume create failed");
-        }
-
-        return volume;
-    }
-
-    private async Task RemoveBuildVolume(string volume)
-    {
-        OutputCapture error = new();
-        using var timeout = new CancellationTokenSource(DockerCleanupTimeout);
-        int code;
-        try
-        {
-            code = await ProcessRunner.RunAsync(new ProcessSpec
-            {
-                Executable = "docker",
-                Arguments = ["volume", "rm", volume],
-                ErrorCapture = error
-            }, timeout.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            Logger.LogCritical("Timed out while removing docker build volume {Volume}", volume);
-            return;
-        }
-
-        if (code != 0)
-        {
-            var details = error.ToString().Trim();
-            if (string.IsNullOrEmpty(details))
-                Logger.LogWarning("Failed to remove docker build volume {Volume}", volume);
-            else
-                Logger.LogWarning("Failed to remove docker build volume {Volume}: {Error}", volume, details);
-        }
-    }
-
-    private async Task<bool> ForceRemoveBuildContainer(string containerName)
-    {
-        using var timeout = new CancellationTokenSource(DockerCleanupTimeout);
-        try
-        {
-            OutputCapture error = new();
-            var code = await ProcessRunner.RunAsync(new ProcessSpec
-            {
-                Executable = "docker",
-                Arguments = ["container", "rm", "--force", containerName],
-                ErrorCapture = error
-            }, timeout.Token);
-
-            if (code == 0)
-                return true;
-
-            var details = error.ToString();
-            if (details.Contains("No such container", StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (details.Contains("removal of container", StringComparison.OrdinalIgnoreCase) &&
-                details.Contains("already in progress", StringComparison.OrdinalIgnoreCase))
-                return await WaitForContainerRemoval(containerName, timeout.Token);
-
-            Logger.LogCritical("Failed to force-remove plugin build container {ContainerName}: {Error}",
-                containerName, details.Trim());
-            return false;
-        }
-        catch (OperationCanceledException)
-        {
-            Logger.LogCritical("Timed out while force-removing plugin build container {ContainerName}", containerName);
-            return false;
-        }
-    }
-
-    private async Task<bool> WaitForContainerRemoval(string containerName, CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            OutputCapture error = new();
-            var code = await ProcessRunner.RunAsync(new ProcessSpec
-            {
-                Executable = "docker",
-                Arguments = ["container", "inspect", containerName],
-                ErrorCapture = error
-            }, cancellationToken);
-
-            if (code != 0)
-                return error.ToString().Contains("No such container", StringComparison.OrdinalIgnoreCase);
-
-            await Task.Delay(DockerCleanupPollInterval, cancellationToken);
-        }
     }
 
     private async Task SavePluginContributorSnapshot(PluginSlug pluginSlug, BuildInfo buildInfo)
@@ -416,78 +209,6 @@ public class BuildService
             buildLogs.AddLine($"The plugin identifier {manifest.Identifier} doesn't belong to this project slug");
     }
 
-    private async Task<string> ReadFileInVolume(string volume, string file)
-    {
-        var containerName = $"plugin-builder-metadata-{Guid.NewGuid():N}";
-        try
-        {
-            var createCode = await ProcessRunner.RunAsync(
-                new ProcessSpec
-                {
-                    Executable = "docker",
-                    Arguments =
-                    [
-                        "container", "create",
-                        "--name", containerName,
-                        "--rm",
-                        "-v", $"{volume}:/out:ro",
-                        "plugin-builder",
-                        "/bin/sh", "-c", BuildMetadataReadScript,
-                        "read-build-metadata",
-                        $"/out/{file}",
-                        MaxBuildMetadataBytes.ToString()
-                    ],
-                    OutputCapture = new OutputCapture(),
-                    ErrorCapture = new OutputCapture()
-                },
-                CancellationToken.None);
-
-            if (createCode != 0)
-                throw new BuildServiceException(
-                    $"docker container create failed while reading build metadata file '{file}'");
-        }
-        catch
-        {
-            await ForceRemoveBuildContainer(containerName);
-            throw;
-        }
-
-        OutputCapture output = new();
-        using var timeout = new CancellationTokenSource(BuildMetadataReadTimeout);
-        try
-        {
-            var code = await ProcessRunner.RunAsync(
-                new ProcessSpec
-                {
-                    Executable = "docker",
-                    Arguments = ["container", "start", "--attach", containerName],
-                    OutputCapture = output,
-                    ErrorCapture = new OutputCapture()
-                },
-                timeout.Token);
-
-            if (code == BuildMetadataTooLargeExitCode)
-                throw new BuildServiceException(
-                    $"Build metadata file '{file}' exceeds the {MaxBuildMetadataBytes}-byte limit");
-
-            if (code != 0)
-                throw new BuildServiceException(
-                    $"docker container start failed while reading build metadata file '{file}'");
-
-            return output.ToString();
-        }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-        {
-            await ForceRemoveBuildContainer(containerName);
-            throw new BuildServiceException($"Timed out while reading build metadata file '{file}'");
-        }
-        catch
-        {
-            await ForceRemoveBuildContainer(containerName);
-            throw;
-        }
-    }
-
     public async Task UpdateBuild(FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo, PluginManifest? manifestInfo = null)
     {
         await using var connection = await ConnectionFactory.Open();
@@ -497,6 +218,8 @@ public class BuildService
 
     public async Task<string> FetchIdentifierFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
     {
+        repoUrl = DockerBuildSandbox.NormalizeRepositoryUrl(repoUrl);
+        DockerBuildSandbox.ValidateBuildInputs(gitRef, pluginDir, buildConfig: null);
         var provider = _providerFactory.GetProvider(repoUrl);
         if (provider == null)
             throw new BuildServiceException("Unsupported git hosting provider. Supported: GitHub, GitLab.");
@@ -504,28 +227,46 @@ public class BuildService
     }
 
 
-    public class BuildOutputCapture : IOutputCapture, IDisposable
+    public class BuildOutputCapture : IOutputCapture, IAsyncDisposable
     {
         private readonly Channel<string> lines = Channel.CreateUnbounded<string>();
+        private readonly object _gate = new();
+        private readonly Task _saveTask;
+        private int _lineCount;
+        private int _byteCount;
 
         public BuildOutputCapture(FullBuildId fullBuildId, DBConnectionFactory connectionFactory)
         {
             FullBuildId = fullBuildId;
             ConnectionFactory = connectionFactory;
-            _ = SaveLoop();
+            _saveTask = SaveLoop();
         }
 
         private FullBuildId FullBuildId { get; }
         private DBConnectionFactory ConnectionFactory { get; }
 
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
             lines.Writer.TryComplete();
+            await _saveTask;
         }
 
         public void AddLine(string line)
         {
-            lines.Writer.TryWrite(line);
+            if (line.Length > DockerBuildSandbox.MaxBuildLogLineBytes)
+                line = line[..DockerBuildSandbox.MaxBuildLogLineBytes];
+
+            var bytes = Encoding.UTF8.GetByteCount(line) + 1;
+            lock (_gate)
+            {
+                if (_lineCount >= DockerBuildSandbox.MaxBuildLogLines ||
+                    _byteCount + bytes > DockerBuildSandbox.MaxBuildLogBytes)
+                    return;
+
+                _lineCount++;
+                _byteCount += bytes;
+                lines.Writer.TryWrite(line);
+            }
         }
 
         private async Task SaveLoop()

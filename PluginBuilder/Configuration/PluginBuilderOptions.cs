@@ -11,6 +11,7 @@ public sealed class PluginBuilderOptions
 
     public required string DataDir { get; init; }
     public TimeSpan BuildTimeout { get; init; } = TimeSpan.FromSeconds(DefaultBuildTimeoutSeconds);
+    public string? BuildScratchRoot { get; init; }
     public string? DebugLogFile { get; init; }
     public LogEventLevel? DebugLogLevel { get; init; }
     public int LogRetainCount { get; init; } = 1;
@@ -55,10 +56,15 @@ public sealed class PluginBuilderOptions
             throw new ConfigurationException("BUILD_TIMEOUT_SECONDS",
                 $"Must be a positive integer no greater than {MaxBuildTimeoutSeconds}");
 
+        var buildScratchRoot = conf["BUILD_SCRATCH_ROOT"]?.Trim();
+        if (string.IsNullOrEmpty(buildScratchRoot))
+            buildScratchRoot = null;
+
         return new PluginBuilderOptions
         {
             DataDir = dataDir,
             BuildTimeout = TimeSpan.FromSeconds(buildTimeoutSeconds),
+            BuildScratchRoot = buildScratchRoot,
             DebugLogFile = logFile,
             DebugLogLevel = level,
             LogRetainCount = retain

@@ -10,6 +10,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests;
 
+[Collection(nameof(NonParallelizableCollectionDefinition))]
+[Trait("Category", "ExecutorIntegration")]
 public class UnitTest1 : UnitTestBase
 {
     public UnitTest1(ITestOutputHelper logs) : base(logs)
@@ -69,6 +71,7 @@ public class UnitTest1 : UnitTestBase
         //https://github.com/NicolasDorier/btcpayserver/tree/plugins/collection2/Plugins/BTCPayServer.Plugins.RockstarStylist
         var ownerId = await tester.CreateFakeUserAsync();
         var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId);
+        var pluginSlug = fullBuildId.PluginSlug.ToString();
 
         var client = tester.CreateHttpClient();
         var versions = await client.GetPublishedVersions("1.4.6.0", true);
@@ -87,7 +90,7 @@ public class UnitTest1 : UnitTestBase
         Assert.Empty(versions);
 
         // Can download the project?
-        var b1 = await client.DownloadPlugin(new PluginSelectorBySlug("rockstar-stylist"), PluginVersion.Parse("1.0.2.0"));
+        var b1 = await client.DownloadPlugin(new PluginSelectorBySlug(pluginSlug), PluginVersion.Parse("1.0.2.0"));
         var b2 = await client.DownloadPlugin(new PluginSelectorByIdentifier("BTCPayServer.Plugins.RockstarStylist"), PluginVersion.Parse("1.0.2.0"));
         Assert.NotNull(b1);
         Assert.NotNull(b2);
@@ -112,7 +115,7 @@ public class UnitTest1 : UnitTestBase
         // Another plugin slug try to hijack the package
         await tester.CreateAndBuildPluginAsync(
             ownerId,
-            "rockstar-stylist-fake",
+            ServerTester.CreatePluginSlug(),
             "plugins/collection2",
             "Plugins/BTCPayServer.Plugins.RockstarStylist"
         );
@@ -120,16 +123,16 @@ public class UnitTest1 : UnitTestBase
         var rockstarPlugins =
             await conn.QueryAsync<string?>("SELECT slug FROM plugins WHERE identifier='BTCPayServer.Plugins.RockstarStylist'");
         var p = Assert.Single(rockstarPlugins);
-        Assert.Equal("rockstar-stylist", p);
+        Assert.Equal(pluginSlug, p);
         versions = await client.GetPublishedVersions("1.4.6.0", true);
         version = Assert.Single(versions);
-        Assert.Equal("rockstar-stylist", version.ProjectSlug);
+        Assert.Equal(pluginSlug, version.ProjectSlug);
 
         // Let's see what happen if there is two versions of the same plugin
         await conn.ExecuteAsync("""
                                 INSERT INTO versions (plugin_slug, ver, build_id, btcpay_min_ver, btcpay_max_ver, pre_release, updated_at, signatureproof)
-                                VALUES ('rockstar-stylist', ARRAY[1,0,2,1], 0, ARRAY[1,4,6,0], NULL, 'f', CURRENT_TIMESTAMP, NULL)
-                                """);
+                                VALUES (@pluginSlug, ARRAY[1,0,2,1], @buildId, ARRAY[1,4,6,0], NULL, 'f', CURRENT_TIMESTAMP, NULL)
+                                """, new { pluginSlug, buildId = fullBuildId.BuildId });
         var outputCacheStore = tester.GetService<IOutputCacheStore>();
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         versions = await client.GetPublishedVersions("1.4.6.0", true);
@@ -140,32 +143,32 @@ public class UnitTest1 : UnitTestBase
         Assert.Equal("1.0.2.0", versions[0].Version);
 
         // listed - always render
-        await conn.ExecuteAsync("UPDATE plugins SET visibility = 'listed' WHERE slug = 'rockstar-stylist'");
+        await conn.ExecuteAsync("UPDATE plugins SET visibility = 'listed' WHERE slug = @pluginSlug", new { pluginSlug });
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         var res = await client.GetPublishedVersions("2.1.0.0", false);
-        Assert.Contains(res, p => p.ProjectSlug == "rockstar-stylist");
+        Assert.Contains(res, p => p.ProjectSlug == pluginSlug);
 
         // unlisted - only render with compatible search term or legacy versions
-        await conn.ExecuteAsync("UPDATE plugins SET visibility = 'unlisted' WHERE slug = 'rockstar-stylist'");
+        await conn.ExecuteAsync("UPDATE plugins SET visibility = 'unlisted' WHERE slug = @pluginSlug", new { pluginSlug });
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         res = await client.GetPublishedVersions("2.1.0.0", false);
-        Assert.DoesNotContain(res, p => p.ProjectSlug == "rockstar-stylist");
+        Assert.DoesNotContain(res, p => p.ProjectSlug == pluginSlug);
 
         res = await client.GetPublishedVersions("2.1.0.0", false, searchPluginName: "rockstar");
-        Assert.Contains(res, p => p.ProjectSlug == "rockstar-stylist");
+        Assert.Contains(res, p => p.ProjectSlug == pluginSlug);
 
         var raw = await client.GetStringAsync("/api/v1/plugins");
         var legacyRes = JsonConvert.DeserializeObject<PublishedVersion[]>(raw);
-        Assert.Contains(legacyRes, p => p.ProjectSlug == "rockstar-stylist");
+        Assert.Contains(legacyRes, p => p.ProjectSlug == pluginSlug);
 
         // hidden - never render
-        await conn.ExecuteAsync("UPDATE plugins SET visibility = 'hidden' WHERE slug = 'rockstar-stylist'");
+        await conn.ExecuteAsync("UPDATE plugins SET visibility = 'hidden' WHERE slug = @pluginSlug", new { pluginSlug });
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         res = await client.GetPublishedVersions("2.1.0.0", false);
-        Assert.DoesNotContain(res, p => p.ProjectSlug == "rockstar-stylist");
+        Assert.DoesNotContain(res, p => p.ProjectSlug == pluginSlug);
 
         res = await client.GetPublishedVersions("2.1.0.0", false, searchPluginName: "rockstar");
-        Assert.DoesNotContain(res, p => p.ProjectSlug == "rockstar-stylist");
+        Assert.DoesNotContain(res, p => p.ProjectSlug == pluginSlug);
     }
     [Fact]
     public async Task DownloadEndpoint_UsesInternalLoopbackRedirectWhenLocalArtifactProxyEnabled()
@@ -176,17 +179,17 @@ public class UnitTest1 : UnitTestBase
         await tester.Start();
 
         var ownerId = await tester.CreateFakeUserAsync();
-        await tester.CreateAndBuildPluginAsync(ownerId);
+        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId);
 
         using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
         client.BaseAddress = new Uri(tester.WebApp.Urls.First(), UriKind.Absolute);
 
-        using var response = await client.GetAsync("api/v1/plugins/rockstar-stylist/versions/1.0.2.0/download");
+        using var response = await client.GetAsync($"api/v1/plugins/{fullBuildId.PluginSlug}/versions/1.0.2.0/download");
 
         Assert.Equal(System.Net.HttpStatusCode.Found, response.StatusCode);
         Assert.NotNull(response.Headers.Location);
         Assert.Equal(
-            "/api/v1/plugins/rockstar-stylist/versions/1.0.2.0/download-loopback",
+            $"/api/v1/plugins/{fullBuildId.PluginSlug}/versions/1.0.2.0/download-loopback",
             response.Headers.Location!.OriginalString);
 
         using var proxiedResponse = await client.GetAsync(response.Headers.Location);
@@ -204,12 +207,12 @@ public class UnitTest1 : UnitTestBase
         await tester.Start();
 
         var ownerId = await tester.CreateFakeUserAsync();
-        await tester.CreateAndBuildPluginAsync(ownerId);
+        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId);
 
         using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
         client.BaseAddress = new Uri(tester.WebApp.Urls.First(), UriKind.Absolute);
 
-        using var response = await client.GetAsync("api/v1/plugins/rockstar-stylist/versions/1.0.2.0/download");
+        using var response = await client.GetAsync($"api/v1/plugins/{fullBuildId.PluginSlug}/versions/1.0.2.0/download");
 
         Assert.Equal(System.Net.HttpStatusCode.Found, response.StatusCode);
         Assert.NotNull(response.Headers.Location);

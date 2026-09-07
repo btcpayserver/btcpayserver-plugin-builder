@@ -17,7 +17,6 @@ public class ServerTester : IAsyncDisposable
     public const string GitRef = "plugins/collection2";
     public const string PluginDir = "Plugins/BTCPayServer.Plugins.RockstarStylist";
     public const string BuildCfg = "Release";
-    public const string PluginSlug = "rockstar-stylist";
 
     private const string StorageConnectionString =
         "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==";
@@ -49,6 +48,7 @@ public class ServerTester : IAsyncDisposable
     public bool CheatMode { get; set; }
     public bool EnableLocalArtifactDownloadProxy { get; set; }
     public int? BuildTimeoutSeconds { get; set; }
+    public string? BuildScratchRoot { get; set; }
 
     public async ValueTask DisposeAsync()
     {
@@ -114,6 +114,8 @@ public class ServerTester : IAsyncDisposable
         ];
         if (BuildTimeoutSeconds is not null)
             args.Add($"--build_timeout_seconds={BuildTimeoutSeconds}");
+        if (BuildScratchRoot is not null)
+            args.Add($"--build_scratch_root={BuildScratchRoot}");
 
         var webappBuilder = host.CreateWebApplicationBuilder(new WebApplicationOptions
         {
@@ -174,12 +176,16 @@ public class ServerTester : IAsyncDisposable
         return directory;
     }
 
+    // Independent test databases share artifact storage, where published blobs cannot be overwritten.
+    public static string CreatePluginSlug() => "rockstar-" + Guid.NewGuid().ToString("N")[..20];
+
     public async Task<FullBuildId> CreateAndBuildPluginAsync(
         string userId,
-        string slug = PluginSlug,
+        string? slug = null,
         string gitRef = GitRef,
         string pluginDir = PluginDir)
     {
+        slug ??= CreatePluginSlug();
         await using var conn = await GetService<DBConnectionFactory>().Open();
         var buildService = GetService<BuildService>();
 

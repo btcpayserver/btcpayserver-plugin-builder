@@ -22,7 +22,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install curl
 RUN apt-get -qq update \
-  && apt-get -y -qq install apt-transport-https ca-certificates curl gnupg lsb-release --no-install-recommends \
+  && apt-get -y -qq install apt-transport-https ca-certificates curl gnupg lsb-release perl util-linux --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 # Install docker

@@ -10,7 +10,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.PublicTests;
 
-[Collection("Playwright Tests")]
+[Collection(nameof(NonParallelizableCollectionDefinition))]
+[Trait("Category", "ExecutorIntegration")]
 public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("PluginDetailsUITests", output);
@@ -23,7 +24,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.StartAsync();
 
         var ownerId = await tester.Server.CreateFakeUserAsync("layout-owner@x.com", confirmEmail: true, githubVerified: true);
-        const string slug = "plugin-details-layout";
+        var slug = ServerTester.CreatePluginSlug();
         await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
 
         await tester.Page!.SetViewportSizeAsync(1600, 1000);
@@ -57,7 +58,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.StartAsync();
 
         var ownerId = await tester.Server.CreateFakeUserAsync("embed-layout-owner@x.com", confirmEmail: true, githubVerified: true);
-        const string slug = "plugin-details-embed-layout";
+        var slug = ServerTester.CreatePluginSlug();
         await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
 
         using (var client = tester.Server.CreateHttpClient())
@@ -95,8 +96,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.StartAsync();
 
         var ownerId = await tester.Server.CreateFakeUserAsync("embed-selection-owner@x.com", confirmEmail: true, githubVerified: true);
-        const string firstSlug = "embed-select-a";
-        const string secondSlug = "embed-select-b";
+        var firstSlug = ServerTester.CreatePluginSlug();
+        var secondSlug = ServerTester.CreatePluginSlug();
         await tester.Server.CreateAndBuildPluginAsync(ownerId, firstSlug);
         await tester.Server.CreateAndBuildPluginAsync(ownerId, secondSlug);
 
@@ -134,7 +135,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.StartAsync();
 
         var ownerId = await tester.Server.CreateFakeUserAsync("pre-release-details-owner@x.com", confirmEmail: true, githubVerified: true);
-        const string slug = "plugin-details-pre-release";
+        var slug = ServerTester.CreatePluginSlug();
         var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
 
         await using (var conn = await tester.Server.GetService<DBConnectionFactory>().Open())
@@ -228,7 +229,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         // plugin + 3 users (owner, reviewer, voter)
         var ownerId = await tester.Server.CreateFakeUserAsync("owner@x.com", confirmEmail: true, githubVerified: true);
-        const string slug = ServerTester.PluginSlug;
+        var slug = ServerTester.CreatePluginSlug();
         await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
 
         // Set up owner's social accounts
@@ -254,7 +255,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.VerifyUserAccounts("reviewer@x.com", "reviewernpub1", reusedGithubHandle);
         await tester.VerifyUserAccounts("voter@x.com", "voternpub1", reusedGithubHandle);
 
-        const string url = $"/public/plugins/{slug}";
+        var url = $"/public/plugins/{slug}";
 
         //Plugin owners can't create review
         await tester.LogIn("owner@x.com");
@@ -373,7 +374,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         // Setup: Create plugin and users
         var ownerId = await tester.Server.CreateFakeUserAsync("owner@x.com", confirmEmail: true, githubVerified: true);
-        const string slug = ServerTester.PluginSlug;
+        var slug = ServerTester.CreatePluginSlug();
         await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
         await tester.Server.CreateFakeUserAsync("reviewer@x.com", confirmEmail: true, githubVerified: true);
         await tester.VerifyUserAccounts("reviewer@x.com", "reviewernpub1");

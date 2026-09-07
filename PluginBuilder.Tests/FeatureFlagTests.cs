@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Controllers.Logic;
@@ -102,7 +103,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var tester = Create("BuildsApiFlag");
         tester.ReuseDatabase = false;
         var gitProvider = new BlockingGitHostingProvider();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(gitProvider);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(gitProvider);
+        };
         await tester.Start();
 
         var email = $"build-disabled-{Guid.NewGuid():N}@example.com";
@@ -133,7 +138,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var tester = Create("BuildsUiFlag");
         tester.ReuseDatabase = false;
         var gitProvider = new BlockingGitHostingProvider();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(gitProvider);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(gitProvider);
+        };
         await tester.Start();
 
         var email = $"build-ui-disabled-{Guid.NewGuid():N}@example.com";
@@ -196,7 +205,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var tester = Create("BuildApiRace");
         tester.ReuseDatabase = false;
         var gitProvider = new BlockingGitHostingProvider();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(gitProvider);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(gitProvider);
+        };
         await tester.Start();
 
         var email = $"build-api-race-{Guid.NewGuid():N}@example.com";
@@ -219,7 +232,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var tester = Create("BuildUiRace");
         tester.ReuseDatabase = false;
         var gitProvider = new BlockingGitHostingProvider();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(gitProvider);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(gitProvider);
+        };
         await tester.Start();
 
         var email = $"build-ui-race-{Guid.NewGuid():N}@example.com";
@@ -401,6 +418,8 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"plugin-builder-queued-flag-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDirectory);
+        for (var slot = 0; slot < DockerBuildSandbox.MaxConcurrentBuilds; slot++)
+            Directory.CreateDirectory(DockerBuildSandbox.ScratchSlotPath(tempDirectory, slot));
         var dockerPath = Path.Combine(tempDirectory, "docker");
         await File.WriteAllTextAsync(dockerPath, """
             #!/bin/sh
@@ -409,18 +428,19 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
             printf '%s\n' "$*" >> "$state/commands"
 
             case "$1:$2" in
-                volume:create)
-                    for argument in "$@"; do volume="$argument"; done
+                network:create)
                     while [ ! -f "$state/release-blockers" ]; do sleep 0.01; done
-                    printf '%s\n' "$volume"
                     ;;
-                container:create)
-                    exit 41
+                network:connect|network:rm|container:create|container:start|container:exec|container:rm)
                     ;;
-                container:rm|volume:rm)
+                container:inspect)
+                    case "$*" in
+                        *State.Running*) printf '%s\n' true ;;
+                        *IPAddress*) printf '%s\n' 172.31.0.2 ;;
+                        *) exit 2 ;;
+                    esac
                     ;;
-                *)
-                    exit 2
+                *) exit 2
                     ;;
             esac
             """);
@@ -436,7 +456,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Environment.SetEnvironmentVariable("DOCKER_STARTUP_SKIP_BUILD", "true");
             await using var tester = Create("BuildsQueuedFlag");
             tester.ReuseDatabase = false;
+            tester.BuildScratchRoot = tempDirectory;
             await tester.Start();
+            tester.GetService<BuildExecutorState>().MarkReady(
+                "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                "sha256:2222222222222222222222222222222222222222222222222222222222222222");
 
             Environment.SetEnvironmentVariable("PATH", tempDirectory + Path.PathSeparator + originalPath);
             Environment.SetEnvironmentVariable("PB_FAKE_DOCKER_STATE", tempDirectory);
@@ -446,9 +470,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
             await using var conn = await tester.GetService<DBConnectionFactory>().Open();
             await conn.NewPlugin(pluginSlug, ownerId);
             List<FullBuildId> fullBuildIds = [];
-            for (var i = 0; i < 6; i++)
+            for (var i = 0; i < DockerBuildSandbox.MaxConcurrentBuilds + 1; i++)
             {
-                var buildId = await conn.NewBuild(pluginSlug, new PluginBuildParameters("https://example.invalid/repository"));
+                var buildId = await conn.NewBuild(
+                    pluginSlug,
+                    new PluginBuildParameters("https://github.com/example/repository"));
                 fullBuildIds.Add(new FullBuildId(pluginSlug, buildId));
             }
 
@@ -459,9 +485,14 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
             var releaseBlockersPath = Path.Combine(tempDirectory, "release-blockers");
             try
             {
-                blockerTasks = fullBuildIds.Take(5).Select(buildService.Build).ToArray();
+                blockerTasks = fullBuildIds.Take(DockerBuildSandbox.MaxConcurrentBuilds)
+                    .Select(buildService.Build)
+                    .ToArray();
                 var commandsPath = Path.Combine(tempDirectory, "commands");
-                await WaitForCommandCount(commandsPath, "volume create ", 5);
+                await WaitForCommandCount(
+                    commandsPath,
+                    "network create ",
+                    DockerBuildSandbox.MaxConcurrentBuilds);
 
                 queuedTask = buildService.Build(queuedBuild);
                 Assert.False(queuedTask.IsCompleted);
@@ -527,6 +558,8 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"plugin-builder-feature-flag-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDirectory);
+        for (var slot = 0; slot < DockerBuildSandbox.MaxConcurrentBuilds; slot++)
+            Directory.CreateDirectory(DockerBuildSandbox.ScratchSlotPath(tempDirectory, slot));
         var dockerPath = Path.Combine(tempDirectory, "docker");
         await File.WriteAllTextAsync(dockerPath, """
             #!/bin/sh
@@ -535,10 +568,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
             printf '%s\n' "$*" >> "$state/commands"
 
             case "$1:$2" in
-                volume:create)
-                    for argument in "$@"; do volume="$argument"; done
-                    printf '%s' "$volume" > "$state/volume"
-                    printf '%s\n' "$volume"
+                network:create|network:connect|network:rm|container:exec)
                     ;;
                 container:create)
                     previous=""
@@ -548,28 +578,25 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
                         previous="$argument"
                     done
                     [ -n "$name" ]
-                    printf '%s' "$name" > "$state/container"
-                    : > "$state/create-entered"
-                    while [ ! -f "$state/release-create" ]; do sleep 0.01; done
-                    printf '%s\n' fake-container-id
+                    case "$name" in
+                        pb-worker-*)
+                            : > "$state/create-entered"
+                            while [ ! -f "$state/release-create" ]; do sleep 0.01; done
+                            ;;
+                    esac
                     ;;
-                container:start|container:run|start:*|run:*)
-                    exit 99
+                container:start)
+                    ;;
+                container:inspect)
+                    case "$*" in
+                        *State.Running*) printf '%s\n' true ;;
+                        *IPAddress*) printf '%s\n' 172.31.0.2 ;;
+                        *) exit 2 ;;
+                    esac
                     ;;
                 container:rm)
-                    [ -f "$state/container" ]
-                    for argument in "$@"; do target="$argument"; done
-                    [ "$target" = "$(cat "$state/container")" ]
-                    rm -f "$state/container"
                     ;;
-                volume:rm)
-                    [ -f "$state/volume" ]
-                    for argument in "$@"; do target="$argument"; done
-                    [ "$target" = "$(cat "$state/volume")" ]
-                    rm -f "$state/volume"
-                    ;;
-                *)
-                    ;;
+                *) exit 2 ;;
             esac
             """);
         File.SetUnixFileMode(
@@ -586,7 +613,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
             await using var tester = Create("BuildFlagDuringCreate");
             tester.ReuseDatabase = false;
+            tester.BuildScratchRoot = tempDirectory;
             await tester.Start();
+            tester.GetService<BuildExecutorState>().MarkReady(
+                "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                "sha256:2222222222222222222222222222222222222222222222222222222222222222");
 
             Environment.SetEnvironmentVariable("PATH", tempDirectory + Path.PathSeparator + originalPath);
             Environment.SetEnvironmentVariable("PB_FAKE_DOCKER_STATE", tempDirectory);
@@ -600,7 +631,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
                 await conn.NewPlugin(pluginSlug, ownerId);
                 var buildId = await conn.NewBuild(
                     pluginSlug,
-                    new PluginBuildParameters("https://example.invalid/repository"));
+                    new PluginBuildParameters("https://github.com/example/repository"));
                 var fullBuildId = new FullBuildId(pluginSlug, buildId);
 
                 buildTask = tester.GetService<BuildService>().Build(fullBuildId);
@@ -614,15 +645,19 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
                     new { pluginSlug = pluginSlug.ToString(), buildId });
                 Assert.Equal(BuildStates.Failed.ToEventName(), build.state);
                 Assert.Equal("Plugin builds are temporarily disabled.", build.error);
-                Assert.False(File.Exists(Path.Combine(tempDirectory, "container")));
-                Assert.False(File.Exists(Path.Combine(tempDirectory, "volume")));
+                Assert.Empty(Directory.EnumerateDirectories(tempDirectory, "pb-build-*", SearchOption.AllDirectories));
 
                 var commands = await File.ReadAllLinesAsync(Path.Combine(tempDirectory, "commands"));
-                Assert.Contains(commands, command => command.StartsWith("volume create ", StringComparison.Ordinal));
-                Assert.Contains(commands, command => command.StartsWith("container create ", StringComparison.Ordinal));
-                Assert.Contains(commands, command => command.StartsWith("container rm ", StringComparison.Ordinal));
-                Assert.Contains(commands, command => command.StartsWith("volume rm ", StringComparison.Ordinal));
-                Assert.DoesNotContain(commands, IsContainerExecutionCommand);
+                Assert.Contains(commands, command => command.StartsWith("network create ", StringComparison.Ordinal));
+                Assert.Contains(
+                    commands,
+                    command => command.StartsWith("container create --name pb-worker-", StringComparison.Ordinal));
+                Assert.Contains(
+                    commands,
+                    command => command.StartsWith("container rm --force pb-worker-", StringComparison.Ordinal));
+                Assert.DoesNotContain(
+                    commands,
+                    command => command.StartsWith("container start --attach pb-worker-", StringComparison.Ordinal));
             }
             finally
             {
@@ -820,7 +855,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         private readonly TaskCompletionSource<string> _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _fetchCount;
 
-        public string RepositoryUrl { get; } = $"https://feature-flags-{Guid.NewGuid():N}.invalid/repository.git";
+        public string RepositoryUrl { get; } = $"https://github.com/feature-flags-{Guid.NewGuid():N}/repository";
         public int FetchCount => Volatile.Read(ref _fetchCount);
         public Task Entered => _entered.Task;
 

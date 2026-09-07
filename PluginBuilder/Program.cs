@@ -203,6 +203,9 @@ public class Program
         services.AddSingleton<DBConnectionFactory>();
         services.AddScoped<PluginCleanupRunner>();
         services.AddScoped<UserCleanupRunner>();
+        services.AddSingleton<BuildExecutorState>();
+        services.AddSingleton<BuildScratchCleaner>();
+        services.AddSingleton<DockerBuildSandbox>();
         services.AddSingleton<BuildService>();
         services.AddSingleton<ProcessRunner>();
         services.AddSingleton<GPGKeyService>();

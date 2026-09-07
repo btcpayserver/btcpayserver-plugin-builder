@@ -11,7 +11,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.PluginTests;
 
-[Collection("Playwright Tests")]
+[Collection(nameof(NonParallelizableCollectionDefinition))]
+[Trait("Category", "ExecutorIntegration")]
 public class BuildUITests(ITestOutputHelper output) : PageTest
 {
     private const string DirWithoutCsproj = "docs";

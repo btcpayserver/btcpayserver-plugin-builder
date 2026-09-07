@@ -9,7 +9,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.AdminTests;
 
-[Collection("Playwright Tests")]
+[Collection(nameof(NonParallelizableCollectionDefinition))]
+[Trait("Category", "ExecutorIntegration")]
 public class AdminPluginDeleteUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("AdminPluginDeleteUITests", output);

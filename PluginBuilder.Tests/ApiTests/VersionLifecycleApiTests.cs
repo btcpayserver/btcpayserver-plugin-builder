@@ -13,6 +13,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.ApiTests;
 
+[Collection(nameof(NonParallelizableCollectionDefinition))]
+[Trait("Category", "ExecutorIntegration")]
 public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     private static readonly JsonSerializerSettings SerializerSettings = new() { ContractResolver = new CamelCasePropertyNamesContractResolver() };

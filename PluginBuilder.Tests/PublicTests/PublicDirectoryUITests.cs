@@ -12,7 +12,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.PublicTests;
 
-[Collection("Playwright Tests")]
+[Collection(nameof(NonParallelizableCollectionDefinition))]
+[Trait("Category", "ExecutorIntegration")]
 public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("PublicDirectoryUITests", output);
@@ -26,7 +27,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
 
         var ownerId = await tester.Server.CreateFakeUserAsync(confirmEmail: true, githubVerified: true);
-        const string pluginSlug = "public-directory-embed-query";
+        var pluginSlug = ServerTester.CreatePluginSlug();
         var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
 
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
@@ -65,11 +66,11 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 
         var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
 
-        var slug = new PluginSlug("rockstar-stylist");
+        var slug = new PluginSlug(ServerTester.CreatePluginSlug());
         var slugString = slug.ToString();
 
         var ownerId = await tester.Server.CreateFakeUserAsync();
-        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId);
+        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId, slugString);
 
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
@@ -82,8 +83,8 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         // Listed should be visible
         await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Listed);
         await tester.GoToUrl("/public/plugins");
-        await tester.Page!.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']");
-        Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
+        await tester.Page!.WaitForSelectorAsync($"a[href='/public/plugins/{slugString}']");
+        Assert.True(await tester.Page.Locator($"a[href='/public/plugins/{slugString}']").IsVisibleAsync());
 
         // Plugin public page should be visible
         await tester.GoToUrl($"/public/plugins/{slugString}");
@@ -104,31 +105,31 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Unlisted);
         await tester.GoToUrl("/public/plugins");
         await tester.Page.ReloadAsync();
-        Assert.False(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
+        Assert.False(await tester.Page.Locator($"a[href='/public/plugins/{slugString}']").IsVisibleAsync());
 
         // Unlisted with search term should be visible
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync("rockstar");
         await tester.Page.Keyboard.PressAsync("Enter");
-        await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']",
+        await tester.Page.WaitForSelectorAsync($"a[href='/public/plugins/{slugString}']",
             new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible });
-        Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
+        Assert.True(await tester.Page.Locator($"a[href='/public/plugins/{slugString}']").IsVisibleAsync());
 
         // Author search should be visible
         await tester.GoToUrl("/public/plugins");
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync("NicolasDorier");
         await tester.Page.Keyboard.PressAsync("Enter");
-        await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']",
+        await tester.Page.WaitForSelectorAsync($"a[href='/public/plugins/{slugString}']",
             new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible });
-        Assert.True(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
+        Assert.True(await tester.Page.Locator($"a[href='/public/plugins/{slugString}']").IsVisibleAsync());
 
         // Hidden shouldn't appear
         await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Hidden);
         await tester.GoToUrl("/public/plugins");
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync("rockstar");
         await tester.Page.Keyboard.PressAsync("Enter");
-        await tester.Page.WaitForSelectorAsync("a[href='/public/plugins/rockstar-stylist']",
+        await tester.Page.WaitForSelectorAsync($"a[href='/public/plugins/{slugString}']",
             new PageWaitForSelectorOptions { State = WaitForSelectorState.Hidden });
-        Assert.False(await tester.Page.Locator("a[href='/public/plugins/rockstar-stylist']").IsVisibleAsync());
+        Assert.False(await tester.Page.Locator($"a[href='/public/plugins/{slugString}']").IsVisibleAsync());
 
         // Log in as plugin owner and access page again
         await tester.GoToUrl("/register");
@@ -151,7 +152,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         var reviewer5 = await tester.Server.CreateFakeUserAsync("sort-reviewer5@x.com");
         var reviewer6 = await tester.Server.CreateFakeUserAsync("sort-reviewer6@x.com");
 
-        var popularSlug = new PluginSlug("public-directory-popular");
+        var popularSlug = new PluginSlug(ServerTester.CreatePluginSlug());
         var popularSlugString = popularSlug.ToString();
         var popularBuild = await tester.Server.CreateAndBuildPluginAsync(ownerId, popularSlugString);
         var popularManifestJson = await conn.QuerySingleAsync<string>("SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",

@@ -14,7 +14,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.AdminTests;
 
-[Collection("Playwright Tests")]
+[Collection(nameof(NonParallelizableCollectionDefinition))]
+[Trait("Category", "ExecutorIntegration")]
 public class AdminBTCPayCompatibilityUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("AdminBTCPayCompatibilityUITests", output);

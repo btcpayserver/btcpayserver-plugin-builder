@@ -19,6 +19,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Build and smoke-test final application image
+        timeout-minutes: 15
+        env:
+          DOCKER_BUILDKIT: 1
+        run: |
+          set -euo pipefail
+          docker build --pull=false --tag plugin-builder-runtime-ci:output-limiter \
+            --build-arg VERSION=0.0.0-ci --build-arg GIT_COMMIT="$GITHUB_SHA" .
+          docker run --rm --pull never --network none --read-only \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --memory 64m --pids-limit 32 --entrypoint /usr/bin/perl \
+            plugin-builder-runtime-ci:output-limiter \
+            /app/limit-output.pl 1024 256 4 5 -- /usr/bin/true
+
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
@@ -36,18 +50,47 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-
 
-      - name: Install Playwright CLI + browsers (full install)
+      - name: Install Playwright browser and OS dependencies (cache miss)
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          dotnet tool install --global Microsoft.Playwright.CLI
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          playwright install --with-deps
+        run: pwsh PluginBuilder.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
-      - name: Install Playwright CLI only (cache hit)
+      - name: Install Playwright OS dependencies (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pwsh PluginBuilder.Tests/bin/Release/net10.0/playwright.ps1 install-deps chromium
+
+      - name: Install gVisor runtime
         run: |
-          dotnet tool install --global Microsoft.Playwright.CLI
-          export PATH="$PATH:$HOME/.dotnet/tools"
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+          curl -fsSL https://gvisor.dev/archive.key |
+            sudo gpg --dearmor --yes -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" |
+            sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y runsc
+          sudo systemctl restart docker
+          docker info --format '{{json .Runtimes}}' | grep -q '"runsc"'
+
+      - name: Mount isolated build scratch
+        run: |
+          set -euo pipefail
+          sudo install -m 0700 -d /mnt/pluginbuilder-build-scratch
+          # Reserve both slots before mounting either. Sparse backing files would
+          # let one build consume the host space promised to the other slot.
+          for slot in 0 1; do
+            fallocate --length 6G "$RUNNER_TEMP/pluginbuilder-build-scratch-$slot.ext4"
+          done
+          for slot in 0 1; do
+            sudo install -m 0700 -d "/mnt/pluginbuilder-build-scratch/slot-$slot"
+            sudo mkfs.ext4 -q -F -E nodiscard -N 65536 \
+              "$RUNNER_TEMP/pluginbuilder-build-scratch-$slot.ext4"
+            sudo mount -o loop,nosuid,nodev \
+              "$RUNNER_TEMP/pluginbuilder-build-scratch-$slot.ext4" \
+              "/mnt/pluginbuilder-build-scratch/slot-$slot"
+            sudo chmod 0700 "/mnt/pluginbuilder-build-scratch/slot-$slot"
+            mountpoint --quiet "/mnt/pluginbuilder-build-scratch/slot-$slot"
+          done
 
       - name: Start Docker containers
         env:
@@ -58,17 +101,68 @@ jobs:
           COMPOSE_DOCKER_CLI_BUILD: 1
         run: docker compose -f PluginBuilder.Tests/docker-compose.yml up -d --build
 
-      - name: Build plugin-builder image once
+      - name: Build plugin-builder executor images once
         env:
           DOCKER_BUILDKIT: 1
-        run: docker build -f PluginBuilder/PluginBuilder.Dockerfile -t plugin-builder PluginBuilder
+        run: |
+          docker build -f PluginBuilder/PluginBuilder.Dockerfile -t plugin-builder PluginBuilder
+          docker build -f PluginBuilder/PluginBuilder.Proxy.Dockerfile -t plugin-builder-proxy PluginBuilder
 
-      - name: Run tests
+      - name: Run tests without a build executor
         env:
           DOCKER_STARTUP_SKIP_BUILD: "true"
           GITHUB_TOKEN: ${{ github.token }}
-        run: dotnet test PluginBuilder.Tests --verbosity normal
+        run: |
+          dotnet test PluginBuilder.Tests \
+            --configuration Release \
+            --no-build \
+            --filter "Category!=ExecutorIntegration" \
+            --logger "trx;LogFileName=without-executor.trx" \
+            --results-directory "$RUNNER_TEMP/without-executor-test-results" \
+            --verbosity normal
+          grep -Eq \
+            '<Counters [^>]*total="[1-9][0-9]*"' \
+            "$RUNNER_TEMP/without-executor-test-results/without-executor.trx"
+
+      - name: Run build executor and negative network canary tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          sudo env \
+            CI=true \
+            HOME=/root \
+            DOCKER_STARTUP_SKIP_BUILD=false \
+            GITHUB_TOKEN="$GITHUB_TOKEN" \
+            PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" \
+            PB_BUILD_SCRATCH_ROOT=/mnt/pluginbuilder-build-scratch \
+            "$(command -v dotnet)" test PluginBuilder.Tests \
+              --configuration Release \
+              --no-build \
+              --filter "Category=ExecutorIntegration" \
+              --logger "trx;LogFileName=executor-integration.trx" \
+              --results-directory "$RUNNER_TEMP/executor-test-results" \
+              --verbosity normal
+          sudo grep -Eq \
+            '<Counters [^>]*total="[1-9][0-9]*"' \
+            "$RUNNER_TEMP/executor-test-results/executor-integration.trx"
 
       - name: Cleanup Docker
         if: always()
-        run: docker compose -f PluginBuilder.Tests/docker-compose.yml down --volumes
+        run: |
+          cleanup_status=0
+          docker compose -f PluginBuilder.Tests/docker-compose.yml down --volumes || cleanup_status=$?
+          docker ps -aq --filter 'label=BTCPAY_PLUGIN_BUILD' |
+            xargs -r docker rm --force || cleanup_status=$?
+          docker network ls -q --filter 'label=BTCPAY_PLUGIN_BUILD' |
+            xargs -r docker network rm || cleanup_status=$?
+          docker volume ls -q --filter 'label=BTCPAY_PLUGIN_BUILD' |
+            xargs -r docker volume rm || cleanup_status=$?
+          for slot in 0 1; do
+            if mountpoint --quiet "/mnt/pluginbuilder-build-scratch/slot-$slot"; then
+              sudo umount "/mnt/pluginbuilder-build-scratch/slot-$slot" || cleanup_status=$?
+            fi
+            if ! mountpoint --quiet "/mnt/pluginbuilder-build-scratch/slot-$slot"; then
+              rm -f "$RUNNER_TEMP/pluginbuilder-build-scratch-$slot.ext4" || cleanup_status=$?
+            fi
+          done
+          exit "$cleanup_status"
