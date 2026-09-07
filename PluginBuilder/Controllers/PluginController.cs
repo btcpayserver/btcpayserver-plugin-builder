@@ -27,6 +27,7 @@ public class PluginController(
     BuildService buildService,
     AzureStorageClient azureStorageClient,
     UserVerifiedLogic userVerifiedLogic,
+    BuildAccessLogic buildAccessLogic,
     IOutputCacheStore outputCacheStore,
     PluginOwnershipService ownershipService,
     VersionLifecycleService versionLifecycleService,
@@ -241,7 +242,7 @@ public class PluginController(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug, long? copyBuild = null)
     {
-        if (!adminSettingsCache.NewBuildsEnabled)
+        if (!await buildAccessLogic.CanCreateBuild(User))
             return BuildsUnavailable();
 
         await using var conn = await connectionFactory.Open();
@@ -283,7 +284,7 @@ public class PluginController(
         PluginSlug pluginSlug,
         CreateBuildViewModel model)
     {
-        if (!adminSettingsCache.NewBuildsEnabled)
+        if (!await buildAccessLogic.CanCreateBuild(User))
             return BuildsUnavailable();
 
         if (!ModelState.IsValid)
@@ -311,7 +312,8 @@ public class PluginController(
             return View(model);
         }
 
-        if (!adminSettingsCache.NewBuildsEnabled)
+        var isWhitelisted = await buildAccessLogic.IsWhitelisted(User);
+        if (!adminSettingsCache.NewBuildsEnabled && !isWhitelisted)
             return BuildsUnavailable();
 
         var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
@@ -325,7 +327,7 @@ public class PluginController(
             await conn.SetPluginSettings(pluginSlug, existingSetting);
         }
 
-        _ = buildService.Build(new FullBuildId(pluginSlug, buildId));
+        _ = buildService.Build(new FullBuildId(pluginSlug, buildId), isWhitelisted);
         return RedirectToAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId });
     }
 

@@ -1,10 +1,12 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.OutputCaching;
+using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.Configuration;
@@ -36,11 +38,13 @@ public class AdminController(
     PluginBuilderOptions pbOptions,
     IOutputCacheStore outputCacheStore,
     PluginOwnershipService ownershipService,
-    ServerEnvironment serverEnvironment)
+    ServerEnvironment serverEnvironment,
+    ILogger<AdminController> logger)
     : Controller
 {
     // settings editor
     private const string ProtectedKeys = SettingsKeys.EmailSettings;
+    private const string WhitelistChangedMessage = "The build whitelist has changed. Reload the page before saving or deleting it.";
 
     private sealed class PluginVersionAdminRow
     {
@@ -1057,32 +1061,140 @@ public class AdminController(
         await using var conn = await connectionFactory.Open();
         var result = await conn.SettingsGetAllAsync();
         var list = result.ToList();
-        list.RemoveAll(setting => setting.key == ProtectedKeys);
-        return View(list);
+        list.RemoveAll(setting => setting.key is ProtectedKeys or SettingsKeys.NewBuildsWhitelist);
+        var accounts = await ReadBuildWhitelist(conn);
+        list.Add((SettingsKeys.NewBuildsWhitelist, string.Join(",", accounts.Select(account => account.Email))));
+        return View(new SettingsEditorViewModel
+        {
+            Settings = list,
+            WhitelistVersion = GetWhitelistVersion(accounts)
+        });
     }
 
     [HttpPost("SettingsEditor")]
-    public async Task<IActionResult> SettingsEditor(string key, string value)
+    public async Task<IActionResult> SettingsEditor(string key, string value, string? whitelistVersion = null)
     {
         if (key == ProtectedKeys)
             return BadRequest();
 
         await using var conn = await connectionFactory.Open();
-        var result = await conn.SettingsSetAsync(key, value);
+        if (key == SettingsKeys.NewBuildsWhitelist)
+            return await SaveBuildWhitelist(conn, value, whitelistVersion);
+
+        await conn.SettingsSetAsync(key, value);
         await adminSettingsCache.RefreshAllAdminSettings(conn);
         return RedirectToAction(nameof(SettingsEditor));
     }
 
     [HttpDelete("SettingsEditor")]
-    public async Task<IActionResult> SettingsEditorDelete(string key)
+    public async Task<IActionResult> SettingsEditorDelete(string key, string? whitelistVersion = null)
     {
         if (key == ProtectedKeys)
             return BadRequest();
 
         await using var conn = await connectionFactory.Open();
+        if (key == SettingsKeys.NewBuildsWhitelist)
+        {
+            await using var transaction = await conn.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+            await conn.ExecuteAsync("LOCK TABLE build_whitelist IN SHARE ROW EXCLUSIVE MODE");
+            var previous = await ReadBuildWhitelist(conn, lockAccounts: true);
+            if (whitelistVersion != GetWhitelistVersion(previous))
+                return Conflict(WhitelistChangedMessage);
+
+            await conn.ExecuteAsync("DELETE FROM build_whitelist");
+            await transaction.CommitAsync();
+            LogWhitelistChange(previous, []);
+            return Ok();
+        }
+
         var result = await conn.SettingsDeleteAsync(key);
         await adminSettingsCache.RefreshAllAdminSettings(conn);
         return Ok();
+    }
+
+    private async Task<IActionResult> SaveBuildWhitelist(NpgsqlConnection conn, string value, string? whitelistVersion)
+    {
+        await using var transaction = await conn.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+        await conn.ExecuteAsync("LOCK TABLE build_whitelist IN SHARE ROW EXCLUSIVE MODE");
+        var previous = await ReadBuildWhitelist(conn, lockAccounts: true);
+        if (whitelistVersion != GetWhitelistVersion(previous))
+        {
+            TempData[TempDataConstant.WarningMessage] = WhitelistChangedMessage;
+            return RedirectToAction(nameof(SettingsEditor));
+        }
+
+        var requireConfirmedEmail = adminSettingsCache.IsEmailVerificationRequiredForLogin;
+        var emails = ParseWhitelistEmails(value);
+        var normalizedEmails = emails.Select(userManager.NormalizeEmail).Distinct(StringComparer.Ordinal).ToArray();
+        var users = (await conn.QueryAsync<(string UserId, string Email, string NormalizedEmail, bool EmailConfirmed)>(
+            """
+            SELECT "Id", "Email", "NormalizedEmail", "EmailConfirmed"
+            FROM "AspNetUsers"
+            WHERE "NormalizedEmail" = ANY(@NormalizedEmails)
+            ORDER BY "Id"
+            FOR SHARE
+            """, new { NormalizedEmails = normalizedEmails })).ToList();
+        var accounts = new List<(string UserId, string Email)>();
+        foreach (var email in emails)
+        {
+            var normalizedEmail = userManager.NormalizeEmail(email);
+            var matches = users.Where(user => user.NormalizedEmail == normalizedEmail).ToList();
+            if (!MailboxAddressValidator.IsMailboxAddress(email) || matches.Count != 1 ||
+                (requireConfirmedEmail && !matches[0].EmailConfirmed))
+            {
+                var confirmationRequirement = requireConfirmedEmail ? " with a confirmed email" : "";
+                TempData[TempDataConstant.WarningMessage] = $"Whitelist not saved: '{email}' must identify one existing account{confirmationRequirement}.";
+                return RedirectToAction(nameof(SettingsEditor));
+            }
+            accounts.Add((matches[0].UserId, matches[0].Email));
+        }
+
+        var userIds = accounts.Select(account => account.UserId).Distinct(StringComparer.Ordinal).ToArray();
+        await conn.ExecuteAsync("DELETE FROM build_whitelist WHERE user_id <> ALL(@UserIds)", new { UserIds = userIds });
+        await conn.ExecuteAsync(
+            "INSERT INTO build_whitelist (user_id) SELECT unnest(@UserIds::text[]) ON CONFLICT DO NOTHING",
+            new { UserIds = userIds });
+        await transaction.CommitAsync();
+        LogWhitelistChange(previous, accounts);
+        return RedirectToAction(nameof(SettingsEditor));
+    }
+
+    private static async Task<List<(string UserId, string Email)>> ReadBuildWhitelist(NpgsqlConnection conn, bool lockAccounts = false)
+    {
+        var query = """
+                    SELECT u."Id", u."Email"
+                    FROM build_whitelist w
+                    JOIN "AspNetUsers" u ON u."Id" = w.user_id
+                    ORDER BY u."Id"
+                    """;
+        if (lockAccounts)
+            query += " FOR SHARE OF u";
+        return (await conn.QueryAsync<(string UserId, string Email)>(query)).ToList();
+    }
+
+    private static string GetWhitelistVersion(IEnumerable<(string UserId, string Email)> accounts)
+    {
+        var snapshot = accounts.OrderBy(account => account.UserId, StringComparer.Ordinal)
+            .Select(account => new { account.UserId, account.Email });
+        return Convert.ToHexString(SHA256.HashData(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(snapshot)));
+    }
+
+    private static string[] ParseWhitelistEmails(string? value) =>
+        (value ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+        .Select(email => email.Normalize())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private void LogWhitelistChange(IEnumerable<(string UserId, string Email)> previous, IEnumerable<(string UserId, string Email)> current)
+    {
+        var previousAccounts = previous.ToArray();
+        var currentAccounts = current.ToArray();
+        var added = currentAccounts.ExceptBy(previousAccounts.Select(account => account.UserId), account => account.UserId).ToArray();
+        var removed = previousAccounts.ExceptBy(currentAccounts.Select(account => account.UserId), account => account.UserId).ToArray();
+        if (added.Length != 0 || removed.Length != 0)
+            logger.LogInformation("Build whitelist changed by administrator {AdministratorId}: added {AddedUsers}; removed {RemovedUsers}",
+                userManager.GetUserId(User), string.Join(",", added.Select(account => account.UserId)),
+                string.Join(",", removed.Select(account => account.UserId)));
     }
 
     [HttpGet("server/logs/{file?}")]

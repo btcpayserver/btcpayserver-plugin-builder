@@ -27,6 +27,7 @@ public class ApiController(
     VersionLifecycleService versionLifecycleService,
     UserManager<IdentityUser> userManager,
     UserVerifiedLogic userVerifiedLogic,
+    BuildAccessLogic buildAccessLogic,
     IHttpClientFactory httpClientFactory,
     ServerEnvironment serverEnvironment,
     AdminSettingsCache adminSettingsCache)
@@ -362,7 +363,7 @@ public class ApiController(
         PluginSlug pluginSlug,
         CreateBuildRequest model)
     {
-        if (!adminSettingsCache.NewBuildsEnabled)
+        if (!await buildAccessLogic.CanCreateBuild(User))
             return BuildsUnavailable();
 
         await using var conn = await connectionFactory.Open();
@@ -407,14 +408,15 @@ public class ApiController(
             return ValidationErrorResult(ModelState);
         }
 
-        if (!adminSettingsCache.NewBuildsEnabled)
+        var isWhitelisted = await buildAccessLogic.IsWhitelisted(User);
+        if (!adminSettingsCache.NewBuildsEnabled && !isWhitelisted)
             return BuildsUnavailable();
 
         var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
         var buildUrl = Url.ActionLink(nameof(PluginController.Build), "Plugin",
             new { pluginSlug = pluginSlug.ToString(), buildId });
 
-        _ = buildService.Build(new FullBuildId(pluginSlug, buildId));
+        _ = buildService.Build(new FullBuildId(pluginSlug, buildId), isWhitelisted);
 
         return CreatedAtAction(nameof(Build), new { pluginSlug = pluginSlug.ToString(), buildId }, new JObject
         {

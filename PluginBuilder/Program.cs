@@ -262,6 +262,7 @@ public class Program
         // shared controller logic
         services.AddSingleton<AdminSettingsCache>();
         services.AddTransient<UserVerifiedLogic>();
+        services.AddScoped<BuildAccessLogic>();
         services.AddScoped<ReferrerNavigationService>();
         services.AddHttpContextAccessor();
         services.AddSingleton<IActionContextAccessor, ActionContextAccessor>();

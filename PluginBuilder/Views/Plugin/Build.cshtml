@@ -1,8 +1,9 @@
 @using PluginBuilder.ViewModels.Shared
 @model BuildViewModel
-@inject PluginBuilder.Controllers.Logic.AdminSettingsCache AdminSettingsCache
+@inject PluginBuilder.Controllers.Logic.BuildAccessLogic BuildAccessLogic
 @{
     Layout = "_Layout";
+    var canCreateBuild = await BuildAccessLogic.CanCreateBuild(User);
     ViewData.SetActivePage(PluginNavPages.Dashboard, $"Build {Model.FullBuildId.BuildId}", Model.FullBuildId.ToString());
     var btcpayCompatibilityModalVm = new BTCPayCompatibilityModalViewModel
     {
@@ -37,7 +38,7 @@
                 <span class="badge bg-warning">@Model.State</span>
                 break;
             case "failed":
-                if (AdminSettingsCache.NewBuildsEnabled)
+                if (canCreateBuild)
                 {
                     <a asp-action="CreateBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-copyBuild="@Model.FullBuildId.BuildId"
                        class="btn btn-secondary">Retry</a>
@@ -60,7 +61,7 @@
                         </form>
                     }
 
-                    if (AdminSettingsCache.NewBuildsEnabled)
+                    if (canCreateBuild)
                     {
                         <a asp-action="CreateBuild" asp-route-pluginSlug="@Model.FullBuildId.PluginSlug" asp-route-copyBuild="@Model.FullBuildId.BuildId"
                            class="btn btn-secondary">Retry</a>
