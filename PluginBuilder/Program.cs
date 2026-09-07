@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -141,9 +142,9 @@ public class Program
             }
         });
         app.UseRouting();
-        app.UseRateLimiter();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseRateLimiter();
         app.UseOutputCache();
         app.MapHub<PluginHub>("hub");
         app.MapHub<PluginHub>("/plugins/{pluginSlug}/hub");
@@ -315,6 +316,21 @@ public class Program
                 {
                     PermitLimit = 3,
                     Window = TimeSpan.FromHours(24),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                });
+            });
+            options.AddPolicy(Policies.BuildCreationRateLimit, httpContext =>
+            {
+                var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                var partition = string.IsNullOrEmpty(userId) ? $"ip:{clientIp}" : $"user:{userId}";
+                return RateLimitPartition.GetTokenBucketLimiter(partition, _ => new TokenBucketRateLimiterOptions
+                {
+                    TokenLimit = 4,
+                    TokensPerPeriod = 1,
+                    ReplenishmentPeriod = TimeSpan.FromMinutes(15),
+                    AutoReplenishment = true,
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                     QueueLimit = 0
                 });

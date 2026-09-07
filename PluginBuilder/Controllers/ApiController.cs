@@ -358,6 +358,7 @@ public class ApiController(
     }
 
     [HttpPost("plugins/{pluginSlug}/builds")]
+    [EnableRateLimiting(Policies.BuildCreationRateLimit)]
     public async Task<IActionResult> CreateBuild(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,

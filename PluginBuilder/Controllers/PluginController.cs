@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
+using Microsoft.AspNetCore.RateLimiting;
 using Newtonsoft.Json;
 using Npgsql;
 using PluginBuilder.Components.PluginVersion;
@@ -279,6 +280,7 @@ public class PluginController(
     }
 
     [HttpPost("create")]
+    [EnableRateLimiting(Policies.BuildCreationRateLimit)]
     public async Task<IActionResult> CreateBuild(
         [ModelBinder(typeof(PluginSlugModelBinder))]
         PluginSlug pluginSlug,
