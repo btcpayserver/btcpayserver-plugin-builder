@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json.Linq;
+using Npgsql;
 using PluginBuilder.Authentication;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
@@ -20,6 +21,44 @@ namespace PluginBuilder.Tests;
 
 public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
+    [Fact]
+    public async Task StoppingRepeatedHostsClosesBothDatabasePools()
+    {
+        await using var observer = new NpgsqlConnection("Host=127.0.0.1;Port=61932;Username=postgres;Database=postgres;Pooling=false");
+        await observer.OpenAsync();
+        for (var i = 0; i < 3; i++)
+        {
+            await using var tester = await StartAdminServer();
+            // Keep the database until after the assertion: dropping it terminates
+            // sessions and would hide a pool that outlived its host.
+            tester.ReuseDatabase = true;
+            try
+            {
+                var database = tester.GetService<DBConnectionFactory>().ConnectionString.Database;
+                await using (var connection = await tester.GetService<DBConnectionFactory>().Open())
+                    await connection.ExecuteScalarAsync<int>("SELECT 1");
+                await using (var connection = await tester.GetService<NpgsqlDataSource>().OpenConnectionAsync())
+                    await connection.ExecuteScalarAsync<int>("SELECT 1");
+                const string sessions = "SELECT count(*) FROM pg_stat_activity WHERE datname = @database";
+                Assert.True(await observer.ExecuteScalarAsync<int>(sessions, new { database }) >= 2);
+                await tester.DisposeAsync();
+                // PostgreSQL may take a moment to process the closed sockets.
+                var remaining = 0;
+                for (var attempt = 0; attempt < 50; attempt++)
+                {
+                    remaining = await observer.ExecuteScalarAsync<int>(sessions, new { database });
+                    if (remaining == 0) break;
+                    await Task.Delay(100);
+                }
+                Assert.Equal(0, remaining);
+            }
+            finally
+            {
+                tester.ReuseDatabase = false;
+            }
+        }
+    }
+
     private async Task<ServerTester> StartAdminServer()
     {
         var tester = Create();

@@ -1141,8 +1141,7 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "name",
-                  "expiresInDays"
+                  "name"
                 ],
                 "properties": {
                   "name": {

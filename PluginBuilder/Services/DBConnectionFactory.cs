@@ -3,13 +3,16 @@ using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Services;
 
-public class DBConnectionFactory
+public class DBConnectionFactory : IAsyncDisposable
 {
+    private readonly NpgsqlDataSource _dataSource;
+
     public DBConnectionFactory(IConfiguration config)
     {
         try
         {
             ConnectionString = new NpgsqlConnectionStringBuilder(config.GetRequired("POSTGRES"));
+            _dataSource = NpgsqlDataSource.Create(ConnectionString.ToString());
         }
         catch (Exception ex) when (ex is not ConfigurationException)
         {
@@ -24,7 +27,7 @@ public class DBConnectionFactory
         var maxRetries = 10;
         var retries = maxRetries;
         retry:
-        NpgsqlConnection conn = new(ConnectionString.ToString());
+        NpgsqlConnection conn = _dataSource.CreateConnection();
         try
         {
             await conn.OpenAsync(cancellationToken);
@@ -44,4 +47,6 @@ public class DBConnectionFactory
 
         return conn;
     }
+
+    public ValueTask DisposeAsync() => _dataSource.DisposeAsync();
 }

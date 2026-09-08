@@ -34,7 +34,8 @@ record the authenticated actor; internal builds without an actor still emit
 
 Payloads contain relevant user, plugin, build, and listing-request IDs. Build events
 include repository, requested ref and resolved commit when available. Registration
-includes email; GitHub verification includes username and proof URL; listing events
+includes only the user ID (fetch the current account through the admin users API);
+GitHub verification includes username and proof URL; listing events
 include submission details. Passwords, tokens, raw logs and environment variables
 are not included. Submitted text and repository content remain untrusted input for
 any external review agent. Notifications observe activity; they do not gate builds

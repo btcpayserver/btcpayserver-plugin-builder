@@ -16,6 +16,7 @@ Revoke action. Creation and revocation produce admin events without the secret.
 Tokens grant the account's admin API access, including private/unlisted plugin and
 user inspection and listing decisions. They have no granular scopes. Tokens cannot
 create new tokens or revoke other tokens, and do not create browser sessions.
+Issue them only to agents you trust with server-admin inspection and review access.
 Each request rechecks revocation, expiration, account lockout, current admin role,
 and the account's Identity security stamp. Password resets/security-stamp changes
 invalidate existing tokens. Removing the admin role immediately denies access;

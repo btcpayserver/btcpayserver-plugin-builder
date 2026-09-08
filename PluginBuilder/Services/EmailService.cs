@@ -42,23 +42,26 @@ Thank you,
 BTCPay Server Plugin Builder Team
 ";
 
-    public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText)
+    public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText, CancellationToken cancellationToken = default)
     {
         List<InternetAddress> toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
             .Select(InternetAddress.Parse)
             .ToList();
-        return DeliverEmail(toList, subject, messageText);
+        return DeliverEmail(toList, subject, messageText, cancellationToken);
     }
 
-    protected virtual async Task<List<string>> DeliverEmail(IEnumerable<InternetAddress> toList, string subject, string messageText)
+    protected virtual async Task<List<string>> DeliverEmail(IEnumerable<InternetAddress> toList, string subject, string messageText, CancellationToken cancellationToken = default)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        cancellationToken = timeout.Token;
         List<string> recipients = new();
-        var emailSettings = await GetEmailSettingsFromDb();
+        var emailSettings = await GetEmailSettingsFromDb(cancellationToken);
         if (emailSettings == null)
             throw new InvalidOperationException("Email settings not configured. Please set up email settings in the admin panel.");
 
-        var smtpClient = await CreateSmtpClient(emailSettings);
-        MimeMessage message = new();
+        using var smtpClient = await CreateSmtpClient(emailSettings, cancellationToken);
+        using MimeMessage message = new();
         message.From.Add(MailboxAddress.Parse(emailSettings.From));
         message.Subject = subject;
         message.Body = new TextPart("plain") { Text = messageText };
@@ -66,11 +69,11 @@ BTCPay Server Plugin Builder Team
         {
             message.To.Clear();
             message.To.Add(email);
-            await smtpClient.SendAsync(message);
+            await smtpClient.SendAsync(message, cancellationToken);
             recipients.Add(email.ToString());
         }
 
-        await smtpClient.DisconnectAsync(true);
+        await smtpClient.DisconnectAsync(true, cancellationToken);
         return recipients;
     }
 
@@ -192,10 +195,10 @@ BTCPay Server Plugin Builder";
         }
     }
 
-    public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb()
+    public async Task<EmailSettingsViewModel?> GetEmailSettingsFromDb(CancellationToken cancellationToken = default)
     {
-        await using var conn = await connectionFactory.Open();
-        var jsonEmail = await conn.SettingsGetAsync("EmailSettings");
+        await using var conn = await connectionFactory.Open(cancellationToken);
+        var jsonEmail = await conn.SettingsGetAsync("EmailSettings", cancellationToken);
         var emailSettings = string.IsNullOrEmpty(jsonEmail)
             ? null
             : JsonConvert.DeserializeObject<EmailSettingsViewModel>(jsonEmail);
@@ -210,10 +213,11 @@ BTCPay Server Plugin Builder";
         await adminSettingsCache.RefreshAllVerifiedEmailSettings(conn);
     }
 
-    public async Task<SmtpClient> CreateSmtpClient(EmailSettingsViewModel settings)
+    public async Task<SmtpClient> CreateSmtpClient(EmailSettingsViewModel settings, CancellationToken cancellationToken = default)
     {
         SmtpClient client = new();
-        using CancellationTokenSource connectCancel = new(10000);
+        using var connectCancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        connectCancel.CancelAfter(TimeSpan.FromSeconds(10));
         try
         {
             if (settings.DisableCertificateCheck)

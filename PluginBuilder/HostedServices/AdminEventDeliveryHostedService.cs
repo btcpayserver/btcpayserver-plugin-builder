@@ -53,7 +53,7 @@ public class AdminEventDeliveryHostedService(DBConnectionFactory connections, Ad
                     protection.CreateProtector(AdminEventsController.SecretPurpose).Unprotect(delivery.ProtectedSecret!),
                     delivery.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), body, cancellationToken);
             else
-                await emails.SendEmail(delivery.Destination, $"Plugin Builder: {delivery.Type}", body);
+                await emails.SendEmail(delivery.Destination, $"Plugin Builder: {delivery.Type}", body, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)

@@ -411,10 +411,10 @@ public static class NpgsqlConnectionExtensions
         return connection.QueryAsync<(string key, string value)>(query);
     }
 
-    public static Task<string?> SettingsGetAsync(this NpgsqlConnection connection, string key)
+    public static Task<string?> SettingsGetAsync(this NpgsqlConnection connection, string key, CancellationToken cancellationToken = default)
     {
         var query = "SELECT value FROM settings WHERE key = @key";
-        return connection.QuerySingleOrDefaultAsync<string>(query, new { key });
+        return connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(query, new { key }, cancellationToken: cancellationToken));
     }
 
     public static Task<int> SettingsSetAsync(this NpgsqlConnection connection, string key, string value)

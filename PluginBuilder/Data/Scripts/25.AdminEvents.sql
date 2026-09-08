@@ -12,7 +12,7 @@ CREATE TABLE admin_event_subscriptions (
     id uuid PRIMARY KEY,
     kind text NOT NULL CHECK (kind IN ('webhook', 'email')),
     destination text NOT NULL,
-    protected_secret text,
+    protected_secret text CHECK (kind <> 'webhook' OR protected_secret IS NOT NULL),
     event_types text[] NOT NULL,
     enabled boolean NOT NULL DEFAULT TRUE,
     created_by text NOT NULL,
@@ -57,7 +57,7 @@ WHERE EXISTS (SELECT 1 FROM builds b WHERE b.plugin_slug = up.plugin_slug);
 CREATE FUNCTION admin_user_event() RETURNS trigger AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        PERFORM emit_admin_event('user.registered', jsonb_build_object('userId', NEW."Id", 'email', NEW."Email"));
+        PERFORM emit_admin_event('user.registered', jsonb_build_object('userId', NEW."Id"));
     ELSIF NULLIF(NEW."GithubGistUrl", '') IS NOT NULL AND NEW."GithubGistUrl" IS DISTINCT FROM OLD."GithubGistUrl" THEN
         PERFORM emit_admin_event('user.github_verified', jsonb_build_object(
             'userId', NEW."Id", 'github', NEW."AccountDetail"->>'github', 'gistUrl', NEW."GithubGistUrl"));

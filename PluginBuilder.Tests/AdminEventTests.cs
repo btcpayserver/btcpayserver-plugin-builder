@@ -118,6 +118,7 @@ public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs
         Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type = 'user.first_build_triggered'"));
         Assert.Equal("builder", await conn.ExecuteScalarAsync<string>("SELECT data->>'github' FROM admin_events WHERE type = 'user.github_verified'"));
         Assert.Equal("builder", await conn.ExecuteScalarAsync<string>("SELECT data->>'userId' FROM admin_events WHERE type = 'listing.requested'"));
+        Assert.False(await conn.ExecuteScalarAsync<bool>("SELECT bool_or(data ? 'email') FROM admin_events WHERE type = 'user.registered'"));
 
         await using (var transaction = await conn.BeginTransactionAsync())
         {
@@ -126,7 +127,8 @@ public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs
         }
         Assert.Equal(8, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events"));
         Assert.Equal(8, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_event_deliveries"));
-        var service = new AdminEventService(Factory(conn.ConnectionString));
+        await using var factory = Factory(conn.ConnectionString);
+        var service = new AdminEventService(factory);
         var page = await service.Read(0, 3, null, default);
         Assert.True(page.HasMore);
         Assert.Equal(3, page.NextCursor);
@@ -154,7 +156,8 @@ public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs
         await using var transaction = await first.BeginTransactionAsync();
         await first.ExecuteAsync(InsertUser, new { id = "first" }, transaction);
         var competingWrite = second.ExecuteAsync(InsertUser, new { id = "second" });
-        var service = new AdminEventService(Factory(first.ConnectionString));
+        await using var factory = Factory(first.ConnectionString);
+        var service = new AdminEventService(factory);
         Assert.Empty((await service.Read(0, 100, null, default)).Events);
         await transaction.CommitAsync();
         await competingWrite;
@@ -178,7 +181,8 @@ public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs
         await conn.ExecuteAsync(InsertUser, new { id = "builder" });
         using var sender = new AdminWebhookSender();
         var email = new TestEmailService();
-        var worker = new AdminEventDeliveryHostedService(Factory(conn.ConnectionString), sender, email,
+        await using var factory = Factory(conn.ConnectionString);
+        var worker = new AdminEventDeliveryHostedService(factory, sender, email,
             new EphemeralDataProtectionProvider(), NullLogger<AdminEventDeliveryHostedService>.Instance);
         Assert.True(await worker.DeliverNext(default));
         Assert.Equal("pending", await conn.ExecuteScalarAsync<string>("SELECT status FROM admin_event_deliveries"));
@@ -198,6 +202,20 @@ public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs
         Assert.True(await worker.DeliverNext(default));
         Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_event_deliveries WHERE status = 'failed' AND attempts = 10"));
         Assert.False(await worker.DeliverNext(default));
+
+        // Cancelling an in-flight SMTP operation releases the transaction lock
+        // without consuming an attempt, so another worker can retry immediately.
+        await conn.ExecuteAsync("SELECT emit_admin_event('user.registered', '{}')");
+        email.Block = true;
+        using var cancellation = new CancellationTokenSource();
+        var sending = worker.DeliverNext(cancellation.Token);
+        await email.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sending);
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT attempts FROM admin_event_deliveries WHERE status = 'pending'"));
+        email.Block = false;
+        email.Fail = false;
+        Assert.True(await worker.DeliverNext(default));
     }
 
     private static DBConnectionFactory Factory(string connectionString) => new(new ConfigurationBuilder()
@@ -214,11 +232,17 @@ public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs
             INSERT INTO plugins(slug) VALUES ('old'), ('one'), ('two');
             INSERT INTO users_plugins(user_id, plugin_slug) VALUES ('existing', 'old');
             INSERT INTO builds(plugin_slug, id, state) VALUES ('old', 0, 'uploaded');
+            INSERT INTO builds_logs(plugin_slug, build_id, logs) VALUES ('old', 0, 'historical one'), ('old', 0, 'historical two');
             INSERT INTO evts(type, data) VALUES ('Download', '{}');
             """);
         await tester.RunRemainingScripts();
         Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events"));
         Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM evts"));
+        var historicalLogIds = (await conn.QueryAsync<long>("SELECT id FROM builds_logs ORDER BY id")).ToArray();
+        Assert.Equal(2, historicalLogIds.Length);
+        Assert.True(historicalLogIds[0] > 0 && historicalLogIds[1] > historicalLogIds[0]);
+        var newLogId = await conn.ExecuteScalarAsync<long>("INSERT INTO builds_logs(plugin_slug, build_id, logs) VALUES ('old', 0, 'new log') RETURNING id");
+        Assert.True(newLogId > historicalLogIds[1]);
         await conn.ExecuteAsync("INSERT INTO builds(plugin_slug, id, state, triggered_by) VALUES ('old', 1, 'queued', 'existing')");
         Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type = 'user.first_build_triggered'"));
 
@@ -233,8 +257,18 @@ public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs
     private sealed class TestEmailService() : EmailService(null!, null!, NullLogger<EmailService>.Instance)
     {
         public bool Fail { get; set; } = true;
-        protected override Task<List<string>> DeliverEmail(IEnumerable<InternetAddress> toList, string subject, string messageText) =>
-            Fail ? throw new InvalidOperationException("Simulated SMTP failure") : Task.FromResult(new List<string> { "admin@example.com" });
+        public bool Block { get; set; }
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override async Task<List<string>> DeliverEmail(IEnumerable<InternetAddress> toList, string subject, string messageText, CancellationToken cancellationToken = default)
+        {
+            if (Block)
+            {
+                Started.TrySetResult();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            if (Fail) throw new InvalidOperationException("Simulated SMTP failure");
+            return ["admin@example.com"];
+        }
     }
 }
 

@@ -318,13 +318,16 @@ public class Program
                 .Tag(CacheTags.Plugins));
         });
 
-        var dataSourceBuilder = new NpgsqlDataSourceBuilder(configuration.GetRequired("POSTGRES"));
-        dataSourceBuilder.MapEnum<PluginVisibilityEnum>("plugin_visibility_enum");
-        var dataSource = dataSourceBuilder.Build();
-
-        services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
+        services.AddSingleton<NpgsqlDataSource>(_ =>
         {
-            b.UseNpgsql(dataSource);
+            var dataSourceBuilder = new NpgsqlDataSourceBuilder(configuration.GetRequired("POSTGRES"));
+            dataSourceBuilder.MapEnum<PluginVisibilityEnum>("plugin_visibility_enum");
+            return dataSourceBuilder.Build();
+        });
+
+        services.AddDbContext<IdentityDbContext<IdentityUser>>((provider, b) =>
+        {
+            b.UseNpgsql(provider.GetRequiredService<NpgsqlDataSource>());
         });
 
         services.AddIdentity<IdentityUser, IdentityRole>(options =>
