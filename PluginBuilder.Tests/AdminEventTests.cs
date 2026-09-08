@@ -82,6 +82,50 @@ public class AdminWebhookTests
 
 public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
+    [Fact]
+    public async Task RetentionPurgesExpiredHistoryAndPreservesRecentEvidenceAndCursor()
+    {
+        await using var tester = CreateMigrationTester();
+        await tester.RunScriptsUntil("25.AdminEvents");
+        await tester.RunRemainingScripts();
+        await using var conn = await tester.Open();
+        await using var factory = Factory(conn.ConnectionString);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ADMIN_HISTORY_RETENTION_DAYS"] = "30"
+        }).Build();
+        var retention = new AdminHistoryRetention(factory, configuration);
+        await conn.ExecuteAsync(InsertUser, new { id = "active" });
+        await conn.ExecuteAsync("""
+            INSERT INTO admin_event_subscriptions(id, kind, destination, event_types, created_by)
+                VALUES (@subscription, 'email', 'admin@example.com', '{}', 'active');
+            SELECT emit_admin_event('user.registered', '{"userId":"deleted-user"}');
+            UPDATE admin_events SET created_at = CURRENT_TIMESTAMP - INTERVAL '31 days';
+            INSERT INTO admin_api_audit(user_id, method, path, started_at) VALUES
+                ('deleted-user', 'GET', '/api/v1/admin/me', CURRENT_TIMESTAMP - INTERVAL '31 days'),
+                ('deleted-user', 'GET', '/api/v1/admin/me', CURRENT_TIMESTAMP);
+            INSERT INTO admin_access_tokens(id, user_id, name, token_hash, expires_at) VALUES
+                (@oldToken, 'active', 'expired', 'old-hash', CURRENT_TIMESTAMP - INTERVAL '31 days'),
+                (@newToken, 'active', 'active', 'new-hash', CURRENT_TIMESTAMP + INTERVAL '1 day');
+            INSERT INTO admin_event_first_builds VALUES ('deleted-user'), ('active');
+            SELECT emit_admin_event('user.registered', '{"userId":"deleted-user","recent":true}');
+            """, new { subscription = Guid.NewGuid(), oldToken = Guid.NewGuid(), newToken = Guid.NewGuid() });
+        var lastId = await conn.ExecuteScalarAsync<long>("SELECT max(id) FROM admin_events");
+        Assert.True(await retention.Purge(default) > 0);
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events"));
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_event_deliveries"));
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE user_id = 'deleted-user'"));
+        Assert.Equal("active", await conn.ExecuteScalarAsync<string>("SELECT name FROM admin_access_tokens"));
+        Assert.Equal("active", await conn.ExecuteScalarAsync<string>("SELECT user_id FROM admin_event_first_builds"));
+        Assert.Equal(0, await retention.Purge(default));
+        await conn.ExecuteAsync("SELECT emit_admin_event('build.failed', '{}')");
+        Assert.Equal(lastId + 1, await conn.ExecuteScalarAsync<long>("SELECT max(id) FROM admin_events"));
+        await conn.ExecuteAsync("UPDATE admin_events SET created_at = CURRENT_TIMESTAMP - INTERVAL '31 days'; UPDATE admin_api_audit SET started_at = CURRENT_TIMESTAMP - INTERVAL '31 days'");
+        await retention.Purge(default);
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit"));
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_event_deliveries"));
+    }
+
     private const string InsertUser = """
         INSERT INTO "AspNetUsers" ("Id", "UserName", "Email", "EmailConfirmed", "PhoneNumberConfirmed", "TwoFactorEnabled", "LockoutEnabled", "AccessFailedCount")
         VALUES (@id, @id, 'builder@example.com', FALSE, FALSE, FALSE, FALSE, 0)
@@ -232,7 +276,8 @@ public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs
             INSERT INTO plugins(slug) VALUES ('old'), ('one'), ('two');
             INSERT INTO users_plugins(user_id, plugin_slug) VALUES ('existing', 'old');
             INSERT INTO builds(plugin_slug, id, state) VALUES ('old', 0, 'uploaded');
-            INSERT INTO builds_logs(plugin_slug, build_id, logs) VALUES ('old', 0, 'historical one'), ('old', 0, 'historical two');
+            INSERT INTO builds_logs(plugin_slug, build_id, logs, created_at) VALUES
+                ('old', 0, 'historical two', '2020-01-02'), ('old', 0, 'historical one', '2020-01-01');
             INSERT INTO evts(type, data) VALUES ('Download', '{}');
             """);
         await tester.RunRemainingScripts();
@@ -241,6 +286,7 @@ public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs
         var historicalLogIds = (await conn.QueryAsync<long>("SELECT id FROM builds_logs ORDER BY id")).ToArray();
         Assert.Equal(2, historicalLogIds.Length);
         Assert.True(historicalLogIds[0] > 0 && historicalLogIds[1] > historicalLogIds[0]);
+        Assert.Equal(new[] { "historical one", "historical two" }, await conn.QueryAsync<string>("SELECT logs FROM builds_logs ORDER BY id"));
         var newLogId = await conn.ExecuteScalarAsync<long>("INSERT INTO builds_logs(plugin_slug, build_id, logs) VALUES ('old', 0, 'new log') RETURNING id");
         Assert.True(newLogId > historicalLogIds[1]);
         await conn.ExecuteAsync("INSERT INTO builds(plugin_slug, id, state, triggered_by) VALUES ('old', 1, 'queued', 'existing')");

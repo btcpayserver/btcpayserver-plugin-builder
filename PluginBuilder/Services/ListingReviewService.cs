@@ -43,6 +43,8 @@ public class ListingReviewService(DBConnectionFactory connections, EmailService 
             await cache.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         var explanation = approve ? publicUrl(row.PluginSlug) : note?.Trim();
         if (!string.IsNullOrEmpty(row.Email) && !string.IsNullOrEmpty(explanation))
+            // EmailService bounds the complete delivery (settings/connect/auth/send)
+            // to 30 seconds and catches failures here, preserving the committed result.
             await emails.NotifyPluginOwnerForRequestListingStatus(row.Email, row.Title ?? row.PluginSlug, approve, explanation);
         return Outcome.Completed;
     }

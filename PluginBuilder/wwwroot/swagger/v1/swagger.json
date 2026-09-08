@@ -1094,7 +1094,7 @@
           "Admin Agent"
         ],
         "summary": "Issue a revocable admin token",
-        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "description": "Requires a current ServerAdmin account. Issue only to trusted server-admin agents: tokens grant full admin API inspection and listing-review access without granular scopes. Tokens cannot issue or revoke other tokens. See docs/admin-agent-access.md for details.",
         "security": [
           {
             "Basic": []

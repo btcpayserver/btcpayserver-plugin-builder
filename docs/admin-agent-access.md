@@ -114,8 +114,8 @@ Lists return `{items,nextCursor,hasMore}` with a decimal/string cursor. `limit` 
 from the start to pick up status changes; the event stream is the durable change
 feed. While builds run, refresh the log tail for new output. IDs are strings in
 log/audit responses to preserve full 64-bit precision.
-Historical log IDs are assigned during migration; use each row's `createdAt` for
-its original timestamp, since migration IDs do not guarantee timestamp order.
+Historical log IDs are backfilled in timestamp order during migration, with a
+deterministic tie-breaker for rows sharing a timestamp.
 
 Listing decisions share the browser's review service. The pending request is locked;
 the review, plugin visibility update (on approval), and outcome event commit
@@ -132,19 +132,41 @@ To submit a review with the helper, save a JSON body locally and explicitly invo
 
 ## Audit semantics
 
-Authorized admin API calls create an audit row before their action runs, recording
-account, token ID (null for Basic), method, path, start/completion time and HTTP
-status. Validation failures and review conflicts are recorded. Unauthorized or
-forbidden requests do not execute an action and are not recorded by this filter.
+Requests to matched admin API routes create an audit row before authorization,
+recording verified account/token identity, method, path, start/completion time and
+HTTP status. This includes 401/403 denials, validation failures and review conflicts.
+Invalid or absent credentials produce null account/token IDs; unverified credentials
+are never used for attribution. Token IDs are also null for Basic authentication.
 No authorization headers, bodies or query strings are stored. If the audit insert
 fails, the action does not run. A crash can leave an incomplete row; it should not
 be read as proof that the action failed. Listing outcome events independently record
 the reviewer and token in the same transaction as the decision. Audit history
-survives token/account deletion. History currently has no automatic retention limit.
+survives token/account deletion until the retention deadline below.
+
+## History retention
+
+`PB_ADMIN_HISTORY_RETENTION_DAYS` sets one retention window for admin history
+(default 365 days, allowed 1–3650). A worker runs at startup and hourly, deleting
+expired event payloads and their delivery records, including pending/failed deliveries,
+and expired API audit rows with all their account/token references. Age is measured
+from event creation or request start, even for incomplete audit rows. Cleanup is
+batched and resumes after outages; allow up to one cleanup interval under normal operation.
+
+Account or token deletion does not immediately erase recent investigation evidence:
+its event payloads and audit identities expire on the same schedule. Token metadata
+is removed when revocation or expiry is older than the window; account deletion
+already cascades token deletion. Orphaned first-build markers are removed during cleanup.
+Active subscription configuration remains until explicitly deleted through the API.
+This policy does not delete current users, plugins, builds or listing decisions.
+
+Polling agents must keep up within this window. Expired events cannot be replayed;
+an old cursor resumes at the next retained event. IDs are never reset or reused.
+Operators must apply the same retention limit to backups, exports, and webhook/email
+receiver storage; deleting local history cannot erase copies held by recipients.
 
 ## Deployment and verification
 
-Deploy the application with migrations 25 and 26. Use a normal single migration
+Deploy the application with migrations 25–27. Use a normal single migration
 runner/startup during deployment, then start all replicas against the upgraded DB.
 Keep the existing Data Protection keys in `PB_DATADIR` for webhook signing secrets.
 Configure SMTP only if email notifications are wanted; polling requires neither

@@ -22,6 +22,33 @@ namespace PluginBuilder.Tests;
 public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     [Fact]
+    public async Task AuditsDeniedRequestsWithoutTrustingInvalidCredentialsOrDuplicatingRows()
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var ordinary = await AddUser(users, "ordinary@example.com");
+        var admin = await AddUser(users, "admin@example.com", true);
+        using var client = tester.CreateHttpClient();
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.ExecuteAsync("DELETE FROM admin_api_audit");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/admin/me?secret=not-recorded")).StatusCode);
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE user_id IS NULL AND status_code = 401 AND path = '/api/v1/admin/me'"));
+        client.SetBasicAuth(ordinary.Email!, "test-password:with-colons:123");
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/v1/admin/me")).StatusCode);
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE user_id = @id AND status_code = 403", new { id = ordinary.Id }));
+        client.SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        var token = await IssueToken(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token["token"]!.Value<string>());
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/v1/admin/access-tokens", new { name = "forbidden" })).StatusCode);
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE token_id = @id AND status_code = 401", new { id = token["id"]!.ToObject<Guid>() }));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-token-secret");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/admin/me")).StatusCode);
+        Assert.Equal(5, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit"));
+        Assert.Equal(2, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE user_id IS NULL AND token_id IS NULL AND status_code = 401"));
+    }
+
+    [Fact]
     public async Task StoppingRepeatedHostsClosesBothDatabasePools()
     {
         await using var observer = new NpgsqlConnection("Host=127.0.0.1;Port=61932;Username=postgres;Database=postgres;Pooling=false");

@@ -130,6 +130,7 @@ public class Program
         app.UseRouting();
         app.UseRateLimiter();
         app.UseAuthentication();
+        app.UseMiddleware<AdminApiAuditMiddleware>();
         app.UseAuthorization();
         app.UseOutputCache();
         app.MapHub<PluginHub>("hub");
@@ -144,7 +145,6 @@ public class Program
         services.AddControllersWithViews(options =>
             {
                 options.Filters.Add(new UIControllerAntiforgeryTokenAttribute());
-                options.Filters.Add<AdminApiAuditFilter>();
             })
             .AddRazorOptions(options =>
             {
@@ -192,6 +192,8 @@ public class Program
         services.AddScoped<AdminAccessTokenService>();
         services.AddSingleton<AdminWebhookSender>();
         services.AddHostedService<AdminEventDeliveryHostedService>();
+        services.AddSingleton<AdminHistoryRetention>();
+        services.AddHostedService<AdminHistoryRetentionHostedService>();
 
         services.AddSingleton<DBConnectionFactory>();
         services.AddScoped<PluginCleanupRunner>();

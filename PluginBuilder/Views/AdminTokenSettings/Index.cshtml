@@ -4,6 +4,7 @@
 }
 <h1>@ViewData["Title"]</h1>
 <p>Give an automation or AI agent access to the admin API without sharing your password. Each token uses your admin access and its API calls are audited.</p>
+<p>Issue tokens only to agents you trust with full admin API access, including private user and build data and listing decisions.</p>
 @if (Model.Issued is { } issued)
 {
     <div class="alert alert-success">

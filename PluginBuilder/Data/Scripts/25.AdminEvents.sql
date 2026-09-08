@@ -45,7 +45,16 @@ $$ LANGUAGE plpgsql;
 ALTER TABLE builds ADD COLUMN triggered_by text;
 ALTER TABLE plugin_listing_requests ADD COLUMN submitted_by text;
 ALTER TABLE plugin_listing_requests ADD COLUMN review_note text;
-ALTER TABLE builds_logs ADD COLUMN id bigint GENERATED ALWAYS AS IDENTITY;
+ALTER TABLE builds_logs ADD COLUMN id bigint;
+-- Preserve historical timestamp order. ctid breaks ties between otherwise
+-- identical legacy rows while this migration holds the table lock.
+WITH ordered AS (
+    SELECT ctid, row_number() OVER (ORDER BY created_at, plugin_slug, build_id, ctid) AS id FROM builds_logs
+)
+UPDATE builds_logs l SET id = ordered.id FROM ordered WHERE l.ctid = ordered.ctid;
+ALTER TABLE builds_logs ALTER COLUMN id SET NOT NULL;
+ALTER TABLE builds_logs ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY;
+SELECT setval(pg_get_serial_sequence('builds_logs', 'id'), COALESCE((SELECT max(id) FROM builds_logs), 0) + 1, false);
 CREATE UNIQUE INDEX builds_logs_id_idx ON builds_logs(id);
 CREATE INDEX builds_logs_review_idx ON builds_logs(plugin_slug, build_id, id DESC);
 CREATE TABLE admin_event_first_builds (user_id text PRIMARY KEY);

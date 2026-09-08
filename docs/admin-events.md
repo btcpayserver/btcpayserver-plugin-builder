@@ -25,7 +25,8 @@ change. A rollback leaves neither behind. SMTP/webhook failures do not roll back
 registration, verification, build submission, or listing requests.
 
 Migration 25 starts a new stream, separate from legacy download statistics. Events
-are retained indefinitely, including after deleting the original user or plugin.
+are retained for 365 days by default, including after deleting the original user or plugin,
+then purged with their delivery records under the [admin history retention policy](admin-agent-access.md#history-retention).
 There is no historical event backfill. Historical builds did not record who
 triggered them: existing plugin owners with builds are conservatively treated as
 established builders when initializing the first-build marker. New UI/API builds

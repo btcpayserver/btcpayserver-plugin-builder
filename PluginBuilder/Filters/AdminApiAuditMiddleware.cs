@@ -1,25 +1,31 @@
 using System.Security.Claims;
 using Dapper;
-using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Authentication;
 using PluginBuilder.Authentication;
 using PluginBuilder.Services;
 
 namespace PluginBuilder.Filters;
 
-public class AdminApiAuditFilter(DBConnectionFactory connections, ILogger<AdminApiAuditFilter> logger) : IAsyncResourceFilter
+public class AdminApiAuditMiddleware(RequestDelegate next, ILogger<AdminApiAuditMiddleware> logger)
 {
-    public async Task OnResourceExecutionAsync(ResourceExecutingContext context, ResourceExecutionDelegate next)
+    public async Task InvokeAsync(HttpContext http, DBConnectionFactory connections)
     {
-        var http = context.HttpContext;
-        if (!http.Request.Path.StartsWithSegments("/api/v1/admin") || http.User.Identity?.IsAuthenticated != true)
+        if (!http.Request.Path.StartsWithSegments("/api/v1/admin") || http.GetEndpoint() is null)
         {
-            await next();
+            await next(http);
             return;
         }
-        var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier)!;
-        Guid? tokenId = Guid.TryParse(http.User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), out var parsed) ? parsed : null;
+        // Authenticate for attribution only. Authorization still enforces each
+        // endpoint's own schemes; a token cannot gain access to Basic-only routes.
+        ClaimsPrincipal? actor = null;
+        foreach (var scheme in new[] { PluginBuilderAuthenticationSchemes.BasicAuth, PluginBuilderAuthenticationSchemes.AdminToken })
+        {
+            var result = await http.AuthenticateAsync(scheme);
+            if (result.Succeeded) actor = result.Principal;
+        }
+        var userId = actor?.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid? tokenId = Guid.TryParse(actor?.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), out var parsed) ? parsed : null;
         long id;
-        // Fail before running the action if its audit record cannot be persisted.
         await using (var conn = await connections.Open(http.RequestAborted))
             id = await conn.ExecuteScalarAsync<long>(new CommandDefinition("""
                 INSERT INTO admin_api_audit(user_id, token_id, method, path) VALUES (@userId, @tokenId, @method, @path) RETURNING id
@@ -27,13 +33,11 @@ public class AdminApiAuditFilter(DBConnectionFactory connections, ILogger<AdminA
         var statusCode = 500;
         try
         {
-            var executed = await next();
-            statusCode = executed.Exception is null || executed.ExceptionHandled ? http.Response.StatusCode : 500;
+            await next(http);
+            statusCode = http.Response.StatusCode;
         }
         finally
         {
-            // Preserve started-but-incomplete rows on crash/failure; never store
-            // credentials, request/response bodies, or query-string values.
             try
             {
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
