@@ -4,7 +4,8 @@ using PluginBuilder.DataModels;
 
 namespace PluginBuilder.Services;
 
-public class ListingReviewService(DBConnectionFactory connections, EmailService emails, IOutputCacheStore cache)
+public class ListingReviewService(DBConnectionFactory connections, EmailService emails, IOutputCacheStore cache,
+    ILogger<ListingReviewService> logger)
 {
     public enum Outcome { Completed, NotFound, AlreadyProcessed }
 
@@ -40,7 +41,13 @@ public class ListingReviewService(DBConnectionFactory connections, EmailService 
         await transaction.CommitAsync(cancellationToken);
         // Perform external effects only after the decision and visibility commit.
         if (approve)
-            await cache.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
+        {
+            try { await cache.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None); }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Listing review {RequestId} committed, but plugin cache eviction failed", requestId);
+            }
+        }
         var explanation = approve ? publicUrl(row.PluginSlug) : note?.Trim();
         if (!string.IsNullOrEmpty(row.Email) && !string.IsNullOrEmpty(explanation))
             // EmailService bounds the complete delivery (settings/connect/auth/send)

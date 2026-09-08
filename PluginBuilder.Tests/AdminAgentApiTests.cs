@@ -5,8 +5,11 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
+using MimeKit;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.Authentication;
@@ -21,6 +24,51 @@ namespace PluginBuilder.Tests;
 
 public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CommittedReviewSurvivesCacheFailureAndStillAttemptsOwnerEmail(bool emailFails)
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "admin@example.com", true);
+        var connections = tester.GetService<DBConnectionFactory>();
+        await using var conn = await connections.Open();
+        var slug = new PluginSlug("review-cache-failure");
+        await conn.NewPlugin(slug, admin.Id);
+        var id = await conn.CreateListingRequest(slug, "Release", "Proof", "Reviews", null, admin.Id);
+        var emails = new RecordingEmailService(emailFails);
+        var service = new ListingReviewService(connections, emails, new FailingOutputCache(), NullLogger<ListingReviewService>.Instance);
+        Assert.Equal(ListingReviewService.Outcome.Completed,
+            await service.Review(id, admin.Id, true, "Approved", _ => "https://example.com/plugin"));
+        Assert.Equal(1, emails.Attempts);
+        Assert.Equal("approved", await conn.ExecuteScalarAsync<string>("SELECT status FROM plugin_listing_requests WHERE id = @id", new { id }));
+        Assert.Equal("listed", await conn.ExecuteScalarAsync<string>("SELECT visibility::text FROM plugins WHERE slug = @slug", new { slug = slug.ToString() }));
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type = 'listing.approved'"));
+        Assert.Equal(ListingReviewService.Outcome.AlreadyProcessed,
+            await service.Review(id, admin.Id, true, "Retry", _ => "https://example.com/plugin"));
+        Assert.Equal(1, emails.Attempts);
+    }
+
+    private sealed class RecordingEmailService(bool fail) : EmailService(null!, null!, NullLogger<EmailService>.Instance)
+    {
+        public int Attempts { get; private set; }
+        protected override Task<List<string>> DeliverEmail(IEnumerable<InternetAddress> toList, string subject, string messageText, CancellationToken cancellationToken = default)
+        {
+            Attempts++;
+            if (fail) throw new OperationCanceledException("Simulated delivery timeout");
+            return Task.FromResult(toList.Select(address => address.ToString()).ToList());
+        }
+    }
+
+    private sealed class FailingOutputCache : IOutputCacheStore
+    {
+        public ValueTask<byte[]?> GetAsync(string key, CancellationToken cancellationToken) => ValueTask.FromResult<byte[]?>(null);
+        public ValueTask SetAsync(string key, byte[] value, string[]? tags, TimeSpan validFor, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask EvictByTagAsync(string tag, CancellationToken cancellationToken) => ValueTask.FromException(new InvalidOperationException("Simulated cache failure"));
+    }
+
     [Fact]
     public async Task AuditsDeniedRequestsWithoutTrustingInvalidCredentialsOrDuplicatingRows()
     {
