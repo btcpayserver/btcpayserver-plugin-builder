@@ -104,6 +104,8 @@ belongs to the external harness's instructions.
 
 Use `kind: "email"` and a single email address for email subscriptions. An empty
 `eventTypes` array selects all types. Email uses the existing admin SMTP settings.
+Each email delivery has a 30-second total timeout and honours worker shutdown;
+connection and authentication retain their shared 10-second limit.
 The existing listing-reviewer emails and reminder workflow continue independently;
 avoid subscribing the same address to `listing.requested` if duplicate mail is
 unwanted. Other email notifications are opt-in through these subscriptions.

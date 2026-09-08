@@ -26,7 +26,8 @@ if ($uri.Scheme -ne $apiBase.Scheme -or $uri.Authority -ne $apiBase.Authority -o
     -not $uri.AbsolutePath.StartsWith($apiBase.AbsolutePath + 'admin/', [StringComparison]::Ordinal) -or $uri.Fragment -or $uri.UserInfo) {
     throw 'ApiPath must target an admin API endpoint on the configured server.'
 }
-if ($Method -eq 'POST' -and ($uri.AbsolutePath.EndsWith('/access-tokens') -or $uri.AbsolutePath.EndsWith('/events/subscriptions')) -and -not $OutFile) {
+$responsePath = $uri.AbsolutePath.TrimEnd('/')
+if ($Method -eq 'POST' -and ($responsePath.EndsWith('/access-tokens', [StringComparison]::OrdinalIgnoreCase) -or $responsePath.EndsWith('/events/subscriptions', [StringComparison]::OrdinalIgnoreCase)) -and -not $OutFile) {
     throw 'Use OutFile for responses that may contain a newly issued secret.'
 }
 $handler = [System.Net.Http.HttpClientHandler]::new()

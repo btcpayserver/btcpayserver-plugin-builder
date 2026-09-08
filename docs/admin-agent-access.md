@@ -114,6 +114,8 @@ Lists return `{items,nextCursor,hasMore}` with a decimal/string cursor. `limit` 
 from the start to pick up status changes; the event stream is the durable change
 feed. While builds run, refresh the log tail for new output. IDs are strings in
 log/audit responses to preserve full 64-bit precision.
+Historical log IDs are assigned during migration; use each row's `createdAt` for
+its original timestamp, since migration IDs do not guarantee timestamp order.
 
 Listing decisions share the browser's review service. The pending request is locked;
 the review, plugin visibility update (on approval), and outcome event commit
