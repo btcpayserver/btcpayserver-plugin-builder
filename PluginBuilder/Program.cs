@@ -116,19 +116,6 @@ public class Program
         app.UseStatusCodePagesWithReExecute("/errors/{0}");
         app.UseExceptionHandler("/errors/500");
 
-        // Capture base URL once on first request for FirstBuildEvents
-        app.Use(async (ctx, next) =>
-        {
-            var fbe = ctx.RequestServices.GetRequiredService<FirstBuildEvent>();
-            if (ctx.Request.Host.HasValue)
-            {
-                var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
-                fbe.InitBaseUrl(baseUrl);
-            }
-
-            await next();
-        });
-
         app.UseDefaultFiles();
         app.UseStaticFiles(new StaticFileOptions
         {
@@ -157,6 +144,7 @@ public class Program
         services.AddControllersWithViews(options =>
             {
                 options.Filters.Add(new UIControllerAntiforgeryTokenAttribute());
+                options.Filters.Add<AdminApiAuditFilter>();
             })
             .AddRazorOptions(options =>
             {
@@ -199,6 +187,11 @@ public class Program
         services.AddHostedService<PluginHubHostedService>();
         services.AddHostedService<PluginCleanupHostedService>();
         services.AddHostedService<UserCleanupHostedService>();
+        services.AddSingleton<AdminEventService>();
+        services.AddScoped<ListingReviewService>();
+        services.AddScoped<AdminAccessTokenService>();
+        services.AddSingleton<AdminWebhookSender>();
+        services.AddHostedService<AdminEventDeliveryHostedService>();
 
         services.AddSingleton<DBConnectionFactory>();
         services.AddScoped<PluginCleanupRunner>();
@@ -256,7 +249,6 @@ public class Program
         services.AddSingleton<GitHostingProviderFactory>();
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
-        services.AddSingleton<FirstBuildEvent>();
         services.AddSingleton<NostrService>();
 
         // shared controller logic
@@ -357,7 +349,8 @@ public class Program
             opt.LogoutPath = "/logout";
         });
         services.AddAuthentication()
-            .AddScheme<PluginBuilderAuthenticationOptions, BasicAuthenticationHandler>(PluginBuilderAuthenticationSchemes.BasicAuth, o => { });
+            .AddScheme<PluginBuilderAuthenticationOptions, BasicAuthenticationHandler>(PluginBuilderAuthenticationSchemes.BasicAuth, o => { })
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AdminTokenAuthenticationHandler>(PluginBuilderAuthenticationSchemes.AdminToken, o => { });
         services.AddAuthorization(o =>
         {
             o.AddPolicy(Policies.OwnPlugin, o => o.AddRequirements(new OwnPluginRequirement()));

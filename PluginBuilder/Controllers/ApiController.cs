@@ -412,7 +412,7 @@ public class ApiController(
         if (!adminSettingsCache.NewBuildsEnabled && !isWhitelisted)
             return BuildsUnavailable();
 
-        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
+        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter(), triggeredBy: userManager.GetUserId(User));
         var buildUrl = Url.ActionLink(nameof(PluginController.Build), "Plugin",
             new { pluginSlug = pluginSlug.ToString(), buildId });
 

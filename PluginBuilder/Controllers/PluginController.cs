@@ -316,7 +316,7 @@ public class PluginController(
         if (!adminSettingsCache.NewBuildsEnabled && !isWhitelisted)
             return BuildsUnavailable();
 
-        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter());
+        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter(), triggeredBy: userManager.GetUserId(User));
         if (buildId == 0)
         {
             var existingSetting = await conn.GetSettings(pluginSlug) ?? new PluginSettings();
@@ -446,7 +446,7 @@ public class PluginController(
         }
 
         await conn.CreateListingRequest(pluginSlug, model.ReleaseNote.Trim(), model.TelegramVerificationMessage.Trim(), model.UserReviews.Trim(),
-            model.AnnouncementDate);
+            model.AnnouncementDate, submittedBy: currentUserId);
         await SendRequestListingEmail(conn, pluginSlug);
         TempData[TempDataConstant.SuccessMessage] = "Your listing request has been sent and is pending validation";
         return RedirectToAction(nameof(Dashboard), new { pluginSlug });

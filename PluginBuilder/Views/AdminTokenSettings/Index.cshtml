@@ -1,0 +1,52 @@
+@model PluginBuilder.Controllers.AdminTokenSettingsController.TokenPage
+@{
+    ViewData["Title"] = "Admin access tokens";
+}
+<h1>@ViewData["Title"]</h1>
+<p>Give an automation or AI agent access to the admin API without sharing your password. Each token uses your admin access and its API calls are audited.</p>
+@if (Model.Issued is { } issued)
+{
+    <div class="alert alert-success">
+        <strong>Save this token now. It will not be shown again.</strong>
+        <pre class="text-wrap text-break mt-2">@issued.Token</pre>
+        <div>Token ID: <code>@issued.Id</code> · Expires: @issued.ExpiresAt.ToString("u")</div>
+    </div>
+}
+<form asp-action="Create" method="post" class="mb-4">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <div class="mb-3">
+        <label asp-for="Creation.Name" class="form-label">Token name</label>
+        <input asp-for="Creation.Name" class="form-control" maxlength="100" placeholder="Codex plugin review" required />
+    </div>
+    <div class="mb-3">
+        <label asp-for="Creation.ExpiresInDays" class="form-label">Expires in days</label>
+        <input asp-for="Creation.ExpiresInDays" class="form-control" type="number" min="1" max="365" required />
+    </div>
+    <button class="btn btn-primary" type="submit">Create token</button>
+</form>
+<div class="table-responsive">
+    <table class="table">
+        <thead><tr><th>Name / ID</th><th>Created</th><th>Last used</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var token in Model.Tokens)
+        {
+            <tr>
+                <td>@token.Name<br /><small><code>@token.Id</code></small></td>
+                <td>@token.CreatedAt.ToString("u")</td>
+                <td>@(token.LastUsedAt?.ToString("u") ?? "Never")</td>
+                <td>@token.ExpiresAt.ToString("u")</td>
+                <td>@(token.RevokedAt is not null ? "Revoked" : token.ExpiresAt <= DateTimeOffset.UtcNow ? "Expired" : "Active")</td>
+                <td>
+                    @if (token.RevokedAt is null)
+                    {
+                        <form asp-action="Revoke" asp-route-id="@token.Id" method="post">
+                            <button class="btn btn-outline-danger btn-sm" type="submit">Revoke</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+<p class="text-muted">Use the token ID with <code>GET /api/v1/admin/audit?tokenId=…</code> to inspect its activity. Revoking a token blocks new requests; a request already running may finish.</p>
