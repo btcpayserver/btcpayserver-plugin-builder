@@ -64,9 +64,12 @@ public class BuildService
     public EventAggregator EventAggregator { get; }
     public AzureStorageClient AzureStorageClient { get; }
 
-    public async Task Build(FullBuildId fullBuildId)
+    public Task Build(FullBuildId fullBuildId) => Build(fullBuildId, false);
+
+    public async Task Build(FullBuildId fullBuildId, bool isWhitelisted)
     {
-        if (await RejectBuildIfDisabled(fullBuildId))
+        // Keep the whitelist exception approved when this build was accepted, even if it is later revoked.
+        if (await RejectBuildIfDisabled(fullBuildId, isWhitelisted))
             return;
 
         BuildInfo buildParameters;
@@ -74,7 +77,7 @@ public class BuildService
         try
         {
             // A build may have been waiting for an execution slot when the setting changed.
-            if (await RejectBuildIfDisabled(fullBuildId))
+            if (await RejectBuildIfDisabled(fullBuildId, isWhitelisted))
                 return;
 
             using BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory);
@@ -143,8 +146,8 @@ public class BuildService
                     await UpdateBuild(fullBuildId, BuildStates.Running, info);
 
                     // The setting may have changed while Docker resources were being created.
-                    // Do not start plugin code after builds have been disabled.
-                    if (await RejectBuildIfDisabled(fullBuildId))
+                    // Builds without an approved whitelist exception must still honor the flag.
+                    if (await RejectBuildIfDisabled(fullBuildId, isWhitelisted))
                     {
                         if (!await ForceRemoveBuildContainer(containerName))
                             throw new BuildServiceException(
@@ -257,9 +260,9 @@ public class BuildService
         await SavePluginContributorSnapshot(fullBuildId.PluginSlug, buildParameters);
     }
 
-    private async Task<bool> RejectBuildIfDisabled(FullBuildId fullBuildId)
+    private async Task<bool> RejectBuildIfDisabled(FullBuildId fullBuildId, bool isWhitelisted)
     {
-        if (_adminSettingsCache.NewBuildsEnabled)
+        if (_adminSettingsCache.NewBuildsEnabled || isWhitelisted)
             return false;
 
         Logger.LogWarning("Skipping build {BuildId} because plugin builds are disabled", fullBuildId);

@@ -1,10 +1,13 @@
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json.Linq;
+using Npgsql;
 using PluginBuilder.APIModels;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Configuration;
@@ -35,7 +38,8 @@ public class HomeController(
     GitHostingProviderFactory gitHostingProviderFactory,
     ILogger<HomeController> logger,
     HealthCheckService healthCheckService,
-    AdminSettingsCache adminSettingsCache)
+    AdminSettingsCache adminSettingsCache,
+    IdentityDbContext<IdentityUser> identityDbContext)
     : Controller
 {
     [AllowAnonymous]
@@ -764,13 +768,20 @@ public class HomeController(
     public async Task<IActionResult> VerifyEmailUpdate(string uid, string token)
     {
         ConfirmEmailViewModel model = new();
-        await using var conn = await connectionFactory.Open();
+        // Commit the email, username, and pending email together.
+        await using var transaction = await identityDbContext.Database.BeginTransactionAsync();
+        var conn = (NpgsqlConnection)identityDbContext.Database.GetDbConnection();
         var user = await userManager.FindByIdAsync(uid);
         if (user is null)
             return View("ConfirmEmail", model);
 
         var settings = await conn.GetAccountDetailSettings(user.Id);
         if (string.IsNullOrEmpty(settings?.PendingNewEmail))
+            return View("ConfirmEmail", model);
+
+        var newEmail = settings.PendingNewEmail;
+        var normalizedEmail = userManager.NormalizeEmail(newEmail);
+        if (await userManager.Users.AnyAsync(u => u.Id != user.Id && u.NormalizedEmail == normalizedEmail))
             return View("ConfirmEmail", model);
 
         var result = await userManager.ChangeEmailAsync(user, settings.PendingNewEmail, token);
@@ -784,6 +795,7 @@ public class HomeController(
         {
             settings.PendingNewEmail = string.Empty;
             await conn.SetAccountDetailSettings(settings, user.Id);
+            await transaction.CommitAsync();
         }
 
         return View("ConfirmEmail", model);

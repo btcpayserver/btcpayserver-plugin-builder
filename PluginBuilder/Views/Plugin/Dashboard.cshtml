@@ -1,9 +1,10 @@
 @model BuildListViewModel
-@inject PluginBuilder.Controllers.Logic.AdminSettingsCache AdminSettingsCache
+@inject PluginBuilder.Controllers.Logic.BuildAccessLogic BuildAccessLogic
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(PluginNavPages.Dashboard, "Builds");
     var pluginSlug = Context.GetRouteValue("pluginSlug")?.ToString();
+    var canCreateBuild = await BuildAccessLogic.CanCreateBuild(User);
 }
 
 @functions
@@ -45,7 +46,7 @@
                     Public Page
                 </a>
             }
-            @if (AdminSettingsCache.NewBuildsEnabled)
+            @if (canCreateBuild)
             {
                 <a id="CreateNewBuild" asp-action="CreateBuild" asp-route-pluginSlug="@pluginSlug" class="btn btn-primary"><span class="fa fa-plus"></span> Create a
                     new build</a>
@@ -108,7 +109,7 @@
                             <a href="@item.DownloadLink" rel="noreferrer noopener">Download</a>
                             <span> - </span>
                         }
-                        @if (AdminSettingsCache.NewBuildsEnabled)
+                        @if (canCreateBuild)
                         {
                             <a asp-action="CreateBuild" asp-controller="Plugin" asp-route-pluginSlug="@(pluginSlug ?? item.PluginSlug)"
                                asp-route-copyBuild="@item.BuildId">Retry</a>

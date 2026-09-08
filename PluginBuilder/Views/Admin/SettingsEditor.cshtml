@@ -1,4 +1,4 @@
-@model IEnumerable<(string key, string value)>
+@model PluginBuilder.ViewModels.Admin.SettingsEditorViewModel
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(AdminNavPages.Settings, "Settings Editor");
@@ -11,6 +11,7 @@
 </div>
 
 <form id="settingsForm" asp-action="SettingsEditor" method="post">
+    <input type="hidden" name="whitelistVersion" value="@Model.WhitelistVersion" />
     <div class="table-responsive">
         <table class="table table-hover">
             <thead>
@@ -21,7 +22,7 @@
             </tr>
             </thead>
             <tbody>
-            @foreach (var setting in Model)
+            @foreach (var setting in Model.Settings)
             {
                 <tr data-key="@setting.key">
                     <td>@setting.key</td>
@@ -133,15 +134,21 @@
                 const row = this.closest('tr');
                 const key = row.dataset.key;
                 const token = document.querySelector('#settingsForm input[name="__RequestVerificationToken"]').value;
+                const whitelistVersion = document.querySelector('#settingsForm input[name="whitelistVersion"]').value;
 
-                fetch(`/admin/SettingsEditor?key=${encodeURIComponent(key)}`, {
+                fetch(`/admin/SettingsEditor?key=${encodeURIComponent(key)}&whitelistVersion=${encodeURIComponent(whitelistVersion)}`, {
                     method: 'DELETE',
                     headers: {
                         'RequestVerificationToken': token
                     }
-                }).then(response => {
+                }).then(async response => {
                     if (response.ok) {
-                        row.remove();
+                        if (key === 'NewBuildsWhitelist')
+                            window.location.reload();
+                        else
+                            row.remove();
+                    } else if (response.status === 409) {
+                        alert(await response.text());
                     } else {
                         alert('Failed to delete the setting.');
                     }
