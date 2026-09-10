@@ -85,6 +85,76 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
+    public async Task OwnerCanAddDirectMp4VideoUrlAndItRendersWithHtml5Player()
+    {
+        await using var t = new PlaywrightTester(_log);
+        t.Server.ReuseDatabase = false;
+        await t.StartAsync();
+        await using var conn = await t.Server.GetService<DBConnectionFactory>().Open();
+
+        // Create user and plugin with a released version
+        await t.EnableGithubVerificationAsync(conn);
+
+        await t.GoToUrl("/register");
+        var user = await t.RegisterNewUser();
+        await t.VerifyUserAccounts(user);
+
+        var pluginSlug = "video-mp4-" + PlaywrightTester.GetRandomUInt256()[..8];
+        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(
+            await conn.QuerySingleAsync<string>("SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"Email\" = @Email", new { Email = user }),
+            pluginSlug);
+
+        // Release the build so plugin appears on public page
+        var manifestInfoJson = await conn.QuerySingleAsync<string>(
+            "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
+            new { PluginSlug = pluginSlug, fullBuildId.BuildId });
+        var manifest = PluginManifest.Parse(manifestInfoJson);
+        await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug, Description = "Test plugin", GitRepository = ServerTester.RepoUrl }, PluginVisibilityEnum.Listed);
+
+        // A direct file link, without any video platform involved
+        await t.GoToUrl($"/plugins/{pluginSlug}/settings");
+        const string mp4Url = "https://cdn.example.com/9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08.mp4";
+        await t.Page.Locator("input[name='VideoUrl']").FillAsync(mp4Url);
+        await t.Page.Locator("button[type='submit'][form='plugin-setting-form']").ClickAsync();
+        await t.AssertNoError();
+
+        var savedVideoUrl = await conn.QuerySingleOrDefaultAsync<string>(
+            "SELECT settings->>'videoUrl' FROM plugins WHERE slug = @Slug",
+            new { Slug = pluginSlug });
+        Assert.Equal(mp4Url, savedVideoUrl);
+
+        // Verify an HTML5 player is rendered instead of an iframe embed
+        await t.GoToUrl($"/public/plugins/{pluginSlug}");
+        await t.AssertNoError();
+
+        var video = t.Page.Locator("video[data-video-file]");
+        await Expect(video).ToBeVisibleAsync();
+        await Expect(video).ToHaveAttributeAsync("controls", "");
+        await Expect(video).ToHaveAttributeAsync("preload", "none");
+        await Expect(t.Page.Locator("iframe[data-video-embed]")).ToHaveCountAsync(0);
+
+        // The url is parked in data-video-src and only becomes a src once the visitor clicks the player,
+        // so nothing is requested from the host that serves the video before then
+        Assert.Equal(mp4Url, await video.GetAttributeAsync("data-video-src"));
+        Assert.Null(await video.GetAttributeAsync("src"));
+        Assert.Equal(0, await t.Page.Locator("video[data-video-file] source").CountAsync());
+
+        // The cover is what the visitor is meant to click: the native controls alone do not show that
+        // the player still has to fetch anything
+        var cover = t.Page.Locator("[data-video-cover]");
+        await Expect(cover).ToBeVisibleAsync();
+        await Expect(cover).ToContainTextAsync("cdn.example.com");
+
+        await cover.ClickAsync();
+        await Expect(video).ToHaveAttributeAsync("src", mp4Url);
+        await Expect(cover).ToHaveCountAsync(0);
+
+        // No platform thumbnail exists for a direct file, so the fallback video thumb is used
+        await Expect(t.Page.Locator(".plugin-media-video-thumb")).ToBeVisibleAsync();
+    }
+
+    [Fact]
     public async Task OwnerCanUpdateVideoUrlFromYouTubeToVimeo()
     {
         await using var t = new PlaywrightTester(_log);
@@ -234,14 +304,14 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await Expect(errorMessage).ToBeVisibleAsync();
         await Expect(errorMessage).ToContainTextAsync("valid HTTPS URL");
 
-        // Test unsupported platform (e.g., Dailymotion)
+        // A link to a platform we embed still has to carry a usable video id
         await t.GoToUrl($"/plugins/{pluginSlug}/settings");
-        await t.Page.Locator("input[name='VideoUrl']").FillAsync("https://www.dailymotion.com/video/x8abc123");
+        await t.Page.Locator("input[name='VideoUrl']").FillAsync("https://www.youtube.com/feed/subscriptions");
         await t.Page.Locator("button[type='submit'][form='plugin-setting-form']").ClickAsync();
 
         var platformError = t.Page.Locator("span[data-valmsg-for='VideoUrl']");
         await Expect(platformError).ToBeVisibleAsync();
-        await Expect(platformError).ToContainTextAsync(new Regex("supported.*platform|youtube|vimeo", RegexOptions.IgnoreCase));
+        await Expect(platformError).ToContainTextAsync("YouTube or Vimeo");
     }
 
     [Fact]

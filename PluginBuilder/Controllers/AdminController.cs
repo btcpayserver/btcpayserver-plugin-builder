@@ -191,7 +191,7 @@ public class AdminController(
             if (!Uri.TryCreate(model.PluginSettings.VideoUrl, UriKind.Absolute, out var videoUri) || videoUri.Scheme != Uri.UriSchemeHttps)
             {
                 ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.VideoUrl)}",
-                    "Video URL must be a valid HTTPS URL.");
+                    "Video URL must be a valid HTTPS URL");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
@@ -199,7 +199,7 @@ public class AdminController(
             if (!model.PluginSettings.VideoUrl.IsSupportedVideoUrl())
             {
                 ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.VideoUrl)}",
-                    "Video URL must be from a supported platform (YouTube, Vimeo).");
+                    "Video URL must be a YouTube or Vimeo link pointing at a video, or a direct HTTPS link that serves a browser-playable video file");
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
