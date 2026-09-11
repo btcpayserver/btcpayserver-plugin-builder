@@ -320,16 +320,43 @@ public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs
         await tester.RunRemainingScripts();
         await using var first = await tester.Open();
         await using var second = await tester.Open();
-        await using var transaction = await first.BeginTransactionAsync();
-        await first.ExecuteAsync(InsertUser, new { id = "first" }, transaction);
-        var competingWrite = second.ExecuteAsync(InsertUser, new { id = "second" });
+        await using var observer = await tester.Open();
         await using var factory = Factory(first.ConnectionString);
         var service = new AdminEventService(factory);
-        Assert.Empty((await service.Read(0, 100, null, default)).Events);
-        await transaction.CommitAsync();
-        await competingWrite;
-        var page = await service.Read(0, 100, null, default);
-        Assert.Equal(new[] { "first", "second" }, page.Events.Select(e => e["data"]!["userId"]!.Value<string>()));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var transaction = await first.BeginTransactionAsync(timeout.Token);
+        await first.ExecuteAsync(new CommandDefinition(InsertUser, new { id = "first" }, transaction,
+            cancellationToken: timeout.Token));
+        var competingWrite = second.ExecuteAsync(new CommandDefinition(InsertUser, new { id = "second" },
+            cancellationToken: timeout.Token));
+        try
+        {
+            using var waitTimeout = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+            waitTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+            // Poll only after the second writer reaches the held transaction or commits.
+            // Otherwise a sequence-based allocator can pass before its event becomes visible.
+            while (!competingWrite.IsCompleted && !await observer.ExecuteScalarAsync<bool>(new CommandDefinition(
+                       "SELECT @blockingPid = ANY(pg_blocking_pids(@waitingPid))",
+                       new { blockingPid = first.ProcessID, waitingPid = second.ProcessID },
+                       cancellationToken: waitTimeout.Token)))
+            {
+                await Task.Delay(10, waitTimeout.Token);
+            }
+            if (competingWrite.IsCompleted)
+                await competingWrite;
+            Assert.Empty((await service.Read(0, 100, null, timeout.Token)).Events);
+            await transaction.CommitAsync(timeout.Token);
+            await competingWrite.WaitAsync(timeout.Token);
+            var page = await service.Read(0, 100, null, timeout.Token);
+            Assert.Equal(new[] { "first", "second" }, page.Events.Select(e => e["data"]!["userId"]!.Value<string>()));
+        }
+        finally
+        {
+            await transaction.DisposeAsync();
+            timeout.Cancel();
+            try { await competingWrite.WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch { /* Release and observe the competing command without masking an assertion. */ }
+        }
     }
 
     [Fact]
