@@ -1,53 +1,257 @@
+@using PluginBuilder.DataModels
 @model PluginBuilder.Controllers.AdminTokenSettingsController.TokenPage
 @{
     ViewData["Title"] = "Admin access tokens";
+    var now = DateTimeOffset.UtcNow;
+    var active = Model.Tokens.Where(token => token.RevokedAt is null && token.ExpiresAt > now).ToArray();
+    var inactive = Model.Tokens.Except(active).ToArray();
 }
-<h1>@ViewData["Title"]</h1>
-<p>Give an automation or AI agent access to the admin API without sharing your password. Each token uses your admin access and its API calls are audited.</p>
-<p>Issue tokens only to agents you trust with full admin API access, including private user and build data and listing decisions.</p>
-@if (Model.Issued is { } issued)
-{
-    <div class="alert alert-success">
-        <strong>Save this token now. It will not be shown again.</strong>
-        <pre class="text-wrap text-break mt-2">@issued.Token</pre>
-        <div>Token ID: <code>@issued.Id</code> · Expires: @issued.ExpiresAt.ToString("u")</div>
+
+<div id="AdminTokens">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+        <h1 class="mb-0">@ViewData["Title"]</h1>
+        <button id="CreateToken" type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#CreateTokenModal">Create token</button>
     </div>
-}
-<form asp-action="Create" method="post" class="mb-4">
-    <div asp-validation-summary="All" class="text-danger"></div>
-    <div class="mb-3">
-        <label asp-for="Creation.Name" class="form-label">Token name</label>
-        <input asp-for="Creation.Name" class="form-control" maxlength="100" placeholder="Codex plugin review" required />
-    </div>
-    <div class="mb-3">
-        <label asp-for="Creation.ExpiresInDays" class="form-label">Expires in days</label>
-        <input asp-for="Creation.ExpiresInDays" class="form-control" type="number" min="1" max="365" required />
-    </div>
-    <button class="btn btn-primary" type="submit">Create token</button>
-</form>
-<div class="table-responsive">
-    <table class="table">
-        <thead><tr><th>Name / ID</th><th>Created</th><th>Last used</th><th>Expires</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-        @foreach (var token in Model.Tokens)
-        {
-            <tr>
-                <td>@token.Name<br /><small><code>@token.Id</code></small></td>
-                <td>@token.CreatedAt.ToString("u")</td>
-                <td>@(token.LastUsedAt?.ToString("u") ?? "Never")</td>
-                <td>@token.ExpiresAt.ToString("u")</td>
-                <td>@(token.RevokedAt is not null ? "Revoked" : token.ExpiresAt <= DateTimeOffset.UtcNow ? "Expired" : "Active")</td>
-                <td>
-                    @if (token.RevokedAt is null)
+    <p class="text-muted mb-4">Connect an automation or AI agent to the admin API. Tokens belong to your account and use your admin access. API calls are audited.</p>
+    <div id="TokenList">
+        <nav id="SectionNav" aria-label="Token status">
+            <div class="nav nav-pills gap-4" role="tablist">
+                <button id="ActiveTokensTab" class="nav-link active" data-bs-toggle="tab" data-bs-target="#ActiveTokens" type="button" role="tab" aria-controls="ActiveTokens" aria-selected="true">Active (@active.Length)</button>
+                <button id="InactiveTokensTab" class="nav-link" data-bs-toggle="tab" data-bs-target="#InactiveTokens" type="button" role="tab" aria-controls="InactiveTokens" aria-selected="false">Inactive (@inactive.Length)</button>
+            </div>
+        </nav>
+        <div class="tab-content">
+            @foreach (var group in new[] { (Id: "ActiveTokens", Tokens: active), (Id: "InactiveTokens", Tokens: inactive) })
+            {
+                <div id="@group.Id" class="tab-pane @(group.Id == "ActiveTokens" ? "show active" : null)" role="tabpanel" aria-labelledby="@(group.Id)Tab">
+                    @if (group.Tokens.Length == 0)
                     {
-                        <form asp-action="Revoke" asp-route-id="@token.Id" method="post">
-                            <button class="btn btn-outline-danger btn-sm" type="submit">Revoke</button>
-                        </form>
+                        <p class="text-muted py-4">@(group.Id == "ActiveTokens" ? "No active tokens. Create a token to connect your agent." : "No inactive tokens. Expired and revoked tokens will appear here.")</p>
                     }
-                </td>
-            </tr>
-        }
-        </tbody>
-    </table>
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle">
+                                <thead><tr><th>Name / ID</th><th>Last used</th><th>Expires</th><th>Status</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+                                <tbody>
+                                @foreach (var token in group.Tokens)
+                                {
+                                    var status = token.RevokedAt is not null ? "Revoked" : token.ExpiresAt <= now ? "Expired" : "Active";
+                                    <tr data-token-id="@token.Id">
+                                        <td class="text-break">
+                                            <span data-token-name>@token.Name</span>
+                                            <div><button type="button" class="btn btn-link btn-sm p-0" data-copy-id="@token.Id" title="Copy token ID: @token.Id" aria-label="Copy token ID for @token.Name"><code>@(token.Id.ToString()[..8])…</code></button></div>
+                                        </td>
+                                        <td class="text-nowrap" title="@token.LastUsedAt?.ToString("u")">@(token.LastUsedAt is { } used ? (now - used).ToTimeAgo() : "Never")</td>
+                                        <td class="text-nowrap" title="@token.ExpiresAt.ToString("u")">@token.ExpiresAt.ToString("yyyy-MM-dd")</td>
+                                        <td><span data-token-status class="badge @(status == "Active" ? "bg-success" : status == "Expired" ? "bg-warning" : "bg-secondary")">@status</span></td>
+                                        <td class="text-end">
+                                            @if (token.RevokedAt is null)
+                                            {
+                                                <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#ConfirmModal" data-action="@Url.Action("Revoke", new { id = token.Id })" data-title="Revoke @token.Name?">Revoke</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+    <p id="TokenCopyStatus" class="small text-muted" role="status"></p>
 </div>
-<p class="text-muted">Use the token ID with <code>GET /api/v1/admin/audit?tokenId=…</code> to inspect its activity. Revoking a token blocks new requests; a request already running may finish.</p>
+
+<div class="modal fade" id="CreateTokenModal" tabindex="-1" aria-labelledby="CreateTokenTitle" aria-hidden="true" data-open="@((Model.Issued is not null || !ViewData.ModelState.IsValid) ? "true" : "false")">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="CreateTokenTitle">@(Model.Issued is null ? "Create token" : "Token created")</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"><vc:icon symbol="close" /></button>
+            </div>
+            <form id="CreateTokenForm" asp-action="Create" method="post" hidden="@(Model.Issued is not null)">
+                <div class="modal-body">
+                    <p>This token will act on behalf of your admin account.</p>
+                    <div class="alert alert-warning">Full admin API access includes private user and build data and listing decisions. Only share this token with an agent you trust.</div>
+                    <div id="TokenValidation" asp-validation-summary="All" class="text-danger" role="alert"></div>
+                    <div id="TokenCreationError" class="alert alert-danger" role="alert" hidden></div>
+                    <div class="mb-3">
+                        <label asp-for="Creation.Name" class="form-label">Token name</label>
+                        <input asp-for="Creation.Name" class="form-control" maxlength="100" placeholder="e.g. Codex plugin review" autocomplete="off" required />
+                        <div class="form-text">Choose a name that identifies the agent or automation.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="TokenLifetime" class="form-label">Expires in</label>
+                        <select id="TokenLifetime" class="form-select">
+                            <option value="7">7 days</option>
+                            <option value="30">30 days</option>
+                            <option value="90" selected>90 days</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div id="CustomTokenLifetime" class="mb-3" hidden>
+                        <label asp-for="Creation.ExpiresInDays" class="form-label">Number of days</label>
+                        <input asp-for="Creation.ExpiresInDays" class="form-control" type="number" min="1" max="365" required aria-describedby="TokenExpiryPreview" />
+                    </div>
+                    <p id="TokenExpiryPreview" class="form-text mb-0" aria-live="polite"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-primary" type="submit">Create token</button>
+                </div>
+            </form>
+            <div id="TokenSuccess" hidden="@(Model.Issued is null)">
+                @if (Model.Issued is { } issued)
+                {
+                    <div class="modal-body">
+                        <div class="alert alert-success">Token created. Save it now: it will not be shown again.</div>
+                        <p><strong>@Model.Creation.Name</strong><br /><span class="text-muted">Expires @issued.ExpiresAt.ToString("u")</span></p>
+                        <label for="IssuedToken" class="form-label">Your token</label>
+                        <div class="input-group">
+                            <input id="IssuedToken" class="form-control font-monospace" value="@issued.Token" readonly autocomplete="off" spellcheck="false" />
+                            <button type="button" class="btn btn-secondary" data-copy="token" aria-label="Copy token" title="Copy token">
+                                <span aria-hidden="true"><vc:icon symbol="copy" /></span>
+                            </button>
+                        </div>
+                        <p id="SecretCopyStatus" class="small mt-3 mb-0" role="status"></p>
+                        <div id="SecretCopyFallback" class="mt-3" hidden>
+                            <label for="SecretCopyText" class="form-label">Select and copy this text</label>
+                            <textarea id="SecretCopyText" class="form-control font-monospace" rows="4" readonly spellcheck="false"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button></div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@section FooterScripts {
+    <partial name="_Confirm" model='new ConfirmModel("Revoke token", "This agent will lose access immediately. Requests already running may finish. This cannot be undone.", "Revoke token")' />
+    <script>
+        (() => {
+            const root = document.getElementById('AdminTokens');
+            const modal = document.getElementById('CreateTokenModal');
+            const form = document.getElementById('CreateTokenForm');
+            const success = document.getElementById('TokenSuccess');
+            const title = document.getElementById('CreateTokenTitle');
+            const lifetime = document.getElementById('TokenLifetime');
+            const days = document.getElementById('Creation_ExpiresInDays');
+            const submit = form.querySelector('[type="submit"]');
+            const error = document.getElementById('TokenCreationError');
+            let pending = false;
+
+            function updateExpiry() {
+                document.getElementById('CustomTokenLifetime').hidden = lifetime.value !== 'custom';
+                if (lifetime.value !== 'custom') days.value = lifetime.value;
+                const valid = days.checkValidity();
+                const expiry = new Date(Date.now() + Number(days.value) * 86400000);
+                document.getElementById('TokenExpiryPreview').textContent = valid
+                    ? `Expires ${expiry.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}.`
+                    : 'Choose between 1 and 365 days.';
+            }
+
+            lifetime.value = ['7', '30', '90'].includes(days.value) ? days.value : 'custom';
+            updateExpiry();
+            lifetime.addEventListener('change', updateExpiry);
+            days.addEventListener('input', updateExpiry);
+            modal.addEventListener('shown.bs.modal', () => {
+                const focus = success.querySelector('[data-copy="token"]') || document.getElementById('Creation_Name');
+                focus.focus();
+            });
+            modal.addEventListener('hide.bs.modal', event => {
+                if (pending) event.preventDefault();
+            });
+            modal.addEventListener('hidden.bs.modal', () => {
+                // Remove the value attribute and any fallback text as well as the visible input.
+                success.replaceChildren();
+                success.hidden = true;
+                form.hidden = false;
+                title.textContent = 'Create token';
+                form.reset();
+                document.getElementById('Creation_Name').value = '';
+                document.getElementById('TokenValidation').replaceChildren();
+                lifetime.value = '90';
+                updateExpiry();
+            });
+
+            form.addEventListener('submit', async event => {
+                event.preventDefault();
+                if (!modal.classList.contains('show') || form.hidden || submit.disabled) return;
+                pending = true;
+                submit.disabled = true;
+                submit.textContent = 'Creating…';
+                error.hidden = true;
+                try {
+                    // Reuse the MVC response for validation, the issued token and the updated list.
+                    const response = await fetch(form.action, {
+                        method: 'POST', body: new FormData(form), credentials: 'same-origin',
+                        headers: { 'Accept': 'text/html' }
+                    });
+                    if (!response.ok || response.redirected) throw new Error('Creation response unavailable');
+                    const result = new DOMParser().parseFromString(await response.text(), 'text/html');
+                    const issued = result.getElementById('TokenSuccess');
+                    const list = result.getElementById('TokenList');
+                    const validation = result.getElementById('TokenValidation');
+                    if (!issued || !list || !validation) throw new Error('Creation response unavailable');
+                    if (issued.querySelector('#IssuedToken')) {
+                        success.replaceChildren(...issued.childNodes);
+                        document.getElementById('TokenList').replaceChildren(...list.childNodes);
+                        form.hidden = true;
+                        success.hidden = false;
+                        title.textContent = 'Token created';
+                        success.querySelector('[data-copy="token"]').focus();
+                    } else {
+                        document.getElementById('TokenValidation').replaceWith(validation);
+                    }
+                    submit.disabled = false;
+                } catch {
+                    // The request may have succeeded even if its response was lost. Require a list check before retrying.
+                    error.textContent = 'We could not confirm whether the token was created. Reload this page and check the token list. Revoke any new token you could not save before creating another.';
+                    error.hidden = false;
+                } finally {
+                    pending = false;
+                    submit.textContent = 'Create token';
+                }
+            });
+
+            success.addEventListener('click', async event => {
+                const button = event.target.closest('[data-copy="token"]');
+                if (!button) return;
+                const token = success.querySelector('#IssuedToken').value;
+                const status = success.querySelector('#SecretCopyStatus');
+                try {
+                    await navigator.clipboard.writeText(token);
+                    if (!success.contains(status)) return;
+                    status.textContent = 'Token copied.';
+                    success.querySelector('#SecretCopyFallback').hidden = true;
+                    success.querySelector('#SecretCopyText').value = '';
+                } catch {
+                    if (!success.contains(status)) return;
+                    status.textContent = 'Clipboard access is unavailable. Copy the selected text manually.';
+                    success.querySelector('#SecretCopyFallback').hidden = false;
+                    const field = success.querySelector('#SecretCopyText');
+                    field.value = token;
+                    field.focus();
+                    field.select();
+                }
+            });
+
+            root.addEventListener('click', async event => {
+                const button = event.target.closest('[data-copy-id]');
+                if (!button) return;
+                const status = document.getElementById('TokenCopyStatus');
+                try {
+                    await navigator.clipboard.writeText(button.dataset.copyId);
+                    status.textContent = 'Token ID copied.';
+                } catch {
+                    status.textContent = `Token ID: ${button.dataset.copyId}. Select and copy it manually.`;
+                }
+            });
+
+            if (modal.dataset.open === 'true') bootstrap.Modal.getOrCreateInstance(modal).show();
+        })();
+    </script>
+}

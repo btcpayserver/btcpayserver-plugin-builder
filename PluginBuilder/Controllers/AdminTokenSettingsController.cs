@@ -30,6 +30,7 @@ public class AdminTokenSettingsController(AdminAccessTokenService tokens) : Cont
     {
         if (!await tokens.Revoke(User.FindFirstValue(ClaimTypes.NameIdentifier)!, id))
             return NotFound();
+        TempData[TempDataConstant.SuccessMessage] = "Token revoked. It can no longer make new requests.";
         return RedirectToAction(nameof(Index));
     }
 

@@ -307,11 +307,14 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var create = await browser.PostAsync(path, new FormUrlEncodedContent(form));
         Assert.Equal(HttpStatusCode.OK, create.StatusCode);
         var html = await create.Content.ReadAsStringAsync();
-        var token = Regex.Match(html, "pb_admin_[a-f0-9]{64}").Value;
-        Assert.NotEmpty(token);
-        Assert.DoesNotContain(token, await browser.GetStringAsync(path));
+        // Assert on booleans so failure messages never include the token or response body.
+        var createdShowsToken = Regex.IsMatch(html, "pb_admin_[a-f0-9]{64}");
+        Assert.True(createdShowsToken, "The creation response must display the token.");
+        var getShowsToken = Regex.IsMatch(await browser.GetStringAsync(path), "pb_admin_[a-f0-9]{64}");
+        Assert.False(getShowsToken, "The settings page must not display an existing token.");
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         var id = await conn.ExecuteScalarAsync<Guid>("SELECT id FROM admin_access_tokens WHERE name = 'Browser agent'");
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_access_tokens"));
         Assert.Equal(HttpStatusCode.BadRequest, (await browser.PostAsync($"{path}/{id}/revoke", new FormUrlEncodedContent(new Dictionary<string, string>()))).StatusCode);
         var revoke = await browser.PostAsync($"{path}/{id}/revoke", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = Csrf(html) }));
         Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
