@@ -35,11 +35,19 @@ public class AdminApiDocumentationTests
                 {
                     var operation = spec["paths"]![path]?[method.ToLowerInvariant()];
                     Assert.True(operation is not null, $"Missing OpenAPI operation: {method} {path}");
-                    var schemes = ((JArray)operation!["security"]!).SelectMany(s => ((JObject)s).Properties().Select(p => p.Name)).ToArray();
-                    Assert.Contains("Basic", schemes);
-                    Assert.Equal(auth.AuthenticationSchemes!.Contains(PluginBuilderAuthenticationSchemes.AdminToken), schemes.Contains("AdminToken"));
+                    var security = Assert.IsType<JArray>(operation!["security"]);
+                    var schemes = auth.AuthenticationSchemes!.Contains(PluginBuilderAuthenticationSchemes.AdminToken)
+                        ? new[] { "Basic", "AdminToken" }
+                        : new[] { "Basic" };
+                    Assert.Equal(schemes.Length, security.Count);
                     foreach (var scheme in schemes)
+                    {
+                        // Separate objects mean OR; combined or empty objects change the access contract.
+                        var requirement = Assert.Single(security.OfType<JObject>(), r => r.ContainsKey(scheme));
+                        Assert.Single(requirement.Properties());
+                        Assert.Empty(Assert.IsType<JArray>(requirement[scheme]));
                         Assert.NotNull(spec["components"]!["securitySchemes"]![scheme]);
+                    }
                 }
             }
         }

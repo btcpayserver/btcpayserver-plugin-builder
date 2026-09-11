@@ -330,12 +330,55 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await conn.NewPlugin(slug, admin.Id);
         var id = await conn.CreateListingRequest(slug, "Release", "Proof", "Reviews", null, admin.Id);
         var service = scope.ServiceProvider.GetRequiredService<ListingReviewService>();
-        var outcomes = await Task.WhenAll(service.Review(id, admin.Id, true, "Approved", _ => null),
-            service.Review(id, admin.Id, false, "Rejected", _ => null));
-        Assert.Single(outcomes, o => o == ListingReviewService.Outcome.Completed);
-        Assert.Single(outcomes, o => o == ListingReviewService.Outcome.AlreadyProcessed);
-        var approved = await conn.ExecuteScalarAsync<bool>("SELECT status = 'approved' FROM plugin_listing_requests WHERE id = @id", new { id });
-        Assert.Equal(approved, await conn.ExecuteScalarAsync<bool>("SELECT visibility = 'listed' FROM plugins WHERE slug = @slug", new { slug = slug.ToString() }));
-        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type IN ('listing.approved', 'listing.rejected')"));
+        await using var observer = await tester.GetService<DBConnectionFactory>().Open();
+        await using var blocker = await conn.BeginTransactionAsync();
+        await conn.ExecuteAsync("SELECT id FROM plugin_listing_requests WHERE id = @id FOR UPDATE", new { id }, blocker);
+        using var reviewsTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var pending = new[]
+        {
+            service.Review(id, admin.Id, true, "Approved", _ => null, reviewsTimeout.Token),
+            service.Review(id, admin.Id, false, "Rejected", _ => null, reviewsTimeout.Token)
+        };
+        try
+        {
+            using var waitTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            // Both reviews must reach the pending row before either can finish.
+            // A second waiter can block behind the first, rather than directly behind our transaction.
+            while (await observer.ExecuteScalarAsync<int>(new CommandDefinition("""
+                       WITH RECURSIVE blocked(pid) AS (
+                           SELECT @blockingPid
+                           UNION
+                           SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid))
+                           WHERE a.datname = current_database()
+                       )
+                       SELECT count(*) FROM blocked WHERE pid <> @blockingPid
+                       """, new { blockingPid = conn.ProcessID }, cancellationToken: waitTimeout.Token)) < 2)
+            {
+                Assert.All(pending, review => Assert.False(review.IsCompleted,
+                    "Both reviews must wait for the transaction holding the listing request."));
+                await Task.Delay(10, waitTimeout.Token);
+            }
+            await blocker.CommitAsync(waitTimeout.Token);
+
+            var outcomes = await Task.WhenAll(pending).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Single(outcomes, o => o == ListingReviewService.Outcome.Completed);
+            Assert.Single(outcomes, o => o == ListingReviewService.Outcome.AlreadyProcessed);
+            var approved = await conn.ExecuteScalarAsync<bool>("SELECT status = 'approved' FROM plugin_listing_requests WHERE id = @id", new { id });
+            Assert.Equal(approved, await conn.ExecuteScalarAsync<bool>("SELECT visibility = 'listed' FROM plugins WHERE slug = @slug", new { slug = slug.ToString() }));
+            Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type IN ('listing.approved', 'listing.rejected')"));
+        }
+        finally
+        {
+            reviewsTimeout.Cancel();
+            await blocker.DisposeAsync();
+            try
+            {
+                await Task.WhenAll(pending).WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch
+            {
+                // Preserve the original failure while releasing both blocked reviews.
+            }
+        }
     }
 }

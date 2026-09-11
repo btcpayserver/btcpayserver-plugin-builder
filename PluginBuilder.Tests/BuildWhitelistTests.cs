@@ -91,6 +91,16 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
             response.StatusCode);
         Assert.Equal(allowed ? 1 : 0, git.FetchCount);
         Assert.Equal(allowed ? 2 : 1, await BuildCount(conn, slug));
+        var newBuildId = previousBuild + 1;
+        Assert.Equal(allowed ? userId : null, await conn.QuerySingleOrDefaultAsync<string>(
+            "SELECT triggered_by FROM builds WHERE plugin_slug = @slug AND id = @newBuildId",
+            new { slug = slug.ToString(), newBuildId }));
+        Assert.Equal(allowed ? 1 : 0, await conn.ExecuteScalarAsync<int>(
+            """
+            SELECT count(*) FROM admin_events
+            WHERE type = 'user.first_build_triggered' AND data->>'userId' = @userId
+                AND data->>'pluginSlug' = @slug AND (data->>'buildId')::bigint = @newBuildId
+            """, new { userId, slug = slug.ToString(), newBuildId }));
         if (allowed)
         {
             // The approved exception must pass every guard before container execution.

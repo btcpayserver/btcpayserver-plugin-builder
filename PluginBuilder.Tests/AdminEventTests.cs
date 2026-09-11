@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Net.Http.Json;
@@ -56,6 +57,40 @@ public class AdminWebhookTests
     [InlineData("https://[::1]/hook")]
     [InlineData("file:///etc/passwd")]
     public void RejectsUnsafeDestinations(string destination) => Assert.False(AdminWebhookSender.IsValidDestination(destination));
+
+    [Fact]
+    public async Task RejectsLocalhostBeforeOpeningAConnection()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var addresses = await Dns.GetHostAddressesAsync("localhost", timeout.Token);
+        Assert.NotEmpty(addresses);
+        Assert.All(addresses, address => Assert.True(IPAddress.IsLoopback(address)));
+        var listener = new TcpListener(addresses[0], 0);
+        listener.Start();
+        using var sender = new AdminWebhookSender();
+        var accepting = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var destination = $"https://localhost:{port}/hook";
+        var sending = sender.Send(destination, Convert.ToBase64String(new byte[32]), "1", "{}", timeout.Token);
+        try
+        {
+            Assert.True(AdminWebhookSender.IsValidDestination(destination));
+            // A hostname passes URL validation; the real connector must reject its
+            // resolved address before TCP or TLS, not merely fail the request later.
+            Assert.Same(sending, await Task.WhenAny(sending, accepting).WaitAsync(timeout.Token));
+            await Assert.ThrowsAsync<HttpRequestException>(() => sending);
+            Assert.False(accepting.IsCompletedSuccessfully);
+        }
+        finally
+        {
+            timeout.Cancel();
+            listener.Stop();
+            try { using var client = await accepting.WaitAsync(TimeSpan.FromSeconds(5)); }
+            catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException) { }
+            try { await sending.WaitAsync(TimeSpan.FromSeconds(5)); }
+            catch { /* Preserve the assertion while observing the cancelled/failed send. */ }
+        }
+    }
 
     [Fact]
     public void SignatureBindsIdentityTimestampAndExactBody()
