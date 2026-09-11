@@ -22,6 +22,11 @@ All parameters are configured via environment variables.
 
 ## API
 
+[Admin events and notifications](docs/admin-events.md) documents the admin polling API,
+email/webhook subscriptions, signatures, delivery retries, and local agent cursors.
+[Admin agent access](docs/admin-agent-access.md) covers revocable tokens, token activity
+audits, user/build inspection, listing review and the local connection helper.
+
 Full interactive API documentation is available at [`/docs`](https://plugin-builder.btcpayserver.org/docs) on the live server.
 
 The OpenAPI specification is available at [`/swagger/v1/swagger.json`](https://plugin-builder.btcpayserver.org/swagger/v1/swagger.json).

@@ -116,19 +116,6 @@ public class Program
         app.UseStatusCodePagesWithReExecute("/errors/{0}");
         app.UseExceptionHandler("/errors/500");
 
-        // Capture base URL once on first request for FirstBuildEvents
-        app.Use(async (ctx, next) =>
-        {
-            var fbe = ctx.RequestServices.GetRequiredService<FirstBuildEvent>();
-            if (ctx.Request.Host.HasValue)
-            {
-                var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
-                fbe.InitBaseUrl(baseUrl);
-            }
-
-            await next();
-        });
-
         app.UseDefaultFiles();
         app.UseStaticFiles(new StaticFileOptions
         {
@@ -143,6 +130,7 @@ public class Program
         app.UseRouting();
         app.UseRateLimiter();
         app.UseAuthentication();
+        app.UseMiddleware<AdminApiAuditMiddleware>();
         app.UseAuthorization();
         app.UseOutputCache();
         app.MapHub<PluginHub>("hub");
@@ -199,6 +187,13 @@ public class Program
         services.AddHostedService<PluginHubHostedService>();
         services.AddHostedService<PluginCleanupHostedService>();
         services.AddHostedService<UserCleanupHostedService>();
+        services.AddSingleton<AdminEventService>();
+        services.AddScoped<ListingReviewService>();
+        services.AddScoped<AdminAccessTokenService>();
+        services.AddSingleton<AdminWebhookSender>();
+        services.AddHostedService<AdminEventDeliveryHostedService>();
+        services.AddSingleton<AdminHistoryRetention>();
+        services.AddHostedService<AdminHistoryRetentionHostedService>();
 
         services.AddSingleton<DBConnectionFactory>();
         services.AddScoped<PluginCleanupRunner>();
@@ -256,7 +251,6 @@ public class Program
         services.AddSingleton<GitHostingProviderFactory>();
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<EmailService>();
-        services.AddSingleton<FirstBuildEvent>();
         services.AddSingleton<NostrService>();
 
         // shared controller logic
@@ -326,13 +320,16 @@ public class Program
                 .Tag(CacheTags.Plugins));
         });
 
-        var dataSourceBuilder = new NpgsqlDataSourceBuilder(configuration.GetRequired("POSTGRES"));
-        dataSourceBuilder.MapEnum<PluginVisibilityEnum>("plugin_visibility_enum");
-        var dataSource = dataSourceBuilder.Build();
-
-        services.AddDbContext<IdentityDbContext<IdentityUser>>(b =>
+        services.AddSingleton<NpgsqlDataSource>(_ =>
         {
-            b.UseNpgsql(dataSource);
+            var dataSourceBuilder = new NpgsqlDataSourceBuilder(configuration.GetRequired("POSTGRES"));
+            dataSourceBuilder.MapEnum<PluginVisibilityEnum>("plugin_visibility_enum");
+            return dataSourceBuilder.Build();
+        });
+
+        services.AddDbContext<IdentityDbContext<IdentityUser>>((provider, b) =>
+        {
+            b.UseNpgsql(provider.GetRequiredService<NpgsqlDataSource>());
         });
 
         services.AddIdentity<IdentityUser, IdentityRole>(options =>
@@ -357,7 +354,8 @@ public class Program
             opt.LogoutPath = "/logout";
         });
         services.AddAuthentication()
-            .AddScheme<PluginBuilderAuthenticationOptions, BasicAuthenticationHandler>(PluginBuilderAuthenticationSchemes.BasicAuth, o => { });
+            .AddScheme<PluginBuilderAuthenticationOptions, BasicAuthenticationHandler>(PluginBuilderAuthenticationSchemes.BasicAuth, o => { })
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AdminTokenAuthenticationHandler>(PluginBuilderAuthenticationSchemes.AdminToken, o => { });
         services.AddAuthorization(o =>
         {
             o.AddPolicy(Policies.OwnPlugin, o => o.AddRequirements(new OwnPluginRequirement()));

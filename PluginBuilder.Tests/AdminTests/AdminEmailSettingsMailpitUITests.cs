@@ -1,8 +1,10 @@
 using System.Text.RegularExpressions;
+using Dapper;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
+using PluginBuilder.Util.Extensions;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -12,6 +14,84 @@ namespace PluginBuilder.Tests.AdminTests;
 public class AdminEmailSettingsMailpitUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("AdminEmailSettingsMailpitUITests", output);
+
+    [Fact]
+    public async Task EmailPrimaryOwners_Sends_Once_Per_Owner_With_Multiple_Plugins()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        await tester.StartAsync();
+        await tester.ConfigureMailpitSmtp();
+        const string ownerEmail = "multiple-plugins@example.com";
+        const string otherEmail = "other-owner@example.com";
+        var ownerId = await tester.CreateConfirmedUser(ownerEmail);
+        var otherId = await tester.CreateConfirmedUser(otherEmail);
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+        foreach (var (slug, userId) in new[] { ("email-first", ownerId), ("email-second", ownerId), ("email-third", otherId) })
+        {
+            Assert.True(await conn.NewPlugin(new PluginSlug(slug), userId));
+            // Only released-plugin metadata is needed for the recipients CTA; no build is queued.
+            await conn.ExecuteAsync("""
+                INSERT INTO builds(plugin_slug, id, state, build_info) VALUES (@slug, 0, 'uploaded', '{}');
+                INSERT INTO versions(plugin_slug, ver, build_id, btcpay_min_ver, pre_release)
+                VALUES (@slug, ARRAY[1,0,0,0], 0, ARRAY[2,0,0,0], false);
+                """, new { slug });
+        }
+
+        await tester.LogIn(await tester.CreateServerAdminAsync());
+        await tester.GoToUrl("/admin/plugins");
+        var page = tester.Page!;
+        await page.GetByRole(AriaRole.Link, new() { Name = "Email Primary Owners", Exact = true }).ClickAsync();
+        await Expect(page.Locator("#To")).ToHaveValueAsync($"{ownerEmail},{otherEmail}");
+        var subject = $"Unique plugin owners {Guid.NewGuid():N}";
+        await page.FillAsync("#Subject", subject);
+        await page.FillAsync("#Message", "One notification per plugin owner.");
+        var first = await tester.Server.AssertHasEmail(subject, ownerEmail, () =>
+            page.GetByRole(AriaRole.Button, new() { Name = "Send Email", Exact = true }).ClickAsync());
+        var second = await tester.Server.AssertHasEmail(subject, otherEmail, () => Task.CompletedTask);
+
+        await Expect(page.Locator(".alert-success")).ToContainTextAsync("Emails sent successfully to 2 recipient(s).");
+        Assert.Equal(ownerEmail, Assert.Single(first.To).Address);
+        Assert.Equal(otherEmail, Assert.Single(second.To).Address);
+        using var mailpit = tester.Server.GetMailPitClient();
+        Assert.Equal(2, (await mailpit.Search($"subject:\"{subject}\"")).Messages.Count);
+    }
+
+    [Fact]
+    public async Task EmailSender_Accepts_Quoted_Display_Names_And_Rejects_Invalid_Recipients()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        await tester.StartAsync();
+        await tester.ConfigureMailpitSmtp();
+
+        var adminEmail = await tester.CreateServerAdminAsync();
+        await tester.LogIn(adminEmail);
+        const string recipients = "\"Doe, John\" <owner@example.com>, second@example.com";
+        await tester.GoToUrl($"/admin/emailsender?to={Uri.EscapeDataString(recipients)}");
+        var page = tester.Page!;
+        await Expect(page.Locator("#To")).ToHaveValueAsync(recipients);
+        var subject = $"Quoted recipient test {Guid.NewGuid():N}";
+        await page.FillAsync("#Subject", subject);
+        await page.FillAsync("#Message", "Test message with a quoted recipient name");
+
+        var first = await tester.Server.AssertHasEmail(subject, "owner@example.com", () =>
+            page.GetByRole(AriaRole.Button, new() { Name = "Send Email", Exact = true }).ClickAsync());
+        var second = await tester.Server.AssertHasEmail(subject, "second@example.com", () => Task.CompletedTask);
+
+        await Expect(page.Locator(".alert-success")).ToContainTextAsync("Emails sent successfully to 2 recipient(s).");
+        Assert.Equal("owner@example.com", Assert.Single(first.To).Address);
+        Assert.Equal("Doe, John", first.To[0].Name);
+        Assert.Equal("second@example.com", Assert.Single(second.To).Address);
+        Assert.Contains("Test message with a quoted recipient name", first.Text);
+
+        await page.FillAsync("#To", "owner@localhost");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Send Email", Exact = true }).ClickAsync();
+
+        await Expect(page.Locator("[data-valmsg-for='To']")).ToContainTextAsync("Invalid email format");
+        await Expect(page.Locator("#To")).ToHaveValueAsync("owner@localhost");
+        await Expect(page.Locator(".alert-success")).ToHaveCountAsync(0);
+    }
 
     [Fact]
     public async Task CheatMode_UseMailpitButton_Saves_Local_Smtp_Settings()

@@ -25,6 +25,10 @@
   ],
   "tags": [
     {
+      "name": "Admin Events",
+      "description": "Durable event polling and email/webhook subscriptions (ServerAdmin role required)"
+    },
+    {
       "name": "Server",
       "description": "Server version information"
     },
@@ -38,6 +42,1685 @@
     }
   ],
   "paths": {
+    "/admin/me": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Inspect current admin account",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/status": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Inspect server counts and feature flags",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/users": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "List users",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/users/{userId}": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Inspect a user",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/plugins": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "List all plugins",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/plugins/{pluginSlug}": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Inspect a plugin",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/plugins/{pluginSlug}/builds": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "List builds newest first",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/plugins/{pluginSlug}/builds/{buildId}": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Inspect build metadata and manifest",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buildId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/plugins/{pluginSlug}/builds/{buildId}/logs": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Read build log rows newest first",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buildId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/plugins/{pluginSlug}/builds/{buildId}/logs/{logId}": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Read a log row in bounded chunks",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buildId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147467263,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/listing-requests": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "List listing requests",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "all"
+              ],
+              "default": "pending"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/listing-requests/{requestId}": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Inspect listing submission and review",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/listing-requests/{requestId}/review": {
+      "post": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Approve or reject a pending listing",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Committed review details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid decision or note."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Request not found."
+          },
+          "409": {
+            "description": "Already processed; fetch current state before retrying."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "decision",
+                  "note"
+                ],
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approve",
+                      "reject"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 10000
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/audit": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Inspect admin API activity",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tokenId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/access-tokens": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "List your access tokens",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Resource not found."
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Issue a revocable admin token",
+        "description": "Requires a current ServerAdmin account. Issue only to trusted server-admin agents: tokens grant full admin API inspection and listing-review access without granular scopes. Tokens cannot issue or revoke other tokens. See docs/admin-agent-access.md for details.",
+        "security": [
+          {
+            "Basic": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Token shown once. Store securely.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "token": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid name/lifetime."
+          },
+          "401": {
+            "description": "Basic authentication required."
+          },
+          "403": {
+            "description": "Admin role required."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "expiresInDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 365,
+                    "default": 90
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/access-tokens/{id}": {
+      "delete": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Revoke your access token",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "security": [
+          {
+            "Basic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "401": {
+            "description": "Basic authentication required."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Token not found or not owned by caller."
+          }
+        }
+      }
+    },
+    "/admin/events": {
+      "get": {
+        "tags": [
+          "Admin Events"
+        ],
+        "summary": "Poll admin events",
+        "description": "Durable events ordered by commit-safe cursor. Save nextCursor only after processing the page. See docs/admin-events.md.",
+        "security": [
+          {
+            "Basic": []
+          },
+          { "AdminToken": [] }
+        ],
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "schemaVersion": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "data": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor, limit or type."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "ServerAdmin role required."
+          }
+        }
+      }
+    },
+    "/admin/events/types": {
+      "get": {
+        "tags": [
+          "Admin Events"
+        ],
+        "summary": "List admin event types",
+        "description": "Requires a ServerAdmin account.",
+        "security": [
+          {
+            "Basic": []
+          },
+          { "AdminToken": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Supported types.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "ServerAdmin role required."
+          }
+        }
+      }
+    },
+    "/admin/events/subscriptions": {
+      "get": {
+        "tags": [
+          "Admin Events"
+        ],
+        "summary": "List event subscriptions",
+        "description": "Shared server-wide subscriptions. Signing secrets are never returned.",
+        "security": [
+          {
+            "Basic": []
+          },
+          { "AdminToken": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subscriptions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "destination": {
+                        "type": "string"
+                      },
+                      "eventTypes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "createdBy": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "ServerAdmin role required."
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin Events"
+        ],
+        "summary": "Create event subscription",
+        "description": "Subscribes to future events. Empty eventTypes selects all types. Webhook secret is returned once; store it securely.",
+        "security": [
+          {
+            "Basic": []
+          },
+          { "AdminToken": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "destination",
+                  "eventTypes"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "webhook",
+                      "email"
+                    ]
+                  },
+                  "destination": {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  "eventTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created subscription.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "secret": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid subscription."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "ServerAdmin role required."
+          }
+        }
+      }
+    },
+    "/admin/events/subscriptions/{id}/enabled": {
+      "put": {
+        "tags": [
+          "Admin Events"
+        ],
+        "summary": "Pause or resume a subscription",
+        "description": "Paused subscriptions receive no new delivery jobs. Existing jobs resume when enabled.",
+        "security": [
+          {
+            "Basic": []
+          },
+          { "AdminToken": [] }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Updated."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "ServerAdmin role required."
+          },
+          "404": {
+            "description": "Subscription not found."
+          }
+        }
+      }
+    },
+    "/admin/events/subscriptions/{id}": {
+      "delete": {
+        "tags": [
+          "Admin Events"
+        ],
+        "summary": "Delete a subscription",
+        "description": "Deletes its delivery records; preserves event history.",
+        "security": [
+          {
+            "Basic": []
+          },
+          { "AdminToken": [] }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "ServerAdmin role required."
+          },
+          "404": {
+            "description": "Subscription not found."
+          }
+        }
+      }
+    },
+    "/admin/events/subscriptions/{id}/deliveries": {
+      "get": {
+        "tags": [
+          "Admin Events"
+        ],
+        "summary": "Inspect event deliveries",
+        "description": "Ascending event IDs. Use the last returned eventId as after for the next page.",
+        "security": [
+          {
+            "Basic": []
+          },
+          { "AdminToken": [] }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deliveries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "eventId": {
+                        "type": "string"
+                      },
+                      "attempts": {
+                        "type": "integer"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "delivered",
+                          "failed"
+                        ]
+                      },
+                      "nextAttemptAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "lastError": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "ServerAdmin role required."
+          }
+        }
+      }
+    },
+    "/admin/events/subscriptions/{id}/deliveries/{eventId}/retry": {
+      "post": {
+        "tags": [
+          "Admin Events"
+        ],
+        "summary": "Retry a failed delivery",
+        "description": "Resets the retry budget for an exhausted delivery.",
+        "security": [
+          {
+            "Basic": []
+          },
+          { "AdminToken": [] }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Queued for retry."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "ServerAdmin role required."
+          },
+          "404": {
+            "description": "No failed delivery found."
+          }
+        }
+      }
+    },
     "/version": {
       "get": {
         "tags": ["Server"],
@@ -583,6 +2266,11 @@
   },
   "components": {
     "securitySchemes": {
+      "AdminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Revocable admin access token issued in Account Settings. Admin API only; token management requires Basic auth."
+      },
       "Basic": {
         "type": "http",
         "scheme": "basic",

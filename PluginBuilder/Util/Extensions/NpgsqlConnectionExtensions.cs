@@ -359,7 +359,7 @@ public static class NpgsqlConnectionExtensions
     }
 
     public static async Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters,
-        FirstBuildEvent? firstBuildEvent = null)
+        string? triggeredBy = null)
     {
         BuildInfo bi = new()
         {
@@ -375,12 +375,13 @@ public static class NpgsqlConnectionExtensions
                                                                 "        ON CONFLICT (plugin_slug) DO UPDATE SET curr_id=bi.curr_id+1 " +
                                                                 " RETURNING curr_id " +
                                                                 ") " +
-                                                                "INSERT INTO builds (plugin_slug, id, state, build_info) VALUES (@plugin_slug, (SELECT * FROM cte), @state, @buildInfo::JSONB) RETURNING id;",
+                                                                "INSERT INTO builds (plugin_slug, id, state, build_info, triggered_by) VALUES (@plugin_slug, (SELECT * FROM cte), @state, @buildInfo::JSONB, @triggeredBy) RETURNING id;",
             new
             {
                 plugin_slug = pluginSlug.ToString(),
                 state = BuildStates.Queued.ToEventName(),
-                buildInfo = bi.ToString()
+                buildInfo = bi.ToString(),
+                triggeredBy
             });
         return buildId;
     }
@@ -410,10 +411,10 @@ public static class NpgsqlConnectionExtensions
         return connection.QueryAsync<(string key, string value)>(query);
     }
 
-    public static Task<string?> SettingsGetAsync(this NpgsqlConnection connection, string key)
+    public static Task<string?> SettingsGetAsync(this NpgsqlConnection connection, string key, CancellationToken cancellationToken = default)
     {
         var query = "SELECT value FROM settings WHERE key = @key";
-        return connection.QuerySingleOrDefaultAsync<string>(query, new { key });
+        return connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(query, new { key }, cancellationToken: cancellationToken));
     }
 
     public static Task<int> SettingsSetAsync(this NpgsqlConnection connection, string key, string value)
@@ -757,11 +758,11 @@ public static class NpgsqlConnectionExtensions
     #region Methods relating to plugin listing requests
 
     public static async Task<int> CreateListingRequest(this NpgsqlConnection connection, PluginSlug pluginSlug, string releaseNote, string telegramMessage,
-        string userReviews, DateTimeOffset? announcementDate)
+        string userReviews, DateTimeOffset? announcementDate, string? submittedBy = null)
     {
         const string sql = """
-                           INSERT INTO plugin_listing_requests (plugin_slug, release_note, telegram_verification_message, user_reviews, announcement_date, status, submitted_at)
-                           VALUES (@pluginSlug, @releaseNote, @telegramMessage, @userReviews, @announcementDate, 'pending', CURRENT_TIMESTAMP)
+                           INSERT INTO plugin_listing_requests (plugin_slug, release_note, telegram_verification_message, user_reviews, announcement_date, status, submitted_at, submitted_by)
+                           VALUES (@pluginSlug, @releaseNote, @telegramMessage, @userReviews, @announcementDate, 'pending', CURRENT_TIMESTAMP, @submittedBy)
                            RETURNING id
                            """;
 
@@ -771,7 +772,8 @@ public static class NpgsqlConnectionExtensions
             releaseNote,
             telegramMessage,
             userReviews,
-            announcementDate
+            announcementDate,
+            submittedBy
         });
     }
 
@@ -819,17 +821,6 @@ public static class NpgsqlConnectionExtensions
                            """;
 
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
-    }
-
-    public static async Task<bool> ApproveListingRequest(this NpgsqlConnection connection, int requestId, string reviewedBy)
-    {
-        const string sql = """
-                           UPDATE plugin_listing_requests SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy
-                           WHERE id = @requestId AND status = 'pending'
-                           """;
-
-        var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy });
-        return affected == 1;
     }
 
     public static async Task<bool> RejectListingRequest(this NpgsqlConnection connection, int requestId, string reviewedBy, string rejectionReason)

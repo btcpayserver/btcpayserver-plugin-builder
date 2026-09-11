@@ -45,7 +45,8 @@ public class PluginSlugModelBinderTests
                 ["POSTGRES"] = "Host=localhost;Database=unused;Username=unused"
             })
             .Build();
-        var binder = new PluginSlugModelBinder(new DBConnectionFactory(configuration));
+        await using var factory = new DBConnectionFactory(configuration);
+        var binder = new PluginSlugModelBinder(factory);
 
         await binder.BindModelAsync(bindingContext);
 
