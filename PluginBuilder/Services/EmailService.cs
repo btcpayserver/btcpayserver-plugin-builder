@@ -75,10 +75,12 @@ BTCPay Server Plugin Builder Team
         return recipients;
     }
 
-    public bool IsValidEmailList(string to)
+    public bool IsValidEmailList(string? to)
     {
-        return to.Split(',').Select(email => email.Trim())
-            .All(email => !string.IsNullOrWhiteSpace(email) && Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
+        return !string.IsNullOrWhiteSpace(to) &&
+               InternetAddressList.TryParse(to, out var addresses) && addresses.Count > 0 &&
+               addresses.All(address => address is MailboxAddress mailbox &&
+                   Regex.IsMatch(mailbox.Address, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"));
     }
 
     public async Task<bool> SendVerifyEmail(string toEmail, string verifyUrl)
