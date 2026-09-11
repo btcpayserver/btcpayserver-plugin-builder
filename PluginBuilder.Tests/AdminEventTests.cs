@@ -80,6 +80,30 @@ public class AdminWebhookTests
     }
 }
 
+public class AdminEventEmailTests
+{
+    [Theory]
+    [InlineData("\"a,b\"@example.test", new[] { "\"a,b\"@example.test" })]
+    [InlineData("first@example.test, second@example.test", new[] { "first@example.test", "second@example.test" })]
+    public async Task SendEmailPreservesMailboxBoundaries(string destination, string[] expectedRecipients)
+    {
+        var emails = new RecordingEmailService();
+        await emails.SendEmail(destination, "Admin event", "{}");
+        Assert.Equal(expectedRecipients, emails.Recipients.Select(address => Assert.IsType<MailboxAddress>(address).Address));
+    }
+
+    private sealed class RecordingEmailService() : EmailService(null!, null!, NullLogger<EmailService>.Instance)
+    {
+        public InternetAddress[] Recipients { get; private set; } = [];
+        protected override Task<List<string>> DeliverEmail(IEnumerable<InternetAddress> toList, string subject, string messageText,
+            CancellationToken cancellationToken = default)
+        {
+            Recipients = toList.ToArray();
+            return Task.FromResult(Recipients.Select(address => address.ToString()).ToList());
+        }
+    }
+}
+
 public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     [Theory]

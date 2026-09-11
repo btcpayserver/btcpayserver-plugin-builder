@@ -44,9 +44,7 @@ BTCPay Server Plugin Builder Team
 
     public Task<List<string>> SendEmail(string toCsvList, string subject, string messageText, CancellationToken cancellationToken = default)
     {
-        List<InternetAddress> toList = toCsvList.Split([","], StringSplitOptions.RemoveEmptyEntries)
-            .Select(InternetAddress.Parse)
-            .ToList();
+        var toList = InternetAddressList.Parse(toCsvList);
         return DeliverEmail(toList, subject, messageText, cancellationToken);
     }
 
