@@ -823,17 +823,6 @@ public static class NpgsqlConnectionExtensions
         return await connection.QueryFirstOrDefaultAsync<PluginListingRequest>(sql, new { pluginSlug = pluginSlug.ToString() });
     }
 
-    public static async Task<bool> ApproveListingRequest(this NpgsqlConnection connection, int requestId, string reviewedBy)
-    {
-        const string sql = """
-                           UPDATE plugin_listing_requests SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = @reviewedBy
-                           WHERE id = @requestId AND status = 'pending'
-                           """;
-
-        var affected = await connection.ExecuteAsync(sql, new { requestId, reviewedBy });
-        return affected == 1;
-    }
-
     public static async Task<bool> RejectListingRequest(this NpgsqlConnection connection, int requestId, string reviewedBy, string rejectionReason)
     {
         const string sql = """
