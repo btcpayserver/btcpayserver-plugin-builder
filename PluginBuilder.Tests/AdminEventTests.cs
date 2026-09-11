@@ -82,6 +82,70 @@ public class AdminWebhookTests
 
 public class AdminEventDatabaseTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SubscriptionDeletionPreservesSourceEvent(bool deleteFirst)
+    {
+        await using var tester = CreateMigrationTester("SubscriptionDeletion");
+        await tester.RunScriptsUntil("25.AdminEvents");
+        await tester.RunRemainingScripts();
+        await using var first = await tester.Open();
+        await using var second = await tester.Open();
+        await using var observer = await tester.Open();
+        var subscription = Guid.NewGuid();
+        const string userId = "concurrent-builder";
+        await observer.ExecuteAsync("""
+            INSERT INTO admin_event_subscriptions(id, kind, destination, event_types, created_by)
+            VALUES (@subscription, 'email', 'admin@example.test', ARRAY['user.registered'], 'admin')
+            """, new { subscription });
+        const string delete = "DELETE FROM admin_event_subscriptions WHERE id = @subscription";
+        var args = new { subscription, id = userId };
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var transaction = await first.BeginTransactionAsync(timeout.Token);
+        await first.ExecuteAsync(new CommandDefinition(deleteFirst ? delete : InsertUser, args, transaction,
+            cancellationToken: timeout.Token));
+        if (!deleteFirst)
+            Assert.Equal(1, await first.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT count(*) FROM admin_event_deliveries WHERE subscription_id = @subscription", args, transaction,
+                cancellationToken: timeout.Token)));
+        var competing = second.ExecuteAsync(new CommandDefinition(deleteFirst ? InsertUser : delete, args,
+            cancellationToken: timeout.Token));
+        try
+        {
+            using var waitTimeout = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+            waitTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+            while (!await observer.ExecuteScalarAsync<bool>(new CommandDefinition(
+                       "SELECT @blockingPid = ANY(pg_blocking_pids(@waitingPid))",
+                       new { blockingPid = first.ProcessID, waitingPid = second.ProcessID },
+                       cancellationToken: waitTimeout.Token)))
+            {
+                Assert.False(competing.IsCompleted, "The competing operation must reach the held subscription lock.");
+                await Task.Delay(10, waitTimeout.Token);
+            }
+            // Delete first: event emission skips the deleted subscription after the
+            // wait. Emit first: deletion waits for the delivery's transaction.
+            await transaction.CommitAsync(timeout.Token);
+            Assert.Equal(1, await competing.WaitAsync(timeout.Token));
+            Assert.Equal(1, await observer.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT count(*) FROM \"AspNetUsers\" WHERE \"Id\" = @id", args, cancellationToken: timeout.Token)));
+            Assert.Equal(1, await observer.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT count(*) FROM admin_events WHERE type = 'user.registered' AND data->>'userId' = @id", args,
+                cancellationToken: timeout.Token)));
+            Assert.Equal(0, await observer.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT count(*) FROM admin_event_subscriptions", cancellationToken: timeout.Token)));
+            Assert.Equal(0, await observer.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT count(*) FROM admin_event_deliveries", cancellationToken: timeout.Token)));
+        }
+        finally
+        {
+            await transaction.DisposeAsync();
+            timeout.Cancel();
+            try { await competing.WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch { /* Release and observe the competing command without masking an assertion. */ }
+        }
+    }
+
     [Fact]
     public async Task RetentionPurgesExpiredHistoryAndPreservesRecentEvidenceAndCursor()
     {

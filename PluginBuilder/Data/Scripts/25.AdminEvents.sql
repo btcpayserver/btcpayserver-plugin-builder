@@ -36,9 +36,12 @@ DECLARE event_id bigint;
 BEGIN
     UPDATE admin_event_counter SET value = value + 1 RETURNING value INTO event_id;
     INSERT INTO admin_events(id, type, data) VALUES (event_id, event_type, event_data);
+    -- Coordinate with deletion before inserting deliveries: a deleted subscription
+    -- is skipped after waiting, while a selected subscription survives until commit.
     INSERT INTO admin_event_deliveries(subscription_id, event_id)
         SELECT id, event_id FROM admin_event_subscriptions
-        WHERE enabled AND (cardinality(event_types) = 0 OR event_type = ANY(event_types));
+        WHERE enabled AND (cardinality(event_types) = 0 OR event_type = ANY(event_types))
+        FOR KEY SHARE;
 END;
 $$ LANGUAGE plpgsql;
 
