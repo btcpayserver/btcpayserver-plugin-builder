@@ -132,11 +132,13 @@ To submit a review with the helper, save a JSON body locally and explicitly invo
 
 ## Audit semantics
 
-Requests to matched admin API routes create an audit row before authorization,
-recording verified account/token identity, method, path, start/completion time and
-HTTP status. This includes 401/403 denials, validation failures and review conflicts.
-Invalid or absent credentials produce null account/token IDs; unverified credentials
-are never used for attribution. Token IDs are also null for Basic authentication.
+Requests to matched admin API controller actions with a verified Basic or admin
+token identity create an audit row before authorization, recording account/token
+identity, method, path, start/completion time and HTTP status. This includes access
+denials for authenticated identities (403 for a non-admin account, or 401 for a valid
+admin token on a Basic-only route), validation failures and review conflicts.
+Invalid or absent credentials and routing failures (404/405) do not create audit
+rows. Token IDs are null for Basic authentication.
 No authorization headers, bodies or query strings are stored. If the audit insert
 fails, the action does not run. A crash can leave an incomplete row; it should not
 be read as proof that the action failed. Listing outcome events independently record

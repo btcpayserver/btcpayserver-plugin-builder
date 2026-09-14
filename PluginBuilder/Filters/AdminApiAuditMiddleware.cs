@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Dapper;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using PluginBuilder.Authentication;
 using PluginBuilder.Services;
 
@@ -10,7 +11,9 @@ public class AdminApiAuditMiddleware(RequestDelegate next, ILogger<AdminApiAudit
 {
     public async Task InvokeAsync(HttpContext http, DBConnectionFactory connections)
     {
-        if (!http.Request.Path.StartsWithSegments("/api/v1/admin") || http.GetEndpoint() is null)
+        // Routing failures, including synthetic 405 endpoints, have no controller action to audit.
+        if (!http.Request.Path.StartsWithSegments("/api/v1/admin") ||
+            http.GetEndpoint()?.Metadata.GetMetadata<ControllerActionDescriptor>() is null)
         {
             await next(http);
             return;
@@ -24,6 +27,11 @@ public class AdminApiAuditMiddleware(RequestDelegate next, ILogger<AdminApiAudit
             if (result.Succeeded) actor = result.Principal;
         }
         var userId = actor?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+        {
+            await next(http);
+            return;
+        }
         Guid? tokenId = Guid.TryParse(actor?.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), out var parsed) ? parsed : null;
         long id;
         await using (var conn = await connections.Open(http.RequestAborted))

@@ -70,7 +70,7 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Fact]
-    public async Task AuditsDeniedRequestsWithoutTrustingInvalidCredentialsOrDuplicatingRows()
+    public async Task AuditsOnlyAuthenticatedRequestsIncludingAccessDenials()
     {
         await using var tester = await StartAdminServer();
         using var scope = tester.WebApp.Services.CreateScope();
@@ -81,19 +81,57 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.ExecuteAsync("DELETE FROM admin_api_audit");
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/admin/me?secret=not-recorded")).StatusCode);
-        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE user_id IS NULL AND status_code = 401 AND path = '/api/v1/admin/me'"));
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit"));
+        client.SetBasicAuth(admin.Email!, "wrong-password");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/admin/me")).StatusCode);
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AdminTokenAuthenticationHandler.Prefix + new string('0', 64));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/admin/me")).StatusCode);
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit"));
         client.SetBasicAuth(ordinary.Email!, "test-password:with-colons:123");
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/v1/admin/me")).StatusCode);
-        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE user_id = @id AND status_code = 403", new { id = ordinary.Id }));
         client.SetBasicAuth(admin.Email!, "test-password:with-colons:123");
         var token = await IssueToken(client);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token["token"]!.Value<string>());
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/admin/me?secret=not-recorded")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/v1/admin/access-tokens", new { name = "forbidden" })).StatusCode);
-        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE token_id = @id AND status_code = 401", new { id = token["id"]!.ToObject<Guid>() }));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-token-secret");
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/admin/me")).StatusCode);
-        Assert.Equal(5, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit"));
-        Assert.Equal(2, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE user_id IS NULL AND token_id IS NULL AND status_code = 401"));
+
+        // The response body can arrive before the middleware completes its audit UPDATE.
+        using var auditCompletionTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+                   "SELECT count(*) FROM admin_api_audit WHERE completed_at IS NOT NULL",
+                   cancellationToken: auditCompletionTimeout.Token)) < 4)
+            await Task.Delay(10, auditCompletionTimeout.Token);
+
+        Assert.Equal(4, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit"));
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE user_id IS NULL"));
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE user_id = @id AND status_code = 403", new { id = ordinary.Id }));
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE user_id = @id AND token_id IS NULL AND status_code = 201", new { id = admin.Id }));
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE token_id = @id AND status_code = 200 AND path = '/api/v1/admin/me'", new { id = token["id"]!.ToObject<Guid>() }));
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit WHERE token_id = @id AND status_code = 401", new { id = token["id"]!.ToObject<Guid>() }));
+    }
+
+    [Fact]
+    public async Task AdminRoutingFailuresDoNotAuthenticateOrCreateAuditRows()
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "admin@example.com", true);
+        Assert.True((await users.SetLockoutEnabledAsync(admin, true)).Succeeded);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+
+        using var authenticatedResponse = await client.PostAsync("/api/v1/admin/me", new StringContent("{}"));
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, authenticatedResponse.StatusCode);
+        client.SetBasicAuth(admin.Email!, "wrong-password");
+        using var response = await client.PostAsync("/api/v1/admin/me", new StringContent("{}"));
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/v1/admin/route-that-does-not-exist")).StatusCode);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit"));
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT \"AccessFailedCount\" FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = admin.Id }));
     }
 
     [Fact]
