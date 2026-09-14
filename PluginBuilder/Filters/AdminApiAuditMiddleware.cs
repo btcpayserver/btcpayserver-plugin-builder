@@ -27,6 +27,11 @@ public class AdminApiAuditMiddleware(RequestDelegate next, ILogger<AdminApiAudit
             if (result.Succeeded) actor = result.Principal;
         }
         var userId = actor?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+        {
+            await next(http);
+            return;
+        }
         Guid? tokenId = Guid.TryParse(actor?.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), out var parsed) ? parsed : null;
         long id;
         await using (var conn = await connections.Open(http.RequestAborted))
