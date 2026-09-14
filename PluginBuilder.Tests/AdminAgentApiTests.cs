@@ -97,6 +97,27 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Fact]
+    public async Task AdminRoutingFailuresDoNotAuthenticateOrCreateAuditRows()
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "admin@example.com", true);
+        Assert.True((await users.SetLockoutEnabledAsync(admin, true)).Succeeded);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+
+        using var authenticatedResponse = await client.PostAsync("/api/v1/admin/me", new StringContent("{}"));
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, authenticatedResponse.StatusCode);
+        client.SetBasicAuth(admin.Email!, "wrong-password");
+        using var response = await client.PostAsync("/api/v1/admin/me", new StringContent("{}"));
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/v1/admin/route-that-does-not-exist")).StatusCode);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_api_audit"));
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT \"AccessFailedCount\" FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = admin.Id }));
+    }
+
+    [Fact]
     public async Task StoppingRepeatedHostsClosesBothDatabasePools()
     {
         await using var observer = new NpgsqlConnection("Host=127.0.0.1;Port=61932;Username=postgres;Database=postgres;Pooling=false");
