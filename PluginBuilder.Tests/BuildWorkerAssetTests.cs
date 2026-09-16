@@ -376,6 +376,7 @@ public class BuildWorkerAssetTests
 
         var directory = Path.Combine(Path.GetTempPath(), $"plugin-builder-stager-{Guid.NewGuid():N}");
         var container = $"pb-stager-test-{Guid.NewGuid():N}";
+        var readerContainer = $"{container}-reader";
         Exception? executionFailure = null;
         var source = Path.Combine(directory, "source");
         var output = Path.Combine(directory, "output");
@@ -474,11 +475,21 @@ public class BuildWorkerAssetTests
 
             if (result.ExitCode == 0 && fixture == StagerFixture.Valid)
             {
-                Assert.Equal(artifactBytes,
-                    await File.ReadAllBytesAsync(Path.Combine(staging, "artifact.btcpay")));
                 var expectedHash = Convert.ToHexString(SHA256.HashData(artifactBytes)).ToLowerInvariant();
-                var buildEnvironment = JObject.Parse(
-                    await File.ReadAllTextAsync(Path.Combine(staging, "build-env.json")));
+                // The stager deliberately creates uid 10001-owned files with mode 0600.
+                // Read them as that uid so this test also works for a non-root host user.
+                var stagedContents = await RunProcess(
+                    "docker",
+                    "run", "--rm", "--name", readerContainer, "--pull", "never", "--runtime", "runsc",
+                    "--network", "none", "--user", "10001:10001",
+                    "--mount", $"type=bind,source={staging},target=/staging,readonly",
+                    "--entrypoint", "/bin/sh", "plugin-builder-worker",
+                    "-c", "sha256sum /staging/artifact.btcpay && cat /staging/build-env.json");
+                Assert.Equal(0, stagedContents.ExitCode);
+                var outputLines = stagedContents.StandardOutput.Split('\n', 2);
+                Assert.Equal(2, outputLines.Length);
+                Assert.StartsWith(expectedHash + "  /staging/artifact.btcpay", outputLines[0], StringComparison.Ordinal);
+                var buildEnvironment = JObject.Parse(outputLines[1]);
                 Assert.Equal(expectedHash, buildEnvironment["buildHash"]?.Value<string>());
                 Assert.Equal(assemblyName, buildEnvironment["assemblyName"]?.Value<string>());
                 Assert.Equal(expectedProvenance[0], buildEnvironment["gitCommit"]?.Value<string>());
@@ -502,10 +513,13 @@ public class BuildWorkerAssetTests
             try
             {
                 // Killing the Docker client on timeout does not stop its container.
-                var cleanup = await RunProcess("docker", "rm", "--force", container);
-                Assert.True(cleanup.ExitCode == 0 ||
-                            cleanup.StandardError.Contains("No such container", StringComparison.OrdinalIgnoreCase),
-                    $"Could not remove test container {container}: {cleanup.StandardError}");
+                foreach (var containerToRemove in new[] { container, readerContainer })
+                {
+                    var cleanup = await RunProcess("docker", "rm", "--force", containerToRemove);
+                    Assert.True(cleanup.ExitCode == 0 ||
+                                cleanup.StandardError.Contains("No such container", StringComparison.OrdinalIgnoreCase),
+                        $"Could not remove test container {containerToRemove}: {cleanup.StandardError}");
+                }
                 Directory.Delete(directory, recursive: true);
             }
             catch (Exception cleanupFailure) when (executionFailure is not null)
