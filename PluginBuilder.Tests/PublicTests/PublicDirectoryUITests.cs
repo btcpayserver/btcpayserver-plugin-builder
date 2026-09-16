@@ -27,7 +27,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 
         var ownerId = await tester.Server.CreateFakeUserAsync(confirmEmail: true, githubVerified: true);
         const string pluginSlug = "public-directory-embed-query";
-        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await tester.Server.CreatePublishedPluginAsync(ownerId, pluginSlug);
 
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
@@ -69,7 +69,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         var slugString = slug.ToString();
 
         var ownerId = await tester.Server.CreateFakeUserAsync();
-        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId);
+        var fullBuildId = await tester.Server.CreatePublishedPluginAsync(ownerId);
 
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
@@ -153,7 +153,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
 
         var popularSlug = new PluginSlug("public-directory-popular");
         var popularSlugString = popularSlug.ToString();
-        var popularBuild = await tester.Server.CreateAndBuildPluginAsync(ownerId, popularSlugString);
+        var popularBuild = await tester.Server.CreatePublishedPluginAsync(ownerId, popularSlugString);
         var popularManifestJson = await conn.QuerySingleAsync<string>("SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",
             new { PluginSlug = popularSlugString, popularBuild.BuildId });
         var popularManifest = PluginManifest.Parse(popularManifestJson);

@@ -3,11 +3,13 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.Events;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
+using Xunit;
 
 namespace PluginBuilder.Tests;
 
@@ -192,6 +194,45 @@ public class ServerTester : IAsyncDisposable
 
         var fullBuildId = new FullBuildId(slug, buildId);
         await buildService.Build(fullBuildId);
+        return fullBuildId;
+    }
+
+    /// <summary>
+    /// Prepares a published pre-release for tests of existing plugins. No artifact is built or uploaded;
+    /// use CreateAndBuildPluginAsync when exercising the build pipeline or artifact downloads.
+    /// </summary>
+    public async Task<FullBuildId> CreatePublishedPluginAsync(string userId, string slug = PluginSlug)
+    {
+        var manifest = PluginManifest.Parse($$"""
+            {
+              "Identifier": "TestPlugin.{{slug.Replace('-', '_')}}",
+              "Name": "Rockstar Stylist",
+              "Version": "1.0.2.0",
+              "Description": "A published plugin for UI tests.",
+              "Dependencies": [{ "Identifier": "BTCPayServer", "Condition": ">=1.4.6.0" }]
+            }
+            """);
+
+        await using var conn = await GetService<DBConnectionFactory>().Open();
+        Assert.True(await conn.NewPlugin(slug, userId));
+        var buildId = await conn.NewBuild(slug, new PluginBuildParameters(RepoUrl)
+        {
+            GitRef = GitRef,
+            PluginDirectory = PluginDir,
+            BuildConfig = BuildCfg
+        });
+        var fullBuildId = new FullBuildId(slug, buildId);
+        await conn.UpdateBuild(fullBuildId, BuildStates.Uploaded, new JObject
+        {
+            ["url"] = $"https://example.invalid/{fullBuildId}/{manifest.Identifier}.btcpay",
+            ["assemblyName"] = manifest.Identifier,
+            ["gitCommit"] = new string('a', 40),
+            ["buildHash"] = new string('b', 64),
+            ["gitCommitDate"] = DateTimeOffset.UtcNow,
+            ["buildDate"] = DateTimeOffset.UtcNow
+        }, manifest);
+        Assert.True(await conn.EnsureIdentifierOwnership(slug, manifest.Identifier));
+        Assert.True(await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, true));
         return fullBuildId;
     }
 

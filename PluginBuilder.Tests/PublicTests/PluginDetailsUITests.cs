@@ -24,7 +24,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         var ownerId = await tester.Server.CreateFakeUserAsync("layout-owner@x.com", confirmEmail: true, githubVerified: true);
         const string slug = "plugin-details-layout";
-        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
+        await tester.Server.CreatePublishedPluginAsync(ownerId, slug);
 
         await tester.Page!.SetViewportSizeAsync(1600, 1000);
         await tester.GoToUrl($"/public/plugins/{slug}");
@@ -58,7 +58,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         var ownerId = await tester.Server.CreateFakeUserAsync("embed-layout-owner@x.com", confirmEmail: true, githubVerified: true);
         const string slug = "plugin-details-embed-layout";
-        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
+        await tester.Server.CreatePublishedPluginAsync(ownerId, slug);
 
         using (var client = tester.Server.CreateHttpClient())
         using (var response = await client.GetAsync($"/public/plugins/{slug}?embed=1"))
@@ -97,8 +97,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         var ownerId = await tester.Server.CreateFakeUserAsync("embed-selection-owner@x.com", confirmEmail: true, githubVerified: true);
         const string firstSlug = "embed-select-a";
         const string secondSlug = "embed-select-b";
-        await tester.Server.CreateAndBuildPluginAsync(ownerId, firstSlug);
-        await tester.Server.CreateAndBuildPluginAsync(ownerId, secondSlug);
+        await tester.Server.CreatePublishedPluginAsync(ownerId, firstSlug);
+        await tester.Server.CreatePublishedPluginAsync(ownerId, secondSlug);
 
         var embedOrigin = tester.ServerUri!.GetLeftPart(UriPartial.Authority);
         await tester.GoToUrl("/");
@@ -135,7 +135,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
 
         var ownerId = await tester.Server.CreateFakeUserAsync("pre-release-details-owner@x.com", confirmEmail: true, githubVerified: true);
         const string slug = "plugin-details-pre-release";
-        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
+        var fullBuildId = await tester.Server.CreatePublishedPluginAsync(ownerId, slug);
 
         await using (var conn = await tester.Server.GetService<DBConnectionFactory>().Open())
         {
@@ -188,10 +188,14 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await Expect(frame.Locator("#btcpay-install-plugin-btn")).ToHaveTextAsync("Install in BTCPay Server");
 
         await frame.Locator("#btcpay-install-plugin-btn").ClickAsync();
-        await Expect(frame.Locator("#pre-release-confirm-modal")).ToBeVisibleAsync();
+        var confirmationModal = frame.Locator("#pre-release-confirm-modal");
+        await Expect(confirmationModal).ToBeVisibleAsync();
+        // Bootstrap focuses the modal after its opening transition; hide() is ignored before then.
+        await Expect(confirmationModal).ToBeFocusedAsync();
         Assert.Equal(0, await tester.Page.EvaluateAsync<int>("() => window.__installMessages.length"));
 
         await frame.Locator("#pre-release-confirm-continue").ClickAsync();
+        await Expect(confirmationModal).ToBeHiddenAsync();
         await tester.Page.WaitForFunctionAsync("() => window.__installMessages.length === 1");
         var installMessageJson = await tester.Page.EvaluateAsync<string>("() => JSON.stringify(window.__installMessages[0])");
         Assert.Contains("\"version\":\"1.0.3.0\"", installMessageJson);
@@ -229,7 +233,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         // plugin + 3 users (owner, reviewer, voter)
         var ownerId = await tester.Server.CreateFakeUserAsync("owner@x.com", confirmEmail: true, githubVerified: true);
         const string slug = ServerTester.PluginSlug;
-        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
+        await tester.Server.CreatePublishedPluginAsync(ownerId, slug);
 
         // Set up owner's social accounts
         await using (var conn = await tester.Server.GetService<DBConnectionFactory>().Open())
@@ -374,7 +378,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         // Setup: Create plugin and users
         var ownerId = await tester.Server.CreateFakeUserAsync("owner@x.com", confirmEmail: true, githubVerified: true);
         const string slug = ServerTester.PluginSlug;
-        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
+        await tester.Server.CreatePublishedPluginAsync(ownerId, slug);
         await tester.Server.CreateFakeUserAsync("reviewer@x.com", confirmEmail: true, githubVerified: true);
         await tester.VerifyUserAccounts("reviewer@x.com", "reviewernpub1");
 
