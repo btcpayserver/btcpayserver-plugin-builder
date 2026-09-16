@@ -6,6 +6,8 @@ using PluginBuilder.APIModels;
 using PluginBuilder.DataModels;
 using PluginBuilder.JsonConverters;
 
+using PluginBuilder.Builds.Services;
+
 namespace PluginBuilder.Services;
 
 public class GitHubHostingProvider : IGitHostingProvider

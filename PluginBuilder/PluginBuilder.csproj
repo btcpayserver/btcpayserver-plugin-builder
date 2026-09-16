@@ -13,6 +13,9 @@
     </AssemblyAttribute>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../PluginBuilder.Builds/PluginBuilder.Builds.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <PackageReference Include="Dapper" Version="2.1.72" />
     <PackageReference Include="MailKit" Version="4.15.1" />
@@ -110,15 +113,6 @@
     <None Include="wwwroot\vendor\font-awesome\scss\_variables.scss"/>
     <None Include="wwwroot\vendor\jquery\jquery.js"/>
     <None Include="wwwroot\vendor\jquery\jquery.min.js"/>
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="entrypoint.sh">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="PluginBuilder.Dockerfile">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
   <ItemGroup>

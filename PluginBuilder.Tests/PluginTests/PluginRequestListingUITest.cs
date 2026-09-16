@@ -15,7 +15,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.PluginTests;
 
-[Collection("Playwright Tests")]
+[Collection(nameof(NonParallelizableCollectionDefinition))]
+[Trait("Category", "ExecutorIntegration")]
 public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("PluginRequestListingUITest", output);

@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.APIModels;
@@ -14,6 +15,8 @@ using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels.Admin;
 using Xunit;
 using Xunit.Abstractions;
+
+using PluginBuilder.Builds.Services;
 
 namespace PluginBuilder.Tests;
 
@@ -33,17 +36,19 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [InlineData(true, true, true)]
     public async Task CreationAndRetry_RespectFlagAndWhitelist(bool enabled, bool whitelisted, bool api)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
-        using var docker = new FakeDocker();
+        var sandbox = new AdmissionTestSandbox();
         await using var tester = Create("WhitelistMatrix");
         tester.ReuseDatabase = false;
         var git = new TestGitProvider();
         git.Release();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(git);
+        tester.ConfigureServices = services =>
+        {
+            sandbox.Register(services);
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(git);
+        };
         await tester.Start();
-        docker.Activate();
+        MarkExecutorReady(tester);
 
         var email = NewEmail();
         var userId = await tester.CreateFakeUserAsync(email);
@@ -103,14 +108,17 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
             """, new { userId, slug = slug.ToString(), newBuildId }));
         if (allowed)
         {
-            // The approved exception must pass every guard before container execution.
-            await docker.WaitForCommand("container start ");
+            // The approved exception must pass every guard before sandbox execution.
             await WaitForFailedBuild(conn, slug, previousBuild + 1);
-            await docker.WaitForCommand("volume rm ");
+            var prepared = Assert.Single(sandbox.StartedPreparations).Value;
+            Assert.True(prepared.Started);
+            Assert.True(prepared.Disposed);
         }
-        else if (api)
+        else
         {
-            Assert.Equal("builds-disabled", JObject.Parse(await response.Content.ReadAsStringAsync()).Value<string>("error"));
+            Assert.Empty(sandbox.StartedPreparations);
+            if (api)
+                Assert.Equal("builds-disabled", JObject.Parse(await response.Content.ReadAsStringAsync()).Value<string>("error"));
         }
     }
 
@@ -368,17 +376,19 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [InlineData(true)]
     public async Task UnconfirmedWhitelistedAccount_TracksLoginVerificationFlagInExistingSession(bool api)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
-        using var docker = new FakeDocker();
+        var sandbox = new AdmissionTestSandbox();
         await using var tester = Create("WhitelistEmailFlag");
         tester.ReuseDatabase = false;
         var git = new TestGitProvider();
         git.Release();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(git);
+        tester.ConfigureServices = services =>
+        {
+            sandbox.Register(services);
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(git);
+        };
         await tester.Start();
-        docker.Activate();
+        MarkExecutorReady(tester);
         var email = NewEmail();
         var userId = await tester.CreateFakeUserAsync(email, confirmEmail: false);
         var slug = NewSlug();
@@ -424,10 +434,15 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
                 api ? HttpStatusCode.Created : HttpStatusCode.Redirect, response.StatusCode);
             if (!requireConfirmedEmail)
             {
-                await docker.WaitForCommand("container start ", ++accepted);
+                accepted++;
                 await WaitForFailedBuild(conn, slug, accepted - 1);
-                await docker.WaitForCommand("volume rm ", accepted);
             }
+            Assert.Equal(accepted, sandbox.StartedPreparations.Count);
+            Assert.All(sandbox.StartedPreparations.Values, prepared =>
+            {
+                Assert.True(prepared.Started);
+                Assert.True(prepared.Disposed);
+            });
             Assert.Equal(accepted, await BuildCount(conn, slug));
             Assert.Equal(accepted, git.FetchCount);
         }
@@ -452,7 +467,11 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         tester.ReuseDatabase = false;
         var git = new TestGitProvider();
         git.Release();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(git);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(git);
+        };
         await tester.Start();
         var email = NewEmail();
         var userId = await tester.CreateFakeUserAsync(email);
@@ -503,7 +522,11 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var tester = Create("WhitelistLookupRace");
         tester.ReuseDatabase = false;
         var git = new TestGitProvider();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(git);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(git);
+        };
         await tester.Start();
         var email = NewEmail();
         var userId = await tester.CreateFakeUserAsync(email);
@@ -548,7 +571,11 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         tester.ReuseDatabase = false;
         var git = new TestGitProvider();
         git.Release();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(git);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(git);
+        };
         await tester.Start();
         var email = NewEmail();
         var userId = await tester.CreateFakeUserAsync(email, githubVerified: false);
@@ -575,15 +602,13 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [Fact]
     public async Task RemovingUser_DoesNotCancelPreviouslyAcceptedQueuedBuild()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
-        using var docker = new FakeDocker();
-        docker.BlockVolumes();
+        TaskCompletionSource releasePreparation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sandbox = new AdmissionTestSandbox { PreparationBlockedUntil = releasePreparation.Task };
         await using var tester = Create("WhitelistAcceptedQueue");
         tester.ReuseDatabase = false;
+        tester.ConfigureServices = sandbox.Register;
         await tester.Start();
-        docker.Activate();
+        MarkExecutorReady(tester);
         var email = NewEmail();
         var userId = await tester.CreateFakeUserAsync(email);
         var slug = NewSlug();
@@ -591,33 +616,37 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await conn.NewPlugin(slug, userId);
         await SetAccess(tester, conn, false, email);
         List<FullBuildId> builds = [];
-        for (var i = 0; i < 6; i++)
-            builds.Add(new FullBuildId(slug, await conn.NewBuild(slug, new PluginBuildParameters("https://example.invalid/repository.git"))));
+        for (var i = 0; i < BuildPolicy.MaxConcurrentBuilds + 1; i++)
+            builds.Add(new FullBuildId(slug, await conn.NewBuild(slug, new PluginBuildParameters("https://github.com/example/repository"))));
         var service = tester.GetService<BuildService>();
         List<Task> pending = [];
         try
         {
-            pending.AddRange(builds.Take(5).Select(id => service.Build(id, true)));
-            await docker.WaitForCommand("volume create ", 5);
+            pending.AddRange(builds.Take(BuildPolicy.MaxConcurrentBuilds).Select(id => service.Build(id, true)));
+            await sandbox.WaitForPreparationStartsAsync(BuildPolicy.MaxConcurrentBuilds);
             var queued = service.Build(builds[^1], true);
             pending.Add(queued);
             Assert.False(queued.IsCompleted);
 
             await SetAccess(tester, conn, false, "");
-            docker.ReleaseVolumes();
+            releasePreparation.TrySetResult();
             foreach (var task in pending)
                 await Assert.ThrowsAsync<BuildServiceException>(() => task.WaitAsync(TimeSpan.FromSeconds(10)));
             var last = builds[^1];
             var error = await conn.ExecuteScalarAsync<string>(
                 "SELECT build_info->>'error' FROM builds WHERE plugin_slug = @slug AND id = @id",
                 new { slug = slug.ToString(), id = last.BuildId });
-            Assert.Equal("docker build failed", error);
-            Assert.Equal(builds.Count, (await docker.Commands()).Count(command =>
-                command.StartsWith("container start ", StringComparison.Ordinal)));
+            Assert.Equal("Plugin build failed.", error);
+            Assert.Equal(builds.Count, sandbox.StartedPreparations.Count);
+            Assert.All(builds, build =>
+            {
+                Assert.True(sandbox.StartedPreparations[build].Started);
+                Assert.True(sandbox.StartedPreparations[build].Disposed);
+            });
         }
         finally
         {
-            docker.ReleaseVolumes();
+            releasePreparation.TrySetResult();
             foreach (var task in pending)
                 try
                 {
@@ -625,10 +654,14 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
                 }
                 catch
                 {
-                    // Fake container execution intentionally fails; release every execution slot.
+                    // Fake sandbox execution intentionally fails; release every execution slot.
                 }
         }
     }
+
+    private static void MarkExecutorReady(ServerTester tester) => tester.GetService<BuildExecutorState>().MarkReady(
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "sha256:2222222222222222222222222222222222222222222222222222222222222222");
 
     private static string NewEmail() => $"whitelist-{Guid.NewGuid():N}@example.com";
     private static PluginSlug NewSlug() => new("whitelist-" + Guid.NewGuid().ToString("N")[..8]);
@@ -769,7 +802,7 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<string> _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _fetchCount;
-        public string RepositoryUrl { get; } = $"https://whitelist-{Guid.NewGuid():N}.invalid/repository.git";
+        public string RepositoryUrl { get; } = $"https://github.com/whitelist-{Guid.NewGuid():N}/repository";
         public int FetchCount => Volatile.Read(ref _fetchCount);
         public Task Entered => _entered.Task;
         public bool CanHandle(string repoUrl) => repoUrl == RepositoryUrl;
@@ -785,53 +818,4 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         public (string Owner, string RepoName)? ParseRepository(string repoUrl) => null;
     }
 
-    private sealed class FakeDocker : IDisposable
-    {
-        private readonly string _directory = Path.Combine(Path.GetTempPath(), $"plugin-builder-whitelist-{Guid.NewGuid():N}");
-        private readonly string? _originalPath = Environment.GetEnvironmentVariable("PATH");
-        private readonly string? _originalSkipBuild = Environment.GetEnvironmentVariable("DOCKER_STARTUP_SKIP_BUILD");
-        public FakeDocker()
-        {
-            if (OperatingSystem.IsWindows())
-                throw new PlatformNotSupportedException("The fake Docker executable uses a POSIX shell.");
-            Directory.CreateDirectory(_directory);
-            var executable = Path.Combine(_directory, "docker");
-            File.WriteAllText(executable, """
-                #!/bin/sh
-                set -eu
-                state="$(dirname "$0")"
-                printf '%s\n' "$*" >> "$state/commands"
-                case "$1:$2" in
-                    volume:create)
-                        for argument in "$@"; do volume="$argument"; done
-                        while [ -f "$state/block-volumes" ] && [ ! -f "$state/release-volumes" ]; do sleep 0.01; done
-                        printf '%s\n' "$volume"
-                        ;;
-                    container:create) printf '%s\n' fake-container-id ;;
-                    container:start) exit 41 ;;
-                    volume:rm|container:rm) ;;
-                    *) exit 2 ;;
-                esac
-                """);
-            File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            Environment.SetEnvironmentVariable("DOCKER_STARTUP_SKIP_BUILD", "true");
-        }
-        public void Activate() => Environment.SetEnvironmentVariable("PATH", _directory + Path.PathSeparator + _originalPath);
-        public void BlockVolumes() => File.WriteAllText(Path.Combine(_directory, "block-volumes"), "");
-        public void ReleaseVolumes() => File.WriteAllText(Path.Combine(_directory, "release-volumes"), "");
-        public Task<string[]> Commands() => File.ReadAllLinesAsync(Path.Combine(_directory, "commands"));
-        public async Task WaitForCommand(string prefix, int count = 1)
-        {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var path = Path.Combine(_directory, "commands");
-            while (!File.Exists(path) || (await File.ReadAllLinesAsync(path, timeout.Token)).Count(line => line.StartsWith(prefix, StringComparison.Ordinal)) < count)
-                await Task.Delay(10, timeout.Token);
-        }
-        public void Dispose()
-        {
-            Environment.SetEnvironmentVariable("PATH", _originalPath);
-            Environment.SetEnvironmentVariable("DOCKER_STARTUP_SKIP_BUILD", _originalSkipBuild);
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
 }

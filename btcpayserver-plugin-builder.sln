@@ -7,9 +7,14 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PluginBuilder.Tests", "Plug
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PluginBuilder", "PluginBuilder\PluginBuilder.csproj", "{A1928D9E-3939-42A7-BC39-01D7F2746C7B}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NetworkCanary", "PluginBuilder.Tests\TestData\NetworkCanary\NetworkCanary.csproj", "{C6494BDF-98A3-4AC7-94F9-46270B6A0E43}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Misc", "Misc", "{01892AE1-B084-486D-AEB8-ACA68C4FB202}"
 	ProjectSection(SolutionItems) = preProject
 		Dockerfile = Dockerfile
+		Dockerfile.broker = Dockerfile.broker
+		Dockerfile.worker = Dockerfile.worker
+		Dockerfile.proxy = Dockerfile.proxy
 		README.md = README.md
 		Cleanup.md = Cleanup.md
 		.editorconfig = .editorconfig
@@ -17,12 +22,20 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Misc", "Misc", "{01892AE1-B
 		.github\workflows\tag.yml = .github\workflows\tag.yml
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PluginBuilder.BuildBroker", "PluginBuilder.BuildBroker\PluginBuilder.BuildBroker.csproj", "{BAFA87E4-6BC6-4621-B796-2AE662A7EB00}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PluginBuilder.Builds", "PluginBuilder.Builds\PluginBuilder.Builds.csproj", "{681DB6B8-D6D1-4F26-A23D-E4EA77AE0530}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C6494BDF-98A3-4AC7-94F9-46270B6A0E43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C6494BDF-98A3-4AC7-94F9-46270B6A0E43}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C6494BDF-98A3-4AC7-94F9-46270B6A0E43}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C6494BDF-98A3-4AC7-94F9-46270B6A0E43}.Release|Any CPU.Build.0 = Release|Any CPU
 		{973D71D2-B713-4A95-A98C-D714FFB98AC6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{973D71D2-B713-4A95-A98C-D714FFB98AC6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{973D71D2-B713-4A95-A98C-D714FFB98AC6}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -31,6 +44,14 @@ Global
 		{A1928D9E-3939-42A7-BC39-01D7F2746C7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1928D9E-3939-42A7-BC39-01D7F2746C7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1928D9E-3939-42A7-BC39-01D7F2746C7B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BAFA87E4-6BC6-4621-B796-2AE662A7EB00}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BAFA87E4-6BC6-4621-B796-2AE662A7EB00}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BAFA87E4-6BC6-4621-B796-2AE662A7EB00}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BAFA87E4-6BC6-4621-B796-2AE662A7EB00}.Release|Any CPU.Build.0 = Release|Any CPU
+		{681DB6B8-D6D1-4F26-A23D-E4EA77AE0530}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{681DB6B8-D6D1-4F26-A23D-E4EA77AE0530}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{681DB6B8-D6D1-4F26-A23D-E4EA77AE0530}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{681DB6B8-D6D1-4F26-A23D-E4EA77AE0530}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
