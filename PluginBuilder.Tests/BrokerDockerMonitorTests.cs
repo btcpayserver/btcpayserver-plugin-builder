@@ -175,10 +175,10 @@ public class BrokerDockerMonitorTests
                 case "$mode" in
                   success) exit 0 ;;
                   failure) exit 7 ;;
-                  hang) exec /usr/bin/sleep 30 ;;
+                  hang) exec /bin/sleep 30 ;;
                   blocked)
                     : > "$directory/started"
-                    while [ ! -f "$directory/release" ]; do /usr/bin/sleep 0.01; done
+                    while [ ! -f "$directory/release" ]; do /bin/sleep 0.01; done
                     exit 0 ;;
                   *) exit 99 ;;
                 esac
