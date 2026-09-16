@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using PluginBuilder.Configuration;
-using PluginBuilder.Util.Extensions;
+using Serilog.Events;
 using Xunit;
 
 namespace PluginBuilder.Tests;
@@ -8,41 +8,25 @@ namespace PluginBuilder.Tests;
 public class PluginBuilderOptionsTests
 {
     [Fact]
-    public void BuildTimeoutDefaultsToFifteenMinutes()
+    public void RetiredExecutorSettingsDoNotBlockPublicConfiguration()
     {
-        var options = Configure();
+        var tokenPath = Path.Combine(Path.GetTempPath(), "plugin-builder-test-broker-token");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["BUILD_TIMEOUT_SECONDS"] = "invalid-retired-setting",
+            ["BUILD_SCRATCH_ROOT"] = "../old-scratch",
+            ["BUILD_BROKER_URL"] = "http://internal-broker:8080",
+            ["BUILD_BROKER_TOKEN_FILE"] = tokenPath,
+            ["debugloglevel"] = "Warning",
+            ["debuglogretaincount"] = "3"
+        }).Build();
 
-        Assert.Equal(TimeSpan.FromMinutes(15), options.BuildTimeout);
-    }
+        var options = PluginBuilderOptions.ConfigureDataDirAndDebugLog(configuration, null!);
 
-    [Theory]
-    [InlineData("42", 42)]
-    [InlineData("86400", 86400)]
-    public void BuildTimeoutCanBeConfigured(string value, int expectedSeconds)
-    {
-        var options = Configure(value);
-
-        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), options.BuildTimeout);
-    }
-
-    [Theory]
-    [InlineData("0")]
-    [InlineData("-1")]
-    [InlineData("not-a-number")]
-    [InlineData("86401")]
-    public void InvalidBuildTimeoutIsRejected(string value)
-    {
-        var exception = Assert.Throws<ConfigurationException>(() => Configure(value));
-
-        Assert.Equal("BUILD_TIMEOUT_SECONDS", exception.Key);
-    }
-
-    private static PluginBuilderOptions Configure(string? buildTimeoutSeconds = null)
-    {
-        var values = buildTimeoutSeconds is null
-            ? new Dictionary<string, string?>()
-            : new Dictionary<string, string?> { ["BUILD_TIMEOUT_SECONDS"] = buildTimeoutSeconds };
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
-        return PluginBuilderOptions.ConfigureDataDirAndDebugLog(configuration, null!);
+        Assert.Equal(new Uri("http://internal-broker:8080/"), options.BuildBrokerUrl);
+        Assert.Equal(tokenPath, options.BuildBrokerTokenFile);
+        Assert.Equal(LogEventLevel.Warning, options.DebugLogLevel);
+        Assert.Equal(3, options.LogRetainCount);
+        Assert.Equal(Path.Combine(options.DataDir, "PluginData"), options.PluginDataDir);
     }
 }

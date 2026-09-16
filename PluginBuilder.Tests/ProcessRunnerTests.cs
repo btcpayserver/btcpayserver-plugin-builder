@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
+using PluginBuilder.BuildBroker;
+
 namespace PluginBuilder.Tests;
 
 public class ProcessRunnerTests

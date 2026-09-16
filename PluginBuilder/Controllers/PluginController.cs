@@ -16,6 +16,8 @@ using PluginBuilder.Util.Extensions;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Plugin;
 
+using PluginBuilder.Builds.Services;
+
 namespace PluginBuilder.Controllers;
 
 [Authorize(Policy = Policies.OwnPlugin)]

@@ -2,6 +2,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 
 WORKDIR /source
+COPY PluginBuilder.Builds/. PluginBuilder.Builds/.
 COPY PluginBuilder/. PluginBuilder/.
 
 ARG CONFIGURATION_NAME=Release
@@ -14,30 +15,16 @@ ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 WORKDIR /datadir
 WORKDIR /app
-ENV PB_DATADIR=/datadir
+ENV XDG_CONFIG_HOME=/datadir
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 VOLUME /datadir
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install curl
+# The public application calls the restricted build broker over HTTP. It has no
+# Docker client and must not receive a Docker socket or host scratch mounts.
 RUN apt-get -qq update \
-  && apt-get -y -qq install apt-transport-https ca-certificates curl gnupg lsb-release --no-install-recommends \
-  && rm -rf /var/lib/apt/lists/*
-
-# Install docker
-RUN install -m 0755 -d /etc/apt/keyrings && \
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-      gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
-    chmod a+r /etc/apt/keyrings/docker.gpg && \
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-      https://download.docker.com/linux/ubuntu \
-      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-      tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-RUN apt-get -qq update \
-  && apt-get -y -qq install docker-ce-cli docker-buildx-plugin docker-compose-plugin \
+  && apt-get -y -qq install ca-certificates curl --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder "/app" .

@@ -27,6 +27,8 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Extensions.Logging;
 
+using PluginBuilder.Builds.Services;
+
 namespace PluginBuilder;
 
 public class Program
@@ -76,9 +78,6 @@ public class Program
     {
         builder.Configuration.AddEnvironmentVariables("PB_");
 
-#if DEBUG
-        builder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Trace);
-#endif
         var verbose = builder.Configuration.GetValue<bool>("verbose");
         if (!verbose)
             builder.Logging.AddFilter("Events", LogLevel.Warning);
@@ -155,6 +154,9 @@ public class Program
 
         var pbOptions = PluginBuilderOptions.ConfigureDataDirAndDebugLog(configuration, env);
         services.AddSingleton(pbOptions);
+        // Broker lease cleanup has its own two-minute bound. Give hosted shutdown
+        // enough time to finish it before disposing its HTTP client and data services.
+        services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromMinutes(3));
 
         services.AddDataProtection()
             .SetApplicationName("Plugin Builder")
@@ -182,7 +184,7 @@ public class Program
         });
 
         services.AddHostedService<DatabaseStartupHostedService>();
-        services.AddHostedService<DockerStartupHostedService>();
+        services.AddHostedService<BuildBrokerMonitor>();
         services.AddHostedService<AzureStartupHostedService>();
         services.AddHostedService<PluginHubHostedService>();
         services.AddHostedService<PluginCleanupHostedService>();
@@ -198,8 +200,10 @@ public class Program
         services.AddSingleton<DBConnectionFactory>();
         services.AddScoped<PluginCleanupRunner>();
         services.AddScoped<UserCleanupRunner>();
+        services.AddSingleton<BuildExecutorState>();
+        services.AddSingleton<RemoteBuildSandbox>();
+        services.AddSingleton<IBuildSandbox>(provider => provider.GetRequiredService<RemoteBuildSandbox>());
         services.AddSingleton<BuildService>();
-        services.AddSingleton<ProcessRunner>();
         services.AddSingleton<GPGKeyService>();
         services.AddSingleton<AzureStorageClient>();
         services.AddSingleton<ServerEnvironment>();
