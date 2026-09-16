@@ -828,7 +828,7 @@ public class BuildBrokerSecurityTests
         private WebApplication _app = null!;
         private Uri _address = null!;
         private string? _instanceId;
-        public string Root { get; } = Path.Combine(Path.GetTempPath(), "pb-broker-test-" + Guid.NewGuid().ToString("N"));
+        public string Root { get; } = Path.Combine(TestPaths.GetPhysicalDirectoryPath(Path.GetTempPath()), "pb-broker-test-" + Guid.NewGuid().ToString("N"));
         public string Secret { get; } = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
         public string TokenPath => Path.Combine(Root, "broker.token");
         public FakeSandbox Sandbox { get; private set; } = null!;
