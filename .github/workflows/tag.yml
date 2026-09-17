@@ -1,15 +1,32 @@
-name: Publish Docker image
+name: Publish Docker images
 
 on:
   push:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+*
-env:
-  DOCKERHUB_REPO: btcpayserver/btcpayserver-plugin-builder
 jobs:
   push_to_registry:
-    name: Push Docker image to Docker Hub
+    name: Push ${{ matrix.name }} image to Docker Hub
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: app
+            image: btcpayserver/btcpayserver-plugin-builder
+            dockerfile: Dockerfile
+            context: .
+          - name: broker
+            image: btcpayserver/btcpayserver-plugin-builder-broker
+            dockerfile: Dockerfile.broker
+            context: .
+          - name: worker
+            image: btcpayserver/btcpayserver-plugin-builder-worker
+            dockerfile: Dockerfile.worker
+            context: PluginBuilder
+          - name: proxy
+            image: btcpayserver/btcpayserver-plugin-builder-proxy
+            dockerfile: Dockerfile.proxy
+            context: PluginBuilder
     steps:
       - name: Check out the repo
         uses: actions/checkout@v3
@@ -26,12 +43,14 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4.1.1
         with:
-          images: ${{ env.DOCKERHUB_REPO }}
+          images: ${{ matrix.image }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v3.2.0
         with:
-          context: .
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

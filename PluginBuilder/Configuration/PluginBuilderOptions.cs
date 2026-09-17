@@ -48,8 +48,14 @@ public sealed class PluginBuilderOptions
         var brokerTokenFile = conf["BUILD_BROKER_TOKEN_FILE"]?.Trim();
         if (string.IsNullOrEmpty(brokerTokenFile))
             brokerTokenFile = null;
-        else if (brokerTokenFile.Any(char.IsControl) || !Path.IsPathFullyQualified(brokerTokenFile))
+        else if (brokerTokenFile.Any(char.IsControl))
             throw new ConfigurationException("BUILD_BROKER_TOKEN_FILE", "Must be an absolute secret-file path");
+        else if (!Path.IsPathFullyQualified(brokerTokenFile))
+        {
+            if (env?.IsDevelopment() != true)
+                throw new ConfigurationException("BUILD_BROKER_TOKEN_FILE", "Must be an absolute secret-file path");
+            brokerTokenFile = Path.GetFullPath(Path.Combine(env.ContentRootPath, brokerTokenFile));
+        }
 
         return new PluginBuilderOptions
         {
