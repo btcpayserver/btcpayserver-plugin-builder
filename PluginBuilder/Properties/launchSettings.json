@@ -9,6 +9,8 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "PB_POSTGRES": "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=61932;Database=btcpayplugin",
         "PB_STORAGE_CONNECTION_STRING": "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==",
+        "PB_BUILD_BROKER_URL": "http://127.0.0.1:8080",
+        "PB_BUILD_BROKER_TOKEN_FILE": "../PluginBuilder.Tests/dev-broker-token",
         "PB_CHEAT_MODE": "true",
         "PB_ENABLE_LOCAL_ARTIFACT_DOWNLOAD_PROXY": "true",
         "PB_DEBUGLOG": "debug.log"
