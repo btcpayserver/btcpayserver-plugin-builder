@@ -31,8 +31,11 @@
     <div class="d-flex gap-3 mt-3 mt-sm-0">
         @switch (Model.State)
         {
+            case "queued":
             case "running":
-                <span class="badge bg-info">@Model.State</span>
+            case "waiting-upload":
+            case "uploading":
+                <span id="BuildState" class="badge bg-info">@Model.State</span>
                 break;
             case "removed":
                 <span class="badge bg-warning">@Model.State</span>
@@ -263,11 +266,29 @@
     </nav>
     <div class="tab-content" id="pills-tabContent">
         <div class="tab-pane show active" id="build-logs-pane" role="tabpanel" aria-labelledby="build-logs-tab">
-            <pre><code class="text hljs" id="Logs">@Model.Logs</code>
-                @if (string.IsNullOrEmpty(Model.Logs))
+            @if (Model.State == "failed")
+            {
+                <div class="alert alert-danger" role="alert">@(string.IsNullOrWhiteSpace(Model.Error) ? "Build failed." : Model.Error)</div>
+            }
+            <pre><code class="text hljs" id="Logs" data-build-id="@Model.FullBuildId">@Model.Logs</code></pre>
+            @if (string.IsNullOrEmpty(Model.Logs))
+            {
+                @if (Model.State is "queued" or "running" or "waiting-upload" or "uploading")
                 {
-                    <div class="d-flex align-items-center gap-2 p-3"><div class="spinner-border spinner-border-sm" role="status"></div> Build running...</div>
-                }</pre>
+                    var progressMessage = Model.State switch
+                    {
+                        "queued" => "Build queued...",
+                        "waiting-upload" => "Waiting to upload...",
+                        "uploading" => "Uploading build...",
+                        _ => "Build running..."
+                    };
+                    <div id="BuildLogPlaceholder" class="d-flex align-items-center gap-2 p-3"><div class="spinner-border spinner-border-sm" role="status"></div><span id="BuildProgressMessage">@progressMessage</span></div>
+                }
+                else
+                {
+                    <div id="BuildLogPlaceholder" class="text-muted p-3">No build logs available.</div>
+                }
+            }
         </div>
         <div class="tab-pane" id="build-info-pane" role="tabpanel" aria-labelledby="manifest-info-tab">
             <pre><code class="json hljs" id="BuildInfo">@(string.IsNullOrEmpty(Model.BuildInfo) ? "{}" : Model.BuildInfo)</code></pre>

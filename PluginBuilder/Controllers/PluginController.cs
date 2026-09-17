@@ -622,7 +622,7 @@ public class PluginController(
         vm.Version = PluginVersionViewModel.CreateOrNull(manifest?.Version?.ToString(), row.published, row.pre_release, row.state, pluginSlug.ToString());
         vm.RepositoryLink = GetUrl(buildInfo, gitHostingProviderFactory);
         vm.DownloadLink = buildInfo?.Url;
-        //vm.Error = buildInfo?.Error;
+        vm.Error = buildInfo?.Error;
         vm.RequireGPGSignatureForRelease = pluginSetting?.RequireGPGSignatureForRelease ?? false;
         vm.ManifestInfoSha256Hash = ManifestHelper.GetManifestHash(ManifestHelper.NiceJson(row.manifest_info), vm.RequireGPGSignatureForRelease);
         vm.Published = row.published;
