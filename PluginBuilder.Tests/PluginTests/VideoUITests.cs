@@ -35,7 +35,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await t.VerifyUserAccounts(user);
 
         var pluginSlug = "video-test-" + PlaywrightTester.GetRandomUInt256()[..8];
-        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(
+        var fullBuildId = await t.Server.CreatePublishedPluginAsync(
             await conn.QuerySingleAsync<string>("SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"Email\" = @Email", new { Email = user }),
             pluginSlug);
 
@@ -101,7 +101,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
 
         var pluginSlug = "video-update-" + PlaywrightTester.GetRandomUInt256()[..8];
         var userId = await conn.QuerySingleAsync<string>("SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"Email\" = @Email", new { Email = user });
-        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+        var fullBuildId = await t.Server.CreatePublishedPluginAsync(userId, pluginSlug);
 
         // Release and list the plugin
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
@@ -160,7 +160,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
 
         var pluginSlug = "video-remove-" + PlaywrightTester.GetRandomUInt256()[..8];
         var userId = await conn.QuerySingleAsync<string>("SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"Email\" = @Email", new { Email = user });
-        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+        var fullBuildId = await t.Server.CreatePublishedPluginAsync(userId, pluginSlug);
 
         // Release and list the plugin
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
@@ -215,7 +215,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         await t.VerifyUserAccounts(user);
 
         var pluginSlug = "video-validation-" + PlaywrightTester.GetRandomUInt256()[..8];
-        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(
+        var fullBuildId = await t.Server.CreatePublishedPluginAsync(
             await conn.QuerySingleAsync<string>("SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"Email\" = @Email", new { Email = user }),
             pluginSlug);
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
@@ -255,7 +255,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         // Create plugin owner
         var ownerId = await t.Server.CreateFakeUserAsync("owner@videotest.com", confirmEmail: true, githubVerified: true);
         var pluginSlug = "admin-video-" + PlaywrightTester.GetRandomUInt256()[..8];
-        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await t.Server.CreatePublishedPluginAsync(ownerId, pluginSlug);
 
         // Release and list the plugin
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
@@ -324,7 +324,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         foreach (var testCase in testCases)
         {
             var pluginSlug = $"ytf-{testCase.Format.ToLowerInvariant().Replace(" ", "-")}-{PlaywrightTester.GetRandomUInt256()[..5]}";
-            var fullBuildId = await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+            var fullBuildId = await t.Server.CreatePublishedPluginAsync(userId, pluginSlug);
 
             // Release and list
             var manifestInfoJson = await conn.QuerySingleAsync<string>(
@@ -362,7 +362,7 @@ public class VideoUITests(ITestOutputHelper output) : PageTest
         // Create plugin without video URL
         var ownerId = await t.Server.CreateFakeUserAsync(confirmEmail: true, githubVerified: true);
         var pluginSlug = "no-video-" + PlaywrightTester.GetRandomUInt256()[..8];
-        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await t.Server.CreatePublishedPluginAsync(ownerId, pluginSlug);
 
         // Release and list the plugin
         var manifestInfoJson = await conn.QuerySingleAsync<string>(

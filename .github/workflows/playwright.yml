@@ -50,24 +50,27 @@ jobs:
           export PATH="$PATH:$HOME/.dotnet/tools"
 
       - name: Start Docker containers
-        env:
-          # Enable BuildKit for faster builds and better layer caching within the run
-          # Note: This does NOT persist cache between GitHub Actions runs (ephemeral runners)
-          # but provides ~5-10s speed improvement from BuildKit's optimized build engine
-          DOCKER_BUILDKIT: 1
-          COMPOSE_DOCKER_CLI_BUILD: 1
-        run: docker compose -f PluginBuilder.Tests/docker-compose.yml up -d --build
+        run: docker compose -f PluginBuilder.Tests/docker-compose.yml up -d
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
       - name: Build plugin-builder image once
-        env:
-          DOCKER_BUILDKIT: 1
-        run: docker build -f PluginBuilder/PluginBuilder.Dockerfile -t plugin-builder PluginBuilder
+        uses: docker/build-push-action@v7
+        with:
+          context: PluginBuilder
+          file: PluginBuilder/PluginBuilder.Dockerfile
+          tags: plugin-builder
+          load: true
+          push: false
+          cache-from: type=gha,scope=plugin-builder
+          cache-to: type=gha,mode=max,scope=plugin-builder
 
       - name: Run tests
         env:
           DOCKER_STARTUP_SKIP_BUILD: "true"
           GITHUB_TOKEN: ${{ github.token }}
-        run: dotnet test PluginBuilder.Tests --verbosity normal
+        run: dotnet test PluginBuilder.Tests --configuration Release --no-build --verbosity normal
 
       - name: Cleanup Docker
         if: always()
