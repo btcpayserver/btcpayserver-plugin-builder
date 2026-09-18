@@ -1,11 +1,7 @@
 using System.Diagnostics;
+using PluginBuilder.Builds;
 
-namespace PluginBuilder;
-
-public interface IOutputCapture
-{
-    void AddLine(string line);
-}
+namespace PluginBuilder.BuildBroker;
 
 public class OutputCapture : IOutputCapture
 {
@@ -30,29 +26,16 @@ public class OutputCapture : IOutputCapture
 public class ProcessSpec
 {
     public string? Executable { get; set; }
-    public string? WorkingDirectory { get; set; }
-    public ProcessSpecEnvironmentVariables EnvironmentVariables { get; } = new();
-
     public IReadOnlyList<string>? Arguments { get; set; }
     public string? EscapedArguments { get; set; }
     public IOutputCapture? OutputCapture { get; set; }
     public IOutputCapture? ErrorCapture { get; set; }
 
-    public DataReceivedEventHandler? OnOutput { get; set; }
-    public DataReceivedEventHandler? OnError { get; set; }
     public string? Input { get; set; }
-
-    public sealed class ProcessSpecEnvironmentVariables : Dictionary<string, string>
-    {
-        public List<string> DotNetStartupHooks { get; } = new();
-        public List<string> AspNetCoreHostingStartupAssemblies { get; } = new();
-    }
 }
 
 public class ProcessRunner
 {
-    private static readonly Func<string, string?> _getEnvironmentVariable = static key => Environment.GetEnvironmentVariable(key);
-
     public ProcessRunner(ILogger<ProcessRunner> logger)
     {
         Logger = logger;
@@ -85,12 +68,6 @@ public class ProcessRunner
                 };
             }
 
-            if (processSpec.OnOutput != null)
-            {
-                readOutput = true;
-                process.OutputDataReceived += processSpec.OnOutput;
-            }
-
             if (processSpec.ErrorCapture is not null)
             {
                 readError = true;
@@ -99,12 +76,6 @@ public class ProcessRunner
                     if (!string.IsNullOrEmpty(a.Data))
                         processSpec.ErrorCapture.AddLine(a.Data);
                 };
-            }
-
-            if (processSpec.OnError is not null)
-            {
-                readError = true;
-                process.ErrorDataReceived += processSpec.OnError;
             }
 
             if (Logger.IsEnabled(LogLevel.Trace))
@@ -158,9 +129,8 @@ public class ProcessRunner
             {
                 FileName = processSpec.Executable,
                 UseShellExecute = false,
-                WorkingDirectory = processSpec.WorkingDirectory,
-                RedirectStandardOutput = processSpec.OutputCapture is not null || processSpec.OnOutput is not null || Logger.IsEnabled(LogLevel.Trace),
-                RedirectStandardError = processSpec.ErrorCapture is not null || processSpec.OnError is not null || Logger.IsEnabled(LogLevel.Trace),
+                RedirectStandardOutput = processSpec.OutputCapture is not null || Logger.IsEnabled(LogLevel.Trace),
+                RedirectStandardError = processSpec.ErrorCapture is not null || Logger.IsEnabled(LogLevel.Trace),
                 RedirectStandardInput = processSpec.Input is not null
             }
         };
@@ -171,42 +141,7 @@ public class ProcessRunner
             for (var i = 0; i < processSpec.Arguments.Count; i++)
                 process.StartInfo.ArgumentList.Add(processSpec.Arguments[i]);
 
-        foreach (var env in processSpec.EnvironmentVariables)
-            process.StartInfo.Environment.Add(env.Key, env.Value);
-
-        SetEnvironmentVariable(process.StartInfo, "DOTNET_STARTUP_HOOKS", processSpec.EnvironmentVariables.DotNetStartupHooks, Path.PathSeparator,
-            _getEnvironmentVariable);
-        SetEnvironmentVariable(process.StartInfo, "ASPNETCORE_HOSTINGSTARTUPASSEMBLIES", processSpec.EnvironmentVariables.AspNetCoreHostingStartupAssemblies,
-            ';', _getEnvironmentVariable);
-
         return process;
-    }
-
-    internal static void SetEnvironmentVariable(ProcessStartInfo processStartInfo, string envVarName, List<string> envVarValues, char separator,
-        Func<string, string?> getEnvironmentVariable)
-    {
-        if (envVarValues is { Count: 0 })
-            return;
-
-        var existing = getEnvironmentVariable(envVarName);
-        if (processStartInfo.Environment.TryGetValue(envVarName, out var value))
-            existing = CombineEnvironmentVariable(existing, value, separator);
-
-        string result;
-        if (!string.IsNullOrEmpty(existing))
-            result = existing + separator + string.Join(separator, envVarValues);
-        else
-            result = string.Join(separator, envVarValues);
-
-        processStartInfo.EnvironmentVariables[envVarName] = result;
-
-        static string? CombineEnvironmentVariable(string? a, string? b, char separator)
-        {
-            if (!string.IsNullOrEmpty(a))
-                return !string.IsNullOrEmpty(b) ? a + separator + b : a;
-
-            return b;
-        }
     }
 
     private class ProcessState : IDisposable

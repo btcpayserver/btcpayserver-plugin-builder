@@ -88,7 +88,6 @@ public class CreatePluginUITests(ITestOutputHelper output) : PageTest
         {
             services.RemoveAll<AzureStorageClient>();
             services.AddSingleton<TestAzureStorageClient>(sp => new TestAzureStorageClient(
-                sp.GetRequiredService<ProcessRunner>(),
                 sp.GetRequiredService<IConfiguration>())
             {
                 ThrowOnUpload = throwOnUpload
@@ -111,8 +110,8 @@ public class CreatePluginUITests(ITestOutputHelper output) : PageTest
         await tester.VerifyUserAccounts(user);
     }
 
-    private sealed class TestAzureStorageClient(ProcessRunner processRunner, IConfiguration configuration)
-        : AzureStorageClient(processRunner, configuration)
+    private sealed class TestAzureStorageClient(IConfiguration configuration)
+        : AzureStorageClient(configuration)
     {
         public bool ThrowOnUpload { get; init; }
         public List<string> UploadedBlobNames { get; } = [];

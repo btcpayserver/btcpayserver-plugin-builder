@@ -10,6 +10,8 @@ using Xunit;
 using Xunit.Abstractions;
 using static Microsoft.Playwright.Assertions;
 
+using PluginBuilder.BuildBroker.HostedServices;
+
 namespace PluginBuilder.Tests.AdminTests;
 
 [Collection("Playwright Tests")]

@@ -18,6 +18,8 @@ using PluginBuilder.ViewModels.Admin;
 using Xunit;
 using Xunit.Abstractions;
 
+using PluginBuilder.BuildBroker.HostedServices;
+
 namespace PluginBuilder.Tests.PluginTests;
 
 public class UserCleanupTests(ITestOutputHelper logs) : UnitTestBase(logs)

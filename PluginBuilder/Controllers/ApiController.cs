@@ -16,6 +16,8 @@ using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 
+using PluginBuilder.Builds.Services;
+
 namespace PluginBuilder.Controllers;
 
 [ApiController]

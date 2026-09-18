@@ -1,4 +1,3 @@
-using System.Globalization;
 using Serilog.Events;
 using PluginBuilder.Util.Extensions;
 
@@ -6,11 +5,9 @@ namespace PluginBuilder.Configuration;
 
 public sealed class PluginBuilderOptions
 {
-    private const int DefaultBuildTimeoutSeconds = 15 * 60;
-    private const int MaxBuildTimeoutSeconds = 24 * 60 * 60;
-
     public required string DataDir { get; init; }
-    public TimeSpan BuildTimeout { get; init; } = TimeSpan.FromSeconds(DefaultBuildTimeoutSeconds);
+    public Uri BuildBrokerUrl { get; init; } = new("http://build-broker:8080/");
+    public string? BuildBrokerTokenFile { get; init; }
     public string? DebugLogFile { get; init; }
     public LogEventLevel? DebugLogLevel { get; init; }
     public int LogRetainCount { get; init; } = 1;
@@ -47,21 +44,37 @@ public sealed class PluginBuilderOptions
         if (int.TryParse(retainRaw, out var retainParsed) && retainParsed > 0)
             retain = retainParsed;
 
-        var buildTimeoutSeconds = DefaultBuildTimeoutSeconds;
-        var buildTimeoutRaw = conf["BUILD_TIMEOUT_SECONDS"];
-        if (!string.IsNullOrWhiteSpace(buildTimeoutRaw) &&
-            (!int.TryParse(buildTimeoutRaw, NumberStyles.None, CultureInfo.InvariantCulture, out buildTimeoutSeconds) ||
-             buildTimeoutSeconds is <= 0 or > MaxBuildTimeoutSeconds))
-            throw new ConfigurationException("BUILD_TIMEOUT_SECONDS",
-                $"Must be a positive integer no greater than {MaxBuildTimeoutSeconds}");
+        var brokerUrl = ParseBuildBrokerUrl(conf["BUILD_BROKER_URL"] ?? "http://build-broker:8080/");
+        var brokerTokenFile = conf["BUILD_BROKER_TOKEN_FILE"]?.Trim();
+        if (string.IsNullOrEmpty(brokerTokenFile))
+            brokerTokenFile = null;
+        else if (brokerTokenFile.Any(char.IsControl))
+            throw new ConfigurationException("BUILD_BROKER_TOKEN_FILE", "Must be an absolute secret-file path");
+        else if (!Path.IsPathFullyQualified(brokerTokenFile))
+        {
+            if (env?.IsDevelopment() != true)
+                throw new ConfigurationException("BUILD_BROKER_TOKEN_FILE", "Must be an absolute secret-file path");
+            brokerTokenFile = Path.GetFullPath(Path.Combine(env.ContentRootPath, brokerTokenFile));
+        }
 
         return new PluginBuilderOptions
         {
             DataDir = dataDir,
-            BuildTimeout = TimeSpan.FromSeconds(buildTimeoutSeconds),
+            BuildBrokerUrl = brokerUrl,
+            BuildBrokerTokenFile = brokerTokenFile,
             DebugLogFile = logFile,
             DebugLogLevel = level,
             LogRetainCount = retain
         };
+    }
+
+    public static Uri ParseBuildBrokerUrl(string value)
+    {
+        if (value.Any(char.IsControl) || !Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("http" or "https") || string.IsNullOrEmpty(uri.Host) ||
+            !string.IsNullOrEmpty(uri.UserInfo) || uri.AbsolutePath != "/" ||
+            !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
+            throw new ConfigurationException("BUILD_BROKER_URL", "Must be a fixed HTTP(S) origin without credentials, path, query, or fragment");
+        return uri;
     }
 }

@@ -1,0 +1,40 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+WORKDIR /source
+COPY PluginBuilder.Builds/. PluginBuilder.Builds/.
+COPY PluginBuilder.BuildBroker/. PluginBuilder.BuildBroker/.
+# The broker references only the small shared build-contracts library, not the
+# public web project. Worker/proxy assets belong to their separate images.
+
+ARG CONFIGURATION_NAME=Release
+ARG VERSION
+RUN dotnet publish PluginBuilder.BuildBroker/PluginBuilder.BuildBroker.csproj \
+    -p:Version=${VERSION} \
+    --output /app/ --configuration ${CONFIGURATION_NAME}
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ASPNETCORE_URLS=http://+:8080
+WORKDIR /app
+
+# Only this internal service receives the Docker socket.
+RUN apt-get -qq update \
+    && apt-get -y -qq install ca-certificates curl gnupg --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+RUN install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+      gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+    chmod a+r /etc/apt/keyrings/docker.gpg && \
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+      https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      tee /etc/apt/sources.list.d/docker.list > /dev/null
+RUN apt-get -qq update \
+    && apt-get -y -qq install docker-ce-cli --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/ .
+ENTRYPOINT ["/app/PluginBuilder.BuildBroker"]

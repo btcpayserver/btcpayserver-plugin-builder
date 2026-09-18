@@ -2,6 +2,7 @@
     window.hljs.highlightAll();
 
     const $logs = document.getElementById('Logs');
+    const fullBuildId = $logs.dataset.buildId;
     const $buildInfo = document.getElementById('BuildInfo');
     const $manifestInfo = document.getElementById('ManifestInfo');
 
@@ -21,9 +22,23 @@
         }
     }
 
-    connection.on('build-changed', ({eventName, buildInfo, manifestInfo}) => {
-        if (['running', 'failed', 'uploaded', 'removed'].includes(eventName)) {
+    connection.on('build-changed', event => {
+        if (event.fullBuildId !== fullBuildId) return;
+        const {eventName, buildInfo, manifestInfo} = event;
+        if (['failed', 'uploaded', 'removed'].includes(eventName)) {
             return window.location.reload();
+        }
+        const progressMessage = {
+            'queued': 'Build queued...',
+            'running': 'Build running...',
+            'waiting-upload': 'Waiting to upload...',
+            'uploading': 'Uploading build...'
+        }[eventName];
+        if (progressMessage) {
+            const $state = document.getElementById('BuildState');
+            const $progress = document.getElementById('BuildProgressMessage');
+            if ($state) $state.textContent = eventName;
+            if ($progress) $progress.textContent = progressMessage;
         }
         if (buildInfo) {
             mergeJson($buildInfo, buildInfo);
@@ -34,6 +49,8 @@
     });
 
     connection.on('build-log-updated', event => {
+        if (event.fullBuildId !== fullBuildId) return;
+        document.getElementById('BuildLogPlaceholder')?.remove();
         if ($logs.innerText.trim().length) {
             $logs.innerText += '\n';
         }

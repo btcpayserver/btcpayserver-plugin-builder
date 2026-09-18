@@ -2,11 +2,20 @@
 
 This project hosts a server with a front end which can be used to build BTCPay Server plugins and store the binaries on some storage.
 You can find our live server on [https://plugin-builder.btcpayserver.org/](https://plugin-builder.btcpayserver.org/), that is updated through
-[btcpayserver-infra](https://github.com/btcpayserver/btcpayserver-infra) repository.
+[btcpayserver-plugin-builder-infra](https://github.com/btcpayserver/btcpayserver-plugin-builder-infra) repository.
+
+## Build architecture
+
+[Build isolation](docs/build-isolation.md) explains the web application/broker boundary,
+the build lifecycle, gVisor, restricted networking, artifact publication and failure handling.
+For local setup, see [local development](PluginBuilder.Tests/README.md).
 
 ## Prerequisite
 
-It assumes you installed docker on your system.
+The public application requires PostgreSQL, artifact storage, and the internal
+build broker. Docker and the `runsc` runtime belong on the broker's Linux host,
+not in the public application container. The [infrastructure README](https://github.com/btcpayserver/btcpayserver-plugin-builder-infra#prerequisites)
+covers host preparation, firewall rules, deployment and migration.
 
 ## Configuration
 
@@ -14,11 +23,12 @@ All parameters are configured via environment variables.
 
 * `PB_POSTGRES`: Connection to a postgres database (example: `User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=61932;Database=btcpayplugin`)
 * `PB_STORAGE_CONNECTION_STRING`: Connection string to azure storage to store build results (example: `BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==`)
-* `PB_BUILD_TIMEOUT_SECONDS`: Maximum execution time for a plugin worker after its Docker container starts (default: `900`, maximum: `86400`). Docker resource creation and cleanup are outside this limit.
+* `PB_BUILD_BROKER_URL`: Internal broker URL (for example, `http://build-broker:8080`). The API does not fall back to local Docker if the broker is absent or unavailable.
+* `PB_BUILD_BROKER_TOKEN_FILE`: Path to the shared broker authentication token file. Deployments require an absolute path mounted read-only into only the application and broker. The development profile resolves its relative fixture path against the project directory. Do not put a production token value in environment variables or source control.
 * `PB_CHEAT_MODE`: If set to `true`, it's considered that the server is running in a development environment and will allow to bypass some security checks (right now only registering admin account).
 * `PB_ENABLE_LOCAL_ARTIFACT_DOWNLOAD_PROXY`: If set to `true`, loopback artifact URLs can be proxied through the API download endpoint for local development.
 * `ASPNETCORE_URLS`: The url the web server will be listening (example: `http://127.0.0.1:8080`)
-* `PB_DATADIR`: Where some persistent data get saved (example: `/datadir`)
+* `XDG_CONFIG_HOME`: Parent of the application's persistent data directory on Linux (example: `/datadir`, resulting in `/datadir/BTCPayServer-PluginBuilder`). Keep deployment mounts, including the private broker-download buffer, aligned with this setting.
 
 ## API
 

@@ -1,16 +1,23 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
+using PluginBuilder.Events;
+using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
 using Xunit;
 using Xunit.Abstractions;
+
+using PluginBuilder.Builds.Services;
 
 namespace PluginBuilder.Tests;
 
@@ -102,7 +109,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var tester = Create("BuildsApiFlag");
         tester.ReuseDatabase = false;
         var gitProvider = new BlockingGitHostingProvider();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(gitProvider);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(gitProvider);
+        };
         await tester.Start();
 
         var email = $"build-disabled-{Guid.NewGuid():N}@example.com";
@@ -133,7 +144,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var tester = Create("BuildsUiFlag");
         tester.ReuseDatabase = false;
         var gitProvider = new BlockingGitHostingProvider();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(gitProvider);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(gitProvider);
+        };
         await tester.Start();
 
         var email = $"build-ui-disabled-{Guid.NewGuid():N}@example.com";
@@ -196,7 +211,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var tester = Create("BuildApiRace");
         tester.ReuseDatabase = false;
         var gitProvider = new BlockingGitHostingProvider();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(gitProvider);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(gitProvider);
+        };
         await tester.Start();
 
         var email = $"build-api-race-{Guid.NewGuid():N}@example.com";
@@ -219,7 +238,11 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var tester = Create("BuildUiRace");
         tester.ReuseDatabase = false;
         var gitProvider = new BlockingGitHostingProvider();
-        tester.ConfigureServices = services => services.AddSingleton<IGitHostingProvider>(gitProvider);
+        tester.ConfigureServices = services =>
+        {
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(gitProvider);
+        };
         await tester.Start();
 
         var email = $"build-ui-race-{Guid.NewGuid():N}@example.com";
@@ -394,256 +417,149 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Fact]
-    public async Task NewBuildsDisabled_StopsAlreadyQueuedBuildBeforeDockerWork()
+    public async Task NewBuildsDisabled_StopsAlreadyQueuedBuildBeforeSandboxPreparation()
     {
-        if (OperatingSystem.IsWindows())
-            return;
+        TaskCompletionSource releasePreparation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sandbox = new AdmissionTestSandbox { PreparationBlockedUntil = releasePreparation.Task };
+        await using var tester = Create("BuildsQueuedFlag");
+        tester.ReuseDatabase = false;
+        tester.ConfigureServices = sandbox.Register;
+        await tester.Start();
+        tester.GetService<BuildExecutorState>().MarkReady(
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222");
 
-        var tempDirectory = Path.Combine(Path.GetTempPath(), $"plugin-builder-queued-flag-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDirectory);
-        var dockerPath = Path.Combine(tempDirectory, "docker");
-        await File.WriteAllTextAsync(dockerPath, """
-            #!/bin/sh
-            set -eu
-            state="${PB_FAKE_DOCKER_STATE:?}"
-            printf '%s\n' "$*" >> "$state/commands"
+        var ownerId = await tester.CreateFakeUserAsync();
+        var pluginSlug = new PluginSlug("queued-disabled-" + Guid.NewGuid().ToString("N")[..8]);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(pluginSlug, ownerId);
+        List<FullBuildId> fullBuildIds = [];
+        for (var i = 0; i < BuildPolicy.MaxConcurrentBuilds + 1; i++)
+        {
+            var buildId = await conn.NewBuild(
+                pluginSlug,
+                new PluginBuildParameters("https://github.com/example/repository"));
+            fullBuildIds.Add(new FullBuildId(pluginSlug, buildId));
+        }
 
-            case "$1:$2" in
-                volume:create)
-                    for argument in "$@"; do volume="$argument"; done
-                    while [ ! -f "$state/release-blockers" ]; do sleep 0.01; done
-                    printf '%s\n' "$volume"
-                    ;;
-                container:create)
-                    exit 41
-                    ;;
-                container:rm|volume:rm)
-                    ;;
-                *)
-                    exit 2
-                    ;;
-            esac
-            """);
-        File.SetUnixFileMode(
-            dockerPath,
-            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-
-        var originalPath = Environment.GetEnvironmentVariable("PATH");
-        var originalSkipBuild = Environment.GetEnvironmentVariable("DOCKER_STARTUP_SKIP_BUILD");
-        var originalFakeState = Environment.GetEnvironmentVariable("PB_FAKE_DOCKER_STATE");
+        var queuedBuild = fullBuildIds[^1];
+        var buildService = tester.GetService<BuildService>();
+        Task[] blockerTasks = [];
+        Task? queuedTask = null;
         try
         {
-            Environment.SetEnvironmentVariable("DOCKER_STARTUP_SKIP_BUILD", "true");
-            await using var tester = Create("BuildsQueuedFlag");
-            tester.ReuseDatabase = false;
-            await tester.Start();
+            blockerTasks = fullBuildIds.Take(BuildPolicy.MaxConcurrentBuilds)
+                .Select(buildService.Build)
+                .ToArray();
+            await sandbox.WaitForPreparationStartsAsync(BuildPolicy.MaxConcurrentBuilds);
 
-            Environment.SetEnvironmentVariable("PATH", tempDirectory + Path.PathSeparator + originalPath);
-            Environment.SetEnvironmentVariable("PB_FAKE_DOCKER_STATE", tempDirectory);
+            queuedTask = buildService.Build(queuedBuild);
+            Assert.False(queuedTask.IsCompleted);
 
-            var ownerId = await tester.CreateFakeUserAsync();
-            var pluginSlug = new PluginSlug("queued-disabled-" + Guid.NewGuid().ToString("N")[..8]);
-            await using var conn = await tester.GetService<DBConnectionFactory>().Open();
-            await conn.NewPlugin(pluginSlug, ownerId);
-            List<FullBuildId> fullBuildIds = [];
-            for (var i = 0; i < 6; i++)
+            await DisableFeature(tester, conn, SettingsKeys.NewBuildsEnabled);
+            releasePreparation.TrySetResult();
+            await queuedTask.WaitAsync(TimeSpan.FromSeconds(10));
+            await Task.WhenAll(blockerTasks).WaitAsync(TimeSpan.FromSeconds(10));
+
+            var build = await conn.QuerySingleAsync<(string state, string error)>(
+                "SELECT state, build_info->>'error' AS error FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
+                new { pluginSlug = pluginSlug.ToString(), buildId = queuedBuild.BuildId });
+            Assert.Equal(BuildStates.Failed.ToEventName(), build.state);
+            Assert.Equal("Plugin builds are temporarily disabled.", build.error);
+            Assert.DoesNotContain(queuedBuild, sandbox.StartedPreparations.Keys);
+            Assert.Equal(BuildPolicy.MaxConcurrentBuilds, sandbox.StartedPreparations.Count);
+            Assert.All(sandbox.StartedPreparations.Values, prepared =>
             {
-                var buildId = await conn.NewBuild(pluginSlug, new PluginBuildParameters("https://example.invalid/repository"));
-                fullBuildIds.Add(new FullBuildId(pluginSlug, buildId));
-            }
-
-            var queuedBuild = fullBuildIds[^1];
-            var buildService = tester.GetService<BuildService>();
-            Task[] blockerTasks = [];
-            Task? queuedTask = null;
-            var releaseBlockersPath = Path.Combine(tempDirectory, "release-blockers");
-            try
-            {
-                blockerTasks = fullBuildIds.Take(5).Select(buildService.Build).ToArray();
-                var commandsPath = Path.Combine(tempDirectory, "commands");
-                await WaitForCommandCount(commandsPath, "volume create ", 5);
-
-                queuedTask = buildService.Build(queuedBuild);
-                Assert.False(queuedTask.IsCompleted);
-
-                await DisableFeature(tester, conn, SettingsKeys.NewBuildsEnabled);
-                await File.WriteAllTextAsync(releaseBlockersPath, string.Empty);
-                await queuedTask.WaitAsync(TimeSpan.FromSeconds(10));
-
-                var build = await conn.QuerySingleAsync<(string state, string error)>(
-                    "SELECT state, build_info->>'error' AS error FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
-                    new { pluginSlug = pluginSlug.ToString(), buildId = queuedBuild.BuildId });
-                Assert.Equal(BuildStates.Failed.ToEventName(), build.state);
-                Assert.Equal("Plugin builds are temporarily disabled.", build.error);
-
-                var commands = await File.ReadAllLinesAsync(commandsPath);
-                Assert.DoesNotContain(
-                    commands,
-                    command => command.Contains(queuedBuild.ToString(), StringComparison.Ordinal));
-            }
-            finally
-            {
-                await File.WriteAllTextAsync(releaseBlockersPath, string.Empty);
-                if (queuedTask is { IsCompleted: false })
-                {
-                    await DisableFeature(tester, conn, SettingsKeys.NewBuildsEnabled);
-                    try
-                    {
-                        await queuedTask.WaitAsync(TimeSpan.FromSeconds(10));
-                    }
-                    catch
-                    {
-                        // Preserve the original test failure while releasing the queued build.
-                    }
-                }
-
-                foreach (var blockerTask in blockerTasks)
-                {
-                    try
-                    {
-                        await blockerTask.WaitAsync(TimeSpan.FromSeconds(10));
-                    }
-                    catch
-                    {
-                        // The blockers intentionally fail container creation after releasing the queue.
-                    }
-                }
-            }
+                Assert.False(prepared.Started);
+                Assert.True(prepared.Disposed);
+            });
         }
         finally
         {
-            Environment.SetEnvironmentVariable("PATH", originalPath);
-            Environment.SetEnvironmentVariable("DOCKER_STARTUP_SKIP_BUILD", originalSkipBuild);
-            Environment.SetEnvironmentVariable("PB_FAKE_DOCKER_STATE", originalFakeState);
-            Directory.Delete(tempDirectory, recursive: true);
+            releasePreparation.TrySetResult();
+            if (queuedTask is not null)
+                await Record.ExceptionAsync(() => queuedTask.WaitAsync(TimeSpan.FromSeconds(10)));
+            foreach (var blockerTask in blockerTasks)
+                await Record.ExceptionAsync(() => blockerTask.WaitAsync(TimeSpan.FromSeconds(10)));
         }
     }
 
     [Fact]
-    public async Task NewBuildsDisabled_DuringContainerCreation_DoesNotStartContainer()
+    public async Task NewBuildsDisabled_DuringBrokerPreparation_DoesNotStartWorker()
     {
-        if (OperatingSystem.IsWindows())
-            return;
+        await using var broker = await BuildBrokerSecurityTests.BrokerFixture.Start();
+        TaskCompletionSource preparing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource allowPreparation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        broker.Sandbox.BeforePrepare = () => preparing.TrySetResult();
+        broker.Sandbox.PreparationBlockedUntil = allowPreparation.Task;
+        await using var tester = Create("BuildFlagDuringBrokerPreparation");
+        tester.ReuseDatabase = false;
+        tester.ConfigureServices = services =>
+        {
+            foreach (var service in services.Where(service => service.ServiceType == typeof(IHostedService) &&
+                         (service.ImplementationType == typeof(BuildBrokerMonitor) ||
+                          service.ImplementationType == typeof(AzureStartupHostedService))).ToArray())
+                services.Remove(service);
+            services.RemoveAll<RemoteBuildSandbox>();
+            services.AddSingleton(provider => broker.CreateRemoteSandbox(provider.GetRequiredService<BuildExecutorState>()));
+            services.RemoveAll<IBuildSandbox>();
+            services.AddSingleton<IBuildSandbox>(provider => provider.GetRequiredService<RemoteBuildSandbox>());
+            services.RemoveAll<IGitHostingProvider>();
+        };
+        await tester.Start();
+        tester.GetService<BuildExecutorState>().MarkReady(
+            broker.Executor.Snapshot.WorkerImageId!, broker.Executor.Snapshot.ProxyImageId!);
 
-        var tempDirectory = Path.Combine(Path.GetTempPath(), $"plugin-builder-feature-flag-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDirectory);
-        var dockerPath = Path.Combine(tempDirectory, "docker");
-        await File.WriteAllTextAsync(dockerPath, """
-            #!/bin/sh
-            set -eu
-            state="${PB_FAKE_DOCKER_STATE:?}"
-            printf '%s\n' "$*" >> "$state/commands"
+        var ownerId = await tester.CreateFakeUserAsync();
+        var pluginSlug = new PluginSlug("mid-prepare-" + Guid.NewGuid().ToString("N")[..8]);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(pluginSlug, ownerId);
+        var buildId = await conn.NewBuild(pluginSlug,
+            new PluginBuildParameters("https://github.com/example/repository"));
+        var fullBuildId = new FullBuildId(pluginSlug, buildId);
+        var states = new ConcurrentQueue<string>();
+        using var subscription = tester.GetService<EventAggregator>().Subscribe<BuildChanged>(evt =>
+        {
+            if (evt.FullBuildId == fullBuildId)
+                states.Enqueue(evt.EventName);
+        });
 
-            case "$1:$2" in
-                volume:create)
-                    for argument in "$@"; do volume="$argument"; done
-                    printf '%s' "$volume" > "$state/volume"
-                    printf '%s\n' "$volume"
-                    ;;
-                container:create)
-                    previous=""
-                    name=""
-                    for argument in "$@"; do
-                        if [ "$previous" = "--name" ]; then name="$argument"; break; fi
-                        previous="$argument"
-                    done
-                    [ -n "$name" ]
-                    printf '%s' "$name" > "$state/container"
-                    : > "$state/create-entered"
-                    while [ ! -f "$state/release-create" ]; do sleep 0.01; done
-                    printf '%s\n' fake-container-id
-                    ;;
-                container:start|container:run|start:*|run:*)
-                    exit 99
-                    ;;
-                container:rm)
-                    [ -f "$state/container" ]
-                    for argument in "$@"; do target="$argument"; done
-                    [ "$target" = "$(cat "$state/container")" ]
-                    rm -f "$state/container"
-                    ;;
-                volume:rm)
-                    [ -f "$state/volume" ]
-                    for argument in "$@"; do target="$argument"; done
-                    [ "$target" = "$(cat "$state/volume")" ]
-                    rm -f "$state/volume"
-                    ;;
-                *)
-                    ;;
-            esac
-            """);
-        File.SetUnixFileMode(
-            dockerPath,
-            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-
-        var releaseCreatePath = Path.Combine(tempDirectory, "release-create");
-        var originalPath = Environment.GetEnvironmentVariable("PATH");
-        var originalSkipBuild = Environment.GetEnvironmentVariable("DOCKER_STARTUP_SKIP_BUILD");
-        var originalFakeState = Environment.GetEnvironmentVariable("PB_FAKE_DOCKER_STATE");
+        var buildTask = tester.GetService<BuildService>().Build(fullBuildId);
         try
         {
-            Environment.SetEnvironmentVariable("DOCKER_STARTUP_SKIP_BUILD", "true");
+            await preparing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(buildTask.IsCompleted);
+            Assert.Equal(1, broker.Sandbox.PrepareCalls);
+            await DisableFeature(tester, conn, SettingsKeys.NewBuildsEnabled);
+            allowPreparation.TrySetResult();
+            await buildTask.WaitAsync(TimeSpan.FromSeconds(10));
 
-            await using var tester = Create("BuildFlagDuringCreate");
-            tester.ReuseDatabase = false;
-            await tester.Start();
-
-            Environment.SetEnvironmentVariable("PATH", tempDirectory + Path.PathSeparator + originalPath);
-            Environment.SetEnvironmentVariable("PB_FAKE_DOCKER_STATE", tempDirectory);
-
-            Task? buildTask = null;
-            try
-            {
-                var ownerId = await tester.CreateFakeUserAsync();
-                var pluginSlug = new PluginSlug("mid-create-" + Guid.NewGuid().ToString("N")[..8]);
-                await using var conn = await tester.GetService<DBConnectionFactory>().Open();
-                await conn.NewPlugin(pluginSlug, ownerId);
-                var buildId = await conn.NewBuild(
-                    pluginSlug,
-                    new PluginBuildParameters("https://example.invalid/repository"));
-                var fullBuildId = new FullBuildId(pluginSlug, buildId);
-
-                buildTask = tester.GetService<BuildService>().Build(fullBuildId);
-                await WaitForFile(Path.Combine(tempDirectory, "create-entered"));
-                await DisableFeature(tester, conn, SettingsKeys.NewBuildsEnabled);
-                await File.WriteAllTextAsync(releaseCreatePath, string.Empty);
-                await buildTask.WaitAsync(TimeSpan.FromSeconds(10));
-
-                var build = await conn.QuerySingleAsync<(string state, string error)>(
-                    "SELECT state, build_info->>'error' AS error FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
-                    new { pluginSlug = pluginSlug.ToString(), buildId });
-                Assert.Equal(BuildStates.Failed.ToEventName(), build.state);
-                Assert.Equal("Plugin builds are temporarily disabled.", build.error);
-                Assert.False(File.Exists(Path.Combine(tempDirectory, "container")));
-                Assert.False(File.Exists(Path.Combine(tempDirectory, "volume")));
-
-                var commands = await File.ReadAllLinesAsync(Path.Combine(tempDirectory, "commands"));
-                Assert.Contains(commands, command => command.StartsWith("volume create ", StringComparison.Ordinal));
-                Assert.Contains(commands, command => command.StartsWith("container create ", StringComparison.Ordinal));
-                Assert.Contains(commands, command => command.StartsWith("container rm ", StringComparison.Ordinal));
-                Assert.Contains(commands, command => command.StartsWith("volume rm ", StringComparison.Ordinal));
-                Assert.DoesNotContain(commands, IsContainerExecutionCommand);
-            }
-            finally
-            {
-                await File.WriteAllTextAsync(releaseCreatePath, string.Empty);
-                if (buildTask is not null)
-                    try
-                    {
-                        await buildTask.WaitAsync(TimeSpan.FromSeconds(10));
-                    }
-                    catch
-                    {
-                        // Preserve the original test failure while ensuring the fake process is released.
-                    }
-            }
+            var build = await conn.QuerySingleAsync<(string state, string error, string? url)>(
+                "SELECT state, build_info->>'error' AS error, build_info->>'url' AS url FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
+                new { pluginSlug = pluginSlug.ToString(), buildId });
+            Assert.Equal(BuildStates.Failed.ToEventName(), build.state);
+            Assert.Equal("Plugin builds are temporarily disabled.", build.error);
+            Assert.Null(build.url);
+            Assert.False(broker.Sandbox.Prepared[buildId].Started.Task.IsCompleted);
+            Assert.True(broker.Sandbox.Prepared[buildId].IsDisposed);
+            Assert.Equal(1, broker.Sandbox.DisposalCount);
+            Assert.True(broker.Executor.Snapshot.IsReady);
+            Assert.DoesNotContain(states, state => state == BuildStates.WaitingUpload.ToEventName() ||
+                state == BuildStates.Uploading.ToEventName() || state == BuildStates.Uploaded.ToEventName());
+            Assert.False(await conn.ExecuteScalarAsync<bool>(
+                "SELECT EXISTS(SELECT 1 FROM versions WHERE plugin_slug = @pluginSlug)",
+                new { pluginSlug = pluginSlug.ToString() }));
         }
         finally
         {
-            Environment.SetEnvironmentVariable("PATH", originalPath);
-            Environment.SetEnvironmentVariable("DOCKER_STARTUP_SKIP_BUILD", originalSkipBuild);
-            Environment.SetEnvironmentVariable("PB_FAKE_DOCKER_STATE", originalFakeState);
-            Directory.Delete(tempDirectory, recursive: true);
+            allowPreparation.TrySetResult();
+            // This fixture deliberately removed the hosted broker monitor, so
+            // cancel its client explicitly if an assertion interrupted the build.
+            if (!buildTask.IsCompleted)
+                await Record.ExceptionAsync(() => tester.GetService<RemoteBuildSandbox>()
+                    .StopAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+            try { await buildTask.WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch { /* Preserve the original failure while releasing preparation. */ }
         }
     }
 
@@ -767,37 +683,6 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
     }
 
-    private static async Task WaitForFile(string path)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (!File.Exists(path))
-            await Task.Delay(10, timeout.Token);
-    }
-
-    private static async Task WaitForCommandCount(string path, string prefix, int expectedCount)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (true)
-        {
-            if (File.Exists(path))
-            {
-                var commands = await File.ReadAllLinesAsync(path, timeout.Token);
-                if (commands.Count(command => command.StartsWith(prefix, StringComparison.Ordinal)) >= expectedCount)
-                    return;
-            }
-
-            await Task.Delay(10, timeout.Token);
-        }
-    }
-
-    private static bool IsContainerExecutionCommand(string command)
-    {
-        return command.StartsWith("container start ", StringComparison.Ordinal) ||
-               command.StartsWith("container run ", StringComparison.Ordinal) ||
-               command.StartsWith("start ", StringComparison.Ordinal) ||
-               command.StartsWith("run ", StringComparison.Ordinal);
-    }
-
     private static string ExtractAntiforgeryToken(string html)
     {
         var input = Regex.Match(
@@ -820,7 +705,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         private readonly TaskCompletionSource<string> _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _fetchCount;
 
-        public string RepositoryUrl { get; } = $"https://feature-flags-{Guid.NewGuid():N}.invalid/repository.git";
+        public string RepositoryUrl { get; } = $"https://github.com/feature-flags-{Guid.NewGuid():N}/repository";
         public int FetchCount => Volatile.Read(ref _fetchCount);
         public Task Entered => _entered.Task;
 

@@ -5,6 +5,8 @@ using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.DataModels;
 
+using PluginBuilder.Builds.Services;
+
 namespace PluginBuilder.Services;
 
 public class GitLabHostingProvider : IGitHostingProvider

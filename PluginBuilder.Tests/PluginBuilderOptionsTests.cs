@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using PluginBuilder.Configuration;
 using PluginBuilder.Util.Extensions;
+using Serilog.Events;
 using Xunit;
 
 namespace PluginBuilder.Tests;
@@ -8,41 +10,64 @@ namespace PluginBuilder.Tests;
 public class PluginBuilderOptionsTests
 {
     [Fact]
-    public void BuildTimeoutDefaultsToFifteenMinutes()
+    public void RetiredExecutorSettingsDoNotBlockPublicConfiguration()
     {
-        var options = Configure();
+        var tokenPath = Path.Combine(Path.GetTempPath(), "plugin-builder-test-broker-token");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["BUILD_TIMEOUT_SECONDS"] = "invalid-retired-setting",
+            ["BUILD_SCRATCH_ROOT"] = "../old-scratch",
+            ["BUILD_BROKER_URL"] = "http://internal-broker:8080",
+            ["BUILD_BROKER_TOKEN_FILE"] = tokenPath,
+            ["debugloglevel"] = "Warning",
+            ["debuglogretaincount"] = "3"
+        }).Build();
 
-        Assert.Equal(TimeSpan.FromMinutes(15), options.BuildTimeout);
+        var options = PluginBuilderOptions.ConfigureDataDirAndDebugLog(configuration, null!);
+
+        Assert.Equal(new Uri("http://internal-broker:8080/"), options.BuildBrokerUrl);
+        Assert.Equal(tokenPath, options.BuildBrokerTokenFile);
+        Assert.Equal(LogEventLevel.Warning, options.DebugLogLevel);
+        Assert.Equal(3, options.LogRetainCount);
+        Assert.Equal(Path.Combine(options.DataDir, "PluginData"), options.PluginDataDir);
     }
 
-    [Theory]
-    [InlineData("42", 42)]
-    [InlineData("86400", 86400)]
-    public void BuildTimeoutCanBeConfigured(string value, int expectedSeconds)
+    [Fact]
+    public void DevelopmentResolvesRelativeBrokerTokenAgainstContentRoot()
     {
-        var options = Configure(value);
+        const string relativePath = "../PluginBuilder.Tests/dev-broker-token";
+        var contentRoot = Path.Combine(Path.GetTempPath(), "plugin-builder-project");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["BUILD_BROKER_TOKEN_FILE"] = relativePath
+        }).Build();
 
-        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), options.BuildTimeout);
+        var options = PluginBuilderOptions.ConfigureDataDirAndDebugLog(
+            configuration, new TestHostEnvironment(Environments.Development, contentRoot));
+
+        Assert.Equal(Path.GetFullPath(Path.Combine(contentRoot, relativePath)), options.BuildBrokerTokenFile);
     }
 
-    [Theory]
-    [InlineData("0")]
-    [InlineData("-1")]
-    [InlineData("not-a-number")]
-    [InlineData("86401")]
-    public void InvalidBuildTimeoutIsRejected(string value)
+    [Fact]
+    public void ProductionRejectsRelativeBrokerTokenPath()
     {
-        var exception = Assert.Throws<ConfigurationException>(() => Configure(value));
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["BUILD_BROKER_TOKEN_FILE"] = "../token"
+        }).Build();
 
-        Assert.Equal("BUILD_TIMEOUT_SECONDS", exception.Key);
+        var error = Assert.Throws<ConfigurationException>(() =>
+            PluginBuilderOptions.ConfigureDataDirAndDebugLog(
+                configuration, new TestHostEnvironment(Environments.Production, "/app")));
+
+        Assert.Equal("BUILD_BROKER_TOKEN_FILE", error.Key);
     }
 
-    private static PluginBuilderOptions Configure(string? buildTimeoutSeconds = null)
+    private sealed class TestHostEnvironment(string environmentName, string contentRoot) : IHostEnvironment
     {
-        var values = buildTimeoutSeconds is null
-            ? new Dictionary<string, string?>()
-            : new Dictionary<string, string?> { ["BUILD_TIMEOUT_SECONDS"] = buildTimeoutSeconds };
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
-        return PluginBuilderOptions.ConfigureDataDirAndDebugLog(configuration, null!);
+        public string EnvironmentName { get; set; } = environmentName;
+        public string ApplicationName { get; set; } = "PluginBuilder.Tests";
+        public string ContentRootPath { get; set; } = contentRoot;
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } = null!;
     }
 }

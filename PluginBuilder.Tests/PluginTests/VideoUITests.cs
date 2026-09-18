@@ -13,7 +13,7 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.PluginTests;
 
-[Collection("Playwright Tests")]
+[Collection(nameof(NonParallelizableCollectionDefinition))]
 public class VideoUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("VideoUrlUITests", output);

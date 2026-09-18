@@ -1,65 +1,39 @@
 using Microsoft.WindowsAzure.Storage;
 using Microsoft.WindowsAzure.Storage.Blob;
-using Newtonsoft.Json.Linq;
 using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Services;
 
-public class AzureStorageClientException : Exception
-{
-    public AzureStorageClientException(string message) : base(message)
-    {
-    }
-}
+public class AzureStorageClientException(string message) : Exception(message);
 
 /// <summary>
-///     A wrapper around "az" utility inside a docker image
-///     While we could theorically use the Azure Storage library directly instead of this,
-///     the files to upload on azure are stored in a docker volume, so using the library
-///     would require us to copy the files to upload out of the docker volume.
-///     This wouldn't be ideal, as we would need to make sure to properly clean it up.
-///     And we also don't have any datadir for this project.
-///     Another solution I tried was to directly use fetch the files via MountPoint of the docker volume
-///     Sadly, on windows docker run on a VM, so the file system isn't local to the machine.
+/// Uses the Azure SDK. Artifact uploads read only the canonical file produced by
+/// the trusted stager, after all containers that could write it have been removed.
 /// </summary>
 public class AzureStorageClient
 {
+    private const long MaximumArtifactBytes = 256L * 1024 * 1024;
+    private static readonly TimeSpan ArtifactUploadTimeout = TimeSpan.FromMinutes(15);
     private readonly CloudBlobClient blobClient;
-    private readonly bool isLocalhost;
-    private readonly string scheme;
 
-    public AzureStorageClient(ProcessRunner processRunner, IConfiguration configuration)
+    public AzureStorageClient(IConfiguration configuration)
     {
-        ProcessRunner = processRunner;
-        StorageConnectionString = configuration.GetRequired("STORAGE_CONNECTION_STRING");
-        if (!CloudStorageAccount.TryParse(StorageConnectionString, out var acc))
+        var connectionString = configuration.GetRequired("STORAGE_CONNECTION_STRING");
+        if (!CloudStorageAccount.TryParse(connectionString, out var account))
             throw new ConfigurationException("STORAGE_CONNECTION_STRING", "Invalid storage connection string");
-        scheme = acc.BlobEndpoint.Scheme;
-        isLocalhost = acc.BlobEndpoint.Host == "localhost" || acc.BlobEndpoint.Host == "127.0.0.1";
-        DefaultContainer = "artifacts";
-        var storageAccount = CloudStorageAccount.Parse(StorageConnectionString);
-        blobClient = storageAccount.CreateCloudBlobClient();
+        blobClient = account.CreateCloudBlobClient();
     }
 
-    public ProcessRunner ProcessRunner { get; }
-    public string StorageConnectionString { get; }
-    public string DefaultContainer { get; }
+    public string DefaultContainer => "artifacts";
 
     public async Task<bool> EnsureDefaultContainerExists(CancellationToken cancellationToken = default)
     {
-        OutputCapture error = new();
-        OutputCapture output = new();
-        var code = await ProcessRunner.RunAsync(
-            new ProcessSpec
-            {
-                Executable = "docker",
-                Arguments = CreateArguments("az", "storage", "container", "create", "--name", DefaultContainer, "--public-access", "blob"),
-                ErrorCapture = error,
-                OutputCapture = output
-            }, cancellationToken);
-        if (code != 0)
-            throw new AzureStorageClientException($"Impossible to create container ({error})");
-        return ToJson(output)["created"]!.Value<bool>();
+        var container = blobClient.GetContainerReference(DefaultContainer);
+        return await container.CreateIfNotExistsAsync(
+            BlobContainerPublicAccessType.Blob,
+            options: null,
+            operationContext: null,
+            cancellationToken);
     }
 
     public async Task<bool> IsDefaultContainerAccessible(CancellationToken cancellationToken = default)
@@ -68,7 +42,6 @@ public class AzureStorageClient
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(TimeSpan.FromSeconds(15));
-
             var container = blobClient.GetContainerReference(DefaultContainer);
             return await container.ExistsAsync(null, null, cts.Token);
         }
@@ -80,99 +53,87 @@ public class AzureStorageClient
 
     public virtual async Task<string> UploadImageFile(IFormFile file, string blobName)
     {
-        var container = blobClient.GetContainerReference(DefaultContainer);
-        var blob = container.GetBlockBlobReference(blobName);
+        var blob = blobClient.GetContainerReference(DefaultContainer).GetBlockBlobReference(blobName);
         blob.Properties.ContentType = file.ContentType;
         using var stream = file.OpenReadStream();
-        await blob.UploadFromStreamAsync(
-            stream,
-            accessCondition: null,
-            options: null,
-            operationContext: null,
-            cancellationToken: CancellationToken.None);
-
+        await blob.UploadFromStreamAsync(stream, null, null, null, CancellationToken.None);
         return blob.Uri.ToString();
     }
 
     public virtual async Task DeleteImageFileIfExists(string blobName)
     {
-        var container = blobClient.GetContainerReference(DefaultContainer);
-        var blob = container.GetBlockBlobReference(blobName);
-        await blob.DeleteIfExistsAsync(
-            deleteSnapshotsOption: DeleteSnapshotsOption.None,
-            accessCondition: null,
-            options: null,
-            operationContext: null,
-            cancellationToken: CancellationToken.None);
+        var blob = blobClient.GetContainerReference(DefaultContainer).GetBlockBlobReference(blobName);
+        await blob.DeleteIfExistsAsync(DeleteSnapshotsOption.None, null, null, null, CancellationToken.None);
     }
 
-    public async Task<string> Upload(string volume, string fileInVolume, string blobName)
+    public async Task<string> UploadStagedArtifact(
+        string stagingDirectory,
+        string blobName,
+        CancellationToken cancellationToken = default)
     {
-        OutputCapture error = new();
-        OutputCapture output = new();
-        var code = await ProcessRunner.RunAsync(new ProcessSpec
+        cancellationToken.ThrowIfCancellationRequested();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ArtifactUploadTimeout);
+        await using var artifact = OpenStagedArtifact(stagingDirectory);
+        var blob = blobClient.GetContainerReference(DefaultContainer).GetBlockBlobReference(blobName);
+        blob.Properties.ContentType = "application/zip";
+        try
         {
-            Executable = "docker",
-            Arguments = CreateArguments(
-                new[] { "-v", $"{volume}:/out" },
-                new[]
-                {
-                    "az", "storage", "blob", "upload", "-f", $"/out/{fileInVolume}", "-c", DefaultContainer, "-n", blobName, "--content-type",
-                    "application/zip"
-                }),
-            ErrorCapture = error,
-            OutputCapture = output
-        }, default);
-        if (code != 0)
-            throw new AzureStorageClientException($"Impossible to upload ({error})");
-
-        error = new OutputCapture();
-        output = new OutputCapture();
-        code = await ProcessRunner.RunAsync(
-            new ProcessSpec
-            {
-                Executable = "docker",
-                Arguments = CreateArguments("az", "storage", "blob", "url", "--container-name", DefaultContainer, "--name", blobName, "--protocol", scheme),
-                ErrorCapture = error,
-                OutputCapture = output
-            }, default);
-        if (code != 0)
-            throw new AzureStorageClientException($"Impossible to get the public url of the blob ({error})");
-        return ToString(output);
+            // Keep this handle and exact byte count for the entire upload. The SDK
+            // never reopens a filename or reads beyond the validated byte count.
+            await blob.UploadFromStreamAsync(
+                artifact,
+                artifact.Length,
+                AccessCondition.GenerateIfNotExistsCondition(),
+                new BlobRequestOptions { MaximumExecutionTime = ArtifactUploadTimeout },
+                operationContext: null,
+                timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new AzureStorageClientException("Timed out while uploading the staged plugin artifact");
+        }
+        catch (StorageException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        catch (StorageException) when (timeout.IsCancellationRequested)
+        {
+            throw new AzureStorageClientException("Timed out while uploading the staged plugin artifact");
+        }
+        catch (StorageException)
+        {
+            // Storage responses and request URIs can contain credentials or
+            // untrusted response text; do not persist them in public build logs.
+            throw new AzureStorageClientException("Impossible to upload the staged plugin artifact");
+        }
+        return blob.Uri.GetComponents(UriComponents.AbsoluteUri, UriFormat.UriEscaped);
     }
 
-    private static JObject ToJson(OutputCapture output)
+    private static FileStream OpenStagedArtifact(string stagingDirectory)
     {
-        var txt = output.ToString();
-        // Remove some crap at the end present for god knows why
-        txt = txt.Substring(0, txt.LastIndexOf('}') + 1);
-        return JObject.Parse(txt)!;
-    }
+        // This is trusted, quiescent staging, not a general hostile-filesystem
+        // reader: the worker never mounts it and the trusted stager has stopped.
+        // That lifecycle invariant prevents replacements between validation and
+        // open. Keep using the one handle after open, even if the path changes.
+        var directory = new DirectoryInfo(stagingDirectory);
+        if (!directory.Exists || directory.LinkTarget is not null ||
+            (directory.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new AzureStorageClientException("The trusted artifact staging directory is unavailable");
 
-    private static string ToString(OutputCapture output)
-    {
-        var txt = output.ToString();
-        // Remove some crap at the end present for god knows why
-        txt = txt.Substring(0, txt.LastIndexOf('"') + 1);
-        return JValue.Parse(txt)!.Value<string>()!;
-    }
+        var file = new FileInfo(Path.Combine(directory.FullName, "artifact.btcpay"));
+        if (!file.Exists || file.LinkTarget is not null ||
+            (file.Attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint | FileAttributes.Device)) != 0 ||
+            file.Length <= 0 || file.Length > MaximumArtifactBytes)
+            throw new AzureStorageClientException("The staged plugin artifact must be a nonempty regular file of at most 256 MiB");
 
-    private string[] CreateArguments(params string[] args)
-    {
-        return CreateArguments(null, args);
-    }
-
-    private string[] CreateArguments(string[]? dockerArgs, string[] args)
-    {
-        List<string> a = new();
-        a.AddRange(new[] { "run", "--rm", "--env", $"AZURE_STORAGE_CONNECTION_STRING={StorageConnectionString}" });
-        if (isLocalhost)
-            // Not needed in prod, but we need it in tests to connect to the azure containers running in docker-compose
-            a.AddRange(new[] { "--network", "host" });
-        if (dockerArgs is not null)
-            a.AddRange(dockerArgs);
-        a.Add("mcr.microsoft.com/azure-cli:2.9.1");
-        a.AddRange(args);
-        return a.ToArray();
+        var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        if (!stream.CanSeek || stream.Length != file.Length)
+        {
+            stream.Dispose();
+            throw new AzureStorageClientException("The staged plugin artifact changed after staging");
+        }
+        return stream;
     }
 }
