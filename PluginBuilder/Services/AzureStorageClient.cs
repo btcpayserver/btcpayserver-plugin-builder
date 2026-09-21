@@ -2,6 +2,8 @@ using Microsoft.WindowsAzure.Storage;
 using Microsoft.WindowsAzure.Storage.Blob;
 using PluginBuilder.Util.Extensions;
 
+using PluginBuilder.Builds.BuildBroker;
+
 namespace PluginBuilder.Services;
 
 public class AzureStorageClientException(string message) : Exception(message);
@@ -12,7 +14,7 @@ public class AzureStorageClientException(string message) : Exception(message);
 /// </summary>
 public class AzureStorageClient
 {
-    private const long MaximumArtifactBytes = 256L * 1024 * 1024;
+    private const long MaximumArtifactBytes = BuildBrokerProtocol.MaximumArtifactBytes;
     private static readonly TimeSpan ArtifactUploadTimeout = TimeSpan.FromMinutes(15);
     private readonly CloudBlobClient blobClient;
 
@@ -125,7 +127,8 @@ public class AzureStorageClient
         if (!file.Exists || file.LinkTarget is not null ||
             (file.Attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint | FileAttributes.Device)) != 0 ||
             file.Length <= 0 || file.Length > MaximumArtifactBytes)
-            throw new AzureStorageClientException("The staged plugin artifact must be a nonempty regular file of at most 256 MiB");
+            throw new AzureStorageClientException(
+                $"The staged plugin artifact must be a nonempty regular file of at most {MaximumArtifactBytes / (1024 * 1024)} MiB");
 
         var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
             bufferSize: 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
