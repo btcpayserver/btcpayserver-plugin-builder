@@ -13,7 +13,6 @@ public class BuildNetworkCanaryTests
     [Trait("Category", "ExecutorIntegration")]
     public async Task RunscWorkerCanReachOnlyProxyAndDeniedHostsDoNotReachDns()
     {
-        Assert.True(OperatingSystem.IsLinux(), "The network canary requires a Linux Docker host with runsc.");
         var id = Guid.NewGuid().ToString("N");
         var label = $"BTCPAY_PLUGIN_BUILD=network-canary-{id}";
         var egress = $"pb-canary-egress-{id}";
@@ -25,6 +24,7 @@ public class BuildNetworkCanaryTests
         var helper = Path.Combine(AppContext.BaseDirectory, "network-canary-fixture");
         Assert.True(File.Exists(Path.Combine(helper, "NetworkCanary.dll")), "Build the test project and its canary fixture first.");
 
+        var cleanupErrors = new List<string>();
         try
         {
             await Docker("image", "inspect", "plugin-builder-worker", "plugin-builder-proxy");
@@ -84,7 +84,6 @@ public class BuildNetworkCanaryTests
         }
         finally
         {
-            var cleanupErrors = new List<string>();
             foreach (var container in new[] { worker, proxy, fixture })
             {
                 var result = await RunDocker("rm", "--force", container);
@@ -97,9 +96,9 @@ public class BuildNetworkCanaryTests
                 if (result.Code != 0 && !result.Output.Contains("not found", StringComparison.OrdinalIgnoreCase))
                     cleanupErrors.Add(result.Output);
             }
-            Assert.Empty(cleanupErrors);
             Directory.Delete(directory, recursive: true);
         }
+        Assert.Empty(cleanupErrors);
         Assert.Empty((await Docker("ps", "-aq", "--filter", $"label={label}")).Trim());
         Assert.Empty((await Docker("network", "ls", "-q", "--filter", $"label={label}")).Trim());
     }
