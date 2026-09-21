@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d AS builder
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 WORKDIR /source
 COPY PluginBuilder.Builds/. PluginBuilder.Builds/.
@@ -12,7 +12,7 @@ RUN dotnet publish PluginBuilder.BuildBroker/PluginBuilder.BuildBroker.csproj \
     -p:Version=${VERSION} \
     --output /app/ --configuration ${CONFIGURATION_NAME}
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:6a94333d37514e385650a3c81a55e5350b67253dbe136e9cf17e499c35606a8c
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV DEBIAN_FRONTEND=noninteractive
