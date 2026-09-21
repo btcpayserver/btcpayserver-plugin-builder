@@ -131,7 +131,14 @@ public class BuildService
             }
             catch (Exception err)
             {
-                await UpdateBuild(fullBuildId, BuildStates.Failed, new JObject { ["error"] = err.Message });
+                // The build page renders this text, so only exceptions with deliberately
+                // user-safe messages may reach it. Callers discard the returned task, so
+                // unexpected failures must be logged here or they are lost.
+                var safe = err is BuildServiceException or AzureStorageClientException;
+                if (!safe)
+                    Logger.LogError(err, "Build {BuildId} failed", fullBuildId);
+                await UpdateBuild(fullBuildId, BuildStates.Failed,
+                    new JObject { ["error"] = safe ? err.Message : "Plugin build failed." });
                 throw;
             }
 

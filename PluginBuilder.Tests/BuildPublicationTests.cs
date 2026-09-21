@@ -167,6 +167,19 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
         if (failCleanup || failUpload || persistenceFailure is not null)
         {
             Assert.Equal(BuildStates.Failed.ToEventName(), state);
+            var persistedError = await connection.ExecuteScalarAsync<string?>(
+                "SELECT build_info->>'error' FROM builds WHERE plugin_slug=@slug AND id=@buildId",
+                new { slug = slug.ToString(), buildId = id.BuildId });
+            if (persistenceFailure is not null)
+            {
+                // The build page renders this text: database exception details must not reach it.
+                Assert.Equal("Plugin build failed.", persistedError);
+            }
+            else
+            {
+                // BuildServiceException and AzureStorageClientException texts are deliberately user-safe.
+                Assert.Equal(error!.Message, persistedError);
+            }
             if (previousBuild is { } previous)
             {
                 Assert.Equal(previous, Assert.Single(versions));
