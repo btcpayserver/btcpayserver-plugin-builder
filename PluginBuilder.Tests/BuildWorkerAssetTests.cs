@@ -216,12 +216,10 @@ public class BuildWorkerAssetTests
         }, result.GitEnvironment);
     }
 
-    [Fact]
+    [LinuxFact]
     [Trait("Category", "ExecutorIntegration")]
     public async Task ArtifactStagerExecutesRegularFileAndSizeValidation()
     {
-        Assert.True(OperatingSystem.IsLinux(), "This integration test requires a Linux Docker host with runsc.");
-
         var image = await RunProcess("docker", "image", "inspect", "plugin-builder-worker");
         Assert.True(
             image.ExitCode == 0,
