@@ -200,6 +200,7 @@ public class BuildBrokerSecurityTests
     [InlineData("{\"pluginSlug\":\"valid-plugin\",\"buildId\":9223372036854775808}")]
     [InlineData("{\"pluginSlug\":\"valid-plugin\",\"buildId\":1.5}")]
     [InlineData("{\"gitRepository\":\"https://github.com/owner/plugin\",}")]
+    [InlineData("{\"pluginSlug\":\"valid-plugin\",\"pluginSlug\":\"other-plugin\",\"buildId\":1,\"gitRepository\":\"https://github.com/owner/plugin\"}")]
     public async Task MalformedOrIncompleteJsonNeverStartsAWorker(string body)
     {
         await using var fixture = await BrokerFixture.Start();

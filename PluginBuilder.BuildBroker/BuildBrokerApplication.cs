@@ -16,6 +16,9 @@ public static class BuildBrokerApplication
     {
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        AllowDuplicateProperties = false,
+        RespectRequiredConstructorParameters = true,
+        RespectNullableAnnotations = true,
         NumberHandling = JsonNumberHandling.Strict,
         MaxDepth = 4
     };
@@ -101,29 +104,13 @@ public static class BuildBrokerApplication
         app.MapGet("/v1/status", (BrokerCoordinator coordinator) => Results.Json(coordinator.Status()));
         app.MapPost("/v1/builds", async (HttpContext context, BrokerCoordinator coordinator) =>
         {
-            if (context.Request.ContentLength > MaximumRequestBytes)
-                return Results.StatusCode(413);
             if (!context.Request.HasJsonContentType()) return Results.StatusCode(415);
+            // Kestrel's MaxRequestBodySize answers oversized bodies with 413. The serializer
+            // rejects duplicate, unknown, missing and null-for-non-nullable members (400).
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
             deadline.CancelAfter(TimeSpan.FromSeconds(5));
-            var bytes = new byte[MaximumRequestBytes + 1];
-            var length = 0;
-            while (length < bytes.Length)
-            {
-                var read = await context.Request.Body.ReadAsync(bytes.AsMemory(length), deadline.Token);
-                if (read == 0) break;
-                length += read;
-            }
-            if (length > MaximumRequestBytes) return Results.StatusCode(413);
-            using var document = JsonDocument.Parse(bytes.AsMemory(0, length), new JsonDocumentOptions { MaxDepth = 4 });
-            if (document.RootElement.ValueKind != JsonValueKind.Object) return Results.BadRequest();
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            if (document.RootElement.EnumerateObject().Any(p => !names.Add(p.Name))) return Results.BadRequest();
-            if (!names.Contains("pluginSlug") || !names.Contains("buildId") || !names.Contains("gitRepository"))
-                return Results.BadRequest();
-            var request = JsonSerializer.Deserialize<BrokerBuildRequest>(bytes.AsSpan(0, length), RequestJson);
-            if (request is null) return Results.BadRequest();
-            return Results.Json(coordinator.Submit(request), statusCode: 202);
+            var request = await JsonSerializer.DeserializeAsync<BrokerBuildRequest>(context.Request.Body, RequestJson, deadline.Token);
+            return request is null ? Results.BadRequest() : Results.Json(coordinator.Submit(request), statusCode: 202);
         });
         app.MapGet("/v1/builds/{id}", (string id, HttpContext context, BrokerCoordinator coordinator) =>
         {

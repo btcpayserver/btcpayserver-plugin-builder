@@ -36,7 +36,7 @@ public static class BuildBrokerProtocol
 
 // This is a build protocol, deliberately not a Docker/OCI configuration API.
 public sealed record BrokerBuildRequest(string PluginSlug, long BuildId, string GitRepository,
-    string? GitRef, string? PluginDir, string? BuildConfig);
+    string? GitRef = null, string? PluginDir = null, string? BuildConfig = null);
 public sealed record BrokerBuildAccepted(string LeaseId);
 public sealed record BrokerStatus(bool IsReady, string? WorkerImageId, string? ProxyImageId,
     string? UnavailableReason, string InstanceId);
