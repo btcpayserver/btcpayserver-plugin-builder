@@ -21,6 +21,7 @@ public class BuildService
     private readonly AdminSettingsCache _adminSettingsCache;
     private readonly IBuildSandbox _buildSandbox;
     private readonly BuildExecutorState _executorState;
+    private readonly IHostApplicationLifetime _lifetime;
 
     public BuildService(
         ILogger<BuildService> logger,
@@ -31,7 +32,8 @@ public class BuildService
         GitHostingProviderFactory providerFactory,
         AdminSettingsCache adminSettingsCache,
         IBuildSandbox buildSandbox,
-        BuildExecutorState executorState)
+        BuildExecutorState executorState,
+        IHostApplicationLifetime lifetime)
     {
         Logger = logger;
         _options = options;
@@ -42,6 +44,7 @@ public class BuildService
         _adminSettingsCache = adminSettingsCache;
         _buildSandbox = buildSandbox;
         _executorState = executorState;
+        _lifetime = lifetime;
     }
 
     public ILogger<BuildService> Logger { get; }
@@ -75,7 +78,7 @@ public class BuildService
                 bool ownsIdentifier;
                 await using (BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory))
                 {
-                    await using (var prepared = await _buildSandbox.PrepareAsync(fullBuildId, buildParameters))
+                    await using (var prepared = await _buildSandbox.PrepareAsync(fullBuildId, buildParameters, _lifetime.ApplicationStopping))
                     {
                         JObject runningInfo = new()
                         {
@@ -98,16 +101,13 @@ public class BuildService
                             throw new BuildServiceException("Failed to parse plugin manifest: " + err.Message);
                         }
 
-                        var uploadCancellation = _executorState.StopToken;
-                        if (!_executorState.Snapshot.IsReady || uploadCancellation.IsCancellationRequested)
-                            throw new BuildServiceException("The isolated build executor was stopped.");
-
+                        // The verified local artifact no longer depends on broker readiness.
                         await UpdateBuild(fullBuildId, BuildStates.WaitingUpload, staged.BuildEnvironment, manifest);
                         await UpdateBuild(fullBuildId, BuildStates.Uploading, null);
                         url = await AzureStorageClient.UploadStagedArtifact(
                             staged.StagingDirectory,
                             $"{fullBuildId}/{staged.AssemblyName}.btcpay",
-                            uploadCancellation);
+                            _lifetime.ApplicationStopping);
                     }
 
                     await using var connection = await ConnectionFactory.Open();

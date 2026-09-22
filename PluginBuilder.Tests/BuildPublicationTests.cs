@@ -26,14 +26,27 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
     private static readonly byte[] Artifact = BuildBrokerSecurityTests.FakePrepared.ArtifactBytes;
 
     [Theory]
-    [InlineData(false, false, null)]
-    [InlineData(true, false, null)]
-    [InlineData(false, true, null)]
-    [InlineData(false, false, "logs")]
-    [InlineData(false, false, "publication")]
-    public async Task RequiresRemoteCleanupBeforeAnyUploadAndRemovesLocalStaging(bool failCleanup, bool failUpload, string? persistenceFailure)
+    [InlineData(false, false, null, null)]
+    [InlineData(true, false, null, null)]
+    [InlineData(false, true, null, null)]
+    [InlineData(false, false, "logs", null)]
+    [InlineData(false, false, "publication", null)]
+    [InlineData(false, false, null, "suspend")]
+    [InlineData(false, false, null, "restart")]
+    [InlineData(false, false, null, "shutdown")]
+    public async Task RequiresRemoteCleanupBeforeAnyUploadAndRemovesLocalStaging(
+        bool failCleanup, bool failUpload, string? persistenceFailure, string? transition)
     {
-        await using var storage = await AzureStagedUploadContractTests.BlobServer.Start(rejectRequest: failUpload);
+        IHostApplicationLifetime? lifetime = null;
+        await using var storage = await AzureStagedUploadContractTests.BlobServer.Start(rejectRequest: failUpload,
+            beforeResponse: async (_, token) =>
+            {
+                if (transition == "shutdown")
+                {
+                    lifetime!.StopApplication();
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                }
+            });
         await using var broker = await BuildBrokerSecurityTests.BrokerFixture.Start();
         var stagingRoot = Path.Combine(broker.Root, "web-data", "broker-staging");
         TaskCompletionSource cleaning = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -63,6 +76,7 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
             services.RemoveAll<IGitHostingProvider>();
         };
         await tester.Start();
+        lifetime = tester.GetService<IHostApplicationLifetime>();
         var executor = tester.GetService<BuildExecutorState>();
         executor.MarkReady("sha256:" + new string('1', 64), "sha256:" + new string('2', 64));
         var user = await tester.CreateFakeUserAsync();
@@ -96,8 +110,13 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
         using var subscription = tester.GetService<EventAggregator>().Subscribe<BuildChanged>(evt =>
         {
             if (evt.FullBuildId == id)
+            {
                 events.Enqueue((evt.EventName, broker.Sandbox.Prepared.TryGetValue(id.BuildId, out var build) && build.IsDisposed,
                     Directory.Exists(stagingRoot) && Directory.EnumerateFiles(stagingRoot, "artifact.btcpay", SearchOption.AllDirectories).Any()));
+                // At this point the client has already downloaded and validated the artifact.
+                if (transition == "restart" && evt.EventName == BuildStates.WaitingUpload.ToEventName())
+                    executor.MarkReady("sha256:" + new string('3', 64), "sha256:" + new string('4', 64));
+            }
         });
 
         var execution = tester.GetService<BuildService>().Build(id);
@@ -113,6 +132,8 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Assert.DoesNotContain(events, evt => evt.State == BuildStates.WaitingUpload.ToEventName() ||
                 evt.State == BuildStates.Uploading.ToEventName() || evt.State == BuildStates.Uploaded.ToEventName());
             Assert.False(Directory.Exists(stagingRoot));
+            if (transition == "suspend")
+                executor.SuspendAdmission("Health probe failed before download completed.");
         }
         finally
         {
@@ -149,7 +170,12 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Assert.Equal($"/satoshi/artifacts/{id}/Test.Plugin.btcpay", upload.Path);
             Assert.Equal("*", upload.IfNoneMatch);
             Assert.Equal(Artifact, upload.Body);
-            if (failUpload)
+            if (transition == "shutdown")
+            {
+                Assert.IsAssignableFrom<OperationCanceledException>(error);
+                Assert.Null(storage.StoredArtifact);
+            }
+            else if (failUpload)
             {
                 Assert.IsType<AzureStorageClientException>(error);
                 Assert.Null(storage.StoredArtifact);
@@ -166,13 +192,13 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
             }
         }
 
-        if (failCleanup || failUpload || persistenceFailure is not null)
+        if (failCleanup || failUpload || persistenceFailure is not null || transition == "shutdown")
         {
             Assert.Equal(BuildStates.Failed.ToEventName(), state);
             var persistedError = await connection.ExecuteScalarAsync<string?>(
                 "SELECT build_info->>'error' FROM builds WHERE plugin_slug=@slug AND id=@buildId",
                 new { slug = slug.ToString(), buildId = id.BuildId });
-            if (persistenceFailure is not null)
+            if (persistenceFailure is not null || transition == "shutdown")
             {
                 // The build page renders this text: database exception details must not reach it.
                 Assert.Equal("Plugin build failed.", persistedError);

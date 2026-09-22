@@ -97,4 +97,42 @@ public class BuildExecutorStateTests
         Assert.ThrowsAny<ArgumentException>(() => state.MarkUnavailable(reason!));
         Assert.True(state.Snapshot.IsReady);
     }
+
+    [Fact]
+    public void AdmissionCanBeSuspendedAndResumedWithoutReplacingTheGeneration()
+    {
+        var state = new BuildExecutorState();
+        state.MarkReady("sha256:worker", "sha256:proxy");
+        var token = state.StopToken;
+
+        state.SuspendAdmission("Health probe failed");
+        Assert.False(state.Snapshot.IsReady);
+        Assert.Equal("Health probe failed", state.Snapshot.UnavailableReason);
+        Assert.Equal(token, state.StopToken);
+        Assert.False(token.IsCancellationRequested);
+
+        state.ResumeAdmission("sha256:worker", "sha256:proxy");
+        Assert.True(state.Snapshot.IsReady);
+        Assert.Null(state.Snapshot.UnavailableReason);
+        Assert.Equal(token, state.StopToken);
+        Assert.False(token.IsCancellationRequested);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ResumeAdmissionCannotStartOrResurrectAGeneration(bool previouslyReady)
+    {
+        var state = new BuildExecutorState();
+        if (previouslyReady)
+        {
+            state.MarkReady("sha256:worker", "sha256:proxy");
+            state.MarkUnavailable("Shutdown");
+        }
+        var token = state.StopToken;
+        Assert.Throws<InvalidOperationException>(() => state.ResumeAdmission("sha256:worker", "sha256:proxy"));
+        Assert.False(state.Snapshot.IsReady);
+        Assert.Equal(token, state.StopToken);
+        Assert.True(token.IsCancellationRequested);
+    }
 }

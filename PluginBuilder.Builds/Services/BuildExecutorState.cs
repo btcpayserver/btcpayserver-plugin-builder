@@ -46,6 +46,27 @@ public sealed class BuildExecutorState
         }
     }
 
+    // A web health probe controls admission, not the lifetime of accepted broker jobs.
+    public void SuspendAdmission(string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        lock (_gate)
+            Interlocked.Exchange(ref _snapshot, Unavailable(reason));
+    }
+
+    public void ResumeAdmission(string workerImageId, string proxyImageId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workerImageId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(proxyImageId);
+        lock (_gate)
+        {
+            if (_stopSource.IsCancellationRequested)
+                throw new InvalidOperationException("Cannot resume admission for a stopped executor generation.");
+            Interlocked.Exchange(ref _snapshot,
+                new BuildExecutorSnapshot(true, workerImageId, proxyImageId, null));
+        }
+    }
+
     private static BuildExecutorSnapshot Unavailable(string reason)
     {
         return new BuildExecutorSnapshot(false, null, null, reason);

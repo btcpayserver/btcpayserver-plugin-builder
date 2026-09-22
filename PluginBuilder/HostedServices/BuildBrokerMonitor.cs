@@ -1,6 +1,5 @@
 using PluginBuilder.Services;
 
-using PluginBuilder.Builds.BuildBroker;
 using PluginBuilder.Builds.Services;
 
 namespace PluginBuilder.HostedServices;
@@ -8,7 +7,7 @@ namespace PluginBuilder.HostedServices;
 public sealed class BuildBrokerMonitor(RemoteBuildSandbox broker, BuildExecutorState executor,
     ILogger<BuildBrokerMonitor> logger) : BackgroundService
 {
-    private BrokerStatus? _lastReady;
+    private string? _lastInstance;
     private readonly object _stateGate = new();
     private bool _stopping;
 
@@ -21,20 +20,20 @@ public sealed class BuildBrokerMonitor(RemoteBuildSandbox broker, BuildExecutorS
             {
                 if (_stopping)
                     return;
+                // Retain identity through failed probes. Only a confirmed restart ends
+                // the old generation, even if its replacement is not ready yet.
+                if (_lastInstance != status.InstanceId)
+                    executor.MarkUnavailable("The isolated build broker instance changed.");
+                _lastInstance = status.InstanceId;
                 if (!status.IsReady)
                 {
-                    _lastReady = null;
-                    executor.MarkUnavailable("The isolated build broker is not ready.");
+                    executor.SuspendAdmission("The isolated build broker is not ready.");
                     return;
                 }
-                if (_lastReady?.InstanceId != status.InstanceId || _lastReady.WorkerImageId != status.WorkerImageId ||
-                    _lastReady.ProxyImageId != status.ProxyImageId || !executor.Snapshot.IsReady)
-                {
-                    // MarkReady cancels the old executor token. Invoke only when identity
-                    // changed/recovered, never on every successful health poll.
+                if (executor.StopToken.IsCancellationRequested)
                     executor.MarkReady(status.WorkerImageId!, status.ProxyImageId!);
-                    _lastReady = status;
-                }
+                else
+                    executor.ResumeAdmission(status.WorkerImageId!, status.ProxyImageId!);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -44,10 +43,14 @@ public sealed class BuildBrokerMonitor(RemoteBuildSandbox broker, BuildExecutorS
         }
         catch (Exception error)
         {
-            if (executor.Snapshot.IsReady)
-                logger.LogWarning("Build broker became unavailable ({ErrorType})", error.GetType().Name);
-            _lastReady = null;
-            executor.MarkUnavailable("The isolated build broker is unavailable.");
+            lock (_stateGate)
+            {
+                if (_stopping)
+                    return;
+                if (executor.Snapshot.IsReady)
+                    logger.LogWarning("Build broker admission suspended ({ErrorType})", error.GetType().Name);
+                executor.SuspendAdmission("The isolated build broker is unavailable.");
+            }
         }
     }
 

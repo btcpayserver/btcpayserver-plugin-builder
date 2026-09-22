@@ -48,43 +48,117 @@ public class RemoteBuildSandboxTests
         Assert.Empty(fixture.Transport.Requests);
     }
 
-    [Fact]
-    public async Task StableReadinessDoesNotCancelActiveBuildsButRestartDoes()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StableInstancePreservesBuildsButConfirmedRestartCancelsThem(bool replacementReady)
     {
         using var fixture = new Fixture();
         fixture.Transport.Enqueue(Json(Ready()));
         await fixture.Monitor.CheckOnceAsync();
         var firstToken = fixture.State.StopToken;
-        fixture.Transport.Enqueue(Json(Ready()));
+        fixture.Transport.Enqueue(Json(Ready() with { WorkerImageId = "sha256:" + new string('b', 64) }));
         await fixture.Monitor.CheckOnceAsync();
         Assert.False(firstToken.IsCancellationRequested);
         Assert.Equal(firstToken, fixture.State.StopToken);
-        fixture.Transport.Enqueue(Json(Ready() with { InstanceId = new string('3', 32) }));
+        fixture.Transport.EnqueueAccepted();
+        await using var accepted = await fixture.Client.PrepareAsync(new("example-plugin", 7), Build());
+        TaskCompletionSource polling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Transport.Enqueue(async (_, token) =>
+        {
+            polling.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            throw new InvalidOperationException("Restart should cancel polling.");
+        });
+        var running = accepted.RunAndStageAsync(new OutputCapture());
+        await polling.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        fixture.Transport.Enqueue(Json(Ready() with { InstanceId = new string('3', 32), IsReady = replacementReady }));
         fixture.Transport.InstanceId = new string('3', 32);
         await fixture.Monitor.CheckOnceAsync();
         Assert.True(firstToken.IsCancellationRequested);
+        Assert.Equal(replacementReady, fixture.State.Snapshot.IsReady);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running.WaitAsync(TimeSpan.FromSeconds(5)));
+        fixture.Transport.Enqueue(Json(Ready() with { InstanceId = new string('3', 32) }));
+        await fixture.Monitor.CheckOnceAsync();
         Assert.True(fixture.State.Snapshot.IsReady);
         Assert.False(fixture.State.StopToken.IsCancellationRequested);
     }
 
-    [Fact]
-    public async Task UnavailableBrokerCancelsCurrentExecutorAndRecoveryCreatesANewToken()
+    [Theory]
+    [InlineData("timeout")]
+    [InlineData("connection")]
+    [InlineData("unavailable")]
+    [InlineData("unauthorized")]
+    [InlineData("invalid")]
+    [InlineData("not-ready")]
+    public async Task FailedHealthPollsSuspendAdmissionButAcceptedBuildsSurviveRecovery(string failure)
     {
         using var fixture = new Fixture();
         fixture.Transport.Enqueue(Json(Ready()));
         await fixture.Monitor.CheckOnceAsync();
         var first = fixture.State.StopToken;
-        fixture.Transport.Enqueue(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
-        await fixture.Monitor.CheckOnceAsync();
-        Assert.False(fixture.State.Snapshot.IsReady);
-        Assert.True(first.IsCancellationRequested);
-        var requestsBeforeSubmission = fixture.Transport.Requests.Count;
-        await Assert.ThrowsAsync<BuildServiceException>(() => fixture.Client.PrepareAsync(new("example-plugin", 7), Build()));
-        Assert.Equal(requestsBeforeSubmission, fixture.Transport.Requests.Count);
+        fixture.Transport.EnqueueAccepted();
+        await using var accepted = await fixture.Client.PrepareAsync(new("example-plugin", 7), Build());
+        // There is no failure-count threshold that abandons accepted leases.
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            fixture.Transport.Enqueue((_, _) => failure switch
+            {
+                "timeout" => throw new TaskCanceledException("The status deadline expired."),
+                "connection" => throw new HttpRequestException("The connection was reset."),
+                "unavailable" => Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)),
+                "unauthorized" => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized)),
+                "invalid" => Task.FromResult(Json("invalid status")),
+                "not-ready" => Task.FromResult(Json(Ready() with { IsReady = false })),
+                _ => throw new InvalidOperationException()
+            });
+            await fixture.Monitor.CheckOnceAsync();
+            Assert.False(fixture.State.Snapshot.IsReady);
+            Assert.False(first.IsCancellationRequested);
+            Assert.Equal(first, fixture.State.StopToken);
+            var requests = fixture.Transport.Requests.Count;
+            await Assert.ThrowsAsync<BuildServiceException>(() => fixture.Client.PrepareAsync(new("example-plugin", 8), Build()));
+            Assert.Equal(requests, fixture.Transport.Requests.Count);
+        }
+
+        // The accepted lease can finish even before admission recovers.
+        fixture.Transport.Enqueue(Json(new BrokerBuildStatus("succeeded", 0, [], Result(), null)));
+        fixture.Transport.Enqueue(Bytes(Artifact));
+        var staged = await accepted.RunAndStageAsync(new OutputCapture());
+        Assert.Equal(Artifact, await File.ReadAllBytesAsync(Path.Combine(staged.StagingDirectory, "artifact.btcpay")));
         fixture.Transport.Enqueue(Json(Ready()));
         await fixture.Monitor.CheckOnceAsync();
         Assert.True(fixture.State.Snapshot.IsReady);
-        Assert.NotEqual(first, fixture.State.StopToken);
+        Assert.Equal(first, fixture.State.StopToken);
+        Assert.False(first.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task TruncatedHealthResponseSuspendsAdmissionWithoutCancellingAcceptedGeneration()
+    {
+        var truncate = false;
+        await using var server = await LoopbackServer.Start(async context =>
+        {
+            context.Response.Headers[RemoteBuildSandbox.InstanceHeader] = Instance;
+            context.Response.ContentType = "application/json";
+            var json = JsonSerializer.Serialize(Ready(), JsonOptions);
+            context.Response.ContentLength = Encoding.UTF8.GetByteCount(json);
+            await context.Response.WriteAsync(truncate ? json[..5] : json);
+            await context.Response.Body.FlushAsync();
+            // Returning with fewer bytes than Content-Length closes the response early.
+        });
+        using var fixture = new Fixture(brokerUrl: server.Address);
+        await fixture.Monitor.CheckOnceAsync();
+        Assert.True(fixture.State.Snapshot.IsReady);
+        var first = fixture.State.StopToken;
+        truncate = true;
+        await fixture.Monitor.CheckOnceAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(fixture.State.Snapshot.IsReady);
+        Assert.False(first.IsCancellationRequested);
+        truncate = false;
+        await fixture.Monitor.CheckOnceAsync();
+        Assert.True(fixture.State.Snapshot.IsReady);
+        Assert.Equal(first, fixture.State.StopToken);
     }
 
     [Theory]
@@ -112,7 +186,7 @@ public class RemoteBuildSandboxTests
             Assert.Equal("http://build-broker:8080/v1/builds", request.RequestUri!.AbsoluteUri);
             throw new HttpRequestException("sensitive diagnostic must not be public");
         });
-        var error = await Assert.ThrowsAsync<BuildServiceException>(() => fixture.Client.PrepareAsync(new("example-plugin", 7), Build()));
+        var error = await Assert.ThrowsAnyAsync<BuildServiceException>(() => fixture.Client.PrepareAsync(new("example-plugin", 7), Build()));
         Assert.DoesNotContain("sensitive", error.Message);
         Assert.Single(fixture.Transport.Requests);
         using var body = JsonDocument.Parse(fixture.Transport.Requests[0].Body!);
@@ -323,8 +397,10 @@ public class RemoteBuildSandboxTests
         await Assert.ThrowsAsync<BuildServiceException>(() => fixture.Client.PrepareAsync(new("example-plugin", 9), Build()));
     }
 
-    [Fact]
-    public async Task ShutdownWaitsForInFlightPostWithoutCancellingTheAcceptedBrokerJob()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InFlightPostSurvivesAdmissionSuspensionButIsDrainedOnShutdown(bool shutdown)
     {
         using var fixture = new Fixture();
         TaskCompletionSource posting = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -337,13 +413,46 @@ public class RemoteBuildSandboxTests
         });
         var submission = fixture.Client.PrepareAsync(new("example-plugin", 7), Build());
         await posting.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var stopping = fixture.Client.StopAsync();
-        Assert.Same(stopping, fixture.Client.StopAsync());
-        Assert.False(stopping.IsCompleted);
-        respond.TrySetResult();
-        await Assert.ThrowsAsync<BuildServiceException>(() => submission);
-        await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+        if (shutdown)
+        {
+            var stopping = fixture.Client.StopAsync();
+            Assert.Same(stopping, fixture.Client.StopAsync());
+            Assert.False(stopping.IsCompleted);
+            respond.TrySetResult();
+            await Assert.ThrowsAsync<BuildServiceException>(() => submission);
+            await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        else
+        {
+            fixture.State.SuspendAdmission("Health probe failed during submission.");
+            respond.TrySetResult();
+            await using var accepted = await submission.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(fixture.State.Snapshot.IsReady);
+        }
         Assert.Single(fixture.Transport.Requests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedBuildRequestIsNotRetriedAndDoesNotCancelAnotherLease(bool duringDownload)
+    {
+        using var fixture = new Fixture();
+        fixture.Transport.EnqueueAccepted();
+        fixture.Transport.EnqueueAccepted(new string('4', 32));
+        await using var first = await fixture.Client.PrepareAsync(new("example-plugin", 7), Build());
+        await using var second = await fixture.Client.PrepareAsync(new("example-plugin", 8), Build());
+        if (duringDownload)
+            fixture.Transport.Enqueue(Json(new BrokerBuildStatus("succeeded", 0, [], Result(), null)));
+        fixture.Transport.Enqueue((_, _) => throw new HttpRequestException("Connection lost."));
+        await Assert.ThrowsAsync<BuildServiceException>(() => first.RunAndStageAsync(new OutputCapture()));
+        Assert.Equal(duringDownload ? 4 : 3, fixture.Transport.Requests.Count);
+        Assert.False(fixture.State.StopToken.IsCancellationRequested);
+
+        fixture.Transport.Enqueue(Json(new BrokerBuildStatus("succeeded", 0, [], Result(), null)));
+        fixture.Transport.Enqueue(Bytes(Artifact));
+        var staged = await second.RunAndStageAsync(new OutputCapture());
+        Assert.Equal(Artifact, await File.ReadAllBytesAsync(Path.Combine(staged.StagingDirectory, "artifact.btcpay")));
     }
 
 

@@ -70,7 +70,8 @@ queue service or broker database is introduced.
    file is unlinked immediately and held only by the broker's open handle: no
    downloadable result survives a broker restart. At most two artifacts of
    256 MiB each can be retained, released after download or lease expiry (45 minutes
-   from admission). Failed transfers may be retried within that lifetime.
+   from admission). A transfer that fails on the broker retains the file until
+   consumption or expiry; the web client does not automatically retry it.
    A cleaned-up failed job is released when its final status/log page is returned,
    so retries do not require a client cleanup request. Unread failures expire.
    There is no HTTP cancellation endpoint; lease release is internal to the broker.
@@ -78,7 +79,9 @@ queue service or broker database is introduced.
    status/logs and downloads the artifact into its own private staging area,
    checking its size and SHA-256.
 8. **Publication.** The web application uploads its verified copy to Azure without
-   requesting or coordinating sandbox cleanup. Publication
+   requesting or coordinating sandbox cleanup. Once download and validation finish,
+   broker unavailability or restart no longer interrupts publication; application
+   shutdown still cancels the upload. Publication
    does not silently overwrite an existing artifact. After discarding its private
    download and persisting logs, the web application commits the version mapping,
    artifact URL and successful build state in one database transaction, then emits
@@ -155,8 +158,19 @@ Use only trusted plugins in that development mode.
 - Stopping the web client cancels its local polling/downloads, not the accepted
   broker job. Broker deadlines and shutdown own sandbox cancellation and cleanup.
   To interrupt accepted work operationally, stop the executor, not just the website.
-- The web application monitors broker readiness. There is no fallback to running
-  Docker locally when the broker is unavailable.
+- The web application monitors broker readiness for **new admission**. Any failed
+  health probe, invalid response or "not ready" status immediately suspends new
+  submissions without cancelling accepted builds. A ready response from the same
+  instance restores admission without replacing their cancellation token. A POST
+  already in flight may still be accepted after admission is suspended.
+- A valid status confirming a different broker instance cancels polling/downloads
+  tied to the old instance, even if the replacement is not ready yet. Changes to
+  image IDs alone are not treated as a restart. There is no local Docker fallback.
+- Each accepted build retains its own request deadlines, instance checks and
+  45-minute lifetime. A failed build-status request or artifact download still fails
+  that build, not all builds. The client does not retry submissions, build-status
+  requests or downloads; a lost response can leave a broker slot held until lease
+  expiry. Health recovery is not a guarantee of recovery from every network failure.
 
 An unavailable executor should be investigated through broker logs and Docker
 health. Resolve the underlying problem before restarting/reconciling it; simply
