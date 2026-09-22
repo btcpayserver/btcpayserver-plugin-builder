@@ -83,32 +83,39 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         "--opt", "com.docker.network.bridge.inhibit_ipv4=true", "--label", label, network
     ];
 
-    public static IReadOnlyList<string> CreateProxyArguments(
-        string container, string network, string resolverFile, string image, string label, bool useRunc = false) =>
+    internal static readonly string ProxyUser = $"{ProxyUserId}:{ProxyUserId}";
+    // Shared with the startup smoke test, which parses the proxy configuration in this layout.
+    internal static readonly string[] ProxyTmpfsArguments =
     [
-        "container", "create",
-        "--name", container,
-        "--label", label,
-        "--runtime", useRunc ? "runc" : "runsc",
-        "--network", network,
-        "--read-only",
-        "--user", $"{ProxyUserId}:{ProxyUserId}",
-        "--cap-drop", "ALL",
-        "--security-opt", "no-new-privileges:true",
-        "--memory", "256m",
-        "--memory-swap", "256m",
-        "--cpus", "0.5",
-        "--pids-limit", "128",
-        "--ulimit", "nofile=1024:1024",
         "--tmpfs", $"/tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid={ProxyUserId},gid={ProxyUserId}",
         "--tmpfs", $"/run/squid:rw,noexec,nosuid,nodev,size=4m,mode=0700,uid={ProxyUserId},gid={ProxyUserId}",
         "--tmpfs", $"/var/log/squid:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid={ProxyUserId},gid={ProxyUserId}",
-        "--tmpfs", $"/var/spool/squid:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid={ProxyUserId},gid={ProxyUserId}",
-        "--mount", $"type=bind,source={resolverFile},target=/etc/resolv.conf,readonly",
-        "--log-opt", "max-size=1m",
-        "--log-opt", "max-file=1",
-        image
+        "--tmpfs", $"/var/spool/squid:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid={ProxyUserId},gid={ProxyUserId}"
     ];
+
+    public static IReadOnlyList<string> CreateProxyArguments(
+        string container, string network, string resolverFile, string image, string label, bool useRunc = false)
+    {
+        var arguments = DockerCli.HardenedContainer(container, label, useRunc ? "runc" : "runsc", network, "256m", 128,
+            user: ProxyUser, cpus: "0.5", nofile: 1024, logs: ContainerLogs.Bounded);
+        arguments.AddRange(ProxyTmpfsArguments);
+        arguments.AddRange(["--mount", $"type=bind,source={resolverFile},target=/etc/resolv.conf,readonly", image]);
+        return arguments;
+    }
+
+    // Untrusted containers resolve nothing themselves: DNS points at an unroutable
+    // address and every request goes through the build proxy.
+    private static string[] IsolatedEgressArguments(string proxyIp)
+    {
+        var proxy = $"http://{proxyIp}:3128";
+        return
+        [
+            "--dns", "192.0.2.1", "--dns-option", "timeout:1", "--dns-option", "attempts:1",
+            "--env", $"HTTP_PROXY={proxy}", "--env", $"HTTPS_PROXY={proxy}",
+            "--env", $"http_proxy={proxy}", "--env", $"https_proxy={proxy}",
+            "--env", "ALL_PROXY=", "--env", "all_proxy=", "--env", "NO_PROXY=", "--env", "no_proxy="
+        ];
+    }
 
     public static IReadOnlyList<string> CreateWorkerArguments(
         string containerName,
@@ -122,45 +129,21 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         BuildInfo buildInfo,
         bool useRunc = false)
     {
-        var proxy = $"http://{proxyIp}:3128";
-        List<string> arguments =
+        var arguments = DockerCli.HardenedContainer(containerName, $"{BuildExecutorDocker.ManagedResourceLabel}={buildId}",
+            useRunc ? "runc" : "runsc", internalNetwork, "3g", WorkerPidLimit,
+            user: $"{WorkerUserId}:{WorkerUserId}", cpus: "2", nofile: 4096, stopTimeout: true, logs: ContainerLogs.None);
+        arguments.AddRange(IsolatedEgressArguments(proxyIp));
+        arguments.AddRange(
         [
-            "container", "create",
-            "--name", containerName,
-            "--label", $"{BuildExecutorDocker.ManagedResourceLabel}={buildId}",
-            "--network", internalNetwork,
-            "--dns", "192.0.2.1",
-            "--dns-option", "timeout:1",
-            "--dns-option", "attempts:1",
-            "--runtime", useRunc ? "runc" : "runsc",
-            "--read-only",
-            "--user", $"{WorkerUserId}:{WorkerUserId}",
-            "--cap-drop", "ALL",
-            "--security-opt", "no-new-privileges:true",
-            "--memory", "3g",
-            "--memory-swap", "3g",
-            "--cpus", "2",
-            "--pids-limit", WorkerPidLimit.ToString(CultureInfo.InvariantCulture),
-            "--ulimit", "nofile=4096:4096",
-            "--stop-timeout", "5",
-            "--log-driver", "none",
             "--tmpfs", $"/tmp:rw,exec,nosuid,nodev,size=512m,mode=0700,uid={WorkerUserId},gid={WorkerUserId}",
             "--mount", $"type=bind,source={sourceDirectory},target=/source,readonly",
             "--mount", $"type=bind,source={workDirectory},target=/build",
             "--mount", $"type=bind,source={outputDirectory},target=/out",
-            "--env", $"HTTP_PROXY={proxy}",
-            "--env", $"HTTPS_PROXY={proxy}",
-            "--env", $"http_proxy={proxy}",
-            "--env", $"https_proxy={proxy}",
-            "--env", "ALL_PROXY=",
-            "--env", "all_proxy=",
-            "--env", "NO_PROXY=",
-            "--env", "no_proxy=",
             "--env", "HOME=/build/home",
             "--env", "DOTNET_CLI_HOME=/build/home",
             "--env", "NUGET_PACKAGES=/build/nuget-packages",
             "--env", "GIT_CONFIG_NOSYSTEM=1"
-        ];
+        ]);
 
         if (!string.IsNullOrEmpty(buildInfo.PluginDir))
             arguments.AddRange(["--env", $"PLUGIN_DIR={buildInfo.PluginDir}"]);
@@ -296,15 +279,9 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 parsedProxyIp.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
                 throw new BuildServiceException("The isolated build proxy has no valid internal IPv4 address.");
 
-            var current = _owner._executorState.Snapshot;
-            if (!current.IsReady || current.WorkerImageId != _workerImageId || current.ProxyImageId != _proxyImageId)
-                throw new BuildServiceException("The isolated build executor became unavailable.");
-
+            EnsureExecutorUnchanged();
             await CloneSource(proxyIp);
-
-            current = _owner._executorState.Snapshot;
-            if (!current.IsReady || current.WorkerImageId != _workerImageId || current.ProxyImageId != _proxyImageId)
-                throw new BuildServiceException("The isolated build executor became unavailable.");
+            EnsureExecutorUnchanged();
 
             await CreateResource(
                 DockerResourceKind.Container,
@@ -325,37 +302,26 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         public async Task<StagedBuildOutput> RunAndStageAsync(IOutputCapture buildOutput)
         {
             ThrowIfDisposed();
-            var current = _owner._executorState.Snapshot;
-            if (!current.IsReady || current.WorkerImageId != _workerImageId || current.ProxyImageId != _proxyImageId)
-                throw new BuildServiceException("The isolated build executor became unavailable.");
+            EnsureExecutorUnchanged();
 
             int code;
-            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopToken))
+            try
             {
                 // The broker enforces the deadline independently of untrusted worker code.
-                timeout.CancelAfter(_owner._options.WorkerExecutionTimeout);
-                try
-                {
-                    code = await _owner._processRunner.RunAsync(new ProcessSpec
-                    {
-                        Executable = "docker",
-                        Arguments = ["container", "start", "--attach", WorkerContainer],
-                        OutputCapture = buildOutput,
-                        ErrorCapture = buildOutput
-                    }, timeout.Token);
-                }
-                catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-                {
-                    await RemoveWorkerOrThrow();
-                    if (_stopToken.IsCancellationRequested)
-                        throw new BuildServiceException("The isolated build executor was stopped.");
-                    throw new BuildServiceException($"Plugin build timed out after {_owner._options.WorkerExecutionTimeout}.");
-                }
-                catch
-                {
-                    await RemoveWorkerOrThrow();
-                    throw;
-                }
+                code = await DockerCli.RunAsync(_owner._processRunner, ["container", "start", "--attach", WorkerContainer],
+                    _owner._options.WorkerExecutionTimeout, _stopToken, buildOutput, buildOutput);
+            }
+            catch (OperationCanceledException)
+            {
+                await RemoveWorkerOrThrow();
+                if (_stopToken.IsCancellationRequested)
+                    throw new BuildServiceException("The isolated build executor was stopped.");
+                throw new BuildServiceException($"Plugin build timed out after {_owner._options.WorkerExecutionTimeout}.");
+            }
+            catch
+            {
+                await RemoveWorkerOrThrow();
+                throw;
             }
 
             if (code != 0)
@@ -401,63 +367,40 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             return new StagedBuildOutput(buildEnvironment, manifestJson, assemblyName, StagingDirectory);
         }
 
-        public async ValueTask DisposeAsync()
-        {
-            if (_disposed)
-                return;
-            _disposed = true;
-            try { await CleanupResources(throwOnFailure: true); }
-            finally { _leaseStopSource.Dispose(); }
-        }
+        public ValueTask DisposeAsync() => new(DisposeCoreAsync(throwOnFailure: true));
 
-        internal async Task DisposeAfterFailureAsync()
+        internal Task DisposeAfterFailureAsync() => DisposeCoreAsync(throwOnFailure: false);
+
+        private async Task DisposeCoreAsync(bool throwOnFailure)
         {
             if (_disposed)
                 return;
             _disposed = true;
-            try { await CleanupResources(throwOnFailure: false); }
+            try { await CleanupResources(throwOnFailure); }
             finally { _leaseStopSource.Dispose(); }
         }
 
         private string Label => $"{BuildExecutorDocker.ManagedResourceLabel}={_buildId}";
 
+        private void EnsureExecutorUnchanged()
+        {
+            var current = _owner._executorState.Snapshot;
+            if (!current.IsReady || current.WorkerImageId != _workerImageId || current.ProxyImageId != _proxyImageId)
+                throw new BuildServiceException("The isolated build executor became unavailable.");
+        }
+
         private IReadOnlyList<string> CreateCloneArguments(string proxyIp)
         {
-            var proxy = $"http://{proxyIp}:3128";
-            List<string> arguments =
+            var arguments = DockerCli.HardenedContainer(CloneContainer, Label, _owner._options.Runtime, InternalNetwork, "1g", 128,
+                user: $"{CloneUserId}:{CloneUserId}", cpus: "1", nofile: 1024, stopTimeout: true, logs: ContainerLogs.None);
+            arguments.AddRange(IsolatedEgressArguments(proxyIp));
+            arguments.AddRange(
             [
-                "container", "create",
-                "--name", CloneContainer,
-                "--label", Label,
-                "--runtime", _owner._options.Runtime,
-                "--network", InternalNetwork,
-                "--dns", "192.0.2.1",
-                "--dns-option", "timeout:1",
-                "--dns-option", "attempts:1",
-                "--read-only",
-                "--user", $"{CloneUserId}:{CloneUserId}",
-                "--cap-drop", "ALL",
-                "--security-opt", "no-new-privileges:true",
-                "--memory", "1g",
-                "--memory-swap", "1g",
-                "--cpus", "1",
-                "--pids-limit", "128",
-                "--ulimit", "nofile=1024:1024",
-                "--stop-timeout", "5",
-                "--log-driver", "none",
                 "--tmpfs", $"/tmp:rw,noexec,nosuid,nodev,size=128m,mode=0700,uid={CloneUserId},gid={CloneUserId}",
                 "--mount", $"type=bind,source={_owner._options.DockerPath(SourceDirectory)},target=/source",
-                "--env", $"HTTP_PROXY={proxy}",
-                "--env", $"HTTPS_PROXY={proxy}",
-                "--env", $"http_proxy={proxy}",
-                "--env", $"https_proxy={proxy}",
-                "--env", "ALL_PROXY=",
-                "--env", "all_proxy=",
-                "--env", "NO_PROXY=",
-                "--env", "no_proxy=",
                 "--env", $"GIT_REPO={_buildInfo.GitRepository}",
                 "--entrypoint", "/clone-source.sh"
-            ];
+            ]);
 
             if (!string.IsNullOrEmpty(_buildInfo.GitRef))
                 arguments.AddRange(["--env", $"GIT_REF={_buildInfo.GitRef}"]);
@@ -474,19 +417,12 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 CreateCloneArguments(proxyIp));
 
             int code;
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopToken);
-            timeout.CancelAfter(CloneTimeout);
             try
             {
-                code = await _owner._processRunner.RunAsync(new ProcessSpec
-                {
-                    Executable = "docker",
-                    Arguments = ["container", "start", "--attach", CloneContainer],
-                    OutputCapture = DiscardOutput.Instance,
-                    ErrorCapture = DiscardOutput.Instance
-                }, timeout.Token);
+                code = await DockerCli.RunAsync(_owner._processRunner, ["container", "start", "--attach", CloneContainer],
+                    CloneTimeout, _stopToken, DiscardOutput.Instance, DiscardOutput.Instance);
             }
-            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 if (_stopToken.IsCancellationRequested)
                     throw new BuildServiceException("The isolated build executor was stopped.");
@@ -510,48 +446,34 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             throw new BuildServiceException("The repository checkout failed.");
         }
 
-        private async Task StageArtifacts()
+        private Task StageArtifacts()
         {
             var stager = $"pb-stager-{_resourceSuffix}";
-            await CreateResource(
-                DockerResourceKind.Container,
-                stager,
-                [
-                    "container", "create",
-                    "--name", stager,
-                    "--label", Label,
-                    "--runtime", _owner._options.Runtime,
-                    "--network", "none",
-                    "--read-only",
-                    "--user", $"{WorkerUserId}:{WorkerUserId}",
-                    "--cap-drop", "ALL",
-                    "--security-opt", "no-new-privileges:true",
-                    "--memory", "512m",
-                    "--memory-swap", "512m",
-                    "--cpus", "0.5",
-                    "--pids-limit", "64",
-                    "--ulimit", "nofile=256:256",
-                    "--log-driver", "none",
-                    "--tmpfs", $"/tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid={WorkerUserId},gid={WorkerUserId}",
-                    "--mount", $"type=bind,source={_owner._options.DockerPath(OutputDirectory)},target=/untrusted-output,readonly",
-                    "--mount", $"type=bind,source={_owner._options.DockerPath(SourceDirectory)},target=/source,readonly",
-                    "--mount", $"type=bind,source={_owner._options.DockerPath(StagingDirectory)},target=/staging",
-                    "--entrypoint", "/stage-artifacts.sh",
-                    _workerImageId
-                ]);
+            var arguments = DockerCli.HardenedContainer(stager, Label, _owner._options.Runtime, "none", "512m", 64,
+                user: $"{WorkerUserId}:{WorkerUserId}", cpus: "0.5", nofile: 256, logs: ContainerLogs.None);
+            arguments.AddRange(
+            [
+                "--tmpfs", $"/tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid={WorkerUserId},gid={WorkerUserId}",
+                "--mount", $"type=bind,source={_owner._options.DockerPath(OutputDirectory)},target=/untrusted-output,readonly",
+                "--mount", $"type=bind,source={_owner._options.DockerPath(SourceDirectory)},target=/source,readonly",
+                "--mount", $"type=bind,source={_owner._options.DockerPath(StagingDirectory)},target=/staging",
+                "--entrypoint", "/stage-artifacts.sh",
+                _workerImageId
+            ]);
+            return RunTrustedOneShot(stager, arguments, "Plugin artifact validation and staging failed",
+                "The trusted artifact staging container could not be removed safely.");
+        }
 
+        private async Task RunTrustedOneShot(string name, IReadOnlyList<string> createArguments, string runError, string removeError)
+        {
+            await CreateResource(DockerResourceKind.Container, name, createArguments);
             try
             {
-                await RunDocker(
-                    ["container", "start", "--attach", stager],
-                    "Plugin artifact validation and staging failed");
+                await RunDocker(["container", "start", "--attach", name], runError);
             }
             finally
             {
-                await RemoveResourceOrThrow(
-                    DockerResourceKind.Container,
-                    stager,
-                    "The trusted artifact staging container could not be removed safely.");
+                await RemoveResourceOrThrow(DockerResourceKind.Container, name, removeError);
             }
         }
 
@@ -689,51 +611,25 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             }
         }
 
-        private async Task InitializeScratchOwnership()
+        private Task InitializeScratchOwnership()
         {
             var initializer = $"pb-scratch-init-{_resourceSuffix}";
-            await CreateResource(
-                DockerResourceKind.Container,
-                initializer,
-                [
-                    "container", "create",
-                    "--name", initializer,
-                    "--label", Label,
-                    "--runtime", _owner._options.Runtime,
-                    "--network", "none",
-                    "--read-only",
-                    "--user", "0:0",
-                    "--cap-drop", "ALL",
-                    "--cap-add", "CHOWN",
-                    "--security-opt", "no-new-privileges:true",
-                    "--memory", "64m",
-                    "--memory-swap", "64m",
-                    // The PID budget must also cover gVisor's sandbox and gofer threads.
-                    "--pids-limit", "64",
-                    "--ulimit", "nofile=64:64",
-                    "--log-driver", "none",
-                    "--mount", $"type=bind,source={_owner._options.DockerPath(ScratchDirectory)},target=/scratch",
-                    "--entrypoint", "/bin/sh",
-                    _workerImageId,
-                    "-c",
-                    "chmod 0755 /scratch/source && " +
-                    "chmod 0700 /scratch/work /scratch/output /scratch/staging && " +
-                    $"chown {CloneUserId}:{CloneUserId} /scratch/source && " +
-                    $"chown {WorkerUserId}:{WorkerUserId} /scratch/work /scratch/output /scratch/staging"
-                ]);
-            try
-            {
-                await RunDocker(
-                    ["container", "start", "--attach", initializer],
-                    "Initializing isolated build scratch ownership failed");
-            }
-            finally
-            {
-                await RemoveResourceOrThrow(
-                    DockerResourceKind.Container,
-                    initializer,
-                    "The trusted scratch initializer container could not be removed safely.");
-            }
+            // The PID budget must also cover gVisor's sandbox and gofer threads.
+            var arguments = DockerCli.HardenedContainer(initializer, Label, _owner._options.Runtime, "none", "64m", 64,
+                user: "0:0", capAdd: ["CHOWN"], nofile: 64, logs: ContainerLogs.None);
+            arguments.AddRange(
+            [
+                "--mount", $"type=bind,source={_owner._options.DockerPath(ScratchDirectory)},target=/scratch",
+                "--entrypoint", "/bin/sh",
+                _workerImageId,
+                "-c",
+                "chmod 0755 /scratch/source && " +
+                "chmod 0700 /scratch/work /scratch/output /scratch/staging && " +
+                $"chown {CloneUserId}:{CloneUserId} /scratch/source && " +
+                $"chown {WorkerUserId}:{WorkerUserId} /scratch/work /scratch/output /scratch/staging"
+            ]);
+            return RunTrustedOneShot(initializer, arguments, "Initializing isolated build scratch ownership failed",
+                "The trusted scratch initializer container could not be removed safely.");
         }
 
         private async Task RemoveResourceOrThrow(
@@ -754,20 +650,12 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             IOutputCapture? outputCapture = null)
         {
             OutputCapture error = new();
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopToken);
-            timeout.CancelAfter(DockerOperationTimeout);
             int code;
             try
             {
-                code = await _owner._processRunner.RunAsync(new ProcessSpec
-                {
-                    Executable = "docker",
-                    Arguments = arguments,
-                    OutputCapture = outputCapture,
-                    ErrorCapture = error
-                }, timeout.Token);
+                code = await DockerCli.RunAsync(_owner._processRunner, arguments, DockerOperationTimeout, _stopToken, outputCapture, error);
             }
-            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 if (_stopToken.IsCancellationRequested)
                     throw new BuildServiceException("The isolated build executor was stopped.");
@@ -814,7 +702,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
 
                 return false;
             }
-            if (!await DockerResourceCleanup.TryRemoveAsync(
+            if (!await DockerCli.TryRemoveAsync(
                     _owner._processRunner, _owner._logger, kind.ToString().ToLowerInvariant(), name,
                     _ambiguousCreates.Contains((kind, name))))
                 return false;

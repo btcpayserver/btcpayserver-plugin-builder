@@ -1,3 +1,4 @@
+using PluginBuilder.BuildBroker.Services;
 using PluginBuilder.Builds.Services;
 
 namespace PluginBuilder.BuildBroker;
@@ -39,20 +40,13 @@ public sealed class BrokerDockerMonitor(
         {
             if (!executor.Snapshot.IsReady)
                 return;
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-            timeout.CancelAfter(ProbeTimeout);
             try
             {
                 // Fixed command, no shell, no mutable caller arguments and no output
                 // accumulation: only exit status matters. ProcessRunner kills the
                 // process tree when this deadline expires.
-                var code = await processRunner.RunAsync(new ProcessSpec
-                {
-                    Executable = "docker",
-                    Arguments = ["version", "--format", "{{.Server.Version}}"],
-                    OutputCapture = DiscardOutput.Instance,
-                    ErrorCapture = DiscardOutput.Instance
-                }, timeout.Token);
+                var code = await DockerCli.RunAsync(processRunner, ["version", "--format", "{{.Server.Version}}"],
+                    ProbeTimeout, stoppingToken, DiscardOutput.Instance, DiscardOutput.Instance);
                 if (code != 0)
                     FailClosed("Docker liveness probe returned a nonzero exit code.");
                 else

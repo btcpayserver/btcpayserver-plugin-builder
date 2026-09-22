@@ -21,6 +21,7 @@ public class DockerStartupHostedService(
     private static readonly Regex ImageIdPattern = new("\\Asha256:[0-9a-f]{64}\\z", RegexOptions.CultureInvariant);
     private static readonly Regex ReleaseTagPattern = new("\\Av[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?\\z", RegexOptions.CultureInvariant);
     private static readonly Regex ScratchDirectoryPattern = new("^pb-build-[0-9a-f]{32}$", RegexOptions.CultureInvariant);
+    private const string SmokeLabel = BuildExecutorDocker.ManagedResourceLabel + "=startup-smoke";
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -197,7 +198,7 @@ public class DockerStartupHostedService(
         foreach (var resource in resources.Lines.Where(resource => !string.IsNullOrWhiteSpace(resource)))
         {
             logger.LogInformation("Removing stale managed docker {ResourceType} {Resource}", resourceType, resource);
-            if (!await DockerResourceCleanup.TryRemoveAsync(
+            if (!await DockerCli.TryRemoveAsync(
                     processRunner, logger, resourceType, resource, cancellationToken: cancellationToken))
                 failures.Add($"Failed to remove managed docker {resourceType} {resource}");
         }
@@ -268,91 +269,25 @@ public class DockerStartupHostedService(
             throw new DockerStartupException("The runsc Docker runtime is not configured");
     }
 
-    private async Task SmokeTestRuntime(string workerImageId, CancellationToken cancellationToken)
+    private Task SmokeTestRuntime(string workerImageId, CancellationToken cancellationToken)
     {
-        var containerName = $"plugin-builder-runtime-smoke-{Guid.NewGuid():N}";
-        var createCompleted = false;
-        try
-        {
-            var createResult = await RunDocker(
-                [
-                    "container", "create",
-                    "--name", containerName,
-                    "--label", $"{BuildExecutorDocker.ManagedResourceLabel}=startup-smoke",
-                    "--runtime", options.Runtime,
-                    "--network", "none",
-                    "--read-only",
-                    "--cap-drop", "ALL",
-                    "--security-opt", "no-new-privileges:true",
-                    "--memory", "128m",
-                    "--memory-swap", "128m",
-                    "--pids-limit", "64",
-                    "--entrypoint", "/bin/true",
-                    workerImageId
-                ],
-                cancellationToken);
-            if (createResult != 0)
-                throw new DockerStartupException("Could not create the runtime smoke-test container");
-            createCompleted = true;
-
-            var startResult = await RunDocker(
-                ["container", "start", "--attach", containerName],
-                cancellationToken);
-            if (startResult != 0)
-                throw new DockerStartupException("The runtime smoke-test container failed");
-        }
-        finally
-        {
-            await RemoveSmokeContainer(
-                containerName,
-                requireQuiescence: !createCompleted,
-                "Could not remove the runtime smoke-test container");
-        }
+        var name = $"plugin-builder-runtime-smoke-{Guid.NewGuid():N}";
+        var arguments = DockerCli.HardenedContainer(name, SmokeLabel, options.Runtime, "none", "128m", 64);
+        arguments.AddRange(["--entrypoint", "/bin/true", workerImageId]);
+        return RunSmokeContainer(name, arguments, "Could not create the runtime smoke-test container",
+            "The runtime smoke-test container failed", "Could not remove the runtime smoke-test container", cancellationToken);
     }
 
-    private async Task SmokeTestProxy(string proxyImageId, CancellationToken cancellationToken)
+    private Task SmokeTestProxy(string proxyImageId, CancellationToken cancellationToken)
     {
-        var containerName = $"plugin-builder-proxy-smoke-{Guid.NewGuid():N}";
-        var createCompleted = false;
-        try
-        {
-            var createResult = await RunDocker(
-                [
-                    "container", "create",
-                    "--name", containerName,
-                    "--label", $"{BuildExecutorDocker.ManagedResourceLabel}=startup-smoke",
-                    "--runtime", options.Runtime,
-                    "--network", "none",
-                    "--read-only",
-                    "--user", "13:13",
-                    "--cap-drop", "ALL",
-                    "--security-opt", "no-new-privileges:true",
-                    "--memory", "128m",
-                    "--memory-swap", "128m",
-                    "--pids-limit", "64",
-                    "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=13,gid=13",
-                    "--tmpfs", "/run/squid:rw,noexec,nosuid,nodev,size=4m,mode=0700,uid=13,gid=13",
-                    "--tmpfs", "/var/log/squid:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=13,gid=13",
-                    "--tmpfs", "/var/spool/squid:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=13,gid=13",
-                    proxyImageId,
-                    "-k", "parse", "-f", "/etc/squid/squid.conf"
-                ],
-                cancellationToken);
-            if (createResult != 0)
-                throw new DockerStartupException("Could not create the build proxy smoke-test container");
-            createCompleted = true;
-
-            var startResult = await RunDocker(["container", "start", "--attach", containerName], cancellationToken);
-            if (startResult != 0)
-                throw new DockerStartupException("The build proxy configuration smoke test failed");
-        }
-        finally
-        {
-            await RemoveSmokeContainer(
-                containerName,
-                requireQuiescence: !createCompleted,
-                "Could not remove the build proxy smoke-test container");
-        }
+        var name = $"plugin-builder-proxy-smoke-{Guid.NewGuid():N}";
+        var arguments = DockerCli.HardenedContainer(name, SmokeLabel, options.Runtime, "none", "128m", 64,
+            user: DockerBuildSandbox.ProxyUser);
+        arguments.AddRange(DockerBuildSandbox.ProxyTmpfsArguments);
+        arguments.AddRange([proxyImageId, "-k", "parse", "-f", "/etc/squid/squid.conf"]);
+        return RunSmokeContainer(name, arguments, "Could not create the build proxy smoke-test container",
+            "The build proxy configuration smoke test failed", "Could not remove the build proxy smoke-test container",
+            cancellationToken);
     }
 
     private async Task SmokeTestScratchMount(string workerImageId, CancellationToken cancellationToken)
@@ -361,91 +296,60 @@ public class DockerStartupHostedService(
         var markerName = $"pb-mount-probe-{suffix}";
         var scratchRoot = options.BuildScratchRoot!;
         var markerPath = Path.Combine(scratchRoot, markerName);
-        var containerName = $"plugin-builder-scratch-smoke-{suffix}";
+        var name = $"plugin-builder-scratch-smoke-{suffix}";
+        // The PID budget must also cover gVisor's sandbox and gofer threads.
+        var arguments = DockerCli.HardenedContainer(name, SmokeLabel, options.Runtime, "none", "64m", 64, user: "0:0");
+        arguments.AddRange(
+        [
+            "--mount", $"type=bind,source={options.DockerPath(scratchRoot)},target=/scratch,readonly",
+            "--entrypoint", "/bin/sh",
+            workerImageId,
+            "-c",
+            "set -eu; " +
+            "test -f \"$1\"; test \"$(cat -- \"$1\")\" = \"$2\"",
+            "scratch-mount-probe",
+            $"/scratch/{markerName}",
+            suffix
+        ]);
         await File.WriteAllTextAsync(markerPath, suffix, cancellationToken);
-        var createCompleted = false;
-
+        const string notShared = "The build scratch directory is not shared with the Docker host";
         try
         {
-            var createResult = await RunDocker(
-                [
-                    "container", "create",
-                    "--name", containerName,
-                    "--label", $"{BuildExecutorDocker.ManagedResourceLabel}=startup-smoke",
-                    "--runtime", options.Runtime,
-                    "--network", "none",
-                    "--read-only",
-                    "--user", "0:0",
-                    "--cap-drop", "ALL",
-                    "--security-opt", "no-new-privileges:true",
-                    "--memory", "64m",
-                    "--memory-swap", "64m",
-                    // The PID budget must also cover gVisor's sandbox and gofer threads.
-                    "--pids-limit", "64",
-                    "--mount", $"type=bind,source={options.DockerPath(scratchRoot)},target=/scratch,readonly",
-                    "--entrypoint", "/bin/sh",
-                    workerImageId,
-                    "-c",
-                    "set -eu; " +
-                    "test -f \"$1\"; test \"$(cat -- \"$1\")\" = \"$2\"",
-                    "scratch-mount-probe",
-                    $"/scratch/{markerName}",
-                    suffix
-                ],
-                cancellationToken);
-
-            if (createResult != 0)
-                throw new DockerStartupException("The build scratch directory is not shared with the Docker host");
-            createCompleted = true;
-
-            var startResult = await RunDocker(
-                ["container", "start", "--attach", containerName],
-                cancellationToken);
-            if (startResult != 0)
-                throw new DockerStartupException(
-                    "The build scratch directory is not shared with the Docker host");
+            await RunSmokeContainer(name, arguments, notShared, notShared,
+                "Could not remove the build scratch smoke-test container", cancellationToken);
         }
         finally
         {
-            DockerStartupException? removalFailure = null;
-            try
-            {
-                await RemoveSmokeContainer(
-                    containerName,
-                    requireQuiescence: !createCompleted,
-                    "Could not remove the build scratch smoke-test container");
-            }
-            catch (DockerStartupException ex)
-            {
-                removalFailure = ex;
-            }
-
+            // A container removal failure is already logged by DockerCli.TryRemoveAsync.
             try
             {
                 File.Delete(markerPath);
             }
             catch (Exception ex)
             {
-                var cleanupContext = removalFailure is null
-                    ? string.Empty
-                    : $"{removalFailure.Message}; additionally, ";
-                throw new DockerStartupException(
-                    $"{cleanupContext}could not remove the build scratch probe file: {ex.Message}");
+                throw new DockerStartupException($"Could not remove the build scratch probe file: {ex.Message}");
             }
-
-            if (removalFailure is not null)
-                throw removalFailure;
         }
     }
 
-    private async Task RemoveSmokeContainer(
-        string containerName,
-        bool requireQuiescence,
-        string safeError)
+    private async Task RunSmokeContainer(string name, IReadOnlyList<string> createArguments,
+        string createError, string runError, string removeError, CancellationToken cancellationToken)
     {
-        if (!await DockerResourceCleanup.TryRemoveAsync(
-                processRunner, logger, "container", containerName, requireQuiescence))
-            throw new DockerStartupException(safeError);
+        var createCompleted = false;
+        try
+        {
+            if (await RunDocker(createArguments, cancellationToken) != 0)
+                throw new DockerStartupException(createError);
+            createCompleted = true;
+            if (await RunDocker(["container", "start", "--attach", name], cancellationToken) != 0)
+                throw new DockerStartupException(runError);
+        }
+        finally
+        {
+            // An interrupted create may still reach the daemon: only a removal proves quiescence.
+            if (!await DockerCli.TryRemoveAsync(processRunner, logger, "container", name, ambiguousCreate: !createCompleted))
+                throw new DockerStartupException(removeError);
+        }
     }
 
     private async Task<int> RunDocker(
@@ -457,19 +361,12 @@ public class DockerStartupHostedService(
     {
         // Pulls need more time than local Docker operations, but neither may
         // hold startup indefinitely. Host cancellation interrupts both.
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(operationTimeout ?? DockerOperationTimeout);
         try
         {
-            return await processRunner.RunAsync(new ProcessSpec
-            {
-                Executable = "docker",
-                Arguments = arguments,
-                OutputCapture = outputCapture,
-                ErrorCapture = errorCapture ?? new OutputCapture()
-            }, timeout.Token);
+            return await DockerCli.RunAsync(processRunner, arguments, operationTimeout ?? DockerOperationTimeout,
+                cancellationToken, outputCapture, errorCapture ?? new OutputCapture());
         }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new DockerStartupException("Docker startup operation timed out.");
         }

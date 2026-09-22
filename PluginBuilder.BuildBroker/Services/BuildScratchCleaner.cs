@@ -44,28 +44,11 @@ public sealed class BuildScratchCleaner(
 
             if (childDirectories.Length > 0)
             {
-                List<string> createArguments =
-                [
-                    "container", "create",
-                    "--name", cleanupContainer,
-                    "--label", $"{BuildExecutorDocker.ManagedResourceLabel}=scratch-cleanup",
-                    "--runtime", options.Runtime,
-                    "--network", "none",
-                    "--read-only",
-                    "--user", "0:0",
-                    "--cap-drop", "ALL",
-                    "--cap-add", "DAC_OVERRIDE",
-                    "--cap-add", "FOWNER",
-                    "--security-opt", "no-new-privileges:true",
-                    "--memory", "256m",
-                    "--memory-swap", "256m",
-                    "--cpus", "2",
-                    // The limit also includes gVisor's host-side sandbox threads.
-                    "--pids-limit", "64",
-                    "--ulimit", "nofile=128:128",
-                    "--stop-timeout", "5",
-                    "--log-driver", "none"
-                ];
+                // The PID limit also includes gVisor's host-side sandbox threads.
+                var createArguments = DockerCli.HardenedContainer(cleanupContainer,
+                    $"{BuildExecutorDocker.ManagedResourceLabel}=scratch-cleanup", options.Runtime, "none", "256m", 64,
+                    user: "0:0", capAdd: ["DAC_OVERRIDE", "FOWNER"], cpus: "2", nofile: 128, stopTimeout: true,
+                    logs: ContainerLogs.None);
 
                 foreach (var child in childDirectories)
                     createArguments.AddRange(
@@ -115,7 +98,7 @@ public sealed class BuildScratchCleaner(
                 scratchDirectory);
         }
 
-        if (!await DockerResourceCleanup.TryRemoveAsync(
+        if (!await DockerCli.TryRemoveAsync(
                 processRunner, logger, "container", cleanupContainer,
                 ambiguousCreate: createAttempted && !createCompleted))
         {
@@ -134,19 +117,6 @@ public sealed class BuildScratchCleaner(
                new DirectoryInfo(path).LinkTarget is not null;
     }
 
-    private async Task<int> RunDocker(
-        IReadOnlyList<string> arguments,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-        return await processRunner.RunAsync(new ProcessSpec
-        {
-            Executable = "docker",
-            Arguments = arguments,
-            ErrorCapture = new OutputCapture()
-        }, timeoutSource.Token);
-    }
-
+    private Task<int> RunDocker(IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken cancellationToken) =>
+        DockerCli.RunAsync(processRunner, arguments, timeout, cancellationToken, error: new OutputCapture());
 }
