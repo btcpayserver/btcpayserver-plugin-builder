@@ -59,12 +59,10 @@ public class AzureStagedUploadContractTests
     [InlineData("empty")]
     [InlineData("oversized")]
     [InlineData("directory")]
-    [InlineData("symlink")]
-    [InlineData("broken-symlink")]
     [InlineData("fifo")]
     public async Task RejectsInvalidArtifactsBeforeMakingStorageRequests(string kind)
     {
-        if (OperatingSystem.IsWindows() && kind is "symlink" or "broken-symlink" or "fifo")
+        if (OperatingSystem.IsWindows() && kind is "fifo")
             return;
         await using var server = await BlobServer.Start();
         using var staging = new StagingDirectory();
@@ -80,13 +78,6 @@ public class AzureStagedUploadContractTests
             case "directory":
                 Directory.CreateDirectory(staging.Artifact);
                 break;
-            case "symlink":
-            case "broken-symlink":
-                var target = Path.Combine(staging.Path, "secret.txt");
-                if (kind == "symlink")
-                    await File.WriteAllTextAsync(target, "must not be uploaded");
-                File.CreateSymbolicLink(staging.Artifact, target);
-                break;
             case "fifo":
                 using (var process = Process.Start(new ProcessStartInfo("mkfifo")
                        { ArgumentList = { staging.Artifact }, UseShellExecute = false })!)
@@ -101,28 +92,6 @@ public class AzureStagedUploadContractTests
             server.CreateClient().UploadStagedArtifact(staging.Path, "example/7/Example.btcpay")
                 .WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Empty(server.Requests);
-    }
-
-    [Fact]
-    public async Task RejectsSymbolicLinkStagingDirectory()
-    {
-        if (OperatingSystem.IsWindows())
-            return;
-        await using var server = await BlobServer.Start();
-        using var staging = new StagingDirectory();
-        await File.WriteAllTextAsync(staging.Artifact, "test artifact");
-        var link = Path.Combine(staging.Path, "linked-staging");
-        Directory.CreateSymbolicLink(link, staging.Path);
-        try
-        {
-            await Assert.ThrowsAsync<AzureStorageClientException>(() =>
-                server.CreateClient().UploadStagedArtifact(link, "example/7/Example.btcpay"));
-            Assert.Empty(server.Requests);
-        }
-        finally
-        {
-            Directory.Delete(link);
-        }
     }
 
     [Fact]

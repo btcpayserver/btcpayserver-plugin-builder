@@ -9,8 +9,9 @@ namespace PluginBuilder.Services;
 public class AzureStorageClientException(string message) : Exception(message);
 
 /// <summary>
-/// Uses the Azure SDK. Artifact uploads read only the canonical file produced by
-/// the trusted stager, after all containers that could write it have been removed.
+/// Uses the Azure SDK. Artifact uploads read only the file that RemoteBuildSandbox
+/// downloaded into its own private directory and verified against its SHA-256; no
+/// container can reach that directory.
 /// </summary>
 public class AzureStorageClient
 {
@@ -114,29 +115,11 @@ public class AzureStorageClient
 
     private static FileStream OpenStagedArtifact(string stagingDirectory)
     {
-        // This is trusted, quiescent staging, not a general hostile-filesystem
-        // reader: the worker never mounts it and the trusted stager has stopped.
-        // That lifecycle invariant prevents replacements between validation and
-        // open. Keep using the one handle after open, even if the path changes.
-        var directory = new DirectoryInfo(stagingDirectory);
-        if (!directory.Exists || directory.LinkTarget is not null ||
-            (directory.Attributes & FileAttributes.ReparsePoint) != 0)
-            throw new AzureStorageClientException("The trusted artifact staging directory is unavailable");
-
-        var file = new FileInfo(Path.Combine(directory.FullName, "artifact.btcpay"));
-        if (!file.Exists || file.LinkTarget is not null ||
-            (file.Attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint | FileAttributes.Device)) != 0 ||
-            file.Length <= 0 || file.Length > MaximumArtifactBytes)
+        var file = new FileInfo(Path.Combine(stagingDirectory, "artifact.btcpay"));
+        if (!file.Exists || file.Length <= 0 || file.Length > MaximumArtifactBytes)
             throw new AzureStorageClientException(
                 $"The staged plugin artifact must be a nonempty regular file of at most {MaximumArtifactBytes / (1024 * 1024)} MiB");
-
-        var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
+        return new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
             bufferSize: 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        if (!stream.CanSeek || stream.Length != file.Length)
-        {
-            stream.Dispose();
-            throw new AzureStorageClientException("The staged plugin artifact changed after staging");
-        }
-        return stream;
     }
 }
