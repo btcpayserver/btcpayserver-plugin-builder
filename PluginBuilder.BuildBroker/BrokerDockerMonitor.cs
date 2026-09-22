@@ -1,3 +1,4 @@
+using PluginBuilder.BuildBroker.Configuration;
 using PluginBuilder.BuildBroker.Services;
 using PluginBuilder.Builds.Services;
 
@@ -10,10 +11,10 @@ namespace PluginBuilder.BuildBroker;
 public sealed class BrokerDockerMonitor(
     ProcessRunner processRunner,
     BuildExecutorState executor,
+    BuildExecutorOptions options,
     ILogger<BrokerDockerMonitor> logger) : BackgroundService
 {
     public static readonly TimeSpan ProbeInterval = TimeSpan.FromSeconds(15);
-    public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(10);
     private const int ConsecutiveTimeoutLimit = 3;
     private readonly SemaphoreSlim _probeGate = new(1, 1);
     private int _consecutiveTimeouts;
@@ -46,7 +47,7 @@ public sealed class BrokerDockerMonitor(
                 // accumulation: only exit status matters. ProcessRunner kills the
                 // process tree when this deadline expires.
                 var code = await DockerCli.RunAsync(processRunner, ["version", "--format", "{{.Server.Version}}"],
-                    ProbeTimeout, stoppingToken, DiscardOutput.Instance, DiscardOutput.Instance);
+                    options.DockerProbeTimeout, stoppingToken, DiscardOutput.Instance, DiscardOutput.Instance);
                 if (code != 0)
                     FailClosed("Docker liveness probe returned a nonzero exit code.");
                 else

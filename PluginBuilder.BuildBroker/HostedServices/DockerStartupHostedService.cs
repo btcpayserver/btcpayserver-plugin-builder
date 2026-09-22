@@ -16,7 +16,6 @@ public class DockerStartupHostedService(
     BuildExecutorOptions options) : IHostedService
 {
     private const string DisablePluginBuildsEnvVar = "PBB_DISABLE_PLUGIN_BUILDS";
-    private static readonly TimeSpan DockerOperationTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ImagePullTimeout = TimeSpan.FromMinutes(5);
     private static readonly Regex ImageIdPattern = new("\\Asha256:[0-9a-f]{64}\\z", RegexOptions.CultureInvariant);
     private static readonly Regex ReleaseTagPattern = new("\\Av[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?\\z", RegexOptions.CultureInvariant);
@@ -363,7 +362,7 @@ public class DockerStartupHostedService(
         // hold startup indefinitely. Host cancellation interrupts both.
         try
         {
-            return await DockerCli.RunAsync(processRunner, arguments, operationTimeout ?? DockerOperationTimeout,
+            return await DockerCli.RunAsync(processRunner, arguments, operationTimeout ?? options.DockerOperationTimeout,
                 cancellationToken, outputCapture, errorCapture ?? new OutputCapture());
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

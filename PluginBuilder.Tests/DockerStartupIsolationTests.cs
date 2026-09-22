@@ -388,11 +388,11 @@ public class DockerStartupIsolationTests
             disablePluginBuilds: true,
             stallContainerList: true);
         var state = new BuildExecutorState();
-        // The real 30-second operation deadline must fire before this test guard.
-        // Without the local deadline startup would only finish by cancelling the host.
-        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+        // The operation deadline must fire before this test guard. Without the
+        // local deadline startup would only finish by cancelling the host.
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
-        await CreateService(fakeDocker, state).StartAsync(guard.Token);
+        await CreateService(fakeDocker, state, dockerOperationTimeout: TimeSpan.FromSeconds(1)).StartAsync(guard.Token);
 
         Assert.False(guard.IsCancellationRequested);
         Assert.False(state.Snapshot.IsReady);
@@ -504,7 +504,8 @@ public class DockerStartupIsolationTests
         string? scratchRoot = null,
         string? workerImage = WorkerImageId,
         string? proxyImage = ProxyImageId,
-        bool useRunc = false)
+        bool useRunc = false,
+        TimeSpan? dockerOperationTimeout = null)
     {
         var processRunner = new ProcessRunner(NullLogger<ProcessRunner>.Instance);
         var options = new BuildExecutorOptions
@@ -512,7 +513,8 @@ public class DockerStartupIsolationTests
             BuildScratchRoot = scratchRoot ?? fakeDocker.Directory,
             BuildWorkerImage = workerImage,
             BuildProxyImage = proxyImage,
-            UseRunc = useRunc
+            UseRunc = useRunc,
+            DockerOperationTimeout = dockerOperationTimeout ?? new BuildExecutorOptions().DockerOperationTimeout
         };
         return new DockerStartupHostedService(
             NullLogger<DockerStartupHostedService>.Instance,

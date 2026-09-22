@@ -4,6 +4,8 @@ namespace PluginBuilder.BuildBroker.Configuration;
 public sealed class BuildExecutorOptions
 {
     public TimeSpan WorkerExecutionTimeout { get; init; } = TimeSpan.FromMinutes(15);
+    public TimeSpan DockerOperationTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public TimeSpan DockerProbeTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public string? BuildScratchRoot { get; init; }
     public string? BuildWorkerImage { get; init; }
     public string? BuildProxyImage { get; init; }

@@ -7,7 +7,6 @@ public sealed class BuildScratchCleaner(
     ProcessRunner processRunner,
     BuildExecutorOptions options)
 {
-    private static readonly TimeSpan DockerOperationTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ScratchCleanupTimeout = TimeSpan.FromMinutes(5);
     private static readonly string[] ChildDirectoryNames = ["source", "work", "output", "staging"];
 
@@ -63,7 +62,7 @@ public sealed class BuildScratchCleaner(
                 createArguments.AddRange(["-xdev", "-mindepth", "1", "-delete"]);
 
                 createAttempted = true;
-                var createCode = await RunDocker(createArguments, DockerOperationTimeout, cancellationToken);
+                var createCode = await RunDocker(createArguments, options.DockerOperationTimeout, cancellationToken);
                 if (createCode != 0)
                 {
                     logger.LogCritical(

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using PluginBuilder.BuildBroker;
+using PluginBuilder.BuildBroker.Configuration;
 using Xunit;
 
 using PluginBuilder.Builds.Services;
@@ -62,9 +63,10 @@ public class BrokerDockerMonitorTests
     [UnixTheory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ThreeConsecutiveTenSecondTimeoutsDisableAdmissionAndSuccessResetsTheCount(bool recoverBeforeLimit)
+    public async Task ThreeConsecutiveProbeTimeoutsDisableAdmissionAndSuccessResetsTheCount(bool recoverBeforeLimit)
     {
-        using var fixture = new Fixture("hang");
+        var probeTimeout = TimeSpan.FromSeconds(1);
+        using var fixture = new Fixture("hang", probeTimeout);
         var activeBuildToken = fixture.State.StopToken;
         var expectedCommands = 0;
         if (recoverBeforeLimit)
@@ -94,8 +96,8 @@ public class BrokerDockerMonitorTests
         async Task AssertTimedOutProbe(bool expectReady = true)
         {
             var watch = Stopwatch.StartNew();
-            await fixture.Monitor.CheckOnceAsync().WaitAsync(TimeSpan.FromSeconds(16));
-            Assert.InRange(watch.Elapsed, TimeSpan.FromSeconds(9), TimeSpan.FromSeconds(16));
+            await fixture.Monitor.CheckOnceAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.InRange(watch.Elapsed, probeTimeout * 0.9, TimeSpan.FromSeconds(10));
             expectedCommands++;
             Assert.Equal(expectReady, fixture.State.Snapshot.IsReady);
             Assert.Equal(!expectReady, activeBuildToken.IsCancellationRequested);
@@ -157,7 +159,7 @@ public class BrokerDockerMonitorTests
         public BuildExecutorState State { get; } = new();
         public BrokerDockerMonitor Monitor { get; }
 
-        public Fixture(string mode = "success")
+        public Fixture(string mode = "success", TimeSpan? probeTimeout = null)
         {
             Directory.CreateDirectory(_directory);
             File.WriteAllText(DockerPath, """
@@ -183,7 +185,10 @@ public class BrokerDockerMonitorTests
             // No fallback to a host Docker binary, even in the missing-command test.
             Environment.SetEnvironmentVariable("PATH", _directory);
             State.MarkReady("sha256:" + new string('a', 64), "sha256:" + new string('b', 64));
-            Monitor = new BrokerDockerMonitor(new ProcessRunner(NullLogger<ProcessRunner>.Instance), State,
+            var options = probeTimeout is { } timeout
+                ? new BuildExecutorOptions { DockerProbeTimeout = timeout }
+                : new BuildExecutorOptions();
+            Monitor = new BrokerDockerMonitor(new ProcessRunner(NullLogger<ProcessRunner>.Instance), State, options,
                 NullLogger<BrokerDockerMonitor>.Instance);
         }
 

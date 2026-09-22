@@ -19,7 +19,6 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         "nameserver 1.1.1.1\n" +
         "nameserver 1.0.0.1\n" +
         "options timeout:1 attempts:2\n";
-    private static readonly TimeSpan DockerOperationTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CloneTimeout = TimeSpan.FromMinutes(5);
 
     private readonly ILogger<DockerBuildSandbox> _logger;
@@ -482,7 +481,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             // Only fixed filenames are read from trusted, quiescent staging:
             // the worker never mounts it and the stager has already been removed.
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopToken);
-            timeout.CancelAfter(DockerOperationTimeout);
+            timeout.CancelAfter(_owner._options.DockerOperationTimeout);
             try
             {
                 timeout.Token.ThrowIfCancellationRequested();
@@ -653,7 +652,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             int code;
             try
             {
-                code = await DockerCli.RunAsync(_owner._processRunner, arguments, DockerOperationTimeout, _stopToken, outputCapture, error);
+                code = await DockerCli.RunAsync(_owner._processRunner, arguments, _owner._options.DockerOperationTimeout, _stopToken, outputCapture, error);
             }
             catch (OperationCanceledException)
             {
