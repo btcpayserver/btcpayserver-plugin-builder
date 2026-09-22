@@ -10,10 +10,9 @@ namespace PluginBuilder.Tests;
 [Collection(nameof(NonParallelizableCollectionDefinition))]
 public class BrokerDockerMonitorTests
 {
-    [Fact]
+    [UnixFact]
     public async Task SuccessfulFixedProbePreservesReadinessAndTheActiveBuildCancellationToken()
     {
-        if (OperatingSystem.IsWindows()) return;
         using var fixture = new Fixture();
         var activeBuildToken = fixture.State.StopToken;
         await fixture.Monitor.CheckOnceAsync();
@@ -24,10 +23,9 @@ public class BrokerDockerMonitorTests
         Assert.Equal(["version --format {{.Server.Version}}", "version --format {{.Server.Version}}"], fixture.Commands());
     }
 
-    [Fact]
+    [UnixFact]
     public async Task UnavailableExecutorDoesNotStartAnyDockerProcess()
     {
-        if (OperatingSystem.IsWindows()) return;
         using var fixture = new Fixture();
         fixture.State.MarkUnavailable("Startup failed.");
         await fixture.Monitor.CheckOnceAsync();
@@ -35,10 +33,9 @@ public class BrokerDockerMonitorTests
         Assert.Equal("Startup failed.", fixture.State.Snapshot.UnavailableReason);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task NonzeroExitCancelsBuildsAndNeverAutomaticallyReadmitsAfterDockerRecovers()
     {
-        if (OperatingSystem.IsWindows()) return;
         using var fixture = new Fixture("failure");
         var activeBuildToken = fixture.State.StopToken;
         await fixture.Monitor.CheckOnceAsync();
@@ -50,10 +47,9 @@ public class BrokerDockerMonitorTests
         Assert.Single(fixture.Commands());
     }
 
-    [Fact]
+    [UnixFact]
     public async Task MissingDockerExecutableFailsClosedWithoutAttemptingAnyFallback()
     {
-        if (OperatingSystem.IsWindows()) return;
         using var fixture = new Fixture();
         File.Move(fixture.DockerPath, fixture.DockerPath + ".disabled");
         var activeBuildToken = fixture.State.StopToken;
@@ -63,12 +59,11 @@ public class BrokerDockerMonitorTests
         Assert.Empty(fixture.Commands());
     }
 
-    [Theory]
+    [UnixTheory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task ThreeConsecutiveTenSecondTimeoutsDisableAdmissionAndSuccessResetsTheCount(bool recoverBeforeLimit)
     {
-        if (OperatingSystem.IsWindows()) return;
         using var fixture = new Fixture("hang");
         var activeBuildToken = fixture.State.StopToken;
         var expectedCommands = 0;
@@ -108,10 +103,9 @@ public class BrokerDockerMonitorTests
         }
     }
 
-    [Fact]
+    [UnixFact]
     public async Task ConcurrentChecksDoNotFanOutIntoMultipleDockerProcesses()
     {
-        if (OperatingSystem.IsWindows()) return;
         using var fixture = new Fixture("blocked");
         var firstProbe = fixture.Monitor.CheckOnceAsync();
         Task otherProbes = Task.CompletedTask;
@@ -132,10 +126,9 @@ public class BrokerDockerMonitorTests
         Assert.Single(fixture.Commands());
     }
 
-    [Fact]
+    [UnixFact]
     public async Task HostedShutdownCancellationDoesNotMisdiagnoseADaemonFailure()
     {
-        if (OperatingSystem.IsWindows()) return;
         using var fixture = new Fixture("blocked");
         using var shutdown = new CancellationTokenSource();
         var probe = fixture.Monitor.CheckOnceAsync(shutdown.Token);

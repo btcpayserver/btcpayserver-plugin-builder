@@ -24,14 +24,11 @@ public class DockerBuildSandboxLifecycleTests
     private const string ProxyImageId =
         "sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
-    [Theory]
+    [UnixTheory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task PrepareCreatesPerBuildProxyTopologyAndDisposeCleansEveryResource(bool useRunc)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create();
         var state = ReadyExecutor();
         var sandbox = CreateSandbox(fakeDocker, state, useRunc: useRunc);
@@ -242,14 +239,11 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [Theory]
+    [UnixTheory]
     [InlineData(null)]
     [InlineData("")]
     public async Task MissingBuildConfigIsNormalizedForWorkerAndTrustedProvenance(string? buildConfig)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create();
         var buildInfo = BuildInfo();
         buildInfo.BuildConfig = buildConfig;
@@ -276,12 +270,9 @@ public class DockerBuildSandboxLifecycleTests
         }
     }
 
-    [Fact]
+    [UnixFact]
     public async Task ProxyReadinessFailureCleansTopologyBeforeAnyCheckoutOrWorkerIsCreated()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(failProxyReadiness: true);
         var state = ReadyExecutor();
 
@@ -304,12 +295,9 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task CheckoutFailureRemovesCloneAndNeverCreatesWorker()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(failCloneStart: true);
         var state = ReadyExecutor();
 
@@ -331,14 +319,11 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [Theory]
+    [UnixTheory]
     [InlineData("State.Running", "Inspecting the build proxy failed.")]
     [InlineData("IPAddress", "Reading the build proxy address failed.")]
     public async Task ProxyInspectionFailureKeepsSafeErrorAndCleansTopology(string inspection, string expectedError)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(failInspection: inspection);
         var state = ReadyExecutor();
 
@@ -357,12 +342,9 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task FailedStagingNeverReturnsPartialOutputAndDisposalCleansIt()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(failStagerStart: true);
         var state = ReadyExecutor();
         var prepared = await CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo());
@@ -387,12 +369,9 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task AmbiguousProxyCreateRetriesRemovalWhenContainerAppearsAfterInitialNotFound()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(ambiguousProxyCreate: true);
         var state = ReadyExecutor();
         var prepare = CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo());
@@ -421,7 +400,7 @@ public class DockerBuildSandboxLifecycleTests
             state.Snapshot.UnavailableReason);
     }
 
-    [Theory]
+    [UnixTheory]
     [InlineData(
         "not-an-object-id",
         "2026-08-27T12:34:56Z",
@@ -443,9 +422,6 @@ public class DockerBuildSandboxLifecycleTests
         string buildDate,
         string expectedError)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(
             gitCommit: gitCommit,
             gitCommitDate: gitCommitDate,
@@ -468,15 +444,12 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [Theory]
+    [UnixTheory]
     [InlineData("")]
     [InlineData("not-a-hash")]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n")]
     public async Task InvalidStagedHashIsRejectedAndSandboxIsCleaned(string buildHash)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(buildHash: buildHash);
         var state = ReadyExecutor();
         var prepared = await CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo());
@@ -495,12 +468,9 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task ConcurrentBuildsKeepSeparateDirectoriesUntilCleanupFinishes()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create();
         var sandbox = CreateSandbox(fakeDocker, ReadyExecutor());
         await using var first = await sandbox.PrepareAsync(BuildId(), BuildInfo());
@@ -529,13 +499,10 @@ public class DockerBuildSandboxLifecycleTests
             yield return [file, kind];
     }
 
-    [Theory]
+    [UnixTheory]
     [MemberData(nameof(InvalidStagedFiles))]
     public async Task LocalMetadataReadsRejectInvalidFilesAndCleanSandbox(string file, string kind)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(invalidStagedFile: file, invalidStagedKind: kind);
         var state = ReadyExecutor();
         var prepared = await CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo());
@@ -554,12 +521,9 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task LocalMetadataReadsRejectLinkedStagingDirectory()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(invalidStagedKind: "linked-staging");
         var state = ReadyExecutor();
         var prepared = await CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo());
@@ -571,24 +535,18 @@ public class DockerBuildSandboxLifecycleTests
         Assert.False(state.Snapshot.IsReady);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task LocalMetadataReadsPreserveUtf8BomSupport()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(invalidStagedKind: "utf8-bom");
         await using var prepared = await CreateSandbox(fakeDocker, ReadyExecutor()).PrepareAsync(BuildId(), BuildInfo());
         var output = await prepared.RunAndStageAsync(new OutputCapture());
         Assert.Equal("{}", output.ManifestJson.Trim());
     }
 
-    [Fact]
+    [UnixFact]
     public async Task FailedStagerRemovalPreventsLocalMetadataReads()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(failStagerRemoval: true);
         var state = ReadyExecutor();
         var prepared = await CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo());
@@ -599,12 +557,9 @@ public class DockerBuildSandboxLifecycleTests
         await Assert.ThrowsAsync<BuildServiceException>(() => prepared.DisposeAsync().AsTask());
     }
 
-    [Fact]
+    [UnixFact]
     public async Task FailedCleanupDisablesExecutorAndPreservesDirtyDirectory()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(failWorkerRemoval: true);
         var state = ReadyExecutor();
         var sandbox = CreateSandbox(fakeDocker, state);
@@ -619,19 +574,11 @@ public class DockerBuildSandboxLifecycleTests
         await Assert.ThrowsAsync<BuildServiceException>(() => sandbox.PrepareAsync(BuildId(), BuildInfo()));
     }
 
-    [Theory]
-    [InlineData(1, "Plugin build failed.")]
-    [InlineData(2, "Plugin build failed.")]
-    [InlineData(124, "Plugin build failed.")]
-    [InlineData(78, "Plugin build failed.")]
-    public async Task FailedWorkerIsRemovedBeforeReturningErrorAndNeverStagesArtifacts(
-        int exitCode,
-        string expectedMessage)
+    // Every nonzero worker exit takes the same path, so one exit code covers them.
+    [UnixFact]
+    public async Task FailedWorkerIsRemovedBeforeReturningErrorAndNeverStagesArtifacts()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
-        await using var fakeDocker = await FakeDocker.Create(workerExitCode: exitCode);
+        await using var fakeDocker = await FakeDocker.Create(workerExitCode: 1);
         var state = ReadyExecutor();
         var sandbox = CreateSandbox(fakeDocker, state);
         var prepared = await sandbox.PrepareAsync(BuildId(), BuildInfo());
@@ -641,7 +588,7 @@ public class DockerBuildSandboxLifecycleTests
             var exception = await Assert.ThrowsAsync<BuildServiceException>(() =>
                 prepared.RunAndStageAsync(output).WaitAsync(TimeSpan.FromSeconds(10)));
 
-            Assert.Equal(expectedMessage, exception.Message);
+            Assert.Equal("Plugin build failed.", exception.Message);
             var commands = await fakeDocker.ReadCommands();
             var start = $"container start --attach {prepared.WorkerContainer}";
             var remove = $"container rm --force {prepared.WorkerContainer}";
@@ -664,12 +611,9 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(cleanedCommands.IndexOf($"container rm --force {prepared.WorkerContainer}") < cleaner);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task FailedWorkerIsCleanedAndTheNextBuildSucceeds()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(workerExitCode: 2);
         var state = ReadyExecutor();
         var sandbox = CreateSandbox(fakeDocker, state);
@@ -699,12 +643,9 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task FailedWorkerRemovalPreventsStagingAndDisablesExecutor()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(workerExitCode: 2, failWorkerRemoval: true);
         var state = ReadyExecutor();
         var sandbox = CreateSandbox(fakeDocker, state);
@@ -721,12 +662,9 @@ public class DockerBuildSandboxLifecycleTests
         await Assert.ThrowsAsync<BuildServiceException>(() => sandbox.PrepareAsync(BuildId(), BuildInfo()));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task WorkerExecutionTimeoutStartsAfterDockerResourcesAreCreated()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(delayWorkerCreate: true, stallWorker: true);
         var state = ReadyExecutor();
         var sandbox = CreateSandbox(fakeDocker, state, TimeSpan.FromSeconds(1));
@@ -753,12 +691,9 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task WorkerCreateFailureCleansAllSandboxResources()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(failWorkerCreate: true);
         var state = ReadyExecutor();
         var exception = await Assert.ThrowsAsync<BuildServiceException>(() =>
@@ -818,17 +753,9 @@ public class DockerBuildSandboxLifecycleTests
         BuildConfig = "Release"
     };
 
-    internal sealed class FakeDocker : IAsyncDisposable
+    internal sealed class FakeDocker(FakeDockerHost host) : IAsyncDisposable
     {
-        private readonly Dictionary<string, string?> _originalEnvironment;
-
-        private FakeDocker(string directory, Dictionary<string, string?> originalEnvironment)
-        {
-            Directory = directory;
-            _originalEnvironment = originalEnvironment;
-        }
-
-        public string Directory { get; }
+        public string Directory => host.Directory;
         public void SetWorkerResult(int exitCode)
         {
             Environment.SetEnvironmentVariable("PB_FAKE_WORKER_EXIT_CODE", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -853,10 +780,7 @@ public class DockerBuildSandboxLifecycleTests
             bool failWorkerCreate = false,
             bool stallWorker = false)
         {
-            var directory = Path.Combine(Path.GetTempPath(), $"plugin-builder-sandbox-{Guid.NewGuid():N}");
-            System.IO.Directory.CreateDirectory(directory);
-            var dockerPath = Path.Combine(directory, "docker");
-            await File.WriteAllTextAsync(dockerPath, """
+            var host = await FakeDockerHost.Start("plugin-builder-sandbox", """
                 #!/bin/sh
                 set -eu
                 commands="${PB_FAKE_DOCKER_COMMANDS:?}"
@@ -1027,95 +951,36 @@ public class DockerBuildSandboxLifecycleTests
                         exit 2
                         ;;
                 esac
-                """);
-            if (!OperatingSystem.IsWindows())
-                File.SetUnixFileMode(
-                    dockerPath,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-
-            string[] keys =
-            [
-                "PATH",
-                "PB_FAKE_DOCKER_COMMANDS",
-                "PB_FAKE_FAIL_WORKER_REMOVE",
-                "PB_FAKE_FAIL_PROXY_READINESS",
-                "PB_FAKE_FAIL_CLONE_START",
-                "PB_FAKE_AMBIGUOUS_PROXY_CREATE",
-                "PB_FAKE_GIT_COMMIT",
-                "PB_FAKE_GIT_COMMIT_DATE",
-                "PB_FAKE_BUILD_DATE",
-                "PB_FAKE_BUILD_HASH",
-                "PB_FAKE_INVALID_STAGED_FILE",
-                "PB_FAKE_INVALID_STAGED_KIND",
-                "PB_FAKE_FAIL_STAGER_REMOVE",
-                "PB_FAKE_FAIL_INSPECTION",
-                "PB_FAKE_FAIL_STAGER_START",
-                "PB_FAKE_WORKER_EXIT_CODE",
-                "PB_FAKE_DELAY_WORKER_CREATE",
-                "PB_FAKE_FAIL_WORKER_CREATE",
-                "PB_FAKE_STALL_WORKER"
-            ];
-            var originalEnvironment = keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
-            Environment.SetEnvironmentVariable(
-                "PATH",
-                directory + Path.PathSeparator + originalEnvironment["PATH"]);
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_DOCKER_COMMANDS",
-                Path.Combine(directory, "commands"));
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_FAIL_WORKER_REMOVE",
-                failWorkerRemoval ? "true" : "false");
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_FAIL_PROXY_READINESS",
-                failProxyReadiness ? "true" : "false");
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_FAIL_CLONE_START",
-                failCloneStart ? "true" : "false");
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_AMBIGUOUS_PROXY_CREATE",
-                ambiguousProxyCreate ? "true" : "false");
-            Environment.SetEnvironmentVariable("PB_FAKE_GIT_COMMIT", gitCommit);
-            Environment.SetEnvironmentVariable("PB_FAKE_GIT_COMMIT_DATE", gitCommitDate);
-            Environment.SetEnvironmentVariable("PB_FAKE_BUILD_DATE", buildDate);
-            Environment.SetEnvironmentVariable("PB_FAKE_BUILD_HASH", buildHash);
-            Environment.SetEnvironmentVariable("PB_FAKE_INVALID_STAGED_FILE", invalidStagedFile);
-            Environment.SetEnvironmentVariable("PB_FAKE_INVALID_STAGED_KIND", invalidStagedKind);
-            Environment.SetEnvironmentVariable("PB_FAKE_FAIL_STAGER_REMOVE", failStagerRemoval ? "true" : "false");
-            Environment.SetEnvironmentVariable("PB_FAKE_FAIL_INSPECTION", failInspection);
-            Environment.SetEnvironmentVariable("PB_FAKE_FAIL_STAGER_START", failStagerStart ? "true" : "false");
-            Environment.SetEnvironmentVariable("PB_FAKE_DELAY_WORKER_CREATE", delayWorkerCreate ? "true" : "false");
-            Environment.SetEnvironmentVariable("PB_FAKE_FAIL_WORKER_CREATE", failWorkerCreate ? "true" : "false");
-            Environment.SetEnvironmentVariable("PB_FAKE_STALL_WORKER", stallWorker ? "true" : "false");
-            var fake = new FakeDocker(directory, originalEnvironment);
-            fake.SetWorkerResult(workerExitCode);
-            return fake;
+                """, directory => new()
+            {
+                ["PB_FAKE_DOCKER_COMMANDS"] = Path.Combine(directory, "commands"),
+                ["PB_FAKE_FAIL_WORKER_REMOVE"] = failWorkerRemoval ? "true" : "false",
+                ["PB_FAKE_FAIL_PROXY_READINESS"] = failProxyReadiness ? "true" : "false",
+                ["PB_FAKE_FAIL_CLONE_START"] = failCloneStart ? "true" : "false",
+                ["PB_FAKE_AMBIGUOUS_PROXY_CREATE"] = ambiguousProxyCreate ? "true" : "false",
+                ["PB_FAKE_GIT_COMMIT"] = gitCommit,
+                ["PB_FAKE_GIT_COMMIT_DATE"] = gitCommitDate,
+                ["PB_FAKE_BUILD_DATE"] = buildDate,
+                ["PB_FAKE_BUILD_HASH"] = buildHash,
+                ["PB_FAKE_INVALID_STAGED_FILE"] = invalidStagedFile,
+                ["PB_FAKE_INVALID_STAGED_KIND"] = invalidStagedKind,
+                ["PB_FAKE_FAIL_STAGER_REMOVE"] = failStagerRemoval ? "true" : "false",
+                ["PB_FAKE_FAIL_INSPECTION"] = failInspection,
+                ["PB_FAKE_FAIL_STAGER_START"] = failStagerStart ? "true" : "false",
+                ["PB_FAKE_WORKER_EXIT_CODE"] = workerExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["PB_FAKE_DELAY_WORKER_CREATE"] = delayWorkerCreate ? "true" : "false",
+                ["PB_FAKE_FAIL_WORKER_CREATE"] = failWorkerCreate ? "true" : "false",
+                ["PB_FAKE_STALL_WORKER"] = stallWorker ? "true" : "false"
+            });
+            return new FakeDocker(host);
         }
 
         public bool AmbiguousContainerExists =>
             File.Exists(Path.Combine(Directory, "commands.ambiguous-container-exists"));
 
-        public async Task WaitForAmbiguousCreate()
-        {
-            var marker = Path.Combine(Directory, "commands.ambiguous-create-started");
-            for (var attempt = 0; attempt < 500; attempt++)
-            {
-                if (File.Exists(marker))
-                    return;
-                await Task.Delay(10);
-            }
+        public Task WaitForAmbiguousCreate() => host.WaitForFile("commands.ambiguous-create-started");
 
-            throw new TimeoutException("Fake docker create was not reached");
-        }
-
-        public async Task<List<string>> ReadCommands()
-        {
-            var path = Path.Combine(Directory, "commands");
-            return File.Exists(path)
-                ? (await File.ReadAllLinesAsync(path)).ToList()
-                : [];
-        }
+        public async Task<List<string>> ReadCommands() => (await host.ReadLines("commands")).ToList();
 
         public async Task<string> ReadProxyResolverConfiguration()
         {
@@ -1123,12 +988,68 @@ public class DockerBuildSandboxLifecycleTests
                 System.IO.Directory.EnumerateFiles(Directory, "commands.proxy-resolv.*")));
         }
 
-        public ValueTask DisposeAsync()
+        public ValueTask DisposeAsync() => host.DisposeAsync();
+    }
+}
+
+/// <summary>
+/// Puts a scripted <c>docker</c> first on PATH with the given environment, and
+/// restores the process environment on disposal. Tests using it must not run in parallel.
+/// </summary>
+internal sealed class FakeDockerHost : IAsyncDisposable
+{
+    private readonly Dictionary<string, string?> _originalEnvironment;
+
+    private FakeDockerHost(string directory, Dictionary<string, string?> originalEnvironment)
+    {
+        Directory = directory;
+        _originalEnvironment = originalEnvironment;
+    }
+
+    public string Directory { get; }
+
+    public static async Task<FakeDockerHost> Start(string prefix, string script,
+        Func<string, Dictionary<string, string?>> environment)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"{prefix}-{Guid.NewGuid():N}");
+        System.IO.Directory.CreateDirectory(directory);
+        var dockerPath = Path.Combine(directory, "docker");
+        await File.WriteAllTextAsync(dockerPath, script);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(dockerPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        var variables = environment(directory);
+        var original = variables.Keys.Append("PATH").ToDictionary(key => key, Environment.GetEnvironmentVariable);
+        Environment.SetEnvironmentVariable("PATH", directory + Path.PathSeparator + original["PATH"]);
+        foreach (var (key, value) in variables)
+            Environment.SetEnvironmentVariable(key, value);
+        return new FakeDockerHost(directory, original);
+    }
+
+    public async Task<string[]> ReadLines(string file)
+    {
+        var path = Path.Combine(Directory, file);
+        return File.Exists(path) ? await File.ReadAllLinesAsync(path) : [];
+    }
+
+    public async Task WaitForFile(string file)
+    {
+        var marker = Path.Combine(Directory, file);
+        for (var attempt = 0; attempt < 500; attempt++)
         {
-            foreach (var (key, value) in _originalEnvironment)
-                Environment.SetEnvironmentVariable(key, value);
-            System.IO.Directory.Delete(Directory, recursive: true);
-            return ValueTask.CompletedTask;
+            if (File.Exists(marker))
+                return;
+            await Task.Delay(10);
         }
+
+        throw new TimeoutException($"Fake docker marker {file} was not reached");
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        foreach (var (key, value) in _originalEnvironment)
+            Environment.SetEnvironmentVariable(key, value);
+        System.IO.Directory.Delete(Directory, recursive: true);
+        return ValueTask.CompletedTask;
     }
 }

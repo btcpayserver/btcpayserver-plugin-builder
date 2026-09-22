@@ -48,12 +48,16 @@ public class PluginBuilderOptionsTests
         Assert.Equal(Path.GetFullPath(Path.Combine(contentRoot, relativePath)), options.BuildBrokerTokenFile);
     }
 
-    [Fact]
-    public void ProductionRejectsRelativeBrokerTokenPath()
+    [Theory]
+    [InlineData("token")]
+    [InlineData("./token")]
+    [InlineData("../token")]
+    [InlineData("/token\nvalue")]
+    public void ProductionRejectsRelativeOrControlCharacterBrokerTokenPath(string value)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["BUILD_BROKER_TOKEN_FILE"] = "../token"
+            ["BUILD_BROKER_TOKEN_FILE"] = value
         }).Build();
 
         var error = Assert.Throws<ConfigurationException>(() =>
@@ -61,6 +65,37 @@ public class PluginBuilderOptionsTests
                 configuration, new TestHostEnvironment(Environments.Production, "/app")));
 
         Assert.Equal("BUILD_BROKER_TOKEN_FILE", error.Key);
+    }
+
+    [Fact]
+    public void ConfigurationDefaultsToBrokerAndDoesNotInventASecret()
+    {
+        var options = PluginBuilderOptions.ConfigureDataDirAndDebugLog(new ConfigurationBuilder().Build(), null!);
+        Assert.Equal("http://build-broker:8080/", options.BuildBrokerUrl.AbsoluteUri);
+        Assert.Null(options.BuildBrokerTokenFile);
+    }
+
+    [Theory]
+    [InlineData("unix:///var/run/docker.sock")]
+    [InlineData("file:///tmp/broker")]
+    [InlineData("http://user:password@build-broker:8080")]
+    [InlineData("http://build-broker:8080/other")]
+    [InlineData("http://build-broker:8080/?token=secret")]
+    [InlineData("http://build-broker:8080/#fragment")]
+    [InlineData("build-broker:8080")]
+    [InlineData("http://build-broker:8080/\n")]
+    public void BrokerEndpointIsAFixedOriginWithoutCredentialsOrPaths(string value)
+    {
+        Assert.Equal("BUILD_BROKER_URL", Assert.Throws<ConfigurationException>(
+            () => PluginBuilderOptions.ParseBuildBrokerUrl(value)).Key);
+    }
+
+    [Theory]
+    [InlineData("http://build-broker:8080", "http://build-broker:8080/")]
+    [InlineData("https://build-broker", "https://build-broker/")]
+    public void TrustedOperatorCanConfigureHttpOrHttpsBrokerOrigin(string value, string expected)
+    {
+        Assert.Equal(expected, PluginBuilderOptions.ParseBuildBrokerUrl(value).AbsoluteUri);
     }
 
     private sealed class TestHostEnvironment(string environmentName, string contentRoot) : IHostEnvironment

@@ -90,28 +90,11 @@ public class ServerTester : IAsyncDisposable
         return WebApp.Services.GetRequiredService<T>();
     }
 
-    internal static string CreateDatabaseName(string testFolder, bool reuseDatabase)
-    {
-        var baseName = testFolder.ToLowerInvariant();
-        if (reuseDatabase)
-            return baseName;
-
-        // PostgreSQL truncates identifiers to 63 bytes. Reserve the full UUID
-        // suffix and keep the prefix ASCII so distinct runs cannot share a DB.
-        const int maxPrefixLength = 63 - 1 - 32;
-        var prefix = new string(baseName.Take(maxPrefixLength)
-            .Select(c => char.IsAsciiLetterOrDigit(c) || c == '_' ? c : '_').ToArray());
-        if (prefix.Length == 0)
-            prefix = "test";
-        else if (char.IsAsciiDigit(prefix[0]))
-            prefix = "_" + prefix[..Math.Min(prefix.Length, maxPrefixLength - 1)];
-
-        return $"{prefix}_{Guid.NewGuid():N}";
-    }
-
     public async Task Start()
     {
-        var dbName = CreateDatabaseName(TestFolder, ReuseDatabase);
+        var baseName = TestFolder.ToLowerInvariant();
+        // PostgreSQL truncates identifiers to 63 bytes: keep the whole unique suffix.
+        var dbName = ReuseDatabase ? baseName : $"{baseName[..Math.Min(baseName.Length, 30)]}_{Guid.NewGuid():N}";
 
         Logs.LogInformation("DbName: {dbName}", dbName);
 

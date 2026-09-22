@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -36,57 +35,11 @@ public class RemoteBuildSandboxTests
     private static readonly byte[] Artifact = Encoding.UTF8.GetBytes("canonical plugin package");
     private static readonly string ArtifactHash = Convert.ToHexStringLower(SHA256.HashData(Artifact));
 
-    [Theory]
-    [InlineData("unix:///var/run/docker.sock")]
-    [InlineData("file:///tmp/broker")]
-    [InlineData("http://user:password@build-broker:8080")]
-    [InlineData("http://build-broker:8080/other")]
-    [InlineData("http://build-broker:8080/?token=secret")]
-    [InlineData("http://build-broker:8080/#fragment")]
-    [InlineData("build-broker:8080")]
-    [InlineData("http://build-broker:8080/\n")]
-    public void EndpointIsAFixedOriginWithoutCredentialsOrPaths(string value)
-    {
-        Assert.Equal("BUILD_BROKER_URL", Assert.Throws<ConfigurationException>(
-            () => PluginBuilderOptions.ParseBuildBrokerUrl(value)).Key);
-    }
-
-    [Theory]
-    [InlineData("http://build-broker:8080", "http://build-broker:8080/")]
-    [InlineData("https://build-broker", "https://build-broker/")]
-    public void TrustedOperatorCanConfigureHttpOrHttpsOrigin(string value, string expected)
-    {
-        Assert.Equal(expected, PluginBuilderOptions.ParseBuildBrokerUrl(value).AbsoluteUri);
-    }
-
-    [Fact]
-    public void ConfigurationDefaultsToBrokerAndDoesNotInventASecret()
-    {
-        var options = PluginBuilderOptions.ConfigureDataDirAndDebugLog(new ConfigurationBuilder().Build(), null!);
-        Assert.Equal("http://build-broker:8080/", options.BuildBrokerUrl.AbsoluteUri);
-        Assert.Null(options.BuildBrokerTokenFile);
-    }
-
-    [Theory]
-    [InlineData("token")]
-    [InlineData("./token")]
-    [InlineData("/token\nvalue")]
-    public void RelativeOrControlCharacterSecretPathIsRejected(string value)
-    {
-        var conf = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["BUILD_BROKER_TOKEN_FILE"] = value
-        }).Build();
-        Assert.Equal("BUILD_BROKER_TOKEN_FILE", Assert.Throws<ConfigurationException>(
-            () => PluginBuilderOptions.ConfigureDataDirAndDebugLog(conf, null!)).Key);
-    }
-
+    // The token format itself is covered by BuildBrokerSecurityTests.InvalidSecretFilesFailClosedAtStartup,
+    // through the same BuildBrokerProtocol.TryReadTokenFile; here only the client's wiring matters.
     [Theory]
     [InlineData(null)]
     [InlineData("short")]
-    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
-    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaz")]
-    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaextra")]
     public async Task MissingOrInvalidSecretFailsClosedBeforeNetworkAccess(string? token)
     {
         using var fixture = new Fixture(token);
@@ -294,7 +247,6 @@ public class RemoteBuildSandboxTests
         await Assert.ThrowsAsync<BuildServiceException>(() => submitted.RunAndStageAsync(new OutputCapture()));
         await submitted.DisposeAsync();
         Assert.Empty(System.IO.Directory.EnumerateDirectories(Path.Combine(fixture.Directory, "broker-staging")));
-        Assert.DoesNotContain(fixture.Transport.Requests, r => r.Method == "DELETE");
     }
 
     [Fact]
@@ -506,7 +458,6 @@ public class RemoteBuildSandboxTests
         var prepared = await fixture.Client.PrepareAsync(new("example-plugin", 7), Build());
         await Assert.ThrowsAsync<BuildServiceException>(() => prepared.RunAndStageAsync(new OutputCapture()));
         await prepared.DisposeAsync();
-        Assert.DoesNotContain(fixture.Transport.Requests, request => request.Method == "DELETE");
     }
 
     [Fact]

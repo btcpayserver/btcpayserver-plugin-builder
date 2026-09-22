@@ -7,12 +7,9 @@ namespace PluginBuilder.Tests;
 
 public class ProcessRunnerTests
 {
-    [Fact]
+    [UnixFact]
     public async Task CancellationTerminatesRunningProcess()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         var runner = new ProcessRunner(NullLogger<ProcessRunner>.Instance);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
 

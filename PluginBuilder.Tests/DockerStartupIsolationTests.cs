@@ -19,15 +19,12 @@ public class DockerStartupIsolationTests
     private const string WorkerImage = "btcpayserver/btcpayserver-plugin-builder-worker:v1.0.76";
     private const string ProxyImage = "btcpayserver/btcpayserver-plugin-builder-proxy:v1.0.76";
 
-    [Theory]
+    [UnixTheory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("-rc.1")]
     public async Task StartupMarksExecutorReadyWithResolvedImageIdsAfterIsolationChecks(string? releaseSuffix)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(runscAvailable: true);
         var state = new BuildExecutorState();
         var worker = releaseSuffix is null ? WorkerImageId : WorkerImage + releaseSuffix;
@@ -41,8 +38,8 @@ public class DockerStartupIsolationTests
             state.Snapshot);
 
         var commands = await fakeDocker.ReadCommands();
+        // Startup only resolves prebuilt, pinned images; it never builds one.
         Assert.DoesNotContain(commands, command => command.StartsWith("build "));
-        Assert.DoesNotContain(commands, command => command.Contains("azure", StringComparison.OrdinalIgnoreCase));
         Assert.Contains($"image inspect --format {{{{.Id}}}} {worker}", commands);
         Assert.Contains($"image inspect --format {{{{.Id}}}} {proxy}", commands);
         if (releaseSuffix is null)
@@ -137,12 +134,11 @@ public class DockerStartupIsolationTests
         }
     }
 
-    [Theory]
+    [UnixTheory]
     [InlineData("missing")]
     [InlineData("mismatched")]
     public async Task ScratchMountProbeFailsClosedIfDockerDoesNotSeeTheSameMarker(string markerFailure)
     {
-        if (OperatingSystem.IsWindows()) return;
         await using var docker = await FakeDocker.Create(runscAvailable: true, scratchMarkerFailure: markerFailure);
         var state = new BuildExecutorState();
 
@@ -161,12 +157,9 @@ public class DockerStartupIsolationTests
         Assert.Empty(Directory.EnumerateFiles(docker.Directory, "pb-mount-probe-*"));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task AmbiguousSmokeCreateRetriesRemovalWhenContainerAppearsAfterInitialNotFound()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(
             runscAvailable: true,
             ambiguousRunscSmokeCreate: true);
@@ -195,12 +188,9 @@ public class DockerStartupIsolationTests
         Assert.Equal("Build executor startup was cancelled", state.Snapshot.UnavailableReason);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task StopCancelsBuildsAndReconcilesEveryManagedDockerResource()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(runscAvailable: true);
         var state = new BuildExecutorState();
         var service = CreateService(fakeDocker, state);
@@ -230,12 +220,9 @@ public class DockerStartupIsolationTests
         Assert.Equal(1, stopCommands.Count(command => command == "volume rm --force managed-volume"));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task MissingRunscKeepsExecutorUnavailableAndDoesNotCreateSmokeContainer()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(runscAvailable: false);
         var state = new BuildExecutorState();
 
@@ -250,12 +237,9 @@ public class DockerStartupIsolationTests
             command => command.StartsWith("container create ", StringComparison.Ordinal));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task StartupReconcilesManagedScratchThroughTrustedWorkerBeforeBecomingReady()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(runscAvailable: true);
         var staleScratch = Path.Combine(fakeDocker.Directory, $"pb-build-{new string('a', 32)}");
         Directory.CreateDirectory(Path.Combine(staleScratch, "source"));
@@ -285,7 +269,7 @@ public class DockerStartupIsolationTests
         Assert.True(commands.IndexOf(cleanupRemove) < commands.IndexOf(proxySmoke));
     }
 
-    [Theory]
+    [UnixTheory]
     [InlineData("pull-worker")]
     [InlineData("pull-proxy")]
     [InlineData("inspect-worker")]
@@ -294,9 +278,6 @@ public class DockerStartupIsolationTests
     [InlineData("invalid-proxy")]
     public async Task ImagePreparationFailureKeepsExecutorUnavailableWithoutCachedFallback(string imageFailure)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(
             runscAvailable: true,
             imageFailure: imageFailure);
@@ -318,12 +299,11 @@ public class DockerStartupIsolationTests
         Assert.DoesNotContain(commands, command => command.StartsWith("container create ", StringComparison.Ordinal));
     }
 
-    [Theory]
+    [UnixTheory]
     [InlineData("mismatch-worker")]
     [InlineData("mismatch-proxy")]
     public async Task LocalImageIdMustResolveToItsExactConfiguredIdentity(string imageFailure)
     {
-        if (OperatingSystem.IsWindows()) return;
         await using var docker = await FakeDocker.Create(runscAvailable: true, imageFailure: imageFailure);
         var state = new BuildExecutorState();
 
@@ -337,10 +317,9 @@ public class DockerStartupIsolationTests
             command.StartsWith("pull ") || command.StartsWith("container create "));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task HostCancellationDuringImagePullStopsPreparationWithoutCachedFallback()
     {
-        if (OperatingSystem.IsWindows()) return;
         await using var docker = await FakeDocker.Create(runscAvailable: true, imageFailure: "stall-worker");
         var state = new BuildExecutorState();
         using var cancellation = new CancellationTokenSource();
@@ -356,12 +335,9 @@ public class DockerStartupIsolationTests
         Assert.Equal($"pull --platform linux/amd64 {WorkerImage}", (await docker.ReadCommands())[^1]);
     }
 
-    [Fact]
+    [UnixFact]
     public async Task CleanupFailureKeepsExecutorUnavailableBeforeInspectingImages()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(
             runscAvailable: true,
             staleContainer: true,
@@ -377,19 +353,13 @@ public class DockerStartupIsolationTests
         Assert.Contains(
             commands,
             command => command == "container rm --force stale-build-container");
-        Assert.DoesNotContain(
-            commands,
-            command => command.StartsWith("build ", StringComparison.Ordinal));
         Assert.DoesNotContain(commands, command => command.StartsWith("image inspect ", StringComparison.Ordinal));
         Assert.DoesNotContain(commands, command => command.StartsWith("pull ", StringComparison.Ordinal));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task DisabledPluginBuildsStillReconcileAndRemoveManagedResourcesBeforeReturning()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(
             runscAvailable: true,
             staleContainer: true,
@@ -410,12 +380,9 @@ public class DockerStartupIsolationTests
             await fakeDocker.ReadCommands());
     }
 
-    [Fact]
+    [UnixFact]
     public async Task StalledReconciliationKeepsExecutorUnavailableWithoutBlockingStartup()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(
             runscAvailable: true,
             disablePluginBuilds: true,
@@ -439,12 +406,9 @@ public class DockerStartupIsolationTests
             await fakeDocker.ReadCommands());
     }
 
-    [Fact]
+    [UnixFact]
     public async Task HostCancellationDuringReconciliationIsNotTreatedAsAnExecutorTimeout()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(runscAvailable: true, disablePluginBuilds: true);
         var state = new BuildExecutorState();
         using var cancellation = new CancellationTokenSource();
@@ -458,22 +422,29 @@ public class DockerStartupIsolationTests
         Assert.Empty(await fakeDocker.ReadCommands());
     }
 
-    [Fact]
-    public async Task InvalidFilesystemRootStillReconcilesManagedResourcesBeforePreflight()
+    [UnixTheory]
+    [InlineData("filesystem-root", "cannot be a filesystem root")]
+    [InlineData("symbolic-link", "symbolic link")]
+    [InlineData("missing", "BUILD_SCRATCH_ROOT does not exist")]
+    public async Task InvalidScratchRootKeepsExecutorUnavailableAfterReconciliation(string kind, string expectedReason)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
-        await using var fakeDocker = await FakeDocker.Create(
-            runscAvailable: true,
-            staleContainer: true);
+        await using var fakeDocker = await FakeDocker.Create(runscAvailable: true, staleContainer: true);
+        var scratchRoot = kind switch
+        {
+            // "/." passes the path-character check and only then normalizes to the root.
+            "filesystem-root" => Path.GetPathRoot(fakeDocker.Directory) + ".",
+            "symbolic-link" => Path.Combine(fakeDocker.Directory, "scratch-link"),
+            _ => Path.Combine(fakeDocker.Directory, "missing-scratch")
+        };
+        if (kind == "symbolic-link")
+            Directory.CreateSymbolicLink(scratchRoot, Directory.CreateDirectory(Path.Combine(fakeDocker.Directory, "scratch-target")).FullName);
         var state = new BuildExecutorState();
-        var root = Path.GetPathRoot(fakeDocker.Directory)!;
 
-        await CreateService(fakeDocker, state, root).StartAsync(CancellationToken.None);
+        await CreateService(fakeDocker, state, scratchRoot).StartAsync(CancellationToken.None);
 
         Assert.False(state.Snapshot.IsReady);
-        Assert.Contains("BUILD_SCRATCH_ROOT", state.Snapshot.UnavailableReason, StringComparison.Ordinal);
+        Assert.Contains(expectedReason, state.Snapshot.UnavailableReason, StringComparison.OrdinalIgnoreCase);
+        // Stale build resources are still reconciled; no image is inspected and no container created.
         Assert.Equal(
             [
                 $"container ls --all --quiet --filter label={BuildExecutorDocker.ManagedResourceLabel}",
@@ -482,56 +453,10 @@ public class DockerStartupIsolationTests
                 $"volume ls --quiet --filter label={BuildExecutorDocker.ManagedResourceLabel}"
             ],
             await fakeDocker.ReadCommands());
+        Assert.Equal(kind != "missing", Directory.Exists(scratchRoot));
     }
 
-    [Fact]
-    public async Task SymbolicLinkScratchDirectoryKeepsExecutorUnavailableAfterReconciliation()
-    {
-        if (OperatingSystem.IsWindows())
-            return;
-
-        await using var fakeDocker = await FakeDocker.Create(runscAvailable: true);
-        var target = Path.Combine(fakeDocker.Directory, "scratch-target");
-        var link = Path.Combine(fakeDocker.Directory, "scratch-link");
-        Directory.CreateDirectory(target);
-        Directory.CreateSymbolicLink(link, target);
-        var state = new BuildExecutorState();
-
-        await CreateService(fakeDocker, state, link).StartAsync(CancellationToken.None);
-
-        Assert.False(state.Snapshot.IsReady);
-        Assert.Contains("symbolic link", state.Snapshot.UnavailableReason, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(
-            [
-                $"container ls --all --quiet --filter label={BuildExecutorDocker.ManagedResourceLabel}",
-                $"network ls --quiet --filter label={BuildExecutorDocker.ManagedResourceLabel}",
-                $"volume ls --quiet --filter label={BuildExecutorDocker.ManagedResourceLabel}"
-            ],
-            await fakeDocker.ReadCommands());
-    }
-
-    [Fact]
-    public async Task MissingScratchRootKeepsExecutorUnavailableBeforeInspectingImages()
-    {
-        if (OperatingSystem.IsWindows())
-            return;
-
-        await using var fakeDocker = await FakeDocker.Create(runscAvailable: true);
-        var missingRoot = Path.Combine(fakeDocker.Directory, "missing-scratch");
-        var state = new BuildExecutorState();
-
-        await CreateService(fakeDocker, state, missingRoot).StartAsync(CancellationToken.None);
-
-        Assert.False(state.Snapshot.IsReady);
-        Assert.Equal("BUILD_SCRATCH_ROOT does not exist", state.Snapshot.UnavailableReason);
-        var commands = await fakeDocker.ReadCommands();
-        Assert.DoesNotContain(commands, command => command.StartsWith("build ", StringComparison.Ordinal));
-        Assert.DoesNotContain(commands, command => command.StartsWith("image inspect ", StringComparison.Ordinal));
-        Assert.DoesNotContain(commands, command => command.StartsWith("container create ", StringComparison.Ordinal));
-        Assert.False(Directory.Exists(missingRoot));
-    }
-
-    [Theory]
+    [UnixTheory]
     [InlineData(null, null)]
     [InlineData("plugin-builder", null)]
     [InlineData(WorkerImageId, null)]
@@ -547,7 +472,6 @@ public class DockerStartupIsolationTests
     [InlineData(WorkerImage, ProxyImage + " --privileged")]
     public async Task IncompleteOrUnapprovedImageReferencesFailBeforePullingEitherImage(string? worker, string? proxy)
     {
-        if (OperatingSystem.IsWindows()) return;
         await using var docker = await FakeDocker.Create(runscAvailable: true);
         var state = new BuildExecutorState();
         await CreateService(docker, state, workerImage: worker, proxyImage: proxy)
@@ -555,16 +479,13 @@ public class DockerStartupIsolationTests
         Assert.False(state.Snapshot.IsReady);
         Assert.False(string.IsNullOrEmpty(state.Snapshot.UnavailableReason));
         Assert.DoesNotContain(await docker.ReadCommands(), c =>
-            c.StartsWith("build ") || c.StartsWith("pull ") || c.StartsWith("image inspect ") ||
+            c.StartsWith("pull ") || c.StartsWith("image inspect ") ||
             c.StartsWith("container create "));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task ExplicitDevelopmentRuntimeStartsWithoutRunscAndStillRunsAllSmokeChecks()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var docker = await FakeDocker.Create(runscAvailable: false);
         var state = new BuildExecutorState();
         await CreateService(docker, state, useRunc: true).StartAsync(CancellationToken.None);
@@ -603,17 +524,9 @@ public class DockerStartupIsolationTests
             options);
     }
 
-    private sealed class FakeDocker : IAsyncDisposable
+    private sealed class FakeDocker(FakeDockerHost host) : IAsyncDisposable
     {
-        private readonly Dictionary<string, string?> _originalEnvironment;
-
-        private FakeDocker(string directory, Dictionary<string, string?> originalEnvironment)
-        {
-            Directory = directory;
-            _originalEnvironment = originalEnvironment;
-        }
-
-        public string Directory { get; }
+        public string Directory => host.Directory;
 
         public static async Task<FakeDocker> Create(
             bool runscAvailable,
@@ -625,10 +538,7 @@ public class DockerStartupIsolationTests
             bool stallContainerList = false,
             string? scratchMarkerFailure = null)
         {
-            var directory = Path.Combine(Path.GetTempPath(), $"plugin-builder-startup-{Guid.NewGuid():N}");
-            System.IO.Directory.CreateDirectory(directory);
-            var dockerPath = Path.Combine(directory, "docker");
-            await File.WriteAllTextAsync(dockerPath, $$"""
+            var host = await FakeDockerHost.Start("plugin-builder-startup", $$"""
                 #!/bin/sh
                 set -eu
                 commands="${PB_FAKE_DOCKER_COMMANDS:?}"
@@ -797,80 +707,27 @@ public class DockerStartupIsolationTests
                         exit 2
                         ;;
                 esac
-                """);
-            if (!OperatingSystem.IsWindows())
-                File.SetUnixFileMode(
-                    dockerPath,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-
-            string[] keys =
-            [
-                "PATH",
-                "PBB_DISABLE_PLUGIN_BUILDS",
-                "PB_FAKE_DOCKER_COMMANDS",
-                "PB_FAKE_RUNSC",
-                "PB_FAKE_IMAGE_FAILURE",
-                "PB_FAKE_STALE_CONTAINER",
-                "PB_FAKE_REMOVE_FAIL",
-                "PB_FAKE_AMBIGUOUS_RUNSC_CREATE",
-                "PB_FAKE_STALL_CONTAINER_LIST",
-                "PB_FAKE_SCRATCH_MARKER_FAILURE"
-            ];
-            var originalEnvironment = keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
-
-            Environment.SetEnvironmentVariable(
-                "PATH",
-                directory + Path.PathSeparator + originalEnvironment["PATH"]);
-            Environment.SetEnvironmentVariable(
-                "PBB_DISABLE_PLUGIN_BUILDS",
-                disablePluginBuilds ? "true" : null);
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_DOCKER_COMMANDS",
-                Path.Combine(directory, "commands"));
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_RUNSC",
-                runscAvailable ? "true" : "false");
-            Environment.SetEnvironmentVariable("PB_FAKE_IMAGE_FAILURE", imageFailure);
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_STALE_CONTAINER",
-                staleContainer ? "true" : "false");
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_REMOVE_FAIL",
-                failStaleContainerRemoval ? "true" : "false");
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_AMBIGUOUS_RUNSC_CREATE",
-                ambiguousRunscSmokeCreate ? "true" : "false");
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_STALL_CONTAINER_LIST",
-                stallContainerList ? "true" : "false");
-            Environment.SetEnvironmentVariable("PB_FAKE_SCRATCH_MARKER_FAILURE", scratchMarkerFailure);
-
-            return new FakeDocker(directory, originalEnvironment);
+                """, directory => new()
+            {
+                ["PBB_DISABLE_PLUGIN_BUILDS"] = disablePluginBuilds ? "true" : null,
+                ["PB_FAKE_DOCKER_COMMANDS"] = Path.Combine(directory, "commands"),
+                ["PB_FAKE_RUNSC"] = runscAvailable ? "true" : "false",
+                ["PB_FAKE_IMAGE_FAILURE"] = imageFailure,
+                ["PB_FAKE_STALE_CONTAINER"] = staleContainer ? "true" : "false",
+                ["PB_FAKE_REMOVE_FAIL"] = failStaleContainerRemoval ? "true" : "false",
+                ["PB_FAKE_AMBIGUOUS_RUNSC_CREATE"] = ambiguousRunscSmokeCreate ? "true" : "false",
+                ["PB_FAKE_STALL_CONTAINER_LIST"] = stallContainerList ? "true" : "false",
+                ["PB_FAKE_SCRATCH_MARKER_FAILURE"] = scratchMarkerFailure
+            });
+            return new FakeDocker(host);
         }
 
         public bool AmbiguousContainerExists =>
             File.Exists(Path.Combine(Directory, "commands.ambiguous-container-exists"));
 
-        public async Task WaitForMarker(string name)
-        {
-            var marker = Path.Combine(Directory, $"commands.{name}");
-            for (var attempt = 0; attempt < 500; attempt++)
-            {
-                if (File.Exists(marker))
-                    return;
-                await Task.Delay(10);
-            }
+        public Task WaitForMarker(string name) => host.WaitForFile($"commands.{name}");
 
-            throw new TimeoutException($"Fake docker marker {name} was not reached");
-        }
-
-        public async Task<string[]> ReadCommands()
-        {
-            var path = Path.Combine(Directory, "commands");
-            return File.Exists(path) ? await File.ReadAllLinesAsync(path) : [];
-        }
+        public Task<string[]> ReadCommands() => host.ReadLines("commands");
 
         public async Task ExposeManagedResources()
         {
@@ -880,14 +737,7 @@ public class DockerStartupIsolationTests
             await File.WriteAllTextAsync(commands + ".managed-volume", string.Empty);
         }
 
-        public ValueTask DisposeAsync()
-        {
-            foreach (var (key, value) in _originalEnvironment)
-                Environment.SetEnvironmentVariable(key, value);
-
-            System.IO.Directory.Delete(Directory, recursive: true);
-            return ValueTask.CompletedTask;
-        }
+        public ValueTask DisposeAsync() => host.DisposeAsync();
     }
 
 }

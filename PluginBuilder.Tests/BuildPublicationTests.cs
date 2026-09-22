@@ -135,6 +135,8 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Assert.Empty(storage.Requests);
             Assert.Null(storage.StoredArtifact);
             Assert.False(broker.Sandbox.Prepared[id.BuildId].IsDisposed);
+            // Unconfirmed cleanup must also stop the broker from admitting further builds.
+            Assert.False(broker.Executor.Snapshot.IsReady);
             Assert.DoesNotContain(events, evt => evt.State == BuildStates.Uploading.ToEventName());
         }
         else

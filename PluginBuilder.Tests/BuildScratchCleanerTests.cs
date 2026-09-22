@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging.Abstractions;
 using PluginBuilder.BuildBroker.Configuration;
 using Xunit;
@@ -13,14 +14,12 @@ public class BuildScratchCleanerTests
     private const string WorkerImageId =
         "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
-    [Theory]
+    [UnixTheory]
     [InlineData(false)]
     [InlineData(true)]
+    [UnsupportedOSPlatform("windows")]
     public async Task HostileTreeIsDeletedOnlyThroughHardenedContainer(bool useRunc)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create();
         var scratch = CreateScratch(fakeDocker.Directory);
         var work = Path.Combine(scratch, "work");
@@ -96,12 +95,9 @@ public class BuildScratchCleanerTests
         Assert.True(commands.IndexOf(start) < commands.IndexOf(remove));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task CleanerStartFailureStillForceRemovesContainerAndLeavesScratch()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(failStart: true);
         var scratch = CreateScratch(fakeDocker.Directory);
         await File.WriteAllTextAsync(Path.Combine(scratch, "work", "file"), "payload");
@@ -119,12 +115,9 @@ public class BuildScratchCleanerTests
             command => command.StartsWith("container rm --force pb-scratch-clean-", StringComparison.Ordinal));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task CleanerRemovalFailureMakesSuccessfulDirectoryDeletionFailClosed()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(failRemove: true);
         var scratch = CreateScratch(fakeDocker.Directory);
 
@@ -136,12 +129,9 @@ public class BuildScratchCleanerTests
             command => command.StartsWith("container rm --force pb-scratch-clean-", StringComparison.Ordinal));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task AmbiguousCreateRetriesRemovalWhenCleanupContainerAppearsAfterInitialNotFound()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create(ambiguousCreate: true);
         var scratch = CreateScratch(fakeDocker.Directory);
         await File.WriteAllTextAsync(Path.Combine(scratch, "work", "file"), "payload");
@@ -167,12 +157,9 @@ public class BuildScratchCleanerTests
         Assert.True(File.Exists(Path.Combine(scratch, "work", "file")));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task SymbolicLinkChildIsRejectedBeforeItCanBeMounted()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create();
         var scratch = Path.Combine(fakeDocker.Directory, $"pb-build-{Guid.NewGuid():N}");
         Directory.CreateDirectory(scratch);
@@ -194,12 +181,9 @@ public class BuildScratchCleanerTests
         Assert.True(Directory.Exists(outside));
     }
 
-    [Fact]
+    [UnixFact]
     public async Task MissingScratchDirectoryNeedsNoDockerOperation()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         await using var fakeDocker = await FakeDocker.Create();
         var missing = Path.Combine(fakeDocker.Directory, "missing");
 
@@ -225,27 +209,16 @@ public class BuildScratchCleanerTests
         return scratch;
     }
 
-    private sealed class FakeDocker : IAsyncDisposable
+    private sealed class FakeDocker(FakeDockerHost host) : IAsyncDisposable
     {
-        private readonly Dictionary<string, string?> _originalEnvironment;
-
-        private FakeDocker(string directory, Dictionary<string, string?> originalEnvironment)
-        {
-            Directory = directory;
-            _originalEnvironment = originalEnvironment;
-        }
-
-        public string Directory { get; }
+        public string Directory => host.Directory;
 
         public static async Task<FakeDocker> Create(
             bool failStart = false,
             bool failRemove = false,
             bool ambiguousCreate = false)
         {
-            var directory = Path.Combine(Path.GetTempPath(), $"plugin-builder-cleaner-{Guid.NewGuid():N}");
-            System.IO.Directory.CreateDirectory(directory);
-            var dockerPath = Path.Combine(directory, "docker");
-            await File.WriteAllTextAsync(dockerPath, """
+            var host = await FakeDockerHost.Start("plugin-builder-cleaner", """
                 #!/bin/sh
                 set -eu
                 state="${PB_FAKE_DOCKER_STATE:?}"
@@ -313,68 +286,23 @@ public class BuildScratchCleanerTests
                         exit 2
                         ;;
                 esac
-                """);
-            File.SetUnixFileMode(
-                dockerPath,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-
-            string[] keys =
-            [
-                "PATH",
-                "PB_FAKE_DOCKER_STATE",
-                "PB_FAKE_CLEANER_START_FAIL",
-                "PB_FAKE_CLEANER_REMOVE_FAIL",
-                "PB_FAKE_CLEANER_AMBIGUOUS_CREATE"
-            ];
-            var originalEnvironment = keys.ToDictionary(key => key, Environment.GetEnvironmentVariable);
-            Environment.SetEnvironmentVariable(
-                "PATH",
-                directory + Path.PathSeparator + originalEnvironment["PATH"]);
-            Environment.SetEnvironmentVariable("PB_FAKE_DOCKER_STATE", directory);
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_CLEANER_START_FAIL",
-                failStart ? "true" : "false");
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_CLEANER_REMOVE_FAIL",
-                failRemove ? "true" : "false");
-            Environment.SetEnvironmentVariable(
-                "PB_FAKE_CLEANER_AMBIGUOUS_CREATE",
-                ambiguousCreate ? "true" : "false");
-
-            return new FakeDocker(directory, originalEnvironment);
+                """, directory => new()
+            {
+                ["PB_FAKE_DOCKER_STATE"] = directory,
+                ["PB_FAKE_CLEANER_START_FAIL"] = failStart ? "true" : "false",
+                ["PB_FAKE_CLEANER_REMOVE_FAIL"] = failRemove ? "true" : "false",
+                ["PB_FAKE_CLEANER_AMBIGUOUS_CREATE"] = ambiguousCreate ? "true" : "false"
+            });
+            return new FakeDocker(host);
         }
 
         public bool AmbiguousContainerExists =>
             File.Exists(Path.Combine(Directory, "ambiguous-container-exists"));
 
-        public async Task WaitForAmbiguousCreate()
-        {
-            var marker = Path.Combine(Directory, "ambiguous-create-started");
-            for (var attempt = 0; attempt < 500; attempt++)
-            {
-                if (File.Exists(marker))
-                    return;
-                await Task.Delay(10);
-            }
+        public Task WaitForAmbiguousCreate() => host.WaitForFile("ambiguous-create-started");
 
-            throw new TimeoutException("Fake docker create was not reached");
-        }
+        public async Task<List<string>> ReadCommands() => (await host.ReadLines("commands")).ToList();
 
-        public async Task<List<string>> ReadCommands()
-        {
-            var path = Path.Combine(Directory, "commands");
-            return File.Exists(path)
-                ? (await File.ReadAllLinesAsync(path)).ToList()
-                : [];
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            foreach (var (key, value) in _originalEnvironment)
-                Environment.SetEnvironmentVariable(key, value);
-
-            System.IO.Directory.Delete(Directory, recursive: true);
-            return ValueTask.CompletedTask;
-        }
+        public ValueTask DisposeAsync() => host.DisposeAsync();
     }
 }

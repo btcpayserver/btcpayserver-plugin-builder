@@ -9,21 +9,26 @@ namespace PluginBuilder.Tests;
 
 public class BuildWorkerAssetTests
 {
-    private const string WorkerBaseDigest =
-        "sha256:e1ffd2a92ae84c1291bc1b6887501f8af98e6331e7af6d4c8d37168c5e87a64c";
-    private const string ProxyBaseDigest =
-        "sha256:8a3baed477e2c282ab8aa5edad442f69873246964f225c5c2ae8364b6610963c";
-    private const string PluginPackerCommit = "50ae4bfc5da2e193db5b37fa718dbb92e41958b5";
+    // Check that each base image is pinned, not which digest: bumping a pin must not break tests.
+    [Theory]
+    [InlineData("Dockerfile.worker")]
+    [InlineData("Dockerfile.proxy")]
+    [InlineData("Dockerfile.broker")]
+    public void ExecutorImagesPinEveryBaseImageByDigest(string dockerfile)
+    {
+        var from = ReadAsset(Path.Combine("..", dockerfile)).Split('\n')
+            .Select(line => line.TrimEnd('\r'))
+            .Where(line => line.StartsWith("FROM ", StringComparison.Ordinal))
+            .ToArray();
+        Assert.NotEmpty(from);
+        Assert.All(from, line => Assert.Matches(@"\AFROM \S+@sha256:[0-9a-f]{64}( AS \S+)?\z", line));
+    }
 
     [Fact]
     public void WorkerAndProxyPinTrustedInputsAndRunAsFixedNonRootUsers()
     {
         var worker = ReadAsset(Path.Combine("..", "Dockerfile.worker"));
-        Assert.Contains(
-            $"FROM mcr.microsoft.com/dotnet/sdk:10.0@{WorkerBaseDigest}",
-            worker,
-            StringComparison.Ordinal);
-        Assert.Contains(PluginPackerCommit, worker, StringComparison.Ordinal);
+        Assert.Matches(@"fetch --depth 1 origin [0-9a-f]{40}\b", worker);
         Assert.Contains("USER 10001:10001", worker, StringComparison.Ordinal);
         Assert.DoesNotContain("openssh", worker, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
@@ -31,10 +36,6 @@ public class BuildWorkerAssetTests
             worker, StringComparison.Ordinal);
 
         var proxy = ReadAsset(Path.Combine("..", "Dockerfile.proxy"));
-        Assert.Contains(
-            $"FROM ubuntu/squid:6.6-24.04_edge@{ProxyBaseDigest}",
-            proxy,
-            StringComparison.Ordinal);
         Assert.Contains("USER 13:13", proxy, StringComparison.Ordinal);
         Assert.Contains("ENTRYPOINT [\"/usr/sbin/squid\"]", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("entrypoint.sh", proxy, StringComparison.OrdinalIgnoreCase);
@@ -173,7 +174,7 @@ public class BuildWorkerAssetTests
             StringComparison.Ordinal);
     }
 
-    [Theory]
+    [UnixTheory]
     [InlineData("http://github.com/owner/repo")]
     [InlineData("https://github.com.evil.test/owner/repo")]
     [InlineData("https://user:password@github.com/owner/repo")]
@@ -182,9 +183,6 @@ public class BuildWorkerAssetTests
     [InlineData("https://gitlab.com/owner/../repo")]
     public async Task CloneHelperRejectsUnsafeRepositoryBeforeInvokingGit(string repository)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         var result = await RunCloneHelper(repository);
 
         Assert.Equal(1, result.ExitCode);
@@ -192,14 +190,11 @@ public class BuildWorkerAssetTests
         Assert.False(result.GitWasInvoked);
     }
 
-    [Theory]
+    [UnixTheory]
     [InlineData("https://github.com/example/plugin")]
     [InlineData("https://gitlab.com/example/subgroup/plugin.git")]
     public async Task CloneHelperLocksGitEnvironmentAndPassesRepositoryAndRefAsArguments(string repository)
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         var result = await RunCloneHelper(repository, "release/1.0", fakeGitExitCode: 0);
 
         Assert.Equal(0, result.ExitCode);

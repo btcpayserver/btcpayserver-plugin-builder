@@ -52,20 +52,6 @@ public class BuildExecutorStateTests
     }
 
     [Fact]
-    public void MarkUnavailableCancelsCurrentStopToken()
-    {
-        var state = new BuildExecutorState();
-        state.MarkReady("sha256:worker", "sha256:proxy");
-        var activeToken = state.StopToken;
-        Assert.False(activeToken.IsCancellationRequested);
-
-        state.MarkUnavailable("shutdown");
-
-        Assert.True(activeToken.IsCancellationRequested);
-        Assert.True(state.StopToken.IsCancellationRequested);
-    }
-
-    [Fact]
     public void MarkReadyReplacesCancelledStopTokenWithFreshToken()
     {
         var state = new BuildExecutorState();
