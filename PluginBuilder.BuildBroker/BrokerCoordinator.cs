@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.BuildBroker.Configuration;
+using PluginBuilder.BuildBroker.Services;
 using PluginBuilder.Builds;
 using PluginBuilder.Builds.BuildBroker;
 using PluginBuilder.Builds.Services;
@@ -46,9 +46,6 @@ public sealed class BrokerCoordinator(
             request.GitRepository.Contains('%') ||
             request.GitRepository.Split('/').Any(s => s is "." or ".."))
             throw new BrokerRequestException(400, "Invalid repository URL.");
-        if (request.GitRef?.StartsWith('-') == true || request.GitRef?.Contains('\\') == true ||
-            request.PluginDir?.Contains('\\') == true || request.BuildConfig?.Any(char.IsControl) == true)
-            throw new BrokerRequestException(400, "Invalid build parameters.");
         try
         {
             var repository = BuildPolicy.NormalizeRepositoryUrl(request.GitRepository);
@@ -126,16 +123,8 @@ public sealed class BrokerCoordinator(
             var hash = staged.BuildEnvironment["buildHash"]?.Value<string>();
             if (Encoding.UTF8.GetByteCount(environment) > BuildPolicy.MaxBuildMetadataBytes ||
                 Encoding.UTF8.GetByteCount(staged.ManifestJson) > BuildPolicy.MaxBuildMetadataBytes ||
-                !Regex.IsMatch(staged.AssemblyName, "\\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\z") ||
-                hash is null || !Regex.IsMatch(hash, "\\A[0-9a-f]{64}\\z"))
+                !BuildPolicy.IsSafeAssemblyName(staged.AssemblyName) || !BuildPolicy.IsSha256Hex(hash))
                 throw new InvalidOperationException("Invalid staged metadata.");
-            // The trusted stager and all writers have stopped before this open.
-            var directory = new DirectoryInfo(staged.StagingDirectory);
-            var file = new FileInfo(Path.Combine(staged.StagingDirectory, "artifact.btcpay"));
-            if (!directory.Exists || directory.LinkTarget is not null || !file.Exists ||
-                file.LinkTarget is not null || (file.Attributes & (FileAttributes.ReparsePoint | FileAttributes.Device | FileAttributes.Directory)) != 0 ||
-                file.Length is <= 0 or > MaximumArtifactBytes)
-                throw new InvalidOperationException("Invalid staged artifact.");
             // Copy into a broker-only, bounded anonymous file, never mounted into a sandbox.
             // Unlink immediately: the open handle survives sandbox cleanup, but not a broker crash.
             var resultPath = Path.Combine(Path.GetTempPath(), $"pb-result-{Guid.NewGuid():N}");
@@ -148,11 +137,13 @@ public sealed class BrokerCoordinator(
                 resultOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
             lease.Artifact = new FileStream(resultPath, resultOptions);
             File.Delete(resultPath);
-            await using (var input = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
-                             81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+            long length;
+            // The trusted stager and all writers have stopped before this open.
+            await using (var input = DockerBuildSandbox.OpenStagedFile(staged.StagingDirectory, "artifact.btcpay", MaximumArtifactBytes, 81920))
             {
+                length = input.Length;
                 var buffer = new byte[81920];
-                long remaining = file.Length;
+                long remaining = length;
                 while (remaining > 0)
                 {
                     var count = await input.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), lease.Token);
@@ -165,7 +156,7 @@ public sealed class BrokerCoordinator(
             }
             lease.Artifact.Position = 0;
             var digest = Convert.ToHexStringLower(await SHA256.HashDataAsync(lease.Artifact, lease.Token));
-            if (digest != hash || lease.Artifact.Length != file.Length)
+            if (digest != hash || lease.Artifact.Length != length)
                 throw new InvalidOperationException("Invalid staged artifact digest.");
             lease.Artifact.Position = 0;
             // Completion is the cleanup acknowledgement; the website does not coordinate disposal.
@@ -308,7 +299,7 @@ public sealed class BrokerCoordinator(
 
     private static void RequireId(string id)
     {
-        if (!Regex.IsMatch(id, "\\A[0-9a-f]{32}\\z"))
+        if (!BuildPolicy.IsLowerHex(id, 32))
             throw new BrokerRequestException(404, "Build lease not found.");
     }
 

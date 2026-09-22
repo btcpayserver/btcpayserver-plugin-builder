@@ -1,3 +1,7 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Text;
+using PluginBuilder.Builds.Services;
+
 namespace PluginBuilder.Builds.BuildBroker;
 
 public static class BuildBrokerProtocol
@@ -6,6 +10,28 @@ public static class BuildBrokerProtocol
     public const int MaximumRequestBytes = 16 * 1024;
     public const int MaximumStatusBytes = 16 * 1024 * 1024;
     public const long MaximumArtifactBytes = 256L * 1024 * 1024;
+
+    // The web app and the broker share one 256-bit lowercase hex secret. IO failures
+    // propagate so each side keeps its own error handling.
+    public static bool TryReadTokenFile(string? path, [NotNullWhen(true)] out string? token)
+    {
+        token = null;
+        if (path is null || !Path.IsPathFullyQualified(path))
+            return false;
+        var file = new FileInfo(path);
+        if (!file.Exists || file.LinkTarget is not null ||
+            (file.Attributes & (FileAttributes.Directory | FileAttributes.Device | FileAttributes.ReparsePoint)) != 0 ||
+            file.Length is < 64 or > 66)
+            return false;
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        Span<byte> bytes = stackalloc byte[67];
+        var count = stream.ReadAtLeast(bytes, bytes.Length, throwOnEndOfStream: false);
+        var text = Encoding.ASCII.GetString(bytes[..count]).TrimEnd('\r', '\n');
+        if (!BuildPolicy.IsLowerHex(text, 64))
+            return false;
+        token = text;
+        return true;
+    }
 }
 
 // This is a build protocol, deliberately not a Docker/OCI configuration API.

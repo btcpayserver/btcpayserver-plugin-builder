@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 
 namespace PluginBuilder.Builds.Services;
@@ -14,8 +15,15 @@ public static class BuildPolicy
     private const int MaxRepositoryUrlCharacters = 2048;
     private const int MaxGitRefCharacters = 255;
     private const int MaxPluginDirectoryCharacters = 1024;
+    private static readonly Regex SafeAssemblyName = new(
+        "\\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\z", RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    public static void ValidateRepositoryUrl(string repository) => _ = NormalizeRepositoryUrl(repository);
+    // Staged build metadata is validated on both sides of the broker boundary.
+    public static bool IsLowerHex([NotNullWhen(true)] string? value, int length) =>
+        value is not null && value.Length == length && value.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+    public static bool IsSha256Hex([NotNullWhen(true)] string? value) => IsLowerHex(value, 64);
+    public static bool IsGitObjectId([NotNullWhen(true)] string? value) => IsLowerHex(value, 40) || IsLowerHex(value, 64);
+    public static bool IsSafeAssemblyName([NotNullWhen(true)] string? value) => value is not null && SafeAssemblyName.IsMatch(value);
 
     public static string NormalizeRepositoryUrl(string repository)
     {
@@ -32,7 +40,7 @@ public static class BuildPolicy
         var path = uri.AbsolutePath.TrimEnd('/');
         var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (pathSegments.Length < 2 ||
-            !Regex.IsMatch(path, "^/[A-Za-z0-9._/-]+$", RegexOptions.CultureInvariant) ||
+            !Regex.IsMatch(path, "\\A/[A-Za-z0-9._/-]+\\z", RegexOptions.CultureInvariant) ||
             path.Contains("//", StringComparison.Ordinal) || pathSegments.Any(segment => segment is "." or ".."))
             throw new BuildServiceException("Git repository must contain a safe owner and repository path.");
 
@@ -48,17 +56,20 @@ public static class BuildPolicy
 
     public static void ValidateBuildInputs(string? gitRef, string? pluginDirectory, string? buildConfig)
     {
-        if (!string.IsNullOrEmpty(gitRef) && (gitRef.Length > MaxGitRefCharacters || gitRef.Any(char.IsControl)))
-            throw new BuildServiceException("Git ref is too long or contains control characters.");
+        // A leading '-' would be parsed by git as an option, not a ref.
+        if (!string.IsNullOrEmpty(gitRef) && (gitRef.Length > MaxGitRefCharacters || gitRef.Any(char.IsControl) ||
+                                              gitRef.StartsWith('-') || gitRef.Contains('\\')))
+            throw new BuildServiceException("Git ref is too long, starts with '-' or contains control characters or backslashes.");
         if (!string.IsNullOrEmpty(pluginDirectory))
         {
             var segments = pluginDirectory.Split('/', StringSplitOptions.RemoveEmptyEntries);
             if (pluginDirectory.Length > MaxPluginDirectoryCharacters || pluginDirectory.StartsWith('/') ||
-                pluginDirectory.Any(char.IsControl) || segments.Any(segment => segment is "." or ".."))
+                pluginDirectory.Any(char.IsControl) || pluginDirectory.Contains('\\') ||
+                segments.Any(segment => segment is "." or ".."))
                 throw new BuildServiceException("Plugin directory is not a safe relative path.");
         }
         if (!string.IsNullOrEmpty(buildConfig) &&
-            !Regex.IsMatch(buildConfig, "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", RegexOptions.CultureInvariant))
+            !Regex.IsMatch(buildConfig, "\\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\\z", RegexOptions.CultureInvariant))
             throw new BuildServiceException("Build configuration is invalid.");
     }
 }

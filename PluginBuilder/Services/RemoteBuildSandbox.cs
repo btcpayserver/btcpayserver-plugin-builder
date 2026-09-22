@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Configuration;
 using PluginBuilder.Util;
@@ -77,7 +76,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
         using var response = await SendAsync(HttpMethod.Get, "v1/status", null, timeout.Token);
         RequireStatus(response, HttpStatusCode.OK);
         var status = await ReadJsonAsync<BrokerStatus>(response, 16 * 1024, timeout.Token);
-        if (!IsHex(status.InstanceId, 32) || status.InstanceId != ResponseInstance(response) ||
+        if (!BuildPolicy.IsLowerHex(status.InstanceId, 32) || status.InstanceId != ResponseInstance(response) ||
             (status.IsReady && (!IsImageId(status.WorkerImageId) || !IsImageId(status.ProxyImageId))))
             throw ProtocolError();
         return status;
@@ -124,7 +123,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
         RequireStatus(response, HttpStatusCode.Accepted);
         var instance = ResponseInstance(response);
         var accepted = await ReadJsonAsync<BrokerBuildAccepted>(response, 4096, timeout.Token);
-        if (!IsHex(accepted.LeaseId, 32))
+        if (!BuildPolicy.IsLowerHex(accepted.LeaseId, 32))
             throw ProtocolError();
         var prepared = new PreparedBuild(this, accepted.LeaseId, instance, request, stopToken, cancellationToken);
         bool stopping;
@@ -193,7 +192,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
         try
         {
             using var request = new HttpRequestMessage(method, path);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await ReadTokenAsync(cancellationToken));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ReadToken());
             if (expectedInstance is not null)
                 request.Headers.Add(InstanceHeader, expectedInstance);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -220,22 +219,13 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
         }
     }
 
-    private async Task<string> ReadTokenAsync(CancellationToken cancellationToken)
+    private string ReadToken()
     {
         if (_options.BuildBrokerTokenFile is not { } path || !Path.IsPathFullyQualified(path))
             throw new BuildServiceException("The isolated build broker secret file is not configured.");
-        var info = new FileInfo(path);
-        if (!info.Exists || info.LinkTarget is not null ||
-            (info.Attributes & (FileAttributes.Directory | FileAttributes.Device | FileAttributes.ReparsePoint)) != 0 ||
-            info.Length is < 64 or > 66)
-            throw new BuildServiceException("The isolated build broker secret file is invalid.");
-        await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-            128, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        var bytes = await ReadBoundedAsync(input, 66, cancellationToken);
-        var token = Encoding.ASCII.GetString(bytes).TrimEnd('\r', '\n');
-        if (!IsHex(token, 64))
-            throw new BuildServiceException("The isolated build broker secret file is invalid.");
-        return token;
+        return BuildBrokerProtocol.TryReadTokenFile(path, out var token)
+            ? token
+            : throw new BuildServiceException("The isolated build broker secret file is invalid.");
     }
 
     private static async Task<T> ReadJsonAsync<T>(HttpResponseMessage response, int limit, CancellationToken token)
@@ -274,15 +264,13 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
             throw new BuildServiceException("The isolated build broker rejected the request or returned an invalid response.");
     }
 
-    private static bool IsHex(string? value, int length) =>
-        value is not null && value.Length == length && value.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
-    private static bool IsImageId(string? value) => value is not null && value.StartsWith("sha256:", StringComparison.Ordinal) && IsHex(value[7..], 64);
+    private static bool IsImageId(string? value) => value is not null && value.StartsWith("sha256:", StringComparison.Ordinal) && BuildPolicy.IsSha256Hex(value[7..]);
     private static string ResponseInstance(HttpResponseMessage response)
     {
         if (!response.Headers.TryGetValues(InstanceHeader, out var values))
             throw ProtocolError();
         var entries = values.ToArray();
-        if (entries.Length != 1 || !IsHex(entries[0], 32))
+        if (entries.Length != 1 || !BuildPolicy.IsLowerHex(entries[0], 32))
             throw ProtocolError();
         return entries[0];
     }
@@ -388,8 +376,8 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
             if (result.BuildEnvironmentJson is null || result.ManifestJson is null ||
                 Encoding.UTF8.GetByteCount(result.BuildEnvironmentJson) > BuildPolicy.MaxBuildMetadataBytes ||
                 Encoding.UTF8.GetByteCount(result.ManifestJson) > BuildPolicy.MaxBuildMetadataBytes ||
-                result.AssemblyName is null || !Regex.IsMatch(result.AssemblyName, "\\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\z", RegexOptions.CultureInvariant) ||
-                result.ArtifactLength is <= 0 or > MaximumArtifactBytes || !IsHex(result.ArtifactSha256, 64))
+                !BuildPolicy.IsSafeAssemblyName(result.AssemblyName) ||
+                result.ArtifactLength is <= 0 or > MaximumArtifactBytes || !BuildPolicy.IsSha256Hex(result.ArtifactSha256))
                 throw ProtocolError();
             JObject environment;
             try
@@ -405,7 +393,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
                     environment["gitRef"]?.Value<string>() != _request.GitRef ||
                     environment["pluginDir"]?.Value<string>() != _request.PluginDir ||
                     environment["buildConfig"]?.Value<string>() != (_request.BuildConfig ?? "Release") ||
-                    !(IsHex(environment["gitCommit"]?.Value<string>(), 40) || IsHex(environment["gitCommit"]?.Value<string>(), 64)) ||
+                    !BuildPolicy.IsGitObjectId(environment["gitCommit"]?.Value<string>()) ||
                     !ValidTimestamp(parsed.RootElement, "gitCommitDate") || !ValidTimestamp(parsed.RootElement, "buildDate"))
                     throw ProtocolError();
             }

@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.BuildBroker.Configuration;
 using PluginBuilder.Builds;
@@ -22,12 +21,6 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         "options timeout:1 attempts:2\n";
     private static readonly TimeSpan DockerOperationTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CloneTimeout = TimeSpan.FromMinutes(5);
-    private static readonly Regex SafeAssemblyName = new(
-        "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex GitObjectId = new(
-        "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private readonly ILogger<DockerBuildSandbox> _logger;
     private readonly BuildExecutorOptions _options;
@@ -176,6 +169,26 @@ public sealed class DockerBuildSandbox : IBuildSandbox
 
         arguments.Add(workerImageId);
         return arguments;
+    }
+
+    // Opens one fixed-name file from trusted, quiescent staging: every container
+    // that could write it has been removed, so the checked length cannot change.
+    internal static FileStream OpenStagedFile(string directory, string fileName, long maxBytes, int bufferSize = 4096)
+    {
+        var staging = new DirectoryInfo(directory);
+        if (!staging.Exists || staging.LinkTarget is not null || (staging.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new BuildServiceException("The trusted metadata staging directory is unavailable.");
+        var file = new FileInfo(Path.Combine(staging.FullName, fileName));
+        if (!file.Exists || file.LinkTarget is not null ||
+            (file.Attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint | FileAttributes.Device)) != 0 ||
+            file.Length <= 0 || file.Length > maxBytes)
+            throw new BuildServiceException($"Staged file '{fileName}' must be a nonempty regular file within its size limit.");
+        var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        if (stream.CanSeek && stream.Length == file.Length)
+            return stream;
+        stream.Dispose();
+        throw new BuildServiceException($"Staged file '{fileName}' changed after staging.");
     }
 
     public sealed class PreparedBuild : IPreparedBuild
@@ -368,16 +381,14 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             }
 
             var assemblyName = buildEnvironment["assemblyName"]?.Value<string>();
-            if (assemblyName is null || !SafeAssemblyName.IsMatch(assemblyName))
+            if (!IsSafeAssemblyName(assemblyName))
                 throw new BuildServiceException("The staged build metadata has an invalid assembly name.");
-            var gitCommit = buildEnvironment["gitCommit"]?.Value<string>();
-            if (gitCommit is null || !GitObjectId.IsMatch(gitCommit))
+            if (!IsGitObjectId(buildEnvironment["gitCommit"]?.Value<string>()))
                 throw new BuildServiceException("The staged build metadata has an invalid Git commit.");
             if (!TryReadTimestamp(buildEnvironment, "gitCommitDate") ||
                 !TryReadTimestamp(buildEnvironment, "buildDate"))
                 throw new BuildServiceException("The staged build metadata has an invalid timestamp.");
-            var trustedHash = buildEnvironment["buildHash"]?.Value<string>();
-            if (trustedHash is null || !Regex.IsMatch(trustedHash, "\\A[0-9a-f]{64}\\z", RegexOptions.CultureInvariant))
+            if (!IsSha256Hex(buildEnvironment["buildHash"]?.Value<string>()))
                 throw new BuildServiceException("The staged plugin artifact has an invalid SHA-256 digest.");
 
             // These fields describe the server-side request, not attacker-controlled output.
@@ -553,23 +564,8 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             try
             {
                 timeout.Token.ThrowIfCancellationRequested();
-                var directory = new DirectoryInfo(StagingDirectory);
-                if (!directory.Exists || directory.LinkTarget is not null ||
-                    (directory.Attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new BuildServiceException("The trusted metadata staging directory is unavailable.");
-
-                var metadata = new FileInfo(Path.Combine(directory.FullName, file));
-                if (!metadata.Exists || metadata.LinkTarget is not null ||
-                    (metadata.Attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint | FileAttributes.Device)) != 0 ||
-                    metadata.Length <= 0 || metadata.Length > maxBytes)
-                    throw new BuildServiceException($"Staged file '{file}' must be a nonempty regular file within its size limit.");
-
-                await using var stream = new FileStream(metadata.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
-                    bufferSize: 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
-                if (!stream.CanSeek || stream.Length != metadata.Length)
-                    throw new BuildServiceException($"Staged file '{file}' changed after staging.");
-
-                var bytes = new byte[(int)metadata.Length];
+                await using var stream = OpenStagedFile(StagingDirectory, file, maxBytes);
+                var bytes = new byte[(int)stream.Length];
                 await stream.ReadExactlyAsync(bytes, timeout.Token);
                 // Preserve the BOM detection of the former Docker stdout reader,
                 // without allowing the text decoder to read past the byte limit.

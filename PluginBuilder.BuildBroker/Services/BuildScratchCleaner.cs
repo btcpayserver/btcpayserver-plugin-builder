@@ -2,25 +2,14 @@ using PluginBuilder.BuildBroker.Configuration;
 
 namespace PluginBuilder.BuildBroker.Services;
 
-public sealed class BuildScratchCleaner
+public sealed class BuildScratchCleaner(
+    ILogger<BuildScratchCleaner> logger,
+    ProcessRunner processRunner,
+    BuildExecutorOptions options)
 {
     private static readonly TimeSpan DockerOperationTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ScratchCleanupTimeout = TimeSpan.FromMinutes(5);
     private static readonly string[] ChildDirectoryNames = ["source", "work", "output", "staging"];
-
-    private readonly ILogger<BuildScratchCleaner> _logger;
-    private readonly ProcessRunner _processRunner;
-    private readonly BuildExecutorOptions _options;
-
-    public BuildScratchCleaner(
-        ILogger<BuildScratchCleaner> logger,
-        ProcessRunner processRunner,
-        BuildExecutorOptions options)
-    {
-        _logger = logger;
-        _processRunner = processRunner;
-        _options = options;
-    }
 
     public async Task<bool> TryDeleteAsync(
         string scratchDirectory,
@@ -47,7 +36,7 @@ public sealed class BuildScratchCleaner
                     .Select(name => Path.Combine(scratchDirectory, name))
                     .Any(path => !Directory.Exists(path) && File.Exists(path)))
             {
-                _logger.LogCritical(
+                logger.LogCritical(
                     "Refusing to mount malformed isolated build scratch directory {ScratchDirectory}",
                     scratchDirectory);
                 throw new InvalidOperationException("The isolated build scratch directory is malformed");
@@ -60,7 +49,7 @@ public sealed class BuildScratchCleaner
                     "container", "create",
                     "--name", cleanupContainer,
                     "--label", $"{BuildExecutorDocker.ManagedResourceLabel}=scratch-cleanup",
-                    "--runtime", _options.Runtime,
+                    "--runtime", options.Runtime,
                     "--network", "none",
                     "--read-only",
                     "--user", "0:0",
@@ -80,7 +69,7 @@ public sealed class BuildScratchCleaner
 
                 foreach (var child in childDirectories)
                     createArguments.AddRange(
-                        ["--mount", $"type=bind,source={_options.DockerPath(child.Path)},target=/{child.Name}"]);
+                        ["--mount", $"type=bind,source={options.DockerPath(child.Path)},target=/{child.Name}"]);
 
                 createArguments.AddRange(
                 [
@@ -94,7 +83,7 @@ public sealed class BuildScratchCleaner
                 var createCode = await RunDocker(createArguments, DockerOperationTimeout, cancellationToken);
                 if (createCode != 0)
                 {
-                    _logger.LogCritical(
+                    logger.LogCritical(
                         "Failed to create the isolated scratch cleanup container for {ScratchDirectory}",
                         scratchDirectory);
                     throw new InvalidOperationException("Could not create the isolated scratch cleanup container");
@@ -107,7 +96,7 @@ public sealed class BuildScratchCleaner
                     cancellationToken);
                 if (startCode != 0)
                 {
-                    _logger.LogCritical(
+                    logger.LogCritical(
                         "Failed to empty isolated build scratch directory {ScratchDirectory}",
                         scratchDirectory);
                     throw new InvalidOperationException("Could not empty the isolated build scratch directory");
@@ -121,16 +110,16 @@ public sealed class BuildScratchCleaner
         }
         catch (Exception ex)
         {
-            _logger.LogCritical(ex,
+            logger.LogCritical(ex,
                 "Failed to remove isolated build scratch directory {ScratchDirectory}",
                 scratchDirectory);
         }
 
         if (!await DockerResourceCleanup.TryRemoveAsync(
-                _processRunner, _logger, "container", cleanupContainer,
+                processRunner, logger, "container", cleanupContainer,
                 ambiguousCreate: createAttempted && !createCompleted))
         {
-            _logger.LogCritical(
+            logger.LogCritical(
                 "Failed to remove isolated scratch cleanup container {ContainerName}",
                 cleanupContainer);
             return false;
@@ -152,7 +141,7 @@ public sealed class BuildScratchCleaner
     {
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
-        return await _processRunner.RunAsync(new ProcessSpec
+        return await processRunner.RunAsync(new ProcessSpec
         {
             Executable = "docker",
             Arguments = arguments,

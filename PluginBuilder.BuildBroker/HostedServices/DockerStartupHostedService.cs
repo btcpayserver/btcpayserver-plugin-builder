@@ -6,14 +6,14 @@ using PluginBuilder.Builds.Services;
 
 namespace PluginBuilder.BuildBroker.HostedServices;
 
-public class DockerStartupException : Exception
-{
-    public DockerStartupException(string message) : base(message)
-    {
-    }
-}
+public class DockerStartupException(string message) : Exception(message);
 
-public class DockerStartupHostedService : IHostedService
+public class DockerStartupHostedService(
+    ILogger<DockerStartupHostedService> logger,
+    ProcessRunner processRunner,
+    BuildExecutorState executorState,
+    BuildScratchCleaner scratchCleaner,
+    BuildExecutorOptions options) : IHostedService
 {
     private const string DisablePluginBuildsEnvVar = "PBB_DISABLE_PLUGIN_BUILDS";
     private static readonly TimeSpan DockerOperationTimeout = TimeSpan.FromSeconds(30);
@@ -22,29 +22,9 @@ public class DockerStartupHostedService : IHostedService
     private static readonly Regex ReleaseTagPattern = new("\\Av[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?\\z", RegexOptions.CultureInvariant);
     private static readonly Regex ScratchDirectoryPattern = new("^pb-build-[0-9a-f]{32}$", RegexOptions.CultureInvariant);
 
-    public DockerStartupHostedService(
-        ILogger<DockerStartupHostedService> logger,
-        ProcessRunner processRunner,
-        BuildExecutorState executorState,
-        BuildScratchCleaner scratchCleaner,
-        BuildExecutorOptions options)
-    {
-        Logger = logger;
-        ProcessRunner = processRunner;
-        ExecutorState = executorState;
-        ScratchCleaner = scratchCleaner;
-        Options = options;
-    }
-
-    public ILogger<DockerStartupHostedService> Logger { get; }
-    public ProcessRunner ProcessRunner { get; }
-    public BuildExecutorState ExecutorState { get; }
-    public BuildScratchCleaner ScratchCleaner { get; }
-    public BuildExecutorOptions Options { get; }
-
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        ExecutorState.MarkUnavailable("Build executor startup is in progress");
+        executorState.MarkUnavailable("Build executor startup is in progress");
 
         try
         {
@@ -59,21 +39,21 @@ public class DockerStartupHostedService : IHostedService
 
             if (disablePluginBuilds)
             {
-                Logger.LogInformation("Plugin builds are disabled because {DisablePluginBuildsEnvVar}=true", DisablePluginBuildsEnvVar);
-                ExecutorState.MarkUnavailable($"{DisablePluginBuildsEnvVar}=true");
+                logger.LogInformation("Plugin builds are disabled because {DisablePluginBuildsEnvVar}=true", DisablePluginBuildsEnvVar);
+                executorState.MarkUnavailable($"{DisablePluginBuildsEnvVar}=true");
                 return;
             }
 
             RequireScratchRoot();
 
-            if (!IsAllowedImageReference(Options.BuildWorkerImage, "btcpayserver/btcpayserver-plugin-builder-worker") ||
-                !IsAllowedImageReference(Options.BuildProxyImage, "btcpayserver/btcpayserver-plugin-builder-proxy"))
+            if (!IsAllowedImageReference(options.BuildWorkerImage, "btcpayserver/btcpayserver-plugin-builder-worker") ||
+                !IsAllowedImageReference(options.BuildProxyImage, "btcpayserver/btcpayserver-plugin-builder-proxy"))
                 throw new DockerStartupException("WORKER_IMAGE and PROXY_IMAGE must specify an approved release tag or a local sha256 image ID.");
-            var workerImageId = await PrepareImage(Options.BuildWorkerImage!, cancellationToken);
-            var proxyImageId = await PrepareImage(Options.BuildProxyImage!, cancellationToken);
+            var workerImageId = await PrepareImage(options.BuildWorkerImage!, cancellationToken);
+            var proxyImageId = await PrepareImage(options.BuildProxyImage!, cancellationToken);
 
-            if (Options.UseRunc)
-                Logger.LogWarning("Development builds use runc without gVisor isolation. Run only trusted plugin code.");
+            if (options.UseRunc)
+                logger.LogWarning("Development builds use runc without gVisor isolation. Run only trusted plugin code.");
             else
                 await RequireRunsc(cancellationToken);
             await SmokeTestRuntime(workerImageId, cancellationToken);
@@ -81,25 +61,25 @@ public class DockerStartupHostedService : IHostedService
             await SmokeTestScratchMount(workerImageId, cancellationToken);
             await SmokeTestProxy(proxyImageId, cancellationToken);
 
-            ExecutorState.MarkReady(workerImageId, proxyImageId);
-            Logger.LogInformation("Build executor is ready");
+            executorState.MarkReady(workerImageId, proxyImageId);
+            logger.LogInformation("Build executor is ready");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            ExecutorState.MarkUnavailable("Build executor startup was cancelled");
+            executorState.MarkUnavailable("Build executor startup was cancelled");
             throw;
         }
         catch (Exception ex)
         {
-            ExecutorState.MarkUnavailable(ex.Message);
-            Logger.LogCritical(ex,
+            executorState.MarkUnavailable(ex.Message);
+            logger.LogCritical(ex,
                 "Build executor is unavailable. The public application will remain online, but builds must stay disabled");
         }
     }
 
     private void RequireScratchRoot()
     {
-        var scratchRoot = Options.BuildScratchRoot;
+        var scratchRoot = options.BuildScratchRoot;
         if (scratchRoot is null)
             throw new DockerStartupException("BUILD_SCRATCH_ROOT is not configured");
         if (!Path.IsPathFullyQualified(scratchRoot))
@@ -125,7 +105,7 @@ public class DockerStartupHostedService : IHostedService
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        ExecutorState.MarkUnavailable("Build executor shutdown is in progress");
+        executorState.MarkUnavailable("Build executor shutdown is in progress");
 
         using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         for (var pass = 0; pass < 2; pass++)
@@ -138,7 +118,7 @@ public class DockerStartupHostedService : IHostedService
             }
             catch (Exception ex)
             {
-                Logger.LogCritical(ex,
+                logger.LogCritical(ex,
                     "Could not remove every isolated build resource during application shutdown pass {Pass}",
                     pass + 1);
             }
@@ -191,14 +171,14 @@ public class DockerStartupHostedService : IHostedService
         CancellationToken cancellationToken)
     {
         foreach (var directory in Directory.EnumerateDirectories(
-                     Options.BuildScratchRoot!, "pb-build-*", SearchOption.TopDirectoryOnly))
+                     options.BuildScratchRoot!, "pb-build-*", SearchOption.TopDirectoryOnly))
         {
             var name = Path.GetFileName(directory);
             if (!ScratchDirectoryPattern.IsMatch(name))
                 continue;
 
-            Logger.LogInformation("Removing stale isolated build scratch directory {ScratchDirectory}", directory);
-            if (!await ScratchCleaner.TryDeleteAsync(directory, workerImageId, cancellationToken))
+            logger.LogInformation("Removing stale isolated build scratch directory {ScratchDirectory}", directory);
+            if (!await scratchCleaner.TryDeleteAsync(directory, workerImageId, cancellationToken))
                 throw new DockerStartupException($"Failed to remove managed build scratch directory {name}");
         }
     }
@@ -216,9 +196,9 @@ public class DockerStartupHostedService : IHostedService
         List<string> failures = [];
         foreach (var resource in resources.Lines.Where(resource => !string.IsNullOrWhiteSpace(resource)))
         {
-            Logger.LogInformation("Removing stale managed docker {ResourceType} {Resource}", resourceType, resource);
+            logger.LogInformation("Removing stale managed docker {ResourceType} {Resource}", resourceType, resource);
             if (!await DockerResourceCleanup.TryRemoveAsync(
-                    ProcessRunner, Logger, resourceType, resource, cancellationToken: cancellationToken))
+                    processRunner, logger, resourceType, resource, cancellationToken: cancellationToken))
                 failures.Add($"Failed to remove managed docker {resourceType} {resource}");
         }
 
@@ -242,14 +222,14 @@ public class DockerStartupHostedService : IHostedService
         {
             // Refresh release tags only at startup, never from a build request.
             // After preflight every build uses the resolved local IDs, not tags.
-            Logger.LogInformation("Pulling executor image {Image}", image);
+            logger.LogInformation("Pulling executor image {Image}", image);
             var errors = new OutputCapture();
             var result = await RunDocker(
                 ["pull", "--platform", "linux/amd64", image], cancellationToken,
                 errorCapture: errors, operationTimeout: ImagePullTimeout);
             if (result != 0)
             {
-                Logger.LogError("Executor image pull failed for {Image}: {Error}", image, errors);
+                logger.LogError("Executor image pull failed for {Image}: {Error}", image, errors);
                 throw new DockerStartupException($"Could not pull executor image {image}.");
             }
         }
@@ -299,7 +279,7 @@ public class DockerStartupHostedService : IHostedService
                     "container", "create",
                     "--name", containerName,
                     "--label", $"{BuildExecutorDocker.ManagedResourceLabel}=startup-smoke",
-                    "--runtime", Options.Runtime,
+                    "--runtime", options.Runtime,
                     "--network", "none",
                     "--read-only",
                     "--cap-drop", "ALL",
@@ -341,7 +321,7 @@ public class DockerStartupHostedService : IHostedService
                     "container", "create",
                     "--name", containerName,
                     "--label", $"{BuildExecutorDocker.ManagedResourceLabel}=startup-smoke",
-                    "--runtime", Options.Runtime,
+                    "--runtime", options.Runtime,
                     "--network", "none",
                     "--read-only",
                     "--user", "13:13",
@@ -379,7 +359,7 @@ public class DockerStartupHostedService : IHostedService
     {
         var suffix = Guid.NewGuid().ToString("N");
         var markerName = $"pb-mount-probe-{suffix}";
-        var scratchRoot = Options.BuildScratchRoot!;
+        var scratchRoot = options.BuildScratchRoot!;
         var markerPath = Path.Combine(scratchRoot, markerName);
         var containerName = $"plugin-builder-scratch-smoke-{suffix}";
         await File.WriteAllTextAsync(markerPath, suffix, cancellationToken);
@@ -392,7 +372,7 @@ public class DockerStartupHostedService : IHostedService
                     "container", "create",
                     "--name", containerName,
                     "--label", $"{BuildExecutorDocker.ManagedResourceLabel}=startup-smoke",
-                    "--runtime", Options.Runtime,
+                    "--runtime", options.Runtime,
                     "--network", "none",
                     "--read-only",
                     "--user", "0:0",
@@ -402,7 +382,7 @@ public class DockerStartupHostedService : IHostedService
                     "--memory-swap", "64m",
                     // The PID budget must also cover gVisor's sandbox and gofer threads.
                     "--pids-limit", "64",
-                    "--mount", $"type=bind,source={Options.DockerPath(scratchRoot)},target=/scratch,readonly",
+                    "--mount", $"type=bind,source={options.DockerPath(scratchRoot)},target=/scratch,readonly",
                     "--entrypoint", "/bin/sh",
                     workerImageId,
                     "-c",
@@ -464,7 +444,7 @@ public class DockerStartupHostedService : IHostedService
         string safeError)
     {
         if (!await DockerResourceCleanup.TryRemoveAsync(
-                ProcessRunner, Logger, "container", containerName, requireQuiescence))
+                processRunner, logger, "container", containerName, requireQuiescence))
             throw new DockerStartupException(safeError);
     }
 
@@ -481,7 +461,7 @@ public class DockerStartupHostedService : IHostedService
         timeout.CancelAfter(operationTimeout ?? DockerOperationTimeout);
         try
         {
-            return await ProcessRunner.RunAsync(new ProcessSpec
+            return await processRunner.RunAsync(new ProcessSpec
             {
                 Executable = "docker",
                 Arguments = arguments,

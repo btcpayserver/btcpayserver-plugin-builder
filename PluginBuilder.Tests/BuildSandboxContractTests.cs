@@ -17,7 +17,7 @@ public class BuildSandboxContractTests
     [InlineData("https://GITHUB.COM/owner/repository")]
     public void RepositoryValidationAcceptsOnlyApprovedAnonymousHttpsUrls(string repository)
     {
-        BuildPolicy.ValidateRepositoryUrl(repository);
+        BuildPolicy.NormalizeRepositoryUrl(repository);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class BuildSandboxContractTests
     public void RepositoryValidationRejectsEveryOtherEndpoint(string repository)
     {
         Assert.Throws<BuildServiceException>(() =>
-            BuildPolicy.ValidateRepositoryUrl(repository));
+            BuildPolicy.NormalizeRepositoryUrl(repository));
     }
 
     [Fact]
