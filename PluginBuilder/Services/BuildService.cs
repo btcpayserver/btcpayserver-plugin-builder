@@ -76,7 +76,7 @@ public class BuildService
                 string url;
                 PluginManifest manifest;
                 bool ownsIdentifier;
-                await using (BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory))
+                await using (BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory, Logger))
                 {
                     await using (var prepared = await _buildSandbox.PrepareAsync(fullBuildId, buildParameters, _lifetime.ApplicationStopping))
                     {
@@ -116,7 +116,7 @@ public class BuildService
                         buildLogCapture.AddLine($"The plugin identifier {manifest.Identifier} doesn't belong to this project slug");
                 }
 
-                // Logs are persisted before exposing the version. Commit its URL and state together.
+                // Commit the version, URL and successful state together; log persistence is best-effort.
                 var publishedInfo = new JObject { ["url"] = url };
                 await using (var connection = await ConnectionFactory.Open())
                 {
@@ -235,13 +235,15 @@ public class BuildService
         private readonly Channel<string> lines = Channel.CreateUnbounded<string>();
         private readonly object _gate = new();
         private readonly Task _saveTask;
+        private readonly ILogger<BuildService> _logger;
         private int _lineCount;
         private int _byteCount;
 
-        public BuildOutputCapture(FullBuildId fullBuildId, DBConnectionFactory connectionFactory)
+        public BuildOutputCapture(FullBuildId fullBuildId, DBConnectionFactory connectionFactory, ILogger<BuildService> logger)
         {
             FullBuildId = fullBuildId;
             ConnectionFactory = connectionFactory;
+            _logger = logger;
             _saveTask = SaveLoop();
         }
 
@@ -251,11 +253,17 @@ public class BuildService
         public async ValueTask DisposeAsync()
         {
             lines.Writer.TryComplete();
-            await _saveTask;
+            try { await _saveTask; }
+            catch (Exception error)
+            {
+                _logger.LogError(error, "Could not persist logs for build {BuildId}; logs may be incomplete", FullBuildId);
+            }
         }
 
         public void AddLine(string line)
         {
+            // PostgreSQL text rejects NUL; preserve other characters, including tabs.
+            line = line.Replace("\0", string.Empty);
             if (line.Length > BuildPolicy.MaxBuildLogLineBytes)
                 line = line[..BuildPolicy.MaxBuildLogLineBytes];
 

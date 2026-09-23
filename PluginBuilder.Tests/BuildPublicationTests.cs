@@ -53,6 +53,7 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
         broker.Sandbox.BeforeDisposal = () => cleaning.TrySetResult();
         TaskCompletionSource allowCleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
         broker.Sandbox.CompleteImmediately = true;
+        broker.Sandbox.LogLines = ["before\0after\tend"];
         broker.Sandbox.FailDisposal = failCleanup;
         broker.Sandbox.DisposalBlockedUntil = allowCleanup.Task;
         broker.Sandbox.ManifestJson = """{"Identifier":"Test.Plugin","Name":"Test Plugin","Version":"1.0.0"}""";
@@ -180,7 +181,7 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
                 Assert.IsType<AzureStorageClientException>(error);
                 Assert.Null(storage.StoredArtifact);
             }
-            else if (persistenceFailure is not null)
+            else if (persistenceFailure == "publication")
             {
                 Assert.IsType<PostgresException>(error);
                 Assert.Equal(Artifact, storage.StoredArtifact);
@@ -192,7 +193,7 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
             }
         }
 
-        if (failCleanup || failUpload || persistenceFailure is not null || transition == "shutdown")
+        if (failCleanup || failUpload || persistenceFailure == "publication" || transition == "shutdown")
         {
             Assert.Equal(BuildStates.Failed.ToEventName(), state);
             var persistedError = await connection.ExecuteScalarAsync<string?>(
@@ -229,6 +230,10 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
         {
             Assert.Equal(BuildStates.Uploaded.ToEventName(), state);
             Assert.Equal(id.BuildId, Assert.Single(versions));
+            if (persistenceFailure != "logs")
+                Assert.Contains("beforeafter\tend", await connection.QueryAsync<string>(
+                    "SELECT logs FROM builds_logs WHERE plugin_slug=@slug AND build_id=@buildId",
+                    new { slug = slug.ToString(), buildId = id.BuildId }));
             var published = Assert.Single(events, evt => evt.State == BuildStates.Uploaded.ToEventName());
             Assert.True(published.CleanupAcknowledged);
             Assert.False(published.ArtifactExists);

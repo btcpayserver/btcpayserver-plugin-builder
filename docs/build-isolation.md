@@ -83,9 +83,10 @@ queue service or broker database is introduced.
    broker unavailability or restart no longer interrupts publication; application
    shutdown still cancels the upload. Publication
    does not silently overwrite an existing artifact. After discarding its private
-   download and persisting logs, the web application commits the version mapping,
-   artifact URL and successful build state in one database transaction, then emits
-   the completion event.
+   download and awaiting best-effort log persistence, the web application commits
+   the version mapping, artifact URL and successful build state in one database transaction, then emits
+   the completion event. Log persistence failures are logged operationally but do not
+   invalidate a completed build.
 
 The private download separates publication from directories controlled by build
 code. A hash verifies the transferred bytes; it does not prove the plugin is safe.
