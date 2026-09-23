@@ -149,6 +149,9 @@ Use only trusted plugins in that development mode.
 
 ## Failures and recovery
 
+- Lease release allows up to ten minutes for cancellation and cleanup together;
+  scratch deletion alone has a five-minute deadline. Successful cleanup is not
+  reclassified as a cleanup failure if the executor is cancelled afterwards.
 - The broker checks Docker every 15 seconds with a 10-second probe deadline.
   Three consecutive probe timeouts suspend new admission without cancelling
   accepted jobs. Probes continue; the first success resumes the same live

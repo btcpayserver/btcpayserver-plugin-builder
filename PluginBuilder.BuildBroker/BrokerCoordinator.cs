@@ -112,9 +112,11 @@ public sealed class BrokerCoordinator(
 
     private async Task RunAsync(Lease lease, FullBuildId id, BuildInfo info)
     {
+        var preparationCompleted = false;
         try
         {
             lease.Prepared = await sandbox.PrepareAsync(id, info, lease.Token);
+            preparationCompleted = true;
             lease.Token.ThrowIfCancellationRequested();
             lock (lease.Gate) lease.State = "running";
             var staged = await lease.Prepared.RunAndStageAsync(lease);
@@ -181,7 +183,7 @@ public sealed class BrokerCoordinator(
             // Prepare performs its own partial-resource cleanup before throwing.
             // If it could not prove cleanup, it marks the executor unavailable and
             // returns no prepared handle: never treat that as confirmed cleanup.
-            if (lease.Prepared is null && lease.ExecutorGeneration.IsCancellationRequested)
+            if (!preparationCompleted && lease.ExecutorGeneration.IsCancellationRequested)
                 lease.CleanupFailed = true;
             // Only exact, safe diagnostics cross this boundary. Other exception
             // messages may contain internal paths, credentials or process output.
@@ -246,10 +248,13 @@ public sealed class BrokerCoordinator(
         if (lease is null) return;
         // Do not tie cleanup to RequestAborted: disconnected clients cannot retain a writer.
         lease.Cancel();
+        // Scratch cleanup alone can take five minutes, in addition to bounded
+        // Docker removals. Do not fail the executor while that cleanup is still valid.
+        using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         try
         {
-            await lease.Work.WaitAsync(TimeSpan.FromSeconds(30));
-            await CleanupAsync(lease).WaitAsync(TimeSpan.FromSeconds(90));
+            await lease.Work.WaitAsync(cleanupTimeout.Token);
+            await CleanupAsync(lease).WaitAsync(cleanupTimeout.Token);
         }
         catch
         {

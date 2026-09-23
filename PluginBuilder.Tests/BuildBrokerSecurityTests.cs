@@ -784,9 +784,52 @@ public class BuildBrokerSecurityTests
         }
     }
 
+    [Fact]
+    public async Task CancellationAfterSuccessfulCleanupDoesNotRetainFailedLease()
+    {
+        await using var fixture = await BrokerFixture.Start();
+        fixture.Sandbox.CompleteImmediately = true;
+        fixture.Sandbox.BeforeDisposal = () => fixture.Executor.MarkUnavailable("Concurrent executor failure");
+        var lease = await fixture.Submit(101);
+        await Eventually(async () =>
+            (await fixture.Client.GetFromJsonAsync<BrokerBuildStatus>($"/v1/builds/{lease}"))!.State == "failed");
+        Assert.True(fixture.Sandbox.Prepared[101].IsDisposed);
+        using var consumed = await fixture.Client.GetAsync($"/v1/builds/{lease}");
+        Assert.Equal(HttpStatusCode.NotFound, consumed.StatusCode);
+    }
+
+    [Fact]
+    public async Task ExpiredLeaseWaitsForSlowCleanupWithoutStoppingExecutor()
+    {
+        await using var fixture = await BrokerFixture.Start(TimeSpan.FromMilliseconds(300));
+        TaskCompletionSource cleaning = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Sandbox.BeforeDisposal = () => cleaning.TrySetResult();
+        fixture.Sandbox.DisposalBlockedUntil = release.Task;
+        var lease = await fixture.Submit(102);
+        Task reaping = Task.CompletedTask;
+        try
+        {
+            await cleaning.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            reaping = fixture.Coordinator.ReapExpiredAsync();
+            // Exceed the former 30-second supervisor timeout, without shortening
+            // the real cleanup budget just for this test.
+            await Task.Delay(TimeSpan.FromSeconds(31));
+            Assert.False(reaping.IsCompleted);
+            Assert.True(fixture.Executor.Snapshot.IsReady);
+        }
+        finally { release.TrySetResult(); }
+        await reaping.WaitAsync(TimeSpan.FromSeconds(5));
+        using var removed = await fixture.Client.GetAsync($"/v1/builds/{lease}");
+        Assert.Equal(HttpStatusCode.NotFound, removed.StatusCode);
+        Assert.True(fixture.Sandbox.Prepared[102].IsDisposed);
+        Assert.True(fixture.Executor.Snapshot.IsReady);
+    }
+
     internal sealed class BrokerFixture : IAsyncDisposable
     {
         private WebApplication _app = null!;
+        public BrokerCoordinator Coordinator => _app.Services.GetRequiredService<BrokerCoordinator>();
         private Uri _address = null!;
         private string? _instanceId;
         public string Root { get; } = Path.Combine(TestPaths.GetPhysicalDirectoryPath(Path.GetTempPath()), "pb-broker-test-" + Guid.NewGuid().ToString("N"));
