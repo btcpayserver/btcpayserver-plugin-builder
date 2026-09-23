@@ -85,9 +85,14 @@ public class DockerBuildSandboxLifecycleTests
                 $"container create --name {prepared.ProxyContainer} ",
                 StringComparison.Ordinal));
         var proxyResolverFile = Path.Combine(prepared.WorkDirectory, ".proxy-resolv.conf");
+        var proxyConfigurationFile = Path.Combine(prepared.WorkDirectory, ".proxy-squid.conf");
         Assert.Contains($"--network {prepared.EgressNetwork}", proxyCreate, StringComparison.Ordinal);
         Assert.Contains(
             $"type=bind,source={proxyResolverFile},target=/etc/resolv.conf,readonly",
+            proxyCreate,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            $"type=bind,source={proxyConfigurationFile},target=/etc/squid/squid.conf,readonly",
             proxyCreate,
             StringComparison.Ordinal);
         Assert.DoesNotContain("--dns", proxyCreate, StringComparison.Ordinal);
@@ -102,11 +107,16 @@ public class DockerBuildSandboxLifecycleTests
         Assert.Contains("--ulimit nofile=1024:1024", proxyCreate, StringComparison.Ordinal);
         Assert.DoesNotContain("--publish", proxyCreate, StringComparison.Ordinal);
         Assert.DoesNotContain("--env", proxyCreate, StringComparison.Ordinal);
-        Assert.EndsWith(ProxyImageId, proxyCreate, StringComparison.Ordinal);
+        Assert.EndsWith(
+            $"--entrypoint /usr/sbin/squid {ProxyImageId} -N -f /etc/squid/squid.conf",
+            proxyCreate,
+            StringComparison.Ordinal);
         Assert.Equal(
             "nameserver 1.1.1.1\nnameserver 1.0.0.1\noptions timeout:1 attempts:2\n",
             await fakeDocker.ReadProxyResolverConfiguration());
+        Assert.Equal(DockerBuildSandbox.ProxyConfiguration, await fakeDocker.ReadProxyConfiguration());
         Assert.False(File.Exists(proxyResolverFile));
+        Assert.False(File.Exists(proxyConfigurationFile));
 
         var connect = $"network connect {prepared.InternalNetwork} {prepared.ProxyContainer}";
         Assert.Contains(connect, commands);
@@ -843,16 +853,22 @@ public class DockerBuildSandboxLifecycleTests
                             pb-proxy-*)
                                 create="$(cat "${commands}.create.${target}")"
                                 resolver_source=""
+                                config_source=""
                                 for argument in $create; do
                                     case "$argument" in
                                         type=bind,source=*,target=/etc/resolv.conf,readonly)
                                             resolver_source="${argument#type=bind,source=}"
                                             resolver_source="${resolver_source%,target=/etc/resolv.conf,readonly}"
                                             ;;
+                                        type=bind,source=*,target=/etc/squid/squid.conf,readonly)
+                                            config_source="${argument#type=bind,source=}"
+                                            config_source="${config_source%,target=/etc/squid/squid.conf,readonly}"
+                                            ;;
                                     esac
                                 done
-                                [ -n "$resolver_source" ]
+                                [ -n "$resolver_source" ] && [ -n "$config_source" ]
                                 cp -- "$resolver_source" "${commands}.proxy-resolv.${target}"
+                                cp -- "$config_source" "${commands}.proxy-squid.${target}"
                                 ;;
                             pb-clone-*)
                                 if [ "${PB_FAKE_FAIL_CLONE_START:-false}" = "true" ]; then
@@ -986,6 +1002,12 @@ public class DockerBuildSandboxLifecycleTests
         {
             return await File.ReadAllTextAsync(Assert.Single(
                 System.IO.Directory.EnumerateFiles(Directory, "commands.proxy-resolv.*")));
+        }
+
+        public async Task<string> ReadProxyConfiguration()
+        {
+            return await File.ReadAllTextAsync(Assert.Single(
+                System.IO.Directory.EnumerateFiles(Directory, "commands.proxy-squid.*")));
         }
 
         public ValueTask DisposeAsync() => host.DisposeAsync();

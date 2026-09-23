@@ -4,7 +4,8 @@ WORKDIR /source
 COPY PluginBuilder.Builds/. PluginBuilder.Builds/.
 COPY PluginBuilder.BuildBroker/. PluginBuilder.BuildBroker/.
 # The broker references only the small shared build-contracts library, not the
-# public web project. Worker/proxy assets belong to their separate images.
+# public web project. Worker assets belong to the worker image; the broker
+# embeds only the proxy policy it mounts into the pinned upstream Squid image.
 
 ARG CONFIGURATION_NAME=Release
 ARG VERSION

@@ -19,6 +19,12 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         "nameserver 1.1.1.1\n" +
         "nameserver 1.0.0.1\n" +
         "options timeout:1 attempts:2\n";
+    private const string ProxyConfigurationFileName = ".proxy-squid.conf";
+    // The broker owns the egress allowlist and mounts it into this pinned upstream image.
+    public const string ProxyImage =
+        "ubuntu/squid:6.6-24.04_edge@sha256:8a3baed477e2c282ab8aa5edad442f69873246964f225c5c2ae8364b6610963c";
+    internal const string ProxyConfigurationPath = "/etc/squid/squid.conf";
+    internal static readonly string ProxyConfiguration = LoadProxyConfiguration();
     private static readonly TimeSpan CloneTimeout = TimeSpan.FromMinutes(5);
 
     private readonly ILogger<DockerBuildSandbox> _logger;
@@ -92,14 +98,39 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         "--tmpfs", $"/var/spool/squid:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid={ProxyUserId},gid={ProxyUserId}"
     ];
 
+    // Shared with the startup smoke test, which parses the same mounted configuration.
+    internal static string[] ProxyProgramArguments(string configurationFile) =>
+    [
+        "--mount", $"type=bind,source={configurationFile},target={ProxyConfigurationPath},readonly",
+        "--entrypoint", "/usr/sbin/squid"
+    ];
+
     public static IReadOnlyList<string> CreateProxyArguments(
-        string container, string network, string resolverFile, string image, string label, bool useRunc = false)
+        string container, string network, string resolverFile, string configurationFile, string image, string label,
+        bool useRunc = false)
     {
         var arguments = DockerCli.HardenedContainer(container, label, useRunc ? "runc" : "runsc", network, "256m", 128,
             user: ProxyUser, cpus: "0.5", nofile: 1024, logs: ContainerLogs.Bounded);
         arguments.AddRange(ProxyTmpfsArguments);
-        arguments.AddRange(["--mount", $"type=bind,source={resolverFile},target=/etc/resolv.conf,readonly", image]);
+        arguments.AddRange(["--mount", $"type=bind,source={resolverFile},target=/etc/resolv.conf,readonly"]);
+        arguments.AddRange(ProxyProgramArguments(configurationFile));
+        arguments.AddRange([image, "-N", "-f", ProxyConfigurationPath]);
         return arguments;
+    }
+
+    private static string LoadProxyConfiguration()
+    {
+        using var stream = typeof(DockerBuildSandbox).Assembly.GetManifestResourceStream("squid.conf")
+            ?? throw new InvalidOperationException("The build proxy configuration is missing from the broker.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    internal static void WriteReadOnlyFile(string path, string content)
+    {
+        File.WriteAllText(path, content);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
     }
 
     // Untrusted containers resolve nothing themselves: DNS points at an unroutable
@@ -186,7 +217,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         private readonly List<(DockerResourceKind Kind, string Name)> _resources = [];
         private readonly HashSet<(DockerResourceKind Kind, string Name)> _ambiguousCreates = [];
         private bool _disposed;
-        private bool _proxyResolverFileRemoved;
+        private bool _proxyFilesRemoved;
 
         internal PreparedBuild(
             DockerBuildSandbox owner,
@@ -216,6 +247,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             OutputDirectory = Path.Combine(ScratchDirectory, "output");
             StagingDirectory = Path.Combine(ScratchDirectory, "staging");
             ProxyResolverFile = Path.Combine(WorkDirectory, ProxyResolverFileName);
+            ProxyConfigurationFile = Path.Combine(WorkDirectory, ProxyConfigurationFileName);
         }
 
         public string WorkerContainer { get; }
@@ -229,6 +261,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         public string OutputDirectory { get; }
         public string StagingDirectory { get; }
         private string ProxyResolverFile { get; }
+        private string ProxyConfigurationFile { get; }
 
         internal async Task PrepareAsync()
         {
@@ -247,7 +280,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 DockerResourceKind.Container,
                 ProxyContainer,
                 CreateProxyArguments(ProxyContainer, EgressNetwork, _owner._options.DockerPath(ProxyResolverFile),
-                    _proxyImageId, Label, _owner._options.UseRunc));
+                    _owner._options.DockerPath(ProxyConfigurationFile), _proxyImageId, Label, _owner._options.UseRunc));
             await RunDocker(
                 ["network", "connect", InternalNetwork, ProxyContainer],
                 "Connecting the build proxy to its internal network failed");
@@ -262,9 +295,9 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 throw new BuildServiceException("The isolated build proxy did not stay running.");
 
             await WaitForProxyReady();
-            // The bind mount keeps the resolver file alive for Squid after unlinking;
-            // removing its scratch entry ensures the later untrusted worker cannot see it.
-            RemoveProxyResolverFile();
+            // The bind mounts keep both files alive for Squid after unlinking;
+            // removing their scratch entries ensures the later untrusted worker cannot see them.
+            RemoveProxyFiles();
 
             var proxyIp = await RunDockerForOutput(
                 [
@@ -589,24 +622,22 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             Directory.CreateDirectory(StagingDirectory);
             // Docker's --dns still routes through 127.0.0.11 on user-defined bridges,
             // which runsc cannot reach. A direct, read-only resolver file avoids it.
-            File.WriteAllText(ProxyResolverFile, ProxyResolverConfiguration);
-            if (!OperatingSystem.IsWindows())
-                File.SetUnixFileMode(
-                    ProxyResolverFile,
-                    UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+            WriteReadOnlyFile(ProxyResolverFile, ProxyResolverConfiguration);
+            WriteReadOnlyFile(ProxyConfigurationFile, ProxyConfiguration);
         }
 
-        private void RemoveProxyResolverFile()
+        private void RemoveProxyFiles()
         {
             try
             {
                 File.Delete(ProxyResolverFile);
-                _proxyResolverFileRemoved = true;
+                File.Delete(ProxyConfigurationFile);
+                _proxyFilesRemoved = true;
             }
             catch (Exception ex)
             {
-                _owner._logger.LogWarning(ex, "Failed to remove the temporary proxy resolver configuration");
-                throw new BuildServiceException("The temporary proxy resolver configuration could not be removed safely.");
+                _owner._logger.LogWarning(ex, "Failed to remove the temporary proxy configuration");
+                throw new BuildServiceException("The temporary proxy configuration could not be removed safely.");
             }
         }
 
@@ -721,15 +752,16 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                     failures.Add($"{resource.Kind}:{resource.Name}");
             }
 
-            if (failures.Count == 0 && !_proxyResolverFileRemoved)
+            if (failures.Count == 0 && !_proxyFilesRemoved)
             {
                 try
                 {
-                    RemoveProxyResolverFile();
+                    RemoveProxyFiles();
                 }
                 catch (BuildServiceException)
                 {
                     failures.Add($"File:{ProxyResolverFile}");
+                    failures.Add($"File:{ProxyConfigurationFile}");
                 }
             }
 

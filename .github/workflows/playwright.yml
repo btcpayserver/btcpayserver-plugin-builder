@@ -84,17 +84,6 @@ jobs:
           cache-from: type=gha,scope=plugin-builder-worker
           cache-to: type=gha,mode=max,scope=plugin-builder-worker
 
-      - name: Build proxy image with cache
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: PluginBuilder
-          file: Dockerfile.proxy
-          tags: plugin-builder-proxy
-          load: true
-          push: false
-          cache-from: type=gha,scope=plugin-builder-proxy
-          cache-to: type=gha,mode=max,scope=plugin-builder-proxy
-
       - name: Prepare isolated build scratch directory
         run: |
           set -euo pipefail
@@ -133,9 +122,9 @@ jobs:
 
           initial_instance=$(jq -r '.instanceId' <<<"$status")
           initial_worker=$(docker image inspect plugin-builder-worker --format '{{.Id}}')
-          initial_proxy=$(docker image inspect plugin-builder-proxy --format '{{.Id}}')
-          jq -e --arg worker "$initial_worker" --arg proxy "$initial_proxy" \
-            '.workerImageId == $worker and .proxyImageId == $proxy' <<<"$status" >/dev/null
+          initial_proxy=$(jq -r '.proxyImageId' <<<"$status")
+          jq -e --arg worker "$initial_worker" \
+            '.workerImageId == $worker and (.proxyImageId | test("^sha256:[0-9a-f]{64}$"))' <<<"$status" >/dev/null
 
           printf 'FROM plugin-builder-worker\nLABEL org.btcpayserver.ci-refresh="%s"\n' "$GITHUB_SHA" |
             docker build --pull=false --tag plugin-builder-worker -
@@ -177,7 +166,7 @@ jobs:
             '<Counters [^>]*total="1"[^>]*passed="1"[^>]*failed="0"' \
             "$RUNNER_TEMP/local-compose-test-results/local-compose-build.trx"
 
-          "${compose[@]}" rm --stop --force build-broker worker-image proxy-image
+          "${compose[@]}" rm --stop --force build-broker worker-image
 
       - name: Run tests without a build executor
         env:
@@ -203,7 +192,6 @@ jobs:
           install -m 0700 -d "$pb_broker_dir"
           openssl rand -hex 32 > "$pb_broker_dir/token"
           pb_worker_image=$(docker image inspect --format '{{.Id}}' plugin-builder-worker)
-          pb_proxy_image=$(docker image inspect --format '{{.Id}}' plugin-builder-proxy)
 
           # The host test process reaches this private bridge directly. No broker
           # port is published, and it receives no application/Azure/DB credentials.
@@ -216,7 +204,6 @@ jobs:
             --env PBB_TOKEN_FILE=/run/secrets/build_broker_token \
             --env PBB_BUILD_SCRATCH_ROOT=/mnt/pluginbuilder-build-scratch \
             --env "PBB_WORKER_IMAGE=$pb_worker_image" \
-            --env "PBB_PROXY_IMAGE=$pb_proxy_image" \
             plugin-builder-broker-ci
           pb_broker_ip=$(docker inspect --format '{{(index .NetworkSettings.Networks "plugin-builder-broker-ci").IPAddress}}' plugin-builder-broker-ci)
           echo "PB_BUILD_BROKER_URL=http://$pb_broker_ip:8080/" >> "$GITHUB_ENV"

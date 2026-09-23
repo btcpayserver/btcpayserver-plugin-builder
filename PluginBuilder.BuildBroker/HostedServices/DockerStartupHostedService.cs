@@ -20,6 +20,7 @@ public class DockerStartupHostedService(
     private static readonly Regex ImageIdPattern = new("\\Asha256:[0-9a-f]{64}\\z", RegexOptions.CultureInvariant);
     private static readonly Regex ReleaseTagPattern = new("\\Av[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?\\z", RegexOptions.CultureInvariant);
     private static readonly Regex ScratchDirectoryPattern = new("^pb-build-[0-9a-f]{32}$", RegexOptions.CultureInvariant);
+    private static readonly Regex ProbeFilePattern = new("^pb-(mount-probe|proxy-config)-[0-9a-f]{32}$", RegexOptions.CultureInvariant);
     private const string SmokeLabel = BuildExecutorDocker.ManagedResourceLabel + "=startup-smoke";
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -46,11 +47,10 @@ public class DockerStartupHostedService(
 
             RequireScratchRoot();
 
-            if (!IsAllowedImageReference(options.BuildWorkerImage, "btcpayserver/btcpayserver-plugin-builder-worker") ||
-                !IsAllowedImageReference(options.BuildProxyImage, "btcpayserver/btcpayserver-plugin-builder-proxy"))
-                throw new DockerStartupException("WORKER_IMAGE and PROXY_IMAGE must specify an approved release tag or a local sha256 image ID.");
+            if (!IsAllowedImageReference(options.BuildWorkerImage, "btcpayserver/btcpayserver-plugin-builder-worker"))
+                throw new DockerStartupException("WORKER_IMAGE must specify an approved release tag or a local sha256 image ID.");
             var workerImageId = await PrepareImage(options.BuildWorkerImage!, cancellationToken);
-            var proxyImageId = await PrepareImage(options.BuildProxyImage!, cancellationToken);
+            var proxyImageId = await PrepareImage(DockerBuildSandbox.ProxyImage, cancellationToken);
 
             if (options.UseRunc)
                 logger.LogWarning("Development builds use runc without gVisor isolation. Run only trusted plugin code.");
@@ -170,6 +170,7 @@ public class DockerStartupHostedService(
         string workerImageId,
         CancellationToken cancellationToken)
     {
+        RemoveStaleProbeFiles();
         foreach (var directory in Directory.EnumerateDirectories(
                      options.BuildScratchRoot!, "pb-build-*", SearchOption.TopDirectoryOnly))
         {
@@ -180,6 +181,28 @@ public class DockerStartupHostedService(
             logger.LogInformation("Removing stale isolated build scratch directory {ScratchDirectory}", directory);
             if (!await scratchCleaner.TryDeleteAsync(directory, workerImageId, cancellationToken))
                 throw new DockerStartupException($"Failed to remove managed build scratch directory {name}");
+        }
+    }
+
+    // Probe files are written only by the broker, directly in the scratch root and
+    // outside every sandbox mount, so they can be removed without a cleanup container.
+    private void RemoveStaleProbeFiles()
+    {
+        foreach (var file in Directory.EnumerateFiles(options.BuildScratchRoot!, "pb-*", SearchOption.TopDirectoryOnly))
+        {
+            var name = Path.GetFileName(file);
+            if (!ProbeFilePattern.IsMatch(name))
+                continue;
+
+            logger.LogInformation("Removing stale startup probe file {ProbeFile}", file);
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception ex)
+            {
+                throw new DockerStartupException($"Failed to remove stale startup probe file {name}: {ex.Message}");
+            }
         }
     }
 
@@ -217,6 +240,11 @@ public class DockerStartupHostedService(
 
     private async Task<string> PrepareImage(string image, CancellationToken cancellationToken)
     {
+        // A digest reference can only resolve to that content, so a present copy needs no registry.
+        if (image.Contains("@sha256:", StringComparison.Ordinal) &&
+            await TryInspectImageId(image, cancellationToken) is { } pinnedImageId)
+            return pinnedImageId;
+
         var isLocalId = ImageIdPattern.IsMatch(image);
         if (!isLocalId)
         {
@@ -241,7 +269,11 @@ public class DockerStartupHostedService(
         return imageId;
     }
 
-    private async Task<string> InspectImageId(string image, CancellationToken cancellationToken)
+    private async Task<string> InspectImageId(string image, CancellationToken cancellationToken) =>
+        await TryInspectImageId(image, cancellationToken)
+        ?? throw new DockerStartupException($"Could not resolve an immutable image ID for {image}");
+
+    private async Task<string?> TryInspectImageId(string image, CancellationToken cancellationToken)
     {
         var output = new OutputCapture();
         var result = await RunDocker(
@@ -249,11 +281,7 @@ public class DockerStartupHostedService(
             cancellationToken,
             output);
         var imageId = output.Lines.SingleOrDefault()?.Trim();
-
-        if (result != 0 || imageId is null || !ImageIdPattern.IsMatch(imageId))
-            throw new DockerStartupException($"Could not resolve an immutable image ID for {image}");
-
-        return imageId;
+        return result == 0 && imageId is not null && ImageIdPattern.IsMatch(imageId) ? imageId : null;
     }
 
     private async Task RequireRunsc(CancellationToken cancellationToken)
@@ -277,16 +305,23 @@ public class DockerStartupHostedService(
             "The runtime smoke-test container failed", "Could not remove the runtime smoke-test container", cancellationToken);
     }
 
-    private Task SmokeTestProxy(string proxyImageId, CancellationToken cancellationToken)
+    private async Task SmokeTestProxy(string proxyImageId, CancellationToken cancellationToken)
     {
-        var name = $"plugin-builder-proxy-smoke-{Guid.NewGuid():N}";
+        var suffix = Guid.NewGuid().ToString("N");
+        var configurationPath = Path.Combine(options.BuildScratchRoot!, $"pb-proxy-config-{suffix}");
+        var name = $"plugin-builder-proxy-smoke-{suffix}";
         var arguments = DockerCli.HardenedContainer(name, SmokeLabel, options.Runtime, "none", "128m", 64,
             user: DockerBuildSandbox.ProxyUser);
         arguments.AddRange(DockerBuildSandbox.ProxyTmpfsArguments);
-        arguments.AddRange([proxyImageId, "-k", "parse", "-f", "/etc/squid/squid.conf"]);
-        return RunSmokeContainer(name, arguments, "Could not create the build proxy smoke-test container",
-            "The build proxy configuration smoke test failed", "Could not remove the build proxy smoke-test container",
-            cancellationToken);
+        arguments.AddRange(DockerBuildSandbox.ProxyProgramArguments(options.DockerPath(configurationPath)));
+        arguments.AddRange([proxyImageId, "-k", "parse", "-f", DockerBuildSandbox.ProxyConfigurationPath]);
+        await WithProbeFile(
+            configurationPath,
+            () => DockerBuildSandbox.WriteReadOnlyFile(configurationPath, DockerBuildSandbox.ProxyConfiguration),
+            "Could not remove the build proxy configuration probe file",
+            () => RunSmokeContainer(name, arguments, "Could not create the build proxy smoke-test container",
+                "The build proxy configuration smoke test failed", "Could not remove the build proxy smoke-test container",
+                cancellationToken));
     }
 
     private async Task SmokeTestScratchMount(string workerImageId, CancellationToken cancellationToken)
@@ -310,24 +345,43 @@ public class DockerStartupHostedService(
             $"/scratch/{markerName}",
             suffix
         ]);
-        await File.WriteAllTextAsync(markerPath, suffix, cancellationToken);
         const string notShared = "The build scratch directory is not shared with the Docker host";
+        await WithProbeFile(
+            markerPath,
+            () => File.WriteAllText(markerPath, suffix),
+            "Could not remove the build scratch probe file",
+            () => RunSmokeContainer(name, arguments, notShared, notShared,
+                "Could not remove the build scratch smoke-test container", cancellationToken));
+    }
+
+    // A failed probe keeps its own error; only a successful probe fails on cleanup.
+    private async Task WithProbeFile(string path, Action write, string removeError, Func<Task> probe)
+    {
         try
         {
-            await RunSmokeContainer(name, arguments, notShared, notShared,
-                "Could not remove the build scratch smoke-test container", cancellationToken);
+            write();
+            await probe();
         }
-        finally
+        catch
         {
-            // A container removal failure is already logged by DockerCli.TryRemoveAsync.
             try
             {
-                File.Delete(markerPath);
+                File.Delete(path);
             }
             catch (Exception ex)
             {
-                throw new DockerStartupException($"Could not remove the build scratch probe file: {ex.Message}");
+                logger.LogWarning(ex, "Could not remove startup probe file {ProbeFile}", path);
             }
+            throw;
+        }
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            throw new DockerStartupException($"{removeError}: {ex.Message}");
         }
     }
 

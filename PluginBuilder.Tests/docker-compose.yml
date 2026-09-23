@@ -30,25 +30,15 @@ services:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
 
-  # These one-shot services make `docker compose up --build` build the exact
-  # worker/proxy images consumed by the broker. They are not long-running
-  # services and never receive build requests directly.
+  # This one-shot service makes `docker compose up --build` build the exact
+  # worker image consumed by the broker. It is not a long-running service and
+  # never receives build requests directly. The broker pulls the pinned proxy.
   worker-image:
     image: plugin-builder-worker
     platform: linux/amd64
     build:
       context: ../PluginBuilder
       dockerfile: ../Dockerfile.worker
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["exit 0"]
-    restart: "no"
-
-  proxy-image:
-    image: plugin-builder-proxy
-    platform: linux/amd64
-    build:
-      context: ../PluginBuilder
-      dockerfile: ../Dockerfile.proxy
     entrypoint: ["/bin/sh", "-c"]
     command: ["exit 0"]
     restart: "no"
@@ -61,23 +51,19 @@ services:
       dockerfile: Dockerfile.broker
       args:
         VERSION: 0.0.0-dev
-    # Resolve the locally-built tags to immutable image IDs before starting
+    # Resolve the locally-built tag to an immutable image ID before starting
     # the broker. The broker's production allowlist intentionally accepts
     # only release tags or sha256 IDs; this keeps local testing on that same
-    # validation path without a registry pull.
+    # validation path without a registry pull for the worker.
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
         set -eu; export PBB_WORKER_IMAGE="$$(docker image inspect plugin-builder-worker --format '{{.Id}}')";
-        export PBB_PROXY_IMAGE="$$(docker image inspect plugin-builder-proxy --format '{{.Id}}')";
         export PBB_BUILD_SCRATCH_HOST_ROOT="$$(docker volume inspect plugin-builder-dev-scratch --format '{{.Mountpoint}}')";
         chmod 0700 /build-scratch;
         exec /app/PluginBuilder.BuildBroker
     depends_on:
       worker-image:
-        condition: service_completed_successfully
-        restart: true
-      proxy-image:
         condition: service_completed_successfully
         restart: true
     environment:

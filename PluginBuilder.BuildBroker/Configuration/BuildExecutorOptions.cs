@@ -8,7 +8,6 @@ public sealed class BuildExecutorOptions
     public TimeSpan DockerProbeTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public string? BuildScratchRoot { get; init; }
     public string? BuildWorkerImage { get; init; }
-    public string? BuildProxyImage { get; init; }
     public bool UseRunc { get; init; }
     public string Runtime => UseRunc ? "runc" : "runsc";
     public string? BuildScratchHostRoot { get; init; }
@@ -27,7 +26,6 @@ public sealed class BuildExecutorOptions
             BuildScratchRoot = config["BUILD_SCRATCH_ROOT"],
             BuildScratchHostRoot = hostRoot,
             BuildWorkerImage = config["WORKER_IMAGE"],
-            BuildProxyImage = config["PROXY_IMAGE"],
             UseRunc = useRunc
         };
     }

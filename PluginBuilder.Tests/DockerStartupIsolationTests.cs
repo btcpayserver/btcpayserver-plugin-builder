@@ -17,7 +17,7 @@ public class DockerStartupIsolationTests
     private const string ProxyImageId =
         "sha256:2222222222222222222222222222222222222222222222222222222222222222";
     private const string WorkerImage = "btcpayserver/btcpayserver-plugin-builder-worker:v1.0.76";
-    private const string ProxyImage = "btcpayserver/btcpayserver-plugin-builder-proxy:v1.0.76";
+    private const string ProxyImage = DockerBuildSandbox.ProxyImage;
 
     [UnixTheory]
     [InlineData(null)]
@@ -28,8 +28,7 @@ public class DockerStartupIsolationTests
         await using var fakeDocker = await FakeDocker.Create(runscAvailable: true);
         var state = new BuildExecutorState();
         var worker = releaseSuffix is null ? WorkerImageId : WorkerImage + releaseSuffix;
-        var proxy = releaseSuffix is null ? ProxyImageId : ProxyImage + releaseSuffix;
-        var service = CreateService(fakeDocker, state, workerImage: worker, proxyImage: proxy);
+        var service = CreateService(fakeDocker, state, workerImage: worker);
 
         await service.StartAsync(CancellationToken.None);
 
@@ -41,13 +40,14 @@ public class DockerStartupIsolationTests
         // Startup only resolves prebuilt, pinned images; it never builds one.
         Assert.DoesNotContain(commands, command => command.StartsWith("build "));
         Assert.Contains($"image inspect --format {{{{.Id}}}} {worker}", commands);
-        Assert.Contains($"image inspect --format {{{{.Id}}}} {proxy}", commands);
+        Assert.Contains($"image inspect --format {{{{.Id}}}} {ProxyImage}", commands);
+        // The proxy is always the pinned upstream image, pulled by digest.
+        Assert.Single(commands, command => command == $"pull --platform linux/amd64 {ProxyImage}");
         if (releaseSuffix is null)
-            Assert.DoesNotContain(commands, command => command.StartsWith("pull "));
+            Assert.DoesNotContain(commands, command => command.StartsWith($"pull --platform linux/amd64 {worker}"));
         else
         {
             Assert.Single(commands, command => command == $"pull --platform linux/amd64 {worker}");
-            Assert.Single(commands, command => command == $"pull --platform linux/amd64 {proxy}");
             Assert.True(commands.IndexOf($"volume ls --quiet --filter label={BuildExecutorDocker.ManagedResourceLabel}") <
                         commands.IndexOf($"pull --platform linux/amd64 {worker}"));
         }
@@ -108,10 +108,14 @@ public class DockerStartupIsolationTests
         Assert.Contains("--tmpfs /run/squid:", proxySmoke, StringComparison.Ordinal);
         Assert.Contains("--tmpfs /var/log/squid:", proxySmoke, StringComparison.Ordinal);
         Assert.Contains("--tmpfs /var/spool/squid:", proxySmoke, StringComparison.Ordinal);
-        Assert.Contains(
-            $"{ProxyImageId} -k parse -f /etc/squid/squid.conf",
+        Assert.Contains($"--mount type=bind,source={fakeDocker.Directory}/pb-proxy-config-", proxySmoke, StringComparison.Ordinal);
+        Assert.Contains(",target=/etc/squid/squid.conf,readonly", proxySmoke, StringComparison.Ordinal);
+        Assert.EndsWith(
+            $"--entrypoint /usr/sbin/squid {ProxyImageId} -k parse -f /etc/squid/squid.conf",
             proxySmoke,
             StringComparison.Ordinal);
+        Assert.Equal(DockerBuildSandbox.ProxyConfiguration, await fakeDocker.ReadProxySmokeConfiguration());
+        Assert.Empty(Directory.EnumerateFiles(fakeDocker.Directory, "pb-proxy-config-*"));
         Assert.Contains(
             commands,
             command => command.StartsWith(
@@ -130,7 +134,7 @@ public class DockerStartupIsolationTests
             Assert.True(state.Snapshot.IsReady);
             commands = await fakeDocker.ReadCommands();
             Assert.Equal(2, commands.Count(command => command == $"pull --platform linux/amd64 {worker}"));
-            Assert.Equal(2, commands.Count(command => command == $"pull --platform linux/amd64 {proxy}"));
+            Assert.Equal(2, commands.Count(command => command == $"pull --platform linux/amd64 {ProxyImage}"));
         }
     }
 
@@ -238,6 +242,37 @@ public class DockerStartupIsolationTests
     }
 
     [UnixFact]
+    public async Task PresentDigestPinnedProxyIsUsedWithoutContactingTheRegistry()
+    {
+        await using var fakeDocker = await FakeDocker.Create(runscAvailable: true, proxyCached: true);
+        var state = new BuildExecutorState();
+
+        await CreateService(fakeDocker, state).StartAsync(CancellationToken.None);
+
+        Assert.True(state.Snapshot.IsReady);
+        Assert.Equal(ProxyImageId, state.Snapshot.ProxyImageId);
+        Assert.DoesNotContain(await fakeDocker.ReadCommands(), command => command.StartsWith("pull ", StringComparison.Ordinal));
+    }
+
+    [UnixFact]
+    public async Task StartupRemovesOnlyStaleBrokerProbeFilesFromTheScratchRoot()
+    {
+        await using var fakeDocker = await FakeDocker.Create(runscAvailable: true);
+        var suffix = new string('b', 32);
+        string[] stale = [$"pb-mount-probe-{suffix}", $"pb-proxy-config-{suffix}"];
+        string[] kept = ["pb-proxy-config-not-a-probe", $"pb-other-{suffix}"];
+        foreach (var name in stale.Concat(kept))
+            await File.WriteAllTextAsync(Path.Combine(fakeDocker.Directory, name), "leftover");
+        var state = new BuildExecutorState();
+
+        await CreateService(fakeDocker, state).StartAsync(CancellationToken.None);
+
+        Assert.True(state.Snapshot.IsReady);
+        Assert.All(stale, name => Assert.False(File.Exists(Path.Combine(fakeDocker.Directory, name))));
+        Assert.All(kept, name => Assert.True(File.Exists(Path.Combine(fakeDocker.Directory, name))));
+    }
+
+    [UnixFact]
     public async Task StartupReconcilesManagedScratchThroughTrustedWorkerBeforeBecomingReady()
     {
         await using var fakeDocker = await FakeDocker.Create(runscAvailable: true);
@@ -283,7 +318,7 @@ public class DockerStartupIsolationTests
             imageFailure: imageFailure);
         var state = new BuildExecutorState();
 
-        await CreateService(fakeDocker, state, workerImage: WorkerImage, proxyImage: ProxyImage)
+        await CreateService(fakeDocker, state, workerImage: WorkerImage)
             .StartAsync(CancellationToken.None);
 
         Assert.False(state.Snapshot.IsReady);
@@ -299,12 +334,10 @@ public class DockerStartupIsolationTests
         Assert.DoesNotContain(commands, command => command.StartsWith("container create ", StringComparison.Ordinal));
     }
 
-    [UnixTheory]
-    [InlineData("mismatch-worker")]
-    [InlineData("mismatch-proxy")]
-    public async Task LocalImageIdMustResolveToItsExactConfiguredIdentity(string imageFailure)
+    [UnixFact]
+    public async Task LocalImageIdMustResolveToItsExactConfiguredIdentity()
     {
-        await using var docker = await FakeDocker.Create(runscAvailable: true, imageFailure: imageFailure);
+        await using var docker = await FakeDocker.Create(runscAvailable: true, imageFailure: "mismatch-worker");
         var state = new BuildExecutorState();
 
         await CreateService(docker, state).StartAsync(CancellationToken.None);
@@ -323,7 +356,7 @@ public class DockerStartupIsolationTests
         await using var docker = await FakeDocker.Create(runscAvailable: true, imageFailure: "stall-worker");
         var state = new BuildExecutorState();
         using var cancellation = new CancellationTokenSource();
-        var startup = CreateService(docker, state, workerImage: WorkerImage, proxyImage: ProxyImage)
+        var startup = CreateService(docker, state, workerImage: WorkerImage)
             .StartAsync(cancellation.Token);
 
         await docker.WaitForMarker("pull-started");
@@ -344,7 +377,7 @@ public class DockerStartupIsolationTests
             failStaleContainerRemoval: true);
         var state = new BuildExecutorState();
 
-        await CreateService(fakeDocker, state, workerImage: WorkerImage, proxyImage: ProxyImage)
+        await CreateService(fakeDocker, state, workerImage: WorkerImage)
             .StartAsync(CancellationToken.None);
 
         Assert.False(state.Snapshot.IsReady);
@@ -457,24 +490,20 @@ public class DockerStartupIsolationTests
     }
 
     [UnixTheory]
-    [InlineData(null, null)]
-    [InlineData("plugin-builder", null)]
-    [InlineData(WorkerImageId, null)]
-    [InlineData(null, ProxyImageId)]
-    [InlineData(WorkerImageId + "\n", ProxyImageId)]
-    [InlineData("btcpayserver/btcpayserver-plugin-builder-worker:latest", ProxyImage)]
-    [InlineData("attacker/btcpayserver-plugin-builder-worker:v1.0.76", ProxyImage)]
-    [InlineData(ProxyImage, ProxyImage)]
-    [InlineData(WorkerImage, WorkerImage)]
-    [InlineData(WorkerImage, "btcpayserver/btcpayserver-plugin-builder-proxy:latest")]
-    [InlineData(WorkerImage, "attacker/btcpayserver-plugin-builder-proxy:v1.0.76")]
-    [InlineData(WorkerImage + "\n", ProxyImage)]
-    [InlineData(WorkerImage, ProxyImage + " --privileged")]
-    public async Task IncompleteOrUnapprovedImageReferencesFailBeforePullingEitherImage(string? worker, string? proxy)
+    [InlineData(null)]
+    [InlineData("plugin-builder")]
+    [InlineData(WorkerImageId + "\n")]
+    [InlineData("btcpayserver/btcpayserver-plugin-builder-worker:latest")]
+    [InlineData("attacker/btcpayserver-plugin-builder-worker:v1.0.76")]
+    [InlineData("btcpayserver/btcpayserver-plugin-builder-proxy:v1.0.76")]
+    [InlineData(ProxyImage)]
+    [InlineData(WorkerImage + "\n")]
+    [InlineData(WorkerImage + " --privileged")]
+    public async Task IncompleteOrUnapprovedWorkerImageReferencesFailBeforePullingAnyImage(string? worker)
     {
         await using var docker = await FakeDocker.Create(runscAvailable: true);
         var state = new BuildExecutorState();
-        await CreateService(docker, state, workerImage: worker, proxyImage: proxy)
+        await CreateService(docker, state, workerImage: worker)
             .StartAsync(CancellationToken.None);
         Assert.False(state.Snapshot.IsReady);
         Assert.False(string.IsNullOrEmpty(state.Snapshot.UnavailableReason));
@@ -503,7 +532,6 @@ public class DockerStartupIsolationTests
         BuildExecutorState state,
         string? scratchRoot = null,
         string? workerImage = WorkerImageId,
-        string? proxyImage = ProxyImageId,
         bool useRunc = false,
         TimeSpan? dockerOperationTimeout = null)
     {
@@ -512,7 +540,6 @@ public class DockerStartupIsolationTests
         {
             BuildScratchRoot = scratchRoot ?? fakeDocker.Directory,
             BuildWorkerImage = workerImage,
-            BuildProxyImage = proxyImage,
             UseRunc = useRunc,
             DockerOperationTimeout = dockerOperationTimeout ?? new BuildExecutorOptions().DockerOperationTimeout
         };
@@ -538,7 +565,8 @@ public class DockerStartupIsolationTests
             string? imageFailure = null,
             bool ambiguousRunscSmokeCreate = false,
             bool stallContainerList = false,
-            string? scratchMarkerFailure = null)
+            string? scratchMarkerFailure = null,
+            bool proxyCached = false)
         {
             var host = await FakeDockerHost.Start("plugin-builder-startup", $$"""
                 #!/bin/sh
@@ -628,7 +656,8 @@ public class DockerStartupIsolationTests
                             {{ProxyImageId}}|{{ProxyImage}}*) role=proxy; image_id='{{ProxyImageId}}' ;;
                             *) exit 2 ;;
                         esac
-                        if [ "${target#sha256:}" = "$target" ]; then
+                        if [ "${target#sha256:}" = "$target" ] &&
+                           { [ "$role" != proxy ] || [ "${PB_FAKE_PROXY_CACHED:-false}" != "true" ]; }; then
                             # A cached image still exists after a failed pull, but no
                             # tag may be inspected before attempting its refresh.
                             [ -f "${commands}.pull-attempted-${role}" ]
@@ -657,6 +686,16 @@ public class DockerStartupIsolationTests
                             previous="$argument"
                         done
                         case "$name" in
+                            plugin-builder-proxy-smoke-*)
+                                for argument in "$@"; do
+                                    case "$argument" in
+                                        type=bind,source=*,target=/etc/squid/squid.conf,readonly)
+                                            source="${argument#type=bind,source=}"
+                                            cp -- "${source%,target=/etc/squid/squid.conf,readonly}" "${commands}.proxy-config.${name}"
+                                            ;;
+                                    esac
+                                done
+                                ;;
                             plugin-builder-scratch-smoke-*)
                                 # Capture the production program and its arguments. Only
                                 # translate the container mount to this fixture's path.
@@ -719,7 +758,8 @@ public class DockerStartupIsolationTests
                 ["PB_FAKE_REMOVE_FAIL"] = failStaleContainerRemoval ? "true" : "false",
                 ["PB_FAKE_AMBIGUOUS_RUNSC_CREATE"] = ambiguousRunscSmokeCreate ? "true" : "false",
                 ["PB_FAKE_STALL_CONTAINER_LIST"] = stallContainerList ? "true" : "false",
-                ["PB_FAKE_SCRATCH_MARKER_FAILURE"] = scratchMarkerFailure
+                ["PB_FAKE_SCRATCH_MARKER_FAILURE"] = scratchMarkerFailure,
+                ["PB_FAKE_PROXY_CACHED"] = proxyCached ? "true" : "false"
             });
             return new FakeDocker(host);
         }
@@ -730,6 +770,9 @@ public class DockerStartupIsolationTests
         public Task WaitForMarker(string name) => host.WaitForFile($"commands.{name}");
 
         public Task<string[]> ReadCommands() => host.ReadLines("commands");
+
+        public Task<string> ReadProxySmokeConfiguration() =>
+            File.ReadAllTextAsync(Assert.Single(System.IO.Directory.EnumerateFiles(Directory, "commands.proxy-config.*")));
 
         public async Task ExposeManagedResources()
         {

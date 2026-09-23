@@ -23,10 +23,6 @@ jobs:
             image: btcpayserver/btcpayserver-plugin-builder-worker
             dockerfile: Dockerfile.worker
             context: PluginBuilder
-          - name: proxy
-            image: btcpayserver/btcpayserver-plugin-builder-proxy
-            dockerfile: Dockerfile.proxy
-            context: PluginBuilder
     steps:
       - name: Check out the repo
         uses: actions/checkout@v3

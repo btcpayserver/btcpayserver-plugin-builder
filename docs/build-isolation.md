@@ -94,8 +94,11 @@ network, not the application network or an outbound network. The proxy is the
 only build component attached to both internal and egress networks. Ignoring
 `HTTP_PROXY` does not give the worker a direct internet route.
 
-[The Squid policy](../PluginBuilder/squid.conf) allows only HTTPS CONNECT on port
-443 to these exact hostnames:
+The proxy runs Canonical's `ubuntu/squid` image, pinned by digest in
+[DockerBuildSandbox](../PluginBuilder.BuildBroker/Services/DockerBuildSandbox.cs).
+The broker owns [the Squid policy](../PluginBuilder.BuildBroker/squid.conf) and
+mounts it read-only into each proxy. It allows only HTTPS CONNECT on port 443 to
+these exact hostnames:
 
 - `github.com`, `www.github.com`
 - `gitlab.com`, `www.gitlab.com`
@@ -188,5 +191,5 @@ generated plugin is safe to install. Plugin review is still necessary.
 | [BrokerCoordinator](../PluginBuilder.BuildBroker/BrokerCoordinator.cs) | Admission, leases, execution and cleanup |
 | [DockerBuildSandbox](../PluginBuilder.BuildBroker/Services/DockerBuildSandbox.cs) | Container options, networks, checkout and staging |
 | [DockerStartupHostedService](../PluginBuilder.BuildBroker/HostedServices/DockerStartupHostedService.cs) | Runtime/image checks and startup reconciliation |
-| [squid.conf](../PluginBuilder/squid.conf) | Outbound allowlist and IP restrictions |
+| [squid.conf](../PluginBuilder.BuildBroker/squid.conf) | Outbound allowlist and IP restrictions |
 | [PluginBuilder.Builds](../PluginBuilder.Builds) | Shared contracts and build policy |

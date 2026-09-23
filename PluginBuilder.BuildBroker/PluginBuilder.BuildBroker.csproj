@@ -11,4 +11,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="PluginBuilder.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="squid.conf" LogicalName="squid.conf" />
+  </ItemGroup>
 </Project>

@@ -14,7 +14,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Misc", "Misc", "{01892AE1-B
 		Dockerfile = Dockerfile
 		Dockerfile.broker = Dockerfile.broker
 		Dockerfile.worker = Dockerfile.worker
-		Dockerfile.proxy = Dockerfile.proxy
 		README.md = README.md
 		Cleanup.md = Cleanup.md
 		.editorconfig = .editorconfig

@@ -27,7 +27,8 @@ public class BuildNetworkCanaryTests
         var cleanupErrors = new List<string>();
         try
         {
-            await Docker("image", "inspect", "plugin-builder-worker", "plugin-builder-proxy");
+            await Docker("image", "inspect", "plugin-builder-worker");
+            await Docker("pull", "--platform", "linux/amd64", DockerBuildSandbox.ProxyImage);
             // Fixture egress deliberately has no Internet route. A permissive ACL
             // regression must fail the test without contacting a real destination.
             await Docker("network", "create", "--internal", "--ipv6=false", "--label", label, egress);
@@ -45,8 +46,12 @@ public class BuildNetworkCanaryTests
             Assert.Contains("CONTROL=PASS", control, StringComparison.Ordinal);
 
             var resolver = Path.Combine(directory, "resolv.conf");
-            await File.WriteAllTextAsync(resolver, $"nameserver {fixtureIp}\noptions timeout:1 attempts:1\n");
-            await Docker(DockerBuildSandbox.CreateProxyArguments(proxy, egress, resolver, "plugin-builder-proxy", label).ToArray());
+            // Squid runs as uid 13, so both files must be readable regardless of the caller's umask.
+            DockerBuildSandbox.WriteReadOnlyFile(resolver, $"nameserver {fixtureIp}\noptions timeout:1 attempts:1\n");
+            var proxyConfiguration = Path.Combine(directory, "squid.conf");
+            DockerBuildSandbox.WriteReadOnlyFile(proxyConfiguration, DockerBuildSandbox.ProxyConfiguration);
+            await Docker(DockerBuildSandbox.CreateProxyArguments(proxy, egress, resolver, proxyConfiguration,
+                DockerBuildSandbox.ProxyImage, label).ToArray());
             await Docker("network", "connect", isolated, proxy);
             await Docker("start", proxy);
             await WaitProxyReady(proxy);

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Newtonsoft.Json.Linq;
+using PluginBuilder.BuildBroker.Services;
 using Xunit;
 
 namespace PluginBuilder.Tests;
@@ -12,7 +13,6 @@ public class BuildWorkerAssetTests
     // Check that each base image is pinned, not which digest: bumping a pin must not break tests.
     [Theory]
     [InlineData("Dockerfile.worker")]
-    [InlineData("Dockerfile.proxy")]
     [InlineData("Dockerfile.broker")]
     public void ExecutorImagesPinEveryBaseImageByDigest(string dockerfile)
     {
@@ -25,7 +25,11 @@ public class BuildWorkerAssetTests
     }
 
     [Fact]
-    public void WorkerAndProxyPinTrustedInputsAndRunAsFixedNonRootUsers()
+    public void ProxyUsesAnUpstreamSquidImagePinnedByDigest() =>
+        Assert.Matches(@"\Aubuntu/squid:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}\z", DockerBuildSandbox.ProxyImage);
+
+    [Fact]
+    public void WorkerPinsTrustedInputsAndRunsAsAFixedNonRootUser()
     {
         var worker = ReadAsset(Path.Combine("..", "Dockerfile.worker"));
         Assert.Matches(@"fetch --depth 1 origin [0-9a-f]{40}\b", worker);
@@ -34,11 +38,6 @@ public class BuildWorkerAssetTests
         Assert.Contains(
             "DOTNET_SKIP_WORKLOAD_INTEGRITY_CHECK=true",
             worker, StringComparison.Ordinal);
-
-        var proxy = ReadAsset(Path.Combine("..", "Dockerfile.proxy"));
-        Assert.Contains("USER 13:13", proxy, StringComparison.Ordinal);
-        Assert.Contains("ENTRYPOINT [\"/usr/sbin/squid\"]", proxy, StringComparison.Ordinal);
-        Assert.DoesNotContain("entrypoint.sh", proxy, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -63,7 +62,7 @@ public class BuildWorkerAssetTests
     [Fact]
     public void ProxyIsConnectOnlyAndAllowsOnlyApprovedPublicHosts()
     {
-        var config = ReadAsset("squid.conf");
+        var config = DockerBuildSandbox.ProxyConfiguration;
         Assert.DoesNotContain("ssl_bump", config, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(new HashSet<string>(StringComparer.Ordinal) { "CONNECT" }, ProxyConnectMethods(config));
         Assert.Contains("acl TLS_port port 443", config, StringComparison.Ordinal);
