@@ -27,6 +27,21 @@ public sealed class DockerBuildSandbox : IBuildSandbox
     internal static readonly string ProxyConfiguration = LoadProxyConfiguration();
     private static readonly TimeSpan CloneTimeout = TimeSpan.FromMinutes(5);
 
+    // Only fixed, operator-authored diagnostics may cross the broker boundary.
+    internal static bool IsPublicFailure(string message) => message is
+        "The repository checkout failed. Check the Git reference, repository access and submodules." or
+        "The repository checkout timed out." or
+        "Plugin artifact validation and staging failed." or
+        "Plugin artifact validation and staging failed (operation timed out)." or
+        "Artifact staging rejected: assembly name is not a safe file name" or
+        "Artifact staging rejected: plugin manifest is not a regular non-symlink file" or
+        "Artifact staging rejected: plugin manifest is empty" or
+        "Artifact staging rejected: plugin manifest exceeds its size limit" or
+        "Artifact staging rejected: plugin manifest is not valid JSON" or
+        "Artifact staging rejected: plugin artifact is not a regular non-symlink file" or
+        "Artifact staging rejected: plugin artifact is empty" or
+        "Artifact staging rejected: plugin artifact exceeds its size limit";
+
     private readonly ILogger<DockerBuildSandbox> _logger;
     private readonly BuildExecutorOptions _options;
     private readonly ProcessRunner _processRunner;
@@ -471,7 +486,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 "Repository checkout failed for build {BuildId} with exit code {ExitCode}",
                 _buildId,
                 code);
-            throw new BuildServiceException("The repository checkout failed.");
+            throw new BuildServiceException("The repository checkout failed. Check the Git reference, repository access and submodules.");
         }
 
         private Task StageArtifacts()
@@ -489,15 +504,16 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 _workerImageId
             ]);
             return RunTrustedOneShot(stager, arguments, "Plugin artifact validation and staging failed",
-                "The trusted artifact staging container could not be removed safely.");
+                "The trusted artifact staging container could not be removed safely.", reportStagingErrors: true);
         }
 
-        private async Task RunTrustedOneShot(string name, IReadOnlyList<string> createArguments, string runError, string removeError)
+        private async Task RunTrustedOneShot(string name, IReadOnlyList<string> createArguments, string runError, string removeError,
+            bool reportStagingErrors = false)
         {
             await CreateResource(DockerResourceKind.Container, name, createArguments);
             try
             {
-                await RunDocker(["container", "start", "--attach", name], runError);
+                await RunDocker(["container", "start", "--attach", name], runError, reportStagingErrors: reportStagingErrors);
             }
             finally
             {
@@ -673,7 +689,8 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         private async Task RunDocker(
             IReadOnlyList<string> arguments,
             string safeError,
-            IOutputCapture? outputCapture = null)
+            IOutputCapture? outputCapture = null,
+            bool reportStagingErrors = false)
         {
             OutputCapture error = new();
             int code;
@@ -698,6 +715,8 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             if (code != 0)
             {
                 _owner._logger.LogWarning("{SafeError}: {DockerError}", safeError, error.ToString().Trim());
+                if (reportStagingErrors && error.Lines.FirstOrDefault(IsPublicFailure) is { } diagnostic)
+                    throw new BuildServiceException(diagnostic);
                 throw new BuildServiceException(safeError + ".");
             }
         }

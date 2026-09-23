@@ -190,6 +190,7 @@ public sealed class BrokerCoordinator(
             var message = error switch
             {
                 BuildServiceException e when e.Message == $"Plugin build timed out after {options.WorkerExecutionTimeout}." => e.Message,
+                BuildServiceException e when DockerBuildSandbox.IsPublicFailure(e.Message) => e.Message,
                 OperationCanceledException => "The isolated build was cancelled or its lease expired.",
                 _ => "Plugin build failed in the isolated executor."
             };

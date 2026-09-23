@@ -352,10 +352,13 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [UnixFact]
-    public async Task FailedStagingNeverReturnsPartialOutputAndDisposalCleansIt()
+    [UnixTheory]
+    [InlineData("simulated staging write failure", "Plugin artifact validation and staging failed.")]
+    [InlineData("Artifact staging rejected: plugin artifact exceeds its size limit", "Artifact staging rejected: plugin artifact exceeds its size limit")]
+    [InlineData("Artifact staging rejected: private /host/secret", "Plugin artifact validation and staging failed.")]
+    public async Task FailedStagingNeverReturnsPartialOutputAndDisposalCleansIt(string diagnostic, string expectedError)
     {
-        await using var fakeDocker = await FakeDocker.Create(failStagerStart: true);
+        await using var fakeDocker = await FakeDocker.Create(failStagerStart: true, stagerError: diagnostic);
         var state = ReadyExecutor();
         var prepared = await CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo());
         try
@@ -363,7 +366,7 @@ public class DockerBuildSandboxLifecycleTests
             var exception = await Assert.ThrowsAsync<BuildServiceException>(() =>
                 prepared.RunAndStageAsync(new OutputCapture()));
 
-            Assert.Equal("Plugin artifact validation and staging failed.", exception.Message);
+            Assert.Equal(expectedError, exception.Message);
             // A partial canonical file is not an accepted output: no metadata
             // parsing or upload handoff may follow the staging command failure.
             Assert.Equal("{partial", await File.ReadAllTextAsync(Path.Combine(prepared.StagingDirectory, "build-env.json")));
@@ -822,7 +825,8 @@ public class DockerBuildSandboxLifecycleTests
             bool delayWorkerCreate = false,
             bool failWorkerCreate = false,
             bool stallWorker = false,
-            bool blockClone = false)
+            bool blockClone = false,
+            string stagerError = "")
         {
             var host = await FakeDockerHost.Start("plugin-builder-sandbox", """
                 #!/bin/sh
@@ -916,7 +920,7 @@ public class DockerBuildSandboxLifecycleTests
                                 ;;
                             pb-stager-*)
                                 if [ "${PB_FAKE_FAIL_STAGER_START:-false}" = "true" ]; then
-                                    printf '%s\n' 'simulated staging write failure' >&2
+                                    printf '%s\n' "${PB_FAKE_STAGER_ERROR:-simulated staging write failure}" >&2
                                     exit 28
                                 fi
                                 ;;
@@ -1022,6 +1026,7 @@ public class DockerBuildSandboxLifecycleTests
                 ["PB_FAKE_FAIL_STAGER_REMOVE"] = failStagerRemoval ? "true" : "false",
                 ["PB_FAKE_FAIL_INSPECTION"] = failInspection,
                 ["PB_FAKE_FAIL_STAGER_START"] = failStagerStart ? "true" : "false",
+                ["PB_FAKE_STAGER_ERROR"] = stagerError,
                 ["PB_FAKE_WORKER_EXIT_CODE"] = workerExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["PB_FAKE_DELAY_WORKER_CREATE"] = delayWorkerCreate ? "true" : "false",
                 ["PB_FAKE_FAIL_WORKER_CREATE"] = failWorkerCreate ? "true" : "false",

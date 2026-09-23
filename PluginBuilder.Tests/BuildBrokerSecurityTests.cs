@@ -651,6 +651,11 @@ public class BuildBrokerSecurityTests
     [InlineData("Plugin build timed out after 00:15:00.", true)]
     [InlineData("Plugin build timed out after 00:00:01.", false)]
     [InlineData("Plugin build timed out after 00:15:00. {private}", false)]
+    [InlineData("The repository checkout failed. Check the Git reference, repository access and submodules.", true)]
+    [InlineData("The repository checkout timed out.", true)]
+    [InlineData("Plugin artifact validation and staging failed.", true)]
+    [InlineData("Artifact staging rejected: plugin artifact exceeds its size limit", true)]
+    [InlineData("Artifact staging rejected: {private}", false)]
     [InlineData("{private}", false)]
     public async Task ProductionRemoteClientPreservesOnlySafeBuildFailureMessages(string message, bool isPublic)
     {

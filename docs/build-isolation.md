@@ -149,6 +149,8 @@ Use only trusted plugins in that development mode.
 
 ## Failures and recovery
 
+- Checkout and artifact validation failures expose only fixed, safe diagnostics,
+  not arbitrary Docker errors or host paths.
 - Lease release allows up to ten minutes for cancellation and cleanup together;
   scratch deletion alone has a five-minute deadline. Successful cleanup is not
   reclassified as a cleanup failure if the executor is cancelled afterwards.
