@@ -46,12 +46,36 @@ public sealed class BuildExecutorState
         }
     }
 
-    // A web health probe controls admission, not the lifetime of accepted broker jobs.
+    // Health probes control admission, not the lifetime of accepted jobs.
     public void SuspendAdmission(string reason)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         lock (_gate)
-            Interlocked.Exchange(ref _snapshot, Unavailable(reason));
+            Interlocked.Exchange(ref _snapshot, _snapshot with { IsReady = false, UnavailableReason = reason });
+    }
+
+    public bool TrySuspendAdmission(CancellationToken expectedGeneration, string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        lock (_gate)
+        {
+            if (_stopSource.IsCancellationRequested || _stopSource.Token != expectedGeneration || !_snapshot.IsReady)
+                return false;
+            Interlocked.Exchange(ref _snapshot, _snapshot with { IsReady = false, UnavailableReason = reason });
+            return true;
+        }
+    }
+
+    public bool TryResumeAdmission(CancellationToken expectedGeneration)
+    {
+        lock (_gate)
+        {
+            if (_stopSource.IsCancellationRequested || _stopSource.Token != expectedGeneration ||
+                _snapshot.WorkerImageId is null || _snapshot.ProxyImageId is null)
+                return false;
+            Interlocked.Exchange(ref _snapshot, _snapshot with { IsReady = true, UnavailableReason = null });
+            return true;
+        }
     }
 
     public void ResumeAdmission(string workerImageId, string proxyImageId)

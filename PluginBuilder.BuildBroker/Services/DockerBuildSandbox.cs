@@ -59,8 +59,9 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             : buildInfo.BuildConfig;
         ValidateBuildInputs(buildInfo.GitRef, buildInfo.PluginDir, buildInfo.BuildConfig);
 
+        var generation = _executorState.StopToken;
         var snapshot = _executorState.Snapshot;
-        if (!snapshot.IsReady || snapshot.WorkerImageId is null || snapshot.ProxyImageId is null)
+        if (generation.IsCancellationRequested || snapshot.WorkerImageId is null || snapshot.ProxyImageId is null)
             throw new BuildServiceException("The isolated build executor is unavailable.");
 
         var prepared = new PreparedBuild(
@@ -69,6 +70,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             buildInfo,
             snapshot.WorkerImageId,
             snapshot.ProxyImageId,
+            generation,
             cancellationToken);
         try
         {
@@ -225,6 +227,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             BuildInfo buildInfo,
             string workerImageId,
             string proxyImageId,
+            CancellationToken generation,
             CancellationToken cancellationToken)
         {
             _owner = owner;
@@ -239,7 +242,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             EgressNetwork = $"pb-egress-{_resourceSuffix}";
             var scratchRoot = owner._options.BuildScratchRoot
                 ?? throw new BuildServiceException("The isolated build scratch directory is not configured.");
-            _leaseStopSource = CancellationTokenSource.CreateLinkedTokenSource(owner._executorState.StopToken, cancellationToken);
+            _leaseStopSource = CancellationTokenSource.CreateLinkedTokenSource(generation, cancellationToken);
             _stopToken = _leaseStopSource.Token;
             ScratchDirectory = Path.Combine(scratchRoot, $"pb-build-{_resourceSuffix}");
             SourceDirectory = Path.Combine(ScratchDirectory, "source");
@@ -311,9 +314,9 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 parsedProxyIp.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
                 throw new BuildServiceException("The isolated build proxy has no valid internal IPv4 address.");
 
-            EnsureExecutorUnchanged();
+            _stopToken.ThrowIfCancellationRequested();
             await CloneSource(proxyIp);
-            EnsureExecutorUnchanged();
+            _stopToken.ThrowIfCancellationRequested();
 
             await CreateResource(
                 DockerResourceKind.Container,
@@ -334,7 +337,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         public async Task<StagedBuildOutput> RunAndStageAsync(IOutputCapture buildOutput)
         {
             ThrowIfDisposed();
-            EnsureExecutorUnchanged();
+            _stopToken.ThrowIfCancellationRequested();
 
             int code;
             try
@@ -413,13 +416,6 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         }
 
         private string Label => $"{BuildExecutorDocker.ManagedResourceLabel}={_buildId}";
-
-        private void EnsureExecutorUnchanged()
-        {
-            var current = _owner._executorState.Snapshot;
-            if (!current.IsReady || current.WorkerImageId != _workerImageId || current.ProxyImageId != _proxyImageId)
-                throw new BuildServiceException("The isolated build executor became unavailable.");
-        }
 
         private IReadOnlyList<string> CreateCloneArguments(string proxyIp)
         {

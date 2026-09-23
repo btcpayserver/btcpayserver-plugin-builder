@@ -763,6 +763,39 @@ public class DockerBuildSandboxLifecycleTests
         BuildConfig = "Release"
     };
 
+    [UnixTheory]
+    [InlineData("before-preparation")]
+    [InlineData("checkout")]
+    [InlineData("before-worker")]
+    public async Task AcceptedBuildContinuesThroughAdmissionSuspension(string phase)
+    {
+        await using var fakeDocker = await FakeDocker.Create(blockClone: phase == "checkout");
+        var state = ReadyExecutor();
+        var generation = state.StopToken;
+        if (phase == "before-preparation") Assert.True(state.TrySuspendAdmission(generation, "Timeout"));
+        var preparation = CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo());
+        if (phase == "checkout")
+        {
+            try
+            {
+                await fakeDocker.WaitForClone();
+                Assert.True(state.TrySuspendAdmission(generation, "Timeout"));
+            }
+            finally { fakeDocker.ReleaseClone(); }
+        }
+        var prepared = await preparation;
+        try
+        {
+            if (phase == "before-worker") Assert.True(state.TrySuspendAdmission(generation, "Timeout"));
+            var staged = await prepared.RunAndStageAsync(new OutputCapture());
+            Assert.True(File.Exists(Path.Combine(staged.StagingDirectory, "artifact.btcpay")));
+            Assert.False(state.Snapshot.IsReady);
+            Assert.False(generation.IsCancellationRequested);
+        }
+        finally { await prepared.DisposeAsync(); }
+        Assert.False(Directory.Exists(prepared.ScratchDirectory));
+    }
+
     internal sealed class FakeDocker(FakeDockerHost host) : IAsyncDisposable
     {
         public string Directory => host.Directory;
@@ -788,7 +821,8 @@ public class DockerBuildSandboxLifecycleTests
             int workerExitCode = 0,
             bool delayWorkerCreate = false,
             bool failWorkerCreate = false,
-            bool stallWorker = false)
+            bool stallWorker = false,
+            bool blockClone = false)
         {
             var host = await FakeDockerHost.Start("plugin-builder-sandbox", """
                 #!/bin/sh
@@ -871,6 +905,10 @@ public class DockerBuildSandboxLifecycleTests
                                 cp -- "$config_source" "${commands}.proxy-squid.${target}"
                                 ;;
                             pb-clone-*)
+                                if [ "${PB_FAKE_BLOCK_CLONE:-false}" = "true" ]; then
+                                    : > "${commands}.clone-started"
+                                    while [ ! -f "${commands}.clone-release" ]; do sleep 0.01; done
+                                fi
                                 if [ "${PB_FAKE_FAIL_CLONE_START:-false}" = "true" ]; then
                                     printf '%s\n' 'simulated checkout failure' >&2
                                     exit 29
@@ -973,6 +1011,7 @@ public class DockerBuildSandboxLifecycleTests
                 ["PB_FAKE_FAIL_WORKER_REMOVE"] = failWorkerRemoval ? "true" : "false",
                 ["PB_FAKE_FAIL_PROXY_READINESS"] = failProxyReadiness ? "true" : "false",
                 ["PB_FAKE_FAIL_CLONE_START"] = failCloneStart ? "true" : "false",
+                ["PB_FAKE_BLOCK_CLONE"] = blockClone ? "true" : "false",
                 ["PB_FAKE_AMBIGUOUS_PROXY_CREATE"] = ambiguousProxyCreate ? "true" : "false",
                 ["PB_FAKE_GIT_COMMIT"] = gitCommit,
                 ["PB_FAKE_GIT_COMMIT_DATE"] = gitCommitDate,
@@ -995,6 +1034,9 @@ public class DockerBuildSandboxLifecycleTests
             File.Exists(Path.Combine(Directory, "commands.ambiguous-container-exists"));
 
         public Task WaitForAmbiguousCreate() => host.WaitForFile("commands.ambiguous-create-started");
+
+        public Task WaitForClone() => host.WaitForFile("commands.clone-started");
+        public void ReleaseClone() => File.WriteAllText(Path.Combine(Directory, "commands.clone-release"), "");
 
         public async Task<List<string>> ReadCommands() => (await host.ReadLines("commands")).ToList();
 

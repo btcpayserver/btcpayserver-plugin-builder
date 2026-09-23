@@ -290,8 +290,10 @@ public class BuildBrokerSecurityTests
         Assert.Equal(2, fixture.Sandbox.DisposalCount);
     }
 
-    [Fact]
-    public async Task SubmissionAutomaticallyStartsAfterPreparation()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SubmissionAutomaticallyStartsAfterPreparation(bool suspendAdmission)
     {
         await using var fixture = await BrokerFixture.Start();
         TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -305,6 +307,12 @@ public class BuildBrokerSecurityTests
             var preparing = await fixture.Client.GetFromJsonAsync<BrokerBuildStatus>($"/v1/builds/{lease}");
             Assert.Equal("preparing", preparing!.State);
             Assert.Empty(fixture.Sandbox.Prepared);
+            if (suspendAdmission)
+            {
+                fixture.Executor.SuspendAdmission("Docker probes timed out");
+                using var refused = await fixture.Client.PostAsJsonAsync("/v1/builds", ValidRequest(91));
+                Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
+            }
         }
         finally { release.TrySetResult(); }
         await fixture.Sandbox.WaitForStarted(90);
@@ -422,12 +430,16 @@ public class BuildBrokerSecurityTests
         Assert.False(fixture.Sandbox.Prepared[15].IsDisposed);
     }
 
-    [Fact]
-    public async Task FailedCleanupPreventsSuccessAndFurtherAdmission()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedCleanupPreventsSuccessAndFurtherAdmission(bool suspendAdmission)
     {
         await using var fixture = await BrokerFixture.Start();
         fixture.Sandbox.FailDisposal = true;
         fixture.Sandbox.CompleteImmediately = true;
+        if (suspendAdmission)
+            fixture.Sandbox.BeforePrepare = () => fixture.Executor.SuspendAdmission("Docker probes timed out");
         var lease = await fixture.Submit(30);
         await fixture.WaitForExecution(lease);
         await fixture.Sandbox.WaitForStarted(30);
@@ -469,6 +481,29 @@ public class BuildBrokerSecurityTests
         using var refused = await fixture.Client.PostAsJsonAsync("/v1/builds", ValidRequest(33));
         Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
         Assert.Equal(1, fixture.Sandbox.PrepareCalls);
+    }
+
+    [Fact]
+    public async Task CleanPreparationFailureDuringSuspensionReleasesLeaseWithoutLosingCapacity()
+    {
+        await using var fixture = await BrokerFixture.Start();
+        var generation = fixture.Executor.StopToken;
+        fixture.Sandbox.PrepareFailure = new BuildServiceException("Checkout failed after confirmed cleanup.");
+        fixture.Sandbox.BeforePrepare = () => fixture.Executor.SuspendAdmission("Docker probes timed out");
+        var lease = await fixture.Submit(32);
+        await Eventually(async () =>
+        {
+            var status = await fixture.Client.GetFromJsonAsync<BrokerBuildStatus>($"/v1/builds/{lease}");
+            return status!.State == "failed";
+        });
+        using var consumed = await fixture.Client.GetAsync($"/v1/builds/{lease}");
+        Assert.Equal(HttpStatusCode.NotFound, consumed.StatusCode);
+        Assert.False(generation.IsCancellationRequested);
+        Assert.True(fixture.Executor.TryResumeAdmission(generation));
+        fixture.Sandbox.PrepareFailure = null;
+        fixture.Sandbox.BeforePrepare = null;
+        await fixture.Submit(33);
+        await fixture.Submit(34);
     }
 
     [Theory]

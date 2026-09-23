@@ -35,73 +35,91 @@ public class BrokerDockerMonitorTests
     }
 
     [UnixFact]
-    public async Task NonzeroExitCancelsBuildsAndNeverAutomaticallyReadmitsAfterDockerRecovers()
-    {
-        using var fixture = new Fixture("failure");
-        var activeBuildToken = fixture.State.StopToken;
-        await fixture.Monitor.CheckOnceAsync();
-        Assert.False(fixture.State.Snapshot.IsReady);
-        Assert.True(activeBuildToken.IsCancellationRequested);
-        fixture.SetMode("success");
-        await fixture.Monitor.CheckOnceAsync();
-        Assert.False(fixture.State.Snapshot.IsReady);
-        Assert.Single(fixture.Commands());
-    }
-
-    [UnixFact]
-    public async Task MissingDockerExecutableFailsClosedWithoutAttemptingAnyFallback()
-    {
-        using var fixture = new Fixture();
-        File.Move(fixture.DockerPath, fixture.DockerPath + ".disabled");
-        var activeBuildToken = fixture.State.StopToken;
-        await fixture.Monitor.CheckOnceAsync();
-        Assert.False(fixture.State.Snapshot.IsReady);
-        Assert.True(activeBuildToken.IsCancellationRequested);
-        Assert.Empty(fixture.Commands());
-    }
-
-    [UnixTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ThreeConsecutiveProbeTimeoutsDisableAdmissionAndSuccessResetsTheCount(bool recoverBeforeLimit)
+    public async Task ThreeConsecutiveTimeoutsSuspendAdmissionAndSuccessResetsTheCount()
     {
         var probeTimeout = TimeSpan.FromSeconds(1);
         using var fixture = new Fixture("hang", probeTimeout);
         var activeBuildToken = fixture.State.StopToken;
-        var expectedCommands = 0;
-        if (recoverBeforeLimit)
+        // Recover before the threshold, after suspension, and once more afterwards.
+        int[] timeoutCounts = [2, 4, 1];
+        foreach (var timeoutCount in timeoutCounts)
         {
-            await AssertTimedOutProbe();
-            await AssertTimedOutProbe();
+            fixture.SetMode("hang");
+            for (var attempt = 1; attempt <= timeoutCount; attempt++)
+            {
+                var watch = Stopwatch.StartNew();
+                await fixture.Monitor.CheckOnceAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.InRange(watch.Elapsed, probeTimeout * 0.9, TimeSpan.FromSeconds(10));
+                Assert.Equal(attempt < 3, fixture.State.Snapshot.IsReady);
+                Assert.False(activeBuildToken.IsCancellationRequested);
+                Assert.Equal(activeBuildToken, fixture.State.StopToken);
+            }
             fixture.SetMode("success");
             await fixture.Monitor.CheckOnceAsync();
-            expectedCommands++;
             Assert.True(fixture.State.Snapshot.IsReady);
             Assert.Equal(activeBuildToken, fixture.State.StopToken);
             Assert.False(activeBuildToken.IsCancellationRequested);
-            fixture.SetMode("hang");
         }
+        Assert.Equal(timeoutCounts.Sum() + timeoutCounts.Length, fixture.Commands().Length);
+    }
 
-        await AssertTimedOutProbe();
-        await AssertTimedOutProbe();
-        await AssertTimedOutProbe(expectReady: false);
+    [UnixTheory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task HardFailureCancelsBuildsWithoutAutomaticReadmission(bool suspended, bool missingExecutable)
+    {
+        using var fixture = new Fixture("hang", TimeSpan.FromSeconds(1));
+        if (suspended)
+            for (var i = 0; i < 3; i++) await fixture.Monitor.CheckOnceAsync();
+        var token = fixture.State.StopToken;
+        Assert.False(token.IsCancellationRequested);
+        if (missingExecutable) File.Move(fixture.DockerPath, fixture.DockerPath + ".disabled");
+        else fixture.SetMode("failure");
+        await fixture.Monitor.CheckOnceAsync();
+        Assert.True(token.IsCancellationRequested);
         Assert.False(fixture.State.Snapshot.IsReady);
-        Assert.True(activeBuildToken.IsCancellationRequested);
-        Assert.Contains("timed out", fixture.State.Snapshot.UnavailableReason, StringComparison.Ordinal);
+        var commands = fixture.Commands().Length;
+        Assert.Equal((suspended ? 3 : 0) + (missingExecutable ? 0 : 1), commands);
         fixture.SetMode("success");
         await fixture.Monitor.CheckOnceAsync();
-        Assert.False(fixture.State.Snapshot.IsReady);
-        Assert.Equal(expectedCommands, fixture.Commands().Length);
+        Assert.Equal(commands, fixture.Commands().Length);
+    }
 
-        async Task AssertTimedOutProbe(bool expectReady = true)
+    [UnixTheory]
+    [InlineData("cleanup")]
+    [InlineData("generation")]
+    [InlineData("shutdown")]
+    public async Task LateSuccessCannotResumeAdmissionAfterStopOrGenerationChange(string cause)
+    {
+        using var fixture = new Fixture("hang", TimeSpan.FromSeconds(1));
+        for (var i = 0; i < 3; i++) await fixture.Monitor.CheckOnceAsync();
+        fixture.SetMode("blocked");
+        var probe = fixture.Monitor.CheckOnceAsync();
+        try
         {
-            var watch = Stopwatch.StartNew();
-            await fixture.Monitor.CheckOnceAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.InRange(watch.Elapsed, probeTimeout * 0.9, TimeSpan.FromSeconds(10));
-            expectedCommands++;
-            Assert.Equal(expectReady, fixture.State.Snapshot.IsReady);
-            Assert.Equal(!expectReady, activeBuildToken.IsCancellationRequested);
-            Assert.Equal(activeBuildToken, fixture.State.StopToken);
+            await fixture.WaitForProbeStart();
+            if (cause == "shutdown") await fixture.Monitor.StopAsync(CancellationToken.None);
+            else
+            {
+                fixture.State.MarkUnavailable("Cleanup failed");
+                if (cause == "generation")
+                {
+                    fixture.State.MarkReady("sha256:new-worker", "sha256:new-proxy");
+                    fixture.State.SuspendAdmission("New generation suspended");
+                }
+            }
+            var expected = fixture.State.Snapshot;
+            fixture.ReleaseProbe();
+            await probe.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(expected, fixture.State.Snapshot);
+            Assert.False(fixture.State.Snapshot.IsReady);
+        }
+        finally
+        {
+            fixture.ReleaseProbe();
+            await probe.WaitAsync(TimeSpan.FromSeconds(5));
         }
     }
 

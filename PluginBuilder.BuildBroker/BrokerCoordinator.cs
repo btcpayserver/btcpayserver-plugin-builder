@@ -181,7 +181,7 @@ public sealed class BrokerCoordinator(
             // Prepare performs its own partial-resource cleanup before throwing.
             // If it could not prove cleanup, it marks the executor unavailable and
             // returns no prepared handle: never treat that as confirmed cleanup.
-            if (lease.Prepared is null && !executor.Snapshot.IsReady)
+            if (lease.Prepared is null && lease.ExecutorGeneration.IsCancellationRequested)
                 lease.CleanupFailed = true;
             // Only exact, safe diagnostics cross this boundary. Other exception
             // messages may contain internal paths, credentials or process output.
@@ -345,6 +345,7 @@ public sealed class BrokerCoordinator(
         public readonly CancellationTokenSource Cancellation;
         // Requests may retain a lease while internal cleanup disposes its source.
         public readonly CancellationToken Token;
+        public readonly CancellationToken ExecutorGeneration;
         public readonly SemaphoreSlim ArtifactGate = new(1, 1);
         public readonly List<string> Logs = [];
         private int _logBytes;
@@ -363,6 +364,7 @@ public sealed class BrokerCoordinator(
             if (lifetime <= TimeSpan.Zero || lifetime > TimeSpan.FromMinutes(45))
                 throw new InvalidOperationException("Invalid broker lease lifetime.");
             ExpiresAt = DateTimeOffset.UtcNow + lifetime;
+            ExecutorGeneration = stopToken;
             Cancellation = CancellationTokenSource.CreateLinkedTokenSource(stopToken);
             Token = Cancellation.Token;
             Cancellation.CancelAfter(lifetime);

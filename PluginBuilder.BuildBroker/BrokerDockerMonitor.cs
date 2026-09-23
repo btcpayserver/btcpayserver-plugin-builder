@@ -17,12 +17,13 @@ public sealed class BrokerDockerMonitor(
     public static readonly TimeSpan ProbeInterval = TimeSpan.FromSeconds(15);
     private const int ConsecutiveTimeoutLimit = 3;
     private readonly SemaphoreSlim _probeGate = new(1, 1);
+    private CancellationToken? _suspendedGeneration;
     private int _consecutiveTimeouts;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Startup already verified Docker and the pinned isolation profile. A later
-        // confirmed liveness failure requires startup reconciliation, not automatic readmission.
+        // Only probe timeouts are recoverable; cleanup and other hard failures
+        // still require startup reconciliation.
         using var timer = new PeriodicTimer(ProbeInterval);
         try
         {
@@ -35,11 +36,13 @@ public sealed class BrokerDockerMonitor(
     public async Task CheckOnceAsync(CancellationToken stoppingToken = default)
     {
         stoppingToken.ThrowIfCancellationRequested();
-        if (!executor.Snapshot.IsReady || !await _probeGate.WaitAsync(0, stoppingToken))
+        if (!await _probeGate.WaitAsync(0, stoppingToken))
             return;
         try
         {
-            if (!executor.Snapshot.IsReady)
+            var generation = executor.StopToken;
+            if (generation.IsCancellationRequested ||
+                (!executor.Snapshot.IsReady && _suspendedGeneration != generation))
                 return;
             try
             {
@@ -48,10 +51,19 @@ public sealed class BrokerDockerMonitor(
                 // process tree when this deadline expires.
                 var code = await DockerCli.RunAsync(processRunner, ["version", "--format", "{{.Server.Version}}"],
                     options.DockerProbeTimeout, stoppingToken, DiscardOutput.Instance, DiscardOutput.Instance);
+                stoppingToken.ThrowIfCancellationRequested();
                 if (code != 0)
-                    FailClosed("Docker liveness probe returned a nonzero exit code.");
+                    FailClosed(generation, "Docker liveness probe returned a nonzero exit code.");
                 else
+                {
                     _consecutiveTimeouts = 0;
+                    if (_suspendedGeneration == generation)
+                    {
+                        if (executor.TryResumeAdmission(generation))
+                            logger.LogInformation("Docker responded again; build admission resumed.");
+                        _suspendedGeneration = null;
+                    }
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -60,9 +72,15 @@ public sealed class BrokerDockerMonitor(
             }
             catch (OperationCanceledException)
             {
-                _consecutiveTimeouts++;
+                _consecutiveTimeouts = Math.Min(_consecutiveTimeouts + 1, ConsecutiveTimeoutLimit);
                 if (_consecutiveTimeouts >= ConsecutiveTimeoutLimit)
-                    FailClosed("Docker liveness probe timed out on three consecutive attempts.");
+                {
+                    if (executor.TrySuspendAdmission(generation, "Docker liveness probes timed out."))
+                    {
+                        _suspendedGeneration = generation;
+                        logger.LogWarning("Docker probes timed out three times; new builds are suspended while accepted builds continue.");
+                    }
+                }
                 else
                     logger.LogWarning("Docker liveness probe timed out ({TimeoutCount}/{TimeoutLimit}); retrying at the next probe.",
                         _consecutiveTimeouts, ConsecutiveTimeoutLimit);
@@ -70,17 +88,24 @@ public sealed class BrokerDockerMonitor(
             catch (Exception error)
             {
                 logger.LogWarning("Docker liveness probe failed ({ErrorType})", error.GetType().Name);
-                FailClosed("Docker liveness probe failed.");
+                FailClosed(generation, "Docker liveness probe failed.");
             }
         }
         finally { _probeGate.Release(); }
     }
 
-    private void FailClosed(string reason)
+    private void FailClosed(CancellationToken generation, string reason)
     {
-        if (!executor.Snapshot.IsReady)
+        if (generation.IsCancellationRequested)
             return;
         logger.LogError("{Reason} New builds remain disabled until broker startup reconciliation.", reason);
         executor.MarkUnavailable(reason);
+    }
+
+    public override Task StopAsync(CancellationToken cancellationToken)
+    {
+        // End the generation before waiting for probes: late successes cannot resume it.
+        executor.MarkUnavailable("Build executor shutdown is in progress");
+        return base.StopAsync(cancellationToken);
     }
 }

@@ -148,6 +148,16 @@ Use only trusted plugins in that development mode.
 
 ## Failures and recovery
 
+- The broker checks Docker every 15 seconds with a 10-second probe deadline.
+  Three consecutive probe timeouts suspend new admission without cancelling
+  accepted jobs. Probes continue; the first success resumes the same live
+  generation. A successful probe resets the timeout count.
+- Only probe timeouts recover automatically. A nonzero Docker exit (including
+  connection failures), an execution error, or unconfirmed cleanup still blocks
+  the executor until investigation and startup reconciliation. A late successful
+  probe cannot undo that block or reopen admission during shutdown.
+- This does not remove resource pressure: individual build operations and cleanup
+  keep their own deadlines, and cleanup failure can still require intervention.
 - A compilation failure or timeout fails the build and triggers cleanup. It does
   not inherently require disabling the whole executor.
 - If resource cleanup cannot be confirmed, the executor becomes unavailable and
@@ -172,9 +182,10 @@ Use only trusted plugins in that development mode.
   requests or downloads; a lost response can leave a broker slot held until lease
   expiry. Health recovery is not a guarantee of recovery from every network failure.
 
-An unavailable executor should be investigated through broker logs and Docker
-health. Resolve the underlying problem before restarting/reconciling it; simply
-reenabling the application build flag does not establish safe cleanup.
+Investigate persistent unavailability through broker logs and Docker health.
+Timeout-only suspension can recover without a restart. For a definitive failure,
+resolve the underlying problem before restarting/reconciling the executor;
+simply reenabling the application build flag does not establish safe cleanup.
 
 Production deployment is documented in the
 [infrastructure repository](https://github.com/btcpayserver/btcpayserver-plugin-builder-infra).

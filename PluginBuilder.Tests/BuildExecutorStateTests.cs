@@ -108,6 +108,8 @@ public class BuildExecutorStateTests
         state.SuspendAdmission("Health probe failed");
         Assert.False(state.Snapshot.IsReady);
         Assert.Equal("Health probe failed", state.Snapshot.UnavailableReason);
+        Assert.Equal("sha256:worker", state.Snapshot.WorkerImageId);
+        Assert.Equal("sha256:proxy", state.Snapshot.ProxyImageId);
         Assert.Equal(token, state.StopToken);
         Assert.False(token.IsCancellationRequested);
 
@@ -116,6 +118,34 @@ public class BuildExecutorStateTests
         Assert.Null(state.Snapshot.UnavailableReason);
         Assert.Equal(token, state.StopToken);
         Assert.False(token.IsCancellationRequested);
+    }
+
+    [Fact]
+    public void GuardedAdmissionTransitionsPreserveImagesAndRejectStoppedOrReplacedGenerations()
+    {
+        var state = new BuildExecutorState();
+        var startup = state.StopToken;
+        Assert.False(state.TrySuspendAdmission(startup, "Timeout"));
+        Assert.False(state.TryResumeAdmission(startup));
+        state.MarkReady("sha256:worker", "sha256:proxy");
+        var generation = state.StopToken;
+        var ready = state.Snapshot;
+        Assert.True(state.TrySuspendAdmission(generation, "Timeout"));
+        Assert.False(state.TrySuspendAdmission(generation, "Another timeout"));
+        Assert.True(state.TryResumeAdmission(generation));
+        Assert.Equal(ready, state.Snapshot);
+        Assert.Equal(generation, state.StopToken);
+
+        state.MarkUnavailable("Cleanup failed");
+        var stopped = state.Snapshot;
+        Assert.False(state.TrySuspendAdmission(generation, "Timeout"));
+        Assert.False(state.TryResumeAdmission(generation));
+        Assert.Equal(stopped, state.Snapshot);
+        state.MarkReady("sha256:new-worker", "sha256:new-proxy");
+        var replacement = state.Snapshot;
+        Assert.False(state.TrySuspendAdmission(generation, "Timeout"));
+        Assert.False(state.TryResumeAdmission(generation));
+        Assert.Equal(replacement, state.Snapshot);
     }
 
     [Theory]
