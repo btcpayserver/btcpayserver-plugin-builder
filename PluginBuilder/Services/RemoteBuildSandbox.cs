@@ -350,7 +350,9 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
                 {
                     case "preparing" when status.Result is null && status.Error is null:
                     case "running" when status.Result is null && status.Error is null:
-                        await Task.Delay(TimeSpan.FromSeconds(1), token);
+                        // Drain queued log pages immediately; only idle polls need a delay.
+                        if (status.Logs.Length == 0)
+                            await Task.Delay(TimeSpan.FromSeconds(1), token);
                         break;
                     case "failed" when status.Result is null:
                         // The broker returns its public build error, never its Docker logs.

@@ -276,6 +276,22 @@ public class RemoteBuildSandboxTests
         Assert.All(fixture.Transport.PinnedInstances, instance => Assert.Equal(Instance, instance));
     }
 
+    [Fact]
+    public async Task PendingLogPagesAreDrainedWithoutOneSecondDelayPerPage()
+    {
+        using var fixture = new Fixture();
+        fixture.Transport.EnqueueAccepted();
+        for (var cursor = 1; cursor <= 20; cursor++)
+            fixture.Transport.Enqueue(Json(new BrokerBuildStatus("running", cursor, ["queued log"], null, null)));
+        fixture.Transport.Enqueue(Json(new BrokerBuildStatus("succeeded", 20, [], Result(), null)));
+        fixture.Transport.Enqueue(Bytes(Artifact));
+        await using var prepared = await fixture.Client.PrepareAsync(new("example-plugin", 7), Build());
+        var output = new OutputCapture();
+        var staged = await prepared.RunAndStageAsync(output).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(20, output.Lines.Count());
+        Assert.Equal(Artifact, await File.ReadAllBytesAsync(Path.Combine(staged.StagingDirectory, "artifact.btcpay")));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
