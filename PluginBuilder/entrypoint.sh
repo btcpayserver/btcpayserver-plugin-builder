@@ -15,7 +15,6 @@ fail() {
 }
 
 : "${PLUGIN_DIR:=}"
-: "${BUILD_CONFIG:=Release}"
 
 (( ${#PLUGIN_DIR} <= 1024 )) || fail "plugin directory is too long"
 [[ "$PLUGIN_DIR" != /* && "$PLUGIN_DIR" != *$'\n'* && "$PLUGIN_DIR" != *$'\r'* ]] ||

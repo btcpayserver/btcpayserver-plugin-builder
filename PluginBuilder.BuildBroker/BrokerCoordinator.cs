@@ -36,15 +36,9 @@ public sealed class BrokerCoordinator(
 
     public static (FullBuildId, BuildInfo) Validate(BrokerBuildRequest request)
     {
-        // Validate before URI canonicalization, which could otherwise erase traversal.
-        if (request.PluginSlug is null || request.PluginSlug.Any(char.IsControl) ||
+        if (request.PluginSlug is null ||
             !PluginSlug.TryParse(request.PluginSlug, out var slug) || request.BuildId < 0)
             throw new BrokerRequestException(400, "Invalid build identifier.");
-        if (request.GitRepository is null || request.GitRepository.Length > 2048 ||
-            request.GitRepository.Any(char.IsControl) || request.GitRepository.Contains('\\') ||
-            request.GitRepository.Contains('%') ||
-            request.GitRepository.Split('/').Any(s => s is "." or ".."))
-            throw new BrokerRequestException(400, "Invalid repository URL.");
         try
         {
             var repository = BuildPolicy.NormalizeRepositoryUrl(request.GitRepository);
@@ -52,7 +46,7 @@ public sealed class BrokerCoordinator(
             return (new FullBuildId(slug, request.BuildId), new BuildInfo
             {
                 GitRepository = repository, GitRef = request.GitRef, PluginDir = request.PluginDir,
-                BuildConfig = string.IsNullOrEmpty(request.BuildConfig) ? "Release" : request.BuildConfig
+                BuildConfig = BuildPolicy.NormalizeBuildConfig(request.BuildConfig)
             });
         }
         catch (BuildServiceException) { throw new BrokerRequestException(400, "Invalid build parameters."); }

@@ -395,7 +395,8 @@ public class ApiController(
             var identifier = await buildService.FetchIdentifierFromCsprojAsync(
                 model.GitRepository,
                 model.GitRef,
-                model.PluginDirectory);
+                model.PluginDirectory,
+                model.BuildConfig);
 
             var owns = await conn.EnsureIdentifierOwnership(pluginSlug, identifier);
             if (!owns)

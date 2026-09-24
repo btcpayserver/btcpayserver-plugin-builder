@@ -210,10 +210,12 @@ public class BuildService
         EventAggregator.Publish(new BuildChanged(fullBuildId, newState) { BuildInfo = buildInfo?.ToString(), ManifestInfo = manifestInfo?.ToString() });
     }
 
-    public async Task<string> FetchIdentifierFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
+    public async Task<string> FetchIdentifierFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir,
+        string? buildConfig)
     {
         repoUrl = BuildPolicy.NormalizeRepositoryUrl(repoUrl);
-        BuildPolicy.ValidateBuildInputs(gitRef, pluginDir, buildConfig: null);
+        // Validate every build input when the build is created; the broker enforces the same rules.
+        BuildPolicy.ValidateBuildInputs(gitRef, pluginDir, buildConfig);
         var provider = _providerFactory.GetProvider(repoUrl);
         if (provider == null)
             throw new BuildServiceException("Unsupported git hosting provider. Supported: GitHub, GitLab.");

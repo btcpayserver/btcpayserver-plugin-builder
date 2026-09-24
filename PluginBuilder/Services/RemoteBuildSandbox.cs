@@ -112,8 +112,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
             throw new BuildServiceException("The isolated build broker is unavailable.");
         var request = new BrokerBuildRequest(buildId.PluginSlug.ToString(), buildId.BuildId,
             BuildPolicy.NormalizeRepositoryUrl(buildInfo.GitRepository),
-            buildInfo.GitRef, buildInfo.PluginDir, string.IsNullOrEmpty(buildInfo.BuildConfig) ? null : buildInfo.BuildConfig);
-        BuildPolicy.ValidateBuildInputs(request.GitRef, request.PluginDir, request.BuildConfig);
+            buildInfo.GitRef, buildInfo.PluginDir, BuildPolicy.NormalizeBuildConfig(buildInfo.BuildConfig));
 
         // Never retry an ambiguous POST: the broker may already have admitted it.
         // Its hard lease expiry reclaims builds whose accepted response was lost.
@@ -392,7 +391,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
                     environment["gitRepository"]?.Value<string>() != _request.GitRepository ||
                     environment["gitRef"]?.Value<string>() != _request.GitRef ||
                     environment["pluginDir"]?.Value<string>() != _request.PluginDir ||
-                    environment["buildConfig"]?.Value<string>() != (_request.BuildConfig ?? "Release") ||
+                    environment["buildConfig"]?.Value<string>() != _request.BuildConfig ||
                     !BuildPolicy.IsGitObjectId(environment["gitCommit"]?.Value<string>()) ||
                     !ValidTimestamp(parsed.RootElement, "gitCommitDate") || !ValidTimestamp(parsed.RootElement, "buildDate"))
                     throw ProtocolError();

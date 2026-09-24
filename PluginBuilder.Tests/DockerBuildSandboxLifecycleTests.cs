@@ -252,11 +252,11 @@ public class DockerBuildSandboxLifecycleTests
     [UnixTheory]
     [InlineData(null)]
     [InlineData("")]
-    public async Task MissingBuildConfigIsNormalizedForWorkerAndTrustedProvenance(string? buildConfig)
+    public async Task BrokerValidationDefaultsMissingBuildConfigForWorkerAndProvenance(string? buildConfig)
     {
         await using var fakeDocker = await FakeDocker.Create();
-        var buildInfo = BuildInfo();
-        buildInfo.BuildConfig = buildConfig;
+        var (_, buildInfo) = BrokerCoordinator.Validate(new("sandbox-test", 1,
+            "https://gitlab.com/example/plugin", BuildConfig: buildConfig));
         var prepared = await CreateSandbox(fakeDocker, ReadyExecutor()).PrepareAsync(BuildId(), buildInfo);
 
         try

@@ -53,11 +53,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
     public async Task<PreparedBuild> PrepareAsync(FullBuildId buildId, BuildInfo buildInfo, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        buildInfo.GitRepository = NormalizeRepositoryUrl(buildInfo.GitRepository);
-        buildInfo.BuildConfig = string.IsNullOrEmpty(buildInfo.BuildConfig)
-            ? "Release"
-            : buildInfo.BuildConfig;
-        ValidateBuildInputs(buildInfo.GitRef, buildInfo.PluginDir, buildInfo.BuildConfig);
+        // BrokerCoordinator validates and normalizes inputs before admission.
 
         var generation = _executorState.StopToken;
         var snapshot = _executorState.Snapshot;
@@ -179,8 +175,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
 
         if (!string.IsNullOrEmpty(buildInfo.PluginDir))
             arguments.AddRange(["--env", $"PLUGIN_DIR={buildInfo.PluginDir}"]);
-        if (!string.IsNullOrEmpty(buildInfo.BuildConfig))
-            arguments.AddRange(["--env", $"BUILD_CONFIG={buildInfo.BuildConfig}"]);
+        arguments.AddRange(["--env", $"BUILD_CONFIG={buildInfo.BuildConfig}"]);
 
         arguments.Add(workerImageId);
         return arguments;
@@ -396,7 +391,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             buildEnvironment["gitRepository"] = _buildInfo.GitRepository;
             buildEnvironment["gitRef"] = _buildInfo.GitRef;
             buildEnvironment["pluginDir"] = _buildInfo.PluginDir;
-            buildEnvironment["buildConfig"] = _buildInfo.BuildConfig ?? "Release";
+            buildEnvironment["buildConfig"] = _buildInfo.BuildConfig;
 
             await RemoveProxyAndNetworksAsync();
             return new StagedBuildOutput(buildEnvironment, manifestJson, assemblyName, StagingDirectory);

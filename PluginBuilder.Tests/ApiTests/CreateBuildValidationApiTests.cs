@@ -86,7 +86,8 @@ public class CreateBuildValidationApiTests(ITestOutputHelper logs) : UnitTestBas
         var actualIdentifier = await buildService.FetchIdentifierFromCsprojAsync(
             ServerTester.RepoUrl,
             ServerTester.GitRef,
-            ServerTester.PluginDir);
+            ServerTester.PluginDir,
+            ServerTester.BuildCfg);
 
         await conn.ExecuteAsync(
             "UPDATE plugins SET identifier = @identifier WHERE slug = @slug",

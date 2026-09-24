@@ -23,10 +23,14 @@ public static class BuildPolicy
     public static bool IsSha256Hex([NotNullWhen(true)] string? value) => IsLowerHex(value, 64);
     public static bool IsGitObjectId([NotNullWhen(true)] string? value) => IsLowerHex(value, 40) || IsLowerHex(value, 64);
     public static bool IsSafeAssemblyName([NotNullWhen(true)] string? value) => value is not null && SafeAssemblyName.IsMatch(value);
+    public static string NormalizeBuildConfig(string? value) => string.IsNullOrEmpty(value) ? "Release" : value;
 
     public static string NormalizeRepositoryUrl(string repository)
     {
+        // Inspect the original input before Uri canonicalization can erase traversal or controls.
         if (string.IsNullOrEmpty(repository) || repository.Length > MaxRepositoryUrlCharacters ||
+            repository.Any(char.IsControl) || repository.Contains('\\') || repository.Contains('%') ||
+            repository.Split('/').Any(segment => segment is "." or "..") ||
             !Uri.TryCreate(repository, UriKind.Absolute, out var uri) ||
             !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
             (!uri.IsDefaultPort && uri.Port != 443) ||
@@ -40,7 +44,7 @@ public static class BuildPolicy
         var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (pathSegments.Length < 2 ||
             !Regex.IsMatch(path, "\\A/[A-Za-z0-9._/-]+\\z", RegexOptions.CultureInvariant) ||
-            path.Contains("//", StringComparison.Ordinal) || pathSegments.Any(segment => segment is "." or ".."))
+            path.Contains("//", StringComparison.Ordinal))
             throw new BuildServiceException("Git repository must contain a safe owner and repository path.");
 
         // Use the same canonical form as the worker's independent validation.
