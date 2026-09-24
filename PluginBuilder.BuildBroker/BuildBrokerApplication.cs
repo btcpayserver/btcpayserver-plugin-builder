@@ -11,7 +11,6 @@ namespace PluginBuilder.BuildBroker;
 
 public static class BuildBrokerApplication
 {
-    public const int MaximumRequestBytes = BuildBrokerProtocol.MaximumRequestBytes;
     private static readonly JsonSerializerOptions RequestJson = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = false,
@@ -30,7 +29,7 @@ public static class BuildBrokerApplication
         builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromMinutes(3));
         builder.WebHost.ConfigureKestrel(server =>
         {
-            server.Limits.MaxRequestBodySize = MaximumRequestBytes;
+            server.Limits.MaxRequestBodySize = BuildBrokerProtocol.MaximumRequestBytes;
             server.Limits.MaxConcurrentConnections = 64;
             server.Limits.MaxRequestHeaderCount = 32;
             server.Limits.MaxRequestHeadersTotalSize = 8 * 1024;
@@ -39,8 +38,8 @@ public static class BuildBrokerApplication
         });
         builder.Services.AddSingleton(sp => new BuildBrokerSettings(
             sp.GetRequiredService<IConfiguration>()["TOKEN_FILE"] ??
-                throw new InvalidOperationException("TOKEN_FILE is required."), TimeSpan.FromMinutes(45)));
-        builder.Services.AddSingleton<BrokerAuthentication>();
+                throw new InvalidOperationException("TOKEN_FILE is required."), BuildBrokerProtocol.MaximumLeaseLifetime));
+        builder.Services.AddSingleton(sp => new BrokerAuthentication(sp.GetRequiredService<BuildBrokerSettings>().TokenFile));
         builder.Services.AddSingleton(sp =>
         {
             var config = sp.GetRequiredService<IConfiguration>();
@@ -130,8 +129,7 @@ public static class BuildBrokerApplication
     {
         try
         {
-            var authentication = new BrokerAuthentication(new(
-                Environment.GetEnvironmentVariable("PBB_TOKEN_FILE") ?? "", TimeSpan.FromMinutes(45)));
+            var authentication = new BrokerAuthentication(Environment.GetEnvironmentVariable("PBB_TOKEN_FILE") ?? "");
             using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false, UseCookies = false })
                 { Timeout = TimeSpan.FromSeconds(5) };
             using var request = new HttpRequestMessage(HttpMethod.Get, "http://127.0.0.1:8080/v1/status");

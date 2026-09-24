@@ -9,9 +9,9 @@ public sealed record BuildBrokerSettings(string TokenFile, TimeSpan LeaseLifetim
 public sealed class BrokerAuthentication
 {
     private readonly byte[] _expected;
-    public BrokerAuthentication(BuildBrokerSettings settings)
+    public BrokerAuthentication(string tokenFile)
     {
-        if (!BuildBrokerProtocol.TryReadTokenFile(settings.TokenFile, out var token))
+        if (!BuildBrokerProtocol.TryReadTokenFile(tokenFile, out var token))
             throw new InvalidOperationException("Broker token file must be an absolute path to a 256-bit hexadecimal secret.");
         _expected = Encoding.ASCII.GetBytes(token);
     }

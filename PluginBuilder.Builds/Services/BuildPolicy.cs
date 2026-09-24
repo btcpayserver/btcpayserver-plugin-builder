@@ -7,7 +7,6 @@ namespace PluginBuilder.Builds.Services;
 public static class BuildPolicy
 {
     public const int MaxConcurrentBuilds = 2;
-    public const int WorkerPidLimit = 512;
     public const int MaxBuildMetadataBytes = 1024 * 1024;
     public const int MaxBuildLogBytes = 10 * 1024 * 1024;
     public const int MaxBuildLogLines = 10_000;

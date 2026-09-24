@@ -139,7 +139,7 @@ public class RemoteBuildSandboxTests
         var truncate = false;
         await using var server = await LoopbackServer.Start(async context =>
         {
-            context.Response.Headers[RemoteBuildSandbox.InstanceHeader] = Instance;
+            context.Response.Headers[BuildBrokerProtocol.InstanceHeader] = Instance;
             context.Response.ContentType = "application/json";
             var json = JsonSerializer.Serialize(Ready(), JsonOptions);
             context.Response.ContentLength = Encoding.UTF8.GetByteCount(json);
@@ -161,17 +161,11 @@ public class RemoteBuildSandboxTests
         Assert.Equal(first, fixture.State.StopToken);
     }
 
-    [Theory]
-    [InlineData("invalid", "valid")]
-    [InlineData("valid", "docker-tag")]
-    public async Task InvalidReadyIdentityIsNeverTrusted(string instance, string image)
+    [Fact]
+    public async Task InvalidReadyInstanceIdentityIsNeverTrusted()
     {
         using var fixture = new Fixture();
-        fixture.Transport.Enqueue(Json(Ready() with
-        {
-            InstanceId = instance == "valid" ? Instance : instance,
-            WorkerImageId = image == "valid" ? Image : image
-        }));
+        fixture.Transport.Enqueue(Json(Ready() with { InstanceId = "invalid" }));
         await fixture.Monitor.CheckOnceAsync();
         Assert.False(fixture.State.Snapshot.IsReady);
     }
@@ -356,7 +350,7 @@ public class RemoteBuildSandboxTests
         };
         var response = Json(new BrokerBuildStatus("succeeded", 0, [], result, null));
         Assert.True(response.Content.Headers.ContentLength > 10 * 1024 * 1024);
-        Assert.True(response.Content.Headers.ContentLength < RemoteBuildSandbox.MaximumStatusBytes);
+        Assert.True(response.Content.Headers.ContentLength < BuildBrokerProtocol.MaximumStatusBytes);
         fixture.Transport.EnqueueAccepted();
         fixture.Transport.Enqueue(response);
         fixture.Transport.Enqueue(Bytes(Artifact));
@@ -372,7 +366,7 @@ public class RemoteBuildSandboxTests
     public async Task BuildStatusEnvelopeOverSixteenMiBIsRejected(bool withContentLength)
     {
         using var fixture = new Fixture();
-        var json = new string(' ', RemoteBuildSandbox.MaximumStatusBytes + 1) +
+        var json = new string(' ', BuildBrokerProtocol.MaximumStatusBytes + 1) +
                    JsonSerializer.Serialize(new BrokerBuildStatus("succeeded", 0, [], Result(), null), JsonOptions);
         var response = new HttpResponseMessage(HttpStatusCode.OK)
         {
@@ -812,13 +806,13 @@ public class RemoteBuildSandboxTests
             lock (_gate)
             {
                 Requests.Add((request.Method.Method, request.RequestUri!.Host, request.RequestUri.PathAndQuery, body));
-                if (request.Headers.TryGetValues(RemoteBuildSandbox.InstanceHeader, out var instances))
+                if (request.Headers.TryGetValues(BuildBrokerProtocol.InstanceHeader, out var instances))
                     PinnedInstances.Add(Assert.Single(instances));
                 Assert.NotEmpty(_responses);
                 next = _responses.Dequeue();
             }
             var response = await next(request, token);
-            response.Headers.Add(RemoteBuildSandbox.InstanceHeader, InstanceId);
+            response.Headers.Add(BuildBrokerProtocol.InstanceHeader, InstanceId);
             return response;
         }
     }

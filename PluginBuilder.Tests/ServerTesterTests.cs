@@ -101,7 +101,7 @@ public class ServerTesterTests(ITestOutputHelper logs) : UnitTestBase(logs)
             {
                 Content = JsonContent.Create(new BrokerStatus(true, image, image, null, instance))
             };
-            response.Headers.Add(RemoteBuildSandbox.InstanceHeader, instance);
+            response.Headers.Add(BuildBrokerProtocol.InstanceHeader, instance);
             return response;
         }
     }

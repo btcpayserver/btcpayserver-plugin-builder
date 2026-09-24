@@ -68,7 +68,6 @@ public class BuildService
             // A build may have been waiting for an execution slot when the setting changed.
             if (await RejectBuildIfDisabled(fullBuildId, isWhitelisted))
                 return;
-            await EnsureExecutorAvailable(fullBuildId);
 
             var buildParameters = await GetBuildInfo(fullBuildId);
             try

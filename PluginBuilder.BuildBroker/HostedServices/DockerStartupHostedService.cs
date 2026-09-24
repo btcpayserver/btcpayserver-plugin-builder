@@ -15,7 +15,6 @@ public class DockerStartupHostedService(
     BuildScratchCleaner scratchCleaner,
     BuildExecutorOptions options) : IHostedService
 {
-    private const string DisablePluginBuildsEnvVar = "PBB_DISABLE_PLUGIN_BUILDS";
     private static readonly TimeSpan ImagePullTimeout = TimeSpan.FromMinutes(5);
     private static readonly Regex ImageIdPattern = new("\\Asha256:[0-9a-f]{64}\\z", RegexOptions.CultureInvariant);
     private static readonly Regex ReleaseTagPattern = new("\\Av[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?\\z", RegexOptions.CultureInvariant);
@@ -34,14 +33,10 @@ public class DockerStartupHostedService(
             // running an untrusted build resource.
             await ReconcileManagedDockerResources(cancellationToken);
 
-            var disablePluginBuildsValue = Environment.GetEnvironmentVariable(DisablePluginBuildsEnvVar);
-            var disablePluginBuilds = string.Equals(disablePluginBuildsValue, "1", StringComparison.OrdinalIgnoreCase) ||
-                                      string.Equals(disablePluginBuildsValue, "true", StringComparison.OrdinalIgnoreCase);
-
-            if (disablePluginBuilds)
+            if (options.DisablePluginBuilds)
             {
-                logger.LogInformation("Plugin builds are disabled because {DisablePluginBuildsEnvVar}=true", DisablePluginBuildsEnvVar);
-                executorState.MarkUnavailable($"{DisablePluginBuildsEnvVar}=true");
+                logger.LogInformation("Plugin builds are disabled because PBB_DISABLE_PLUGIN_BUILDS=true");
+                executorState.MarkUnavailable("PBB_DISABLE_PLUGIN_BUILDS=true");
                 return;
             }
 
@@ -158,6 +153,7 @@ public class DockerStartupHostedService(
             "network",
             ["network", "ls", "--quiet", "--filter", $"label={BuildExecutorDocker.ManagedResourceLabel}"]);
 
+        // Upgrades from the pre-isolation builder may leave labeled build volumes behind.
         await Reconcile(
             "volume",
             ["volume", "ls", "--quiet", "--filter", $"label={BuildExecutorDocker.ManagedResourceLabel}"]);

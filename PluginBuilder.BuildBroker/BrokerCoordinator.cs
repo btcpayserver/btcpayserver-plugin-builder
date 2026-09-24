@@ -20,7 +20,6 @@ public sealed class BrokerCoordinator(
     IBuildSandbox sandbox, BuildExecutorState executor, BuildBrokerSettings settings,
     ILogger<BrokerCoordinator> logger) : BackgroundService
 {
-    public const long MaximumArtifactBytes = BuildBrokerProtocol.MaximumArtifactBytes;
     private readonly object _gate = new();
     private readonly Dictionary<string, Lease> _leases = new(StringComparer.Ordinal);
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
@@ -134,7 +133,7 @@ public sealed class BrokerCoordinator(
             File.Delete(resultPath);
             using var artifactHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             // The trusted stager and all writers have stopped before this open.
-            await using (var input = DockerBuildSandbox.OpenStagedFile(staged.StagingDirectory, "artifact.btcpay", MaximumArtifactBytes, 81920))
+            await using (var input = DockerBuildSandbox.OpenStagedFile(staged.StagingDirectory, "artifact.btcpay", BuildBrokerProtocol.MaximumArtifactBytes, 81920))
             {
                 var buffer = new byte[81920];
                 long remaining = input.Length;

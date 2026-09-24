@@ -88,7 +88,8 @@ public class BuildSandboxContractTests
                 GitRef = "main",
                 PluginDir = "src/Plugin",
                 BuildConfig = "Release"
-            });
+            },
+            "runsc");
 
         Assert.Equal(["container", "create"], arguments.Take(2));
         AssertOption(arguments, "--name", "pb-worker-test");

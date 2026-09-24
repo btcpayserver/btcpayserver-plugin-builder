@@ -51,7 +51,7 @@ public class BuildNetworkCanaryTests
             var proxyConfiguration = Path.Combine(directory, "squid.conf");
             DockerBuildSandbox.WriteReadOnlyFile(proxyConfiguration, DockerBuildSandbox.ProxyConfiguration);
             await Docker(DockerBuildSandbox.CreateProxyArguments(proxy, egress, resolver, proxyConfiguration,
-                DockerBuildSandbox.ProxyImage, label).ToArray());
+                DockerBuildSandbox.ProxyImage, label, "runsc").ToArray());
             await Docker("network", "connect", isolated, proxy);
             await Docker("start", proxy);
             await WaitProxyReady(proxy);
@@ -61,7 +61,7 @@ public class BuildNetworkCanaryTests
             var work = Directory.CreateDirectory(Path.Combine(directory, "work")).FullName;
             var output = Directory.CreateDirectory(Path.Combine(directory, "output")).FullName;
             var arguments = DockerBuildSandbox.CreateWorkerArguments(worker, isolated, proxyIp, source, work, output,
-                "plugin-builder-worker", new FullBuildId("network-canary", 1), new BuildInfo()).ToList();
+                "plugin-builder-worker", new FullBuildId("network-canary", 1), new BuildInfo { BuildConfig = "Release" }, "runsc").ToList();
             // Keep the actual worker network/runtime/resource/secret policy. Only
             // replace its build program with the benign, read-only probe executable.
             arguments.InsertRange(arguments.Count - 1,

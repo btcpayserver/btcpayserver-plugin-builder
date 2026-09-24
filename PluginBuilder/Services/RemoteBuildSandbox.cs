@@ -20,11 +20,6 @@ namespace PluginBuilder.Services;
 /// </summary>
 public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
 {
-    public const long MaximumArtifactBytes = BuildBrokerProtocol.MaximumArtifactBytes;
-    public const string InstanceHeader = BuildBrokerProtocol.InstanceHeader;
-    // Two independent 1 MiB metadata strings can expand sixfold when the
-    // surrounding JSON escapes characters. Keep the wire envelope bounded too.
-    public const int MaximumStatusBytes = BuildBrokerProtocol.MaximumStatusBytes;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = false,
@@ -34,6 +29,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
     private readonly PluginBuilderOptions _options;
     private readonly BuildExecutorState _executor;
     private readonly ILogger<RemoteBuildSandbox> _logger;
+    private string? _token;
     private readonly HttpClient _http;
     private readonly object _lifecycleGate = new();
     private readonly HashSet<PreparedBuild> _activeLeases = [];
@@ -64,7 +60,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
         _logger = logger;
         _http = new HttpClient(transport, disposeHandler: true)
         {
-            BaseAddress = PluginBuilderOptions.ParseBuildBrokerUrl(options.BuildBrokerUrl.AbsoluteUri),
+            BaseAddress = options.BuildBrokerUrl,
             Timeout = Timeout.InfiniteTimeSpan
         };
     }
@@ -76,8 +72,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
         using var response = await SendAsync(HttpMethod.Get, "v1/status", null, timeout.Token);
         RequireStatus(response, HttpStatusCode.OK);
         var status = await ReadJsonAsync<BrokerStatus>(response, 16 * 1024, timeout.Token);
-        if (!BuildPolicy.IsLowerHex(status.InstanceId, 32) || status.InstanceId != ResponseInstance(response) ||
-            (status.IsReady && (!IsImageId(status.WorkerImageId) || !IsImageId(status.ProxyImageId))))
+        if (!BuildPolicy.IsLowerHex(status.InstanceId, 32) || status.InstanceId != ResponseInstance(response))
             throw ProtocolError();
         return status;
     }
@@ -193,7 +188,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
             using var request = new HttpRequestMessage(method, path);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ReadToken());
             if (expectedInstance is not null)
-                request.Headers.Add(InstanceHeader, expectedInstance);
+                request.Headers.Add(BuildBrokerProtocol.InstanceHeader, expectedInstance);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             if (body is not null)
                 request.Content = new StringContent(JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json");
@@ -218,11 +213,15 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
         }
     }
 
+    // The broker reads its token once at startup, so re-reading ours per request gains no rotation.
+    // Only a successful read is kept: a missing file keeps failing each request until it is fixed.
     private string ReadToken()
     {
-        if (_options.BuildBrokerTokenFile is not { } path || !Path.IsPathFullyQualified(path))
+        if (_token is { } cached)
+            return cached;
+        if (_options.BuildBrokerTokenFile is not { } path)
             throw new BuildServiceException("The isolated build broker secret file is not configured.");
-        return BuildBrokerProtocol.TryReadTokenFile(path, out var token)
+        return _token = BuildBrokerProtocol.TryReadTokenFile(path, out var token)
             ? token
             : throw new BuildServiceException("The isolated build broker secret file is invalid.");
     }
@@ -263,10 +262,9 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
             throw new BuildServiceException("The isolated build broker rejected the request or returned an invalid response.");
     }
 
-    private static bool IsImageId(string? value) => value is not null && value.StartsWith("sha256:", StringComparison.Ordinal) && BuildPolicy.IsSha256Hex(value[7..]);
     private static string ResponseInstance(HttpResponseMessage response)
     {
-        if (!response.Headers.TryGetValues(InstanceHeader, out var values))
+        if (!response.Headers.TryGetValues(BuildBrokerProtocol.InstanceHeader, out var values))
             throw ProtocolError();
         var entries = values.ToArray();
         if (entries.Length != 1 || !BuildPolicy.IsLowerHex(entries[0], 32))
@@ -301,7 +299,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
             _instance = instance;
             _request = request;
             _lifetime = CancellationTokenSource.CreateLinkedTokenSource(stopToken, callerToken);
-            _lifetime.CancelAfter(TimeSpan.FromMinutes(45));
+            _lifetime.CancelAfter(BuildBrokerProtocol.MaximumLeaseLifetime);
         }
 
         public Task<StagedBuildOutput> RunAndStageAsync(IOutputCapture output)
@@ -326,7 +324,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
                 timeout.CancelAfter(TimeSpan.FromSeconds(20));
                 using var response = await _owner.SendAsync(HttpMethod.Get, $"v1/builds/{_lease}?cursor={cursor}", null, timeout.Token, _instance);
                 RequireStatus(response, HttpStatusCode.OK);
-                var status = await ReadJsonAsync<BrokerBuildStatus>(response, MaximumStatusBytes, timeout.Token);
+                var status = await ReadJsonAsync<BrokerBuildStatus>(response, BuildBrokerProtocol.MaximumStatusBytes, timeout.Token);
                 if (status.Logs is null || status.Logs.Length > BuildPolicy.MaxBuildLogLines ||
                     status.NextCursor != cursor + status.Logs.Length || status.NextCursor > BuildPolicy.MaxBuildLogLines)
                     throw ProtocolError();
@@ -376,7 +374,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
                 Encoding.UTF8.GetByteCount(result.BuildEnvironmentJson) > BuildPolicy.MaxBuildMetadataBytes ||
                 Encoding.UTF8.GetByteCount(result.ManifestJson) > BuildPolicy.MaxBuildMetadataBytes ||
                 !BuildPolicy.IsSafeAssemblyName(result.AssemblyName) ||
-                result.ArtifactLength is <= 0 or > MaximumArtifactBytes || !BuildPolicy.IsSha256Hex(result.ArtifactSha256))
+                result.ArtifactLength is <= 0 or > BuildBrokerProtocol.MaximumArtifactBytes || !BuildPolicy.IsSha256Hex(result.ArtifactSha256))
                 throw ProtocolError();
             JObject environment;
             try

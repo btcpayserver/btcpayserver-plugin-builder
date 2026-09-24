@@ -15,7 +15,6 @@ public class AzureStorageClientException(string message) : Exception(message);
 /// </summary>
 public class AzureStorageClient
 {
-    private const long MaximumArtifactBytes = BuildBrokerProtocol.MaximumArtifactBytes;
     private static readonly TimeSpan ArtifactUploadTimeout = TimeSpan.FromMinutes(15);
     private readonly CloudBlobClient blobClient;
 
@@ -116,9 +115,9 @@ public class AzureStorageClient
     private static FileStream OpenStagedArtifact(string stagingDirectory)
     {
         var file = new FileInfo(Path.Combine(stagingDirectory, "artifact.btcpay"));
-        if (!file.Exists || file.Length <= 0 || file.Length > MaximumArtifactBytes)
+        if (!file.Exists || file.Length <= 0 || file.Length > BuildBrokerProtocol.MaximumArtifactBytes)
             throw new AzureStorageClientException(
-                $"The staged plugin artifact must be a nonempty regular file of at most {MaximumArtifactBytes / (1024 * 1024)} MiB");
+                $"The staged plugin artifact must be a nonempty regular file of at most {BuildBrokerProtocol.MaximumArtifactBytes / (1024 * 1024)} MiB");
         return new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
             bufferSize: 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
     }

@@ -541,6 +541,7 @@ public class DockerStartupIsolationTests
             BuildScratchRoot = scratchRoot ?? fakeDocker.Directory,
             BuildWorkerImage = workerImage,
             UseRunc = useRunc,
+            DisablePluginBuilds = fakeDocker.DisablePluginBuilds,
             DockerOperationTimeout = dockerOperationTimeout ?? new BuildExecutorOptions().DockerOperationTimeout
         };
         return new DockerStartupHostedService(
@@ -556,6 +557,7 @@ public class DockerStartupIsolationTests
     private sealed class FakeDocker(FakeDockerHost host) : IAsyncDisposable
     {
         public string Directory => host.Directory;
+        public bool DisablePluginBuilds { get; private init; }
 
         public static async Task<FakeDocker> Create(
             bool runscAvailable,
@@ -750,7 +752,6 @@ public class DockerStartupIsolationTests
                 esac
                 """, directory => new()
             {
-                ["PBB_DISABLE_PLUGIN_BUILDS"] = disablePluginBuilds ? "true" : null,
                 ["PB_FAKE_DOCKER_COMMANDS"] = Path.Combine(directory, "commands"),
                 ["PB_FAKE_RUNSC"] = runscAvailable ? "true" : "false",
                 ["PB_FAKE_IMAGE_FAILURE"] = imageFailure,
@@ -761,7 +762,7 @@ public class DockerStartupIsolationTests
                 ["PB_FAKE_SCRATCH_MARKER_FAILURE"] = scratchMarkerFailure,
                 ["PB_FAKE_PROXY_CACHED"] = proxyCached ? "true" : "false"
             });
-            return new FakeDocker(host);
+            return new FakeDocker(host) { DisablePluginBuilds = disablePluginBuilds };
         }
 
         public bool AmbiguousContainerExists =>

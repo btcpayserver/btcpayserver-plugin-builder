@@ -9,6 +9,7 @@ public sealed class BuildExecutorOptions
     public string? BuildScratchRoot { get; init; }
     public string? BuildWorkerImage { get; init; }
     public bool UseRunc { get; init; }
+    public bool DisablePluginBuilds { get; init; }
     public string Runtime => UseRunc ? "runc" : "runsc";
     public string? BuildScratchHostRoot { get; init; }
 
@@ -26,7 +27,8 @@ public sealed class BuildExecutorOptions
             BuildScratchRoot = config["BUILD_SCRATCH_ROOT"],
             BuildScratchHostRoot = hostRoot,
             BuildWorkerImage = config["WORKER_IMAGE"],
-            UseRunc = useRunc
+            UseRunc = useRunc,
+            DisablePluginBuilds = config.GetValue<bool>("DISABLE_PLUGIN_BUILDS")
         };
     }
 

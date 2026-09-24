@@ -5,8 +5,9 @@ namespace PluginBuilder.Configuration;
 
 public sealed class PluginBuilderOptions
 {
+    private const string DefaultBuildBrokerUrl = "http://build-broker:8080/";
     public required string DataDir { get; init; }
-    public Uri BuildBrokerUrl { get; init; } = new("http://build-broker:8080/");
+    public Uri BuildBrokerUrl { get; init; } = new(DefaultBuildBrokerUrl);
     public string? BuildBrokerTokenFile { get; init; }
     public string? DebugLogFile { get; init; }
     public LogEventLevel? DebugLogLevel { get; init; }
@@ -44,7 +45,7 @@ public sealed class PluginBuilderOptions
         if (int.TryParse(retainRaw, out var retainParsed) && retainParsed > 0)
             retain = retainParsed;
 
-        var brokerUrl = ParseBuildBrokerUrl(conf["BUILD_BROKER_URL"] ?? "http://build-broker:8080/");
+        var brokerUrl = ParseBuildBrokerUrl(conf["BUILD_BROKER_URL"] ?? DefaultBuildBrokerUrl);
         var brokerTokenFile = conf["BUILD_BROKER_TOKEN_FILE"]?.Trim();
         if (string.IsNullOrEmpty(brokerTokenFile))
             brokerTokenFile = null;

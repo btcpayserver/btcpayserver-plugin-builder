@@ -123,7 +123,7 @@ public class BuildBrokerSecurityTests
         try
         {
             File.WriteAllText(path, secret);
-            Assert.Throws<InvalidOperationException>(() => new BrokerAuthentication(new BuildBrokerSettings(path, TimeSpan.FromMinutes(45))));
+            Assert.Throws<InvalidOperationException>(() => new BrokerAuthentication(path));
         }
         finally
         {
@@ -888,7 +888,7 @@ public class BuildBrokerSecurityTests
                 builder.Services.RemoveAll<BuildExecutorState>();
                 builder.Services.AddSingleton(state);
                 builder.Services.RemoveAll<BuildBrokerSettings>();
-                builder.Services.AddSingleton(new BuildBrokerSettings(fixture.TokenPath, leaseLifetime ?? TimeSpan.FromMinutes(45)));
+                builder.Services.AddSingleton(new BuildBrokerSettings(fixture.TokenPath, leaseLifetime ?? BuildBrokerProtocol.MaximumLeaseLifetime));
             });
             try
             {

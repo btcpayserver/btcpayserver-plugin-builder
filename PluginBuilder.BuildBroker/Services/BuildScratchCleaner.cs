@@ -98,9 +98,10 @@ public sealed class BuildScratchCleaner(
                 scratchDirectory);
         }
 
-        if (!await DockerCli.TryRemoveAsync(
+        // A container whose create was never attempted cannot exist.
+        if (createAttempted && !await DockerCli.TryRemoveAsync(
                 processRunner, logger, "container", cleanupContainer,
-                ambiguousCreate: createAttempted && !createCompleted))
+                ambiguousCreate: !createCompleted))
         {
             logger.LogCritical(
                 "Failed to remove isolated scratch cleanup container {ContainerName}",

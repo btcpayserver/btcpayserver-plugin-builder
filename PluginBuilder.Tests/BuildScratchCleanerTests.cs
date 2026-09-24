@@ -171,13 +171,8 @@ public class BuildScratchCleanerTests
 
         Assert.False(await CreateCleaner().TryDeleteAsync(scratch, WorkerImageId));
 
-        var commands = await fakeDocker.ReadCommands();
-        Assert.DoesNotContain(
-            commands,
-            command => command.StartsWith("container create ", StringComparison.Ordinal));
-        Assert.Contains(
-            commands,
-            command => command.StartsWith("container rm --force pb-scratch-clean-", StringComparison.Ordinal));
+        // The tree is rejected before any cleanup container is created or removed.
+        Assert.Empty(await fakeDocker.ReadCommands());
         Assert.True(Directory.Exists(outside));
     }
 

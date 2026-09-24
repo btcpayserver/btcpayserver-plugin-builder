@@ -14,6 +14,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
     private const int WorkerUserId = 10001;
     private const int CloneUserId = 10002;
     private const int ProxyUserId = 13;
+    private const int WorkerPidLimit = 512;
     private const string ProxyResolverFileName = ".proxy-resolv.conf";
     private const string ProxyResolverConfiguration =
         "nameserver 1.1.1.1\n" +
@@ -105,9 +106,9 @@ public sealed class DockerBuildSandbox : IBuildSandbox
 
     public static IReadOnlyList<string> CreateProxyArguments(
         string container, string network, string resolverFile, string configurationFile, string image, string label,
-        bool useRunc = false)
+        string runtime)
     {
-        var arguments = DockerCli.HardenedContainer(container, label, useRunc ? "runc" : "runsc", network, "256m", 128,
+        var arguments = DockerCli.HardenedContainer(container, label, runtime, network, "256m", 128,
             user: ProxyUser, cpus: "0.5", nofile: 1024, logs: ContainerLogs.Bounded);
         arguments.AddRange(ProxyTmpfsArguments);
         arguments.AddRange(["--mount", $"type=bind,source={resolverFile},target=/etc/resolv.conf,readonly"]);
@@ -155,10 +156,10 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         string workerImageId,
         FullBuildId buildId,
         BuildInfo buildInfo,
-        bool useRunc = false)
+        string runtime)
     {
         var arguments = DockerCli.HardenedContainer(containerName, $"{BuildExecutorDocker.ManagedResourceLabel}={buildId}",
-            useRunc ? "runc" : "runsc", internalNetwork, "3g", WorkerPidLimit,
+            runtime, internalNetwork, "3g", WorkerPidLimit,
             user: $"{WorkerUserId}:{WorkerUserId}", cpus: "2", nofile: 4096, stopTimeout: true, logs: ContainerLogs.None);
         arguments.AddRange(IsolatedEgressArguments(proxyIp));
         arguments.AddRange(
@@ -278,7 +279,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 DockerResourceKind.Container,
                 ProxyContainer,
                 CreateProxyArguments(ProxyContainer, EgressNetwork, _owner._options.DockerPath(ProxyResolverFile),
-                    _owner._options.DockerPath(ProxyConfigurationFile), _proxyImageId, Label, _owner._options.UseRunc));
+                    _owner._options.DockerPath(ProxyConfigurationFile), _proxyImageId, Label, _owner._options.Runtime));
             await RunDocker(
                 ["network", "connect", InternalNetwork, ProxyContainer],
                 "Connecting the build proxy to its internal network failed");
@@ -326,7 +327,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                     _workerImageId,
                     _buildId,
                     _buildInfo,
-                    _owner._options.UseRunc));
+                    _owner._options.Runtime));
         }
 
         public async Task<StagedBuildOutput> RunAndStageAsync(IOutputCapture buildOutput)
@@ -354,13 +355,13 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 throw;
             }
 
+            await RemoveWorkerOrThrow();
             if (code != 0)
+            {
                 _owner._logger.LogWarning(
                     "Build {BuildId} worker execution returned code {ExitCode}", _buildId, code);
-            await RemoveWorkerOrThrow();
-
-            if (code != 0)
                 throw new BuildServiceException("Plugin build failed.");
+            }
 
             await StageArtifacts();
             var buildEnvironmentJson = await ReadStagedFile("build-env.json", MaxBuildMetadataBytes);
