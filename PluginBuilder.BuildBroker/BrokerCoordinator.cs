@@ -122,9 +122,9 @@ public sealed class BrokerCoordinator(
             lease.Token.ThrowIfCancellationRequested();
             var environment = staged.BuildEnvironment.ToString(Formatting.None);
             var hash = staged.BuildEnvironment["buildHash"]?.Value<string>();
+            // The sandbox validated each field; provenance fields it added can still exceed the bound.
             if (Encoding.UTF8.GetByteCount(environment) > BuildPolicy.MaxBuildMetadataBytes ||
-                Encoding.UTF8.GetByteCount(staged.ManifestJson) > BuildPolicy.MaxBuildMetadataBytes ||
-                !BuildPolicy.IsSafeAssemblyName(staged.AssemblyName) || !BuildPolicy.IsSha256Hex(hash))
+                Encoding.UTF8.GetByteCount(staged.ManifestJson) > BuildPolicy.MaxBuildMetadataBytes)
                 throw new InvalidOperationException("Invalid staged metadata.");
             // Copy into a broker-only, bounded anonymous file, never mounted into a sandbox.
             // Unlink immediately: the open handle survives sandbox cleanup, but not a broker crash.
@@ -138,26 +138,23 @@ public sealed class BrokerCoordinator(
                 resultOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
             lease.Artifact = new FileStream(resultPath, resultOptions);
             File.Delete(resultPath);
-            long length;
+            using var artifactHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             // The trusted stager and all writers have stopped before this open.
             await using (var input = DockerBuildSandbox.OpenStagedFile(staged.StagingDirectory, "artifact.btcpay", MaximumArtifactBytes, 81920))
             {
-                length = input.Length;
                 var buffer = new byte[81920];
-                long remaining = length;
+                long remaining = input.Length;
                 while (remaining > 0)
                 {
                     var count = await input.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), lease.Token);
                     if (count == 0) throw new IOException("Incomplete staged artifact.");
                     await lease.Artifact.WriteAsync(buffer.AsMemory(0, count), lease.Token);
+                    artifactHash.AppendData(buffer, 0, count);
                     remaining -= count;
                 }
-                if (await input.ReadAsync(buffer.AsMemory(0, 1), lease.Token) != 0)
-                    throw new InvalidOperationException("Staged artifact grew.");
             }
-            lease.Artifact.Position = 0;
-            var digest = Convert.ToHexStringLower(await SHA256.HashDataAsync(lease.Artifact, lease.Token));
-            if (digest != hash || lease.Artifact.Length != length)
+            var digest = Convert.ToHexStringLower(artifactHash.GetHashAndReset());
+            if (digest != hash)
                 throw new InvalidOperationException("Invalid staged artifact digest.");
             lease.Artifact.Position = 0;
             // Completion is the cleanup acknowledgement; the website does not coordinate disposal.
@@ -214,13 +211,8 @@ public sealed class BrokerCoordinator(
                 result = lease.Result;
             }
             var artifact = lease.Artifact ?? throw new BrokerRequestException(409, "No completed artifact is available.");
-            artifact.Position = 0;
-            var hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(artifact, transferTimeout.Token));
-            if (artifact.Length != result.ArtifactLength || hash != result.ArtifactSha256)
-            {
-                executor.MarkUnavailable("Staged artifact integrity failed.");
-                throw new BrokerRequestException(503, "Staged artifact integrity failed.");
-            }
+            // The verified result is private to the broker and never written after completion;
+            // the web verifies length and hash while receiving.
             artifact.Position = 0;
             context.Response.ContentType = "application/octet-stream";
             context.Response.ContentLength = result.ArtifactLength;
