@@ -149,45 +149,47 @@ Use only trusted plugins in that development mode.
 
 ## Failures and recovery
 
-- Checkout and artifact validation failures expose only fixed, safe diagnostics,
-  not arbitrary Docker errors or host paths. Pending log pages are drained without
-  the idle polling delay.
-- Lease release allows up to ten minutes for cancellation and cleanup together;
-  scratch deletion alone has a five-minute deadline. Successful cleanup is not
-  reclassified as a cleanup failure if the executor is cancelled afterwards.
-- The broker checks Docker every 15 seconds with a 10-second probe deadline.
-  Three consecutive probe timeouts suspend new admission without cancelling
-  accepted jobs. Probes continue; the first success resumes the same live
-  generation. A successful probe resets the timeout count.
-- Only probe timeouts recover automatically. A nonzero Docker exit (including
-  connection failures), an execution error, or unconfirmed cleanup still blocks
-  the executor until investigation and startup reconciliation. A late successful
-  probe cannot undo that block or reopen admission during shutdown.
-- This does not remove resource pressure: individual build operations and cleanup
-  keep their own deadlines, and cleanup failure can still require intervention.
-- A compilation failure or timeout fails the build and triggers cleanup. It does
-  not inherently require disabling the whole executor.
-- If resource cleanup cannot be confirmed, the executor becomes unavailable and
-  refuses new builds. It must not accept another build while an earlier sandbox
-  may still be active.
-- Leases expire, and cleanup is not cancelled merely because an HTTP client
-  disconnects. Startup reconciles leftover managed resources before readiness.
-- Stopping the web client cancels its local polling/downloads, not the accepted
-  broker job. Broker deadlines and shutdown own sandbox cancellation and cleanup.
-  To interrupt accepted work operationally, stop the executor, not just the website.
-- The web application monitors broker readiness for **new admission**. Any failed
-  health probe, invalid response or "not ready" status immediately suspends new
-  submissions without cancelling accepted builds. A ready response from the same
-  instance restores admission without replacing their cancellation token. A POST
-  already in flight may still be accepted after admission is suspended.
-- A valid status confirming a different broker instance cancels polling/downloads
-  tied to the old instance, even if the replacement is not ready yet. Changes to
-  image IDs alone are not treated as a restart. There is no local Docker fallback.
-- Each accepted build retains its own request deadlines, instance checks and
-  45-minute lifetime. A failed build-status request or artifact download still fails
-  that build, not all builds. The client does not retry submissions, build-status
-  requests or downloads; a lost response can leave a broker slot held until lease
-  expiry. Health recovery is not a guarantee of recovery from every network failure.
+**Build failures.** A compilation failure or timeout fails that build and triggers
+its cleanup; it does not disable the executor. The build page shows a generic
+failure unless the broker raised a public diagnostic: the fixed checkout failure
+text, the worker timeout, or an artifact validation failure. For validation, only
+a stager line starting with `Artifact staging rejected: `, at most 512 characters
+and without control characters, is shown as written; anything else becomes the
+fixed validation message. Raw Docker errors and host paths never reach the page.
+
+**Disabling builds.** `PBB_DISABLE_PLUGIN_BUILDS=true` starts the broker with
+builds disabled, after it reconciles leftover resources. Only `true` and `false`
+are accepted; any other value stops the broker at startup.
+
+**Cleanup.** The executor accepts no new build while an earlier sandbox may still
+be active. If cleanup of any resource cannot be confirmed, it becomes unavailable
+until investigation and startup reconciliation. Releasing a lease allows ten
+minutes for cancellation and cleanup together; scratch deletion alone has five.
+Leases expire after 45 minutes, and cleanup is never cancelled because an HTTP
+client disconnected. Startup reconciles leftover managed resources before readiness.
+
+**Broker health.** The broker probes Docker every 15 seconds with a 10-second
+deadline. Three consecutive probe timeouts suspend new admission without
+cancelling accepted jobs, and the next successful probe resumes the same
+generation. Any other failure — a nonzero Docker exit (including connection
+failures), an execution error or unconfirmed cleanup — keeps the executor
+unavailable; a later successful probe cannot undo it. Individual build and
+cleanup operations keep their own deadlines regardless of health.
+
+**Web application.** The web monitors broker readiness for new admission only.
+A failed probe, invalid response or "not ready" status suspends new submissions
+without cancelling accepted builds; a ready response from the same instance
+restores admission. A POST already in flight may still be accepted. A valid
+status from a different broker instance cancels polling and downloads tied to the
+old one, even before the replacement is ready; a change of image IDs alone is not
+a restart. There is no local Docker fallback.
+
+Each accepted build keeps its own request deadlines, instance checks and 45-minute
+lifetime. A failed status request or download fails that build, not the others.
+The client never retries submissions, status requests or downloads, so a lost
+response can hold a broker slot until the lease expires. Stopping the web cancels
+only its local polling and downloads; to interrupt accepted work, stop the
+executor.
 
 Investigate persistent unavailability through broker logs and Docker health.
 Timeout-only suspension can recover without a restart. For a definitive failure,
