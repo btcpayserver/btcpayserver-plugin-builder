@@ -7,7 +7,7 @@ public sealed class BuildScratchCleaner(
     ProcessRunner processRunner,
     BuildExecutorOptions options)
 {
-    private static readonly TimeSpan ScratchCleanupTimeout = TimeSpan.FromMinutes(5);
+    internal static readonly TimeSpan ScratchCleanupTimeout = TimeSpan.FromMinutes(5);
     private static readonly string[] ChildDirectoryNames = ["source", "work", "output", "staging"];
 
     public async Task<bool> TryDeleteAsync(

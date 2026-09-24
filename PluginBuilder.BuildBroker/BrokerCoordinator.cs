@@ -225,6 +225,10 @@ public sealed class BrokerCoordinator(
         await ReleaseLeaseAsync(id);
     }
 
+    // Scratch cleanup alone can take five minutes, in addition to bounded
+    // Docker removals. Do not fail the executor while that cleanup is still valid.
+    internal static readonly TimeSpan LeaseCleanupTimeout = TimeSpan.FromMinutes(10);
+
     private async Task ReleaseLeaseAsync(string id)
     {
         RequireId(id);
@@ -233,9 +237,7 @@ public sealed class BrokerCoordinator(
         if (lease is null) return;
         // Do not tie cleanup to RequestAborted: disconnected clients cannot retain a writer.
         lease.Cancel();
-        // Scratch cleanup alone can take five minutes, in addition to bounded
-        // Docker removals. Do not fail the executor while that cleanup is still valid.
-        using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+        using var cleanupTimeout = new CancellationTokenSource(LeaseCleanupTimeout);
         try
         {
             await lease.Work.WaitAsync(cleanupTimeout.Token);
@@ -351,12 +353,12 @@ public sealed class BrokerCoordinator(
 
         public Lease(CancellationToken stopToken, TimeSpan lifetime)
         {
-            if (lifetime <= TimeSpan.Zero || lifetime > TimeSpan.FromMinutes(45))
-                throw new InvalidOperationException("Invalid broker lease lifetime.");
             ExpiresAt = DateTimeOffset.UtcNow + lifetime;
             ExecutorGeneration = stopToken;
             Cancellation = CancellationTokenSource.CreateLinkedTokenSource(stopToken);
             Token = Cancellation.Token;
+            // Each lease owns its deadline: the reaper releases leases one at a time and
+            // waits for each cleanup, so it must not be what cancels the others.
             Cancellation.CancelAfter(lifetime);
         }
 

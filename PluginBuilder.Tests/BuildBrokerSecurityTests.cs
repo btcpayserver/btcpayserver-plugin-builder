@@ -798,22 +798,47 @@ public class BuildBrokerSecurityTests
     }
 
     [Fact]
+    public void LeaseCleanupBudgetCoversSlowScratchCleanup() =>
+        Assert.True(BrokerCoordinator.LeaseCleanupTimeout > PluginBuilder.BuildBroker.Services.BuildScratchCleaner.ScratchCleanupTimeout);
+
+    [Fact]
+    public async Task ExpiredLeasesAreCancelledWhileAnotherCleanupIsBlocked()
+    {
+        await using var fixture = await BrokerFixture.Start(TimeSpan.FromMilliseconds(200));
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Sandbox.DisposalBlockedUntil = release.Task;
+        try
+        {
+            await fixture.Submit(201);
+            await fixture.Submit(202);
+            await fixture.Sandbox.WaitForStarted(201);
+            await fixture.Sandbox.WaitForStarted(202);
+            // Each lease's own deadline cancels it, even while the reaper waits on another cleanup.
+            await Eventually(() => fixture.Sandbox.Prepared[201].CancellationObserved &&
+                                   fixture.Sandbox.Prepared[202].CancellationObserved);
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Fact]
     public async Task ExpiredLeaseWaitsForSlowCleanupWithoutStoppingExecutor()
     {
-        await using var fixture = await BrokerFixture.Start(TimeSpan.FromMilliseconds(300));
+        var lifetime = TimeSpan.FromMilliseconds(300);
+        await using var fixture = await BrokerFixture.Start(lifetime);
         TaskCompletionSource cleaning = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.Sandbox.BeforeDisposal = () => cleaning.TrySetResult();
         fixture.Sandbox.DisposalBlockedUntil = release.Task;
         var lease = await fixture.Submit(102);
+        var expiredBy = DateTimeOffset.UtcNow + lifetime;
         Task reaping = Task.CompletedTask;
         try
         {
             await cleaning.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            // The lease's own timer can fire just before the reaper's wall-clock deadline.
+            await Eventually(() => DateTimeOffset.UtcNow >= expiredBy);
             reaping = fixture.Coordinator.ReapExpiredAsync();
-            // Exceed the former 30-second supervisor timeout, without shortening
-            // the real cleanup budget just for this test.
-            await Task.Delay(TimeSpan.FromSeconds(31));
+            await Task.Delay(TimeSpan.FromSeconds(1));
             Assert.False(reaping.IsCompleted);
             Assert.True(fixture.Executor.Snapshot.IsReady);
         }
