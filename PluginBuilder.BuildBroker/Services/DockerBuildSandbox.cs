@@ -27,21 +27,6 @@ public sealed class DockerBuildSandbox : IBuildSandbox
     internal static readonly string ProxyConfiguration = LoadProxyConfiguration();
     private static readonly TimeSpan CloneTimeout = TimeSpan.FromMinutes(5);
 
-    // Only fixed, operator-authored diagnostics may cross the broker boundary.
-    internal static bool IsPublicFailure(string message) => message is
-        "The repository checkout failed. Check the Git reference, repository access and submodules." or
-        "The repository checkout timed out." or
-        "Plugin artifact validation and staging failed." or
-        "Plugin artifact validation and staging failed (operation timed out)." or
-        "Artifact staging rejected: assembly name is not a safe file name" or
-        "Artifact staging rejected: plugin manifest is not a regular non-symlink file" or
-        "Artifact staging rejected: plugin manifest is empty" or
-        "Artifact staging rejected: plugin manifest exceeds its size limit" or
-        "Artifact staging rejected: plugin manifest is not valid JSON" or
-        "Artifact staging rejected: plugin artifact is not a regular non-symlink file" or
-        "Artifact staging rejected: plugin artifact is empty" or
-        "Artifact staging rejected: plugin artifact exceeds its size limit";
-
     private readonly ILogger<DockerBuildSandbox> _logger;
     private readonly BuildExecutorOptions _options;
     private readonly ProcessRunner _processRunner;
@@ -366,7 +351,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 await RemoveWorkerOrThrow();
                 if (_stopToken.IsCancellationRequested)
                     throw new BuildServiceException("The isolated build executor was stopped.");
-                throw new BuildServiceException($"Plugin build timed out after {_owner._options.WorkerExecutionTimeout}.");
+                throw new PublicBuildException($"Plugin build timed out after {_owner._options.WorkerExecutionTimeout}.");
             }
             catch
             {
@@ -469,7 +454,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             {
                 if (_stopToken.IsCancellationRequested)
                     throw new BuildServiceException("The isolated build executor was stopped.");
-                throw new BuildServiceException("The repository checkout timed out.");
+                throw new PublicBuildException("The repository checkout timed out.");
             }
             finally
             {
@@ -486,10 +471,10 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 "Repository checkout failed for build {BuildId} with exit code {ExitCode}",
                 _buildId,
                 code);
-            throw new BuildServiceException("The repository checkout failed. Check the Git reference, repository access and submodules.");
+            throw new PublicBuildException("The repository checkout failed. Check the Git reference, repository access and submodules.");
         }
 
-        private Task StageArtifacts()
+        private async Task StageArtifacts()
         {
             var stager = $"pb-stager-{_resourceSuffix}";
             var arguments = DockerCli.HardenedContainer(stager, Label, _owner._options.Runtime, "none", "512m", 64,
@@ -503,17 +488,34 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 "--entrypoint", "/stage-artifacts.sh",
                 _workerImageId
             ]);
-            return RunTrustedOneShot(stager, arguments, "Plugin artifact validation and staging failed",
-                "The trusted artifact staging container could not be removed safely.", reportStagingErrors: true);
+            const string runError = "Plugin artifact validation and staging failed";
+            var diagnostics = new OutputCapture();
+            try
+            {
+                await RunTrustedOneShot(stager, arguments, runError,
+                    "The trusted artifact staging container could not be removed safely.", diagnostics);
+            }
+            // Only the run step is public: create and removal failures name internal resources.
+            catch (BuildServiceException error) when (!_stopToken.IsCancellationRequested &&
+                                                      error.Message.StartsWith(runError, StringComparison.Ordinal))
+            {
+                // Only this trusted script's stdout carries public diagnostics; stderr stays private.
+                var diagnostic = diagnostics.Lines.LastOrDefault();
+                if (diagnostic is { Length: <= 512 } && !diagnostic.Any(char.IsControl) &&
+                    diagnostic.StartsWith("Artifact staging rejected: ", StringComparison.Ordinal))
+                    throw new PublicBuildException(diagnostic);
+                // The run step's message is our fixed description plus a fixed suffix.
+                throw new PublicBuildException(error.Message);
+            }
         }
 
-        private async Task RunTrustedOneShot(string name, IReadOnlyList<string> createArguments, string runError, string removeError,
-            bool reportStagingErrors = false)
+        private async Task RunTrustedOneShot(string name, IReadOnlyList<string> createArguments, string runError,
+            string removeError, IOutputCapture? output = null)
         {
             await CreateResource(DockerResourceKind.Container, name, createArguments);
             try
             {
-                await RunDocker(["container", "start", "--attach", name], runError, reportStagingErrors: reportStagingErrors);
+                await RunDocker(["container", "start", "--attach", name], runError, output);
             }
             finally
             {
@@ -689,8 +691,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         private async Task RunDocker(
             IReadOnlyList<string> arguments,
             string safeError,
-            IOutputCapture? outputCapture = null,
-            bool reportStagingErrors = false)
+            IOutputCapture? outputCapture = null)
         {
             OutputCapture error = new();
             int code;
@@ -715,8 +716,6 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             if (code != 0)
             {
                 _owner._logger.LogWarning("{SafeError}: {DockerError}", safeError, error.ToString().Trim());
-                if (reportStagingErrors && error.Lines.FirstOrDefault(IsPublicFailure) is { } diagnostic)
-                    throw new BuildServiceException(diagnostic);
                 throw new BuildServiceException(safeError + ".");
             }
         }

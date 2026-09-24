@@ -311,7 +311,7 @@ public class DockerBuildSandboxLifecycleTests
         await using var fakeDocker = await FakeDocker.Create(failCloneStart: true);
         var state = ReadyExecutor();
 
-        var exception = await Assert.ThrowsAsync<BuildServiceException>(() =>
+        var exception = await Assert.ThrowsAsync<PublicBuildException>(() =>
             CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo()));
 
         Assert.Contains("repository checkout failed", exception.Message, StringComparison.OrdinalIgnoreCase);
@@ -353,17 +353,19 @@ public class DockerBuildSandboxLifecycleTests
     }
 
     [UnixTheory]
-    [InlineData("simulated staging write failure", "Plugin artifact validation and staging failed.")]
-    [InlineData("Artifact staging rejected: plugin artifact exceeds its size limit", "Artifact staging rejected: plugin artifact exceeds its size limit")]
-    [InlineData("Artifact staging rejected: private /host/secret", "Plugin artifact validation and staging failed.")]
-    public async Task FailedStagingNeverReturnsPartialOutputAndDisposalCleansIt(string diagnostic, string expectedError)
+    [InlineData("simulated staging write failure", false, "Plugin artifact validation and staging failed.")]
+    [InlineData("Artifact staging rejected: plugin artifact exceeds its size limit", true, "Artifact staging rejected: plugin artifact exceeds its size limit")]
+    [InlineData("Artifact staging rejected: expected exactly one top-level .btcpay artifact; found 2", true, "Artifact staging rejected: expected exactly one top-level .btcpay artifact; found 2")]
+    [InlineData("Artifact staging rejected: private /host/secret", false, "Plugin artifact validation and staging failed.")]
+    [InlineData("Artifact staging rejected: invalid\tmessage", true, "Plugin artifact validation and staging failed.")]
+    public async Task FailedStagingNeverReturnsPartialOutputAndDisposalCleansIt(string diagnostic, bool publicOutput, string expectedError)
     {
-        await using var fakeDocker = await FakeDocker.Create(failStagerStart: true, stagerError: diagnostic);
+        await using var fakeDocker = await FakeDocker.Create(failStagerStart: true, stagerError: diagnostic, publicStagerOutput: publicOutput);
         var state = ReadyExecutor();
         var prepared = await CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo());
         try
         {
-            var exception = await Assert.ThrowsAsync<BuildServiceException>(() =>
+            var exception = await Assert.ThrowsAsync<PublicBuildException>(() =>
                 prepared.RunAndStageAsync(new OutputCapture()));
 
             Assert.Equal(expectedError, exception.Message);
@@ -686,7 +688,7 @@ public class DockerBuildSandboxLifecycleTests
         await using var prepared = await sandbox.PrepareAsync(BuildId(), BuildInfo(), guard.Token);
         var execution = Stopwatch.StartNew();
 
-        var exception = await Assert.ThrowsAsync<BuildServiceException>(() =>
+        var exception = await Assert.ThrowsAsync<PublicBuildException>(() =>
             prepared.RunAndStageAsync(new OutputCapture()).WaitAsync(TimeSpan.FromSeconds(10)));
 
         Assert.Contains("timed out", exception.Message, StringComparison.OrdinalIgnoreCase);
@@ -826,7 +828,8 @@ public class DockerBuildSandboxLifecycleTests
             bool failWorkerCreate = false,
             bool stallWorker = false,
             bool blockClone = false,
-            string stagerError = "")
+            string stagerError = "",
+            bool publicStagerOutput = false)
         {
             var host = await FakeDockerHost.Start("plugin-builder-sandbox", """
                 #!/bin/sh
@@ -920,7 +923,11 @@ public class DockerBuildSandboxLifecycleTests
                                 ;;
                             pb-stager-*)
                                 if [ "${PB_FAKE_FAIL_STAGER_START:-false}" = "true" ]; then
-                                    printf '%s\n' "${PB_FAKE_STAGER_ERROR:-simulated staging write failure}" >&2
+                                    if [ "${PB_FAKE_PUBLIC_STAGER_OUTPUT:-false}" = "true" ]; then
+                                        printf '%s\n' "$PB_FAKE_STAGER_ERROR"
+                                    else
+                                        printf '%s\n' "${PB_FAKE_STAGER_ERROR:-simulated staging write failure}" >&2
+                                    fi
                                     exit 28
                                 fi
                                 ;;
@@ -1027,6 +1034,7 @@ public class DockerBuildSandboxLifecycleTests
                 ["PB_FAKE_FAIL_INSPECTION"] = failInspection,
                 ["PB_FAKE_FAIL_STAGER_START"] = failStagerStart ? "true" : "false",
                 ["PB_FAKE_STAGER_ERROR"] = stagerError,
+                ["PB_FAKE_PUBLIC_STAGER_OUTPUT"] = publicStagerOutput ? "true" : "false",
                 ["PB_FAKE_WORKER_EXIT_CODE"] = workerExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["PB_FAKE_DELAY_WORKER_CREATE"] = delayWorkerCreate ? "true" : "false",
                 ["PB_FAKE_FAIL_WORKER_CREATE"] = failWorkerCreate ? "true" : "false",

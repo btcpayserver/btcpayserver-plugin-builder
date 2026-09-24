@@ -227,21 +227,27 @@ public class BuildWorkerAssetTests
 
         var oversized = await RunArtifactStager(StagerFixture.OversizedManifest);
         Assert.Equal(1, oversized.ExitCode);
-        Assert.Contains("plugin manifest exceeds its size limit", oversized.StandardError, StringComparison.Ordinal);
+        Assert.Contains("plugin manifest exceeds its size limit", oversized.StandardOutput, StringComparison.Ordinal);
         Assert.Empty(oversized.StagedFiles);
 
         var oversizedArtifact = await RunArtifactStager(StagerFixture.OversizedArtifact);
         Assert.Equal(1, oversizedArtifact.ExitCode);
-        Assert.Contains("plugin artifact exceeds its size limit", oversizedArtifact.StandardError, StringComparison.Ordinal);
+        Assert.Contains("plugin artifact exceeds its size limit", oversizedArtifact.StandardOutput, StringComparison.Ordinal);
         Assert.Empty(oversizedArtifact.StagedFiles);
 
         var symlink = await RunArtifactStager(StagerFixture.SymlinkManifest);
         Assert.Equal(1, symlink.ExitCode);
         Assert.Contains(
             "plugin manifest is not a regular non-symlink file",
-            symlink.StandardError,
+            symlink.StandardOutput,
             StringComparison.Ordinal);
         Assert.Empty(symlink.StagedFiles);
+
+        var multiple = await RunArtifactStager(StagerFixture.MultipleArtifacts);
+        Assert.Equal(1, multiple.ExitCode);
+        Assert.Equal("Artifact staging rejected: expected exactly one top-level .btcpay artifact; found 2",
+            multiple.StandardOutput.Trim());
+        Assert.Empty(multiple.StagedFiles);
     }
 
     [LinuxFact]
@@ -401,6 +407,9 @@ public class BuildWorkerAssetTests
 
             switch (fixture)
             {
+                case StagerFixture.MultipleArtifacts:
+                    await File.WriteAllTextAsync(Path.Combine(output, "Other.btcpay"), "other artifact");
+                    break;
                 case StagerFixture.Valid:
                     await File.WriteAllTextAsync(manifest, "{}");
                     // Staged permissions must be normalized independently of the inputs.
@@ -492,7 +501,7 @@ public class BuildWorkerAssetTests
 
             return new StagerResult(
                 result.ExitCode,
-                result.StandardError,
+                result.StandardOutput,
                 Directory.GetFiles(staging).Select(Path.GetFileName).Order().ToArray()!);
         }
         catch (Exception failure)
@@ -590,10 +599,11 @@ public class BuildWorkerAssetTests
 
     private sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError);
 
-    private sealed record StagerResult(int ExitCode, string StandardError, string[] StagedFiles);
+    private sealed record StagerResult(int ExitCode, string StandardOutput, string[] StagedFiles);
 
     private enum StagerFixture
     {
+        MultipleArtifacts,
         Valid,
         OversizedManifest,
         OversizedArtifact,

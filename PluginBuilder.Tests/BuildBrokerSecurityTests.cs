@@ -648,20 +648,14 @@ public class BuildBrokerSecurityTests
     }
 
     [Theory]
-    [InlineData("Plugin build timed out after 00:15:00.", true)]
-    [InlineData("Plugin build timed out after 00:00:01.", false)]
-    [InlineData("Plugin build timed out after 00:15:00. {private}", false)]
-    [InlineData("The repository checkout failed. Check the Git reference, repository access and submodules.", true)]
-    [InlineData("The repository checkout timed out.", true)]
     [InlineData("Plugin artifact validation and staging failed.", true)]
-    [InlineData("Artifact staging rejected: plugin artifact exceeds its size limit", true)]
-    [InlineData("Artifact staging rejected: {private}", false)]
+    [InlineData("Plugin artifact validation and staging failed.", false)]
     [InlineData("{private}", false)]
     public async Task ProductionRemoteClientPreservesOnlySafeBuildFailureMessages(string message, bool isPublic)
     {
         await using var fixture = await BrokerFixture.Start();
         message = message.Replace("{private}", $"private {fixture.Secret} {fixture.Root}/docker.sock");
-        fixture.Sandbox.RunFailure = new BuildServiceException(message);
+        fixture.Sandbox.RunFailure = isPublic ? new PublicBuildException(message) : new BuildServiceException(message);
         var appExecutor = new BuildExecutorState();
         appExecutor.MarkReady(WorkerImage, ProxyImage);
         using var client = fixture.CreateRemoteSandbox(appExecutor);

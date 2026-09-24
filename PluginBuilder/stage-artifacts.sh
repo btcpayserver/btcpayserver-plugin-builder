@@ -7,7 +7,9 @@ readonly metadata_max_bytes=$((1024 * 1024))
 readonly artifact_max_bytes=$((256 * 1024 * 1024))
 
 fail() {
-    printf 'Artifact staging rejected: %s\n' "$*" >&2
+    # stdout is reserved for public diagnostics; command errors stay on stderr.
+    # Arguments must be fixed messages or counts, never untrusted file names/content.
+    printf 'Artifact staging rejected: %s\n' "$*"
     exit 1
 }
 

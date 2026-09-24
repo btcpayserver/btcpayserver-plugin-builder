@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using PluginBuilder.BuildBroker.Configuration;
 using PluginBuilder.BuildBroker.Services;
 using PluginBuilder.Builds;
 using PluginBuilder.Builds.BuildBroker;
@@ -19,7 +18,7 @@ public sealed class BrokerRequestException(int statusCode, string message) : Exc
 /// <summary>Owns admission, lifetime and cleanup. No Docker arguments cross this boundary.</summary>
 public sealed class BrokerCoordinator(
     IBuildSandbox sandbox, BuildExecutorState executor, BuildBrokerSettings settings,
-    BuildExecutorOptions options, ILogger<BrokerCoordinator> logger) : BackgroundService
+    ILogger<BrokerCoordinator> logger) : BackgroundService
 {
     public const long MaximumArtifactBytes = BuildBrokerProtocol.MaximumArtifactBytes;
     private readonly object _gate = new();
@@ -185,12 +184,11 @@ public sealed class BrokerCoordinator(
             // returns no prepared handle: never treat that as confirmed cleanup.
             if (!preparationCompleted && lease.ExecutorGeneration.IsCancellationRequested)
                 lease.CleanupFailed = true;
-            // Only exact, safe diagnostics cross this boundary. Other exception
+            // Only explicitly public diagnostics cross this boundary. Other exception
             // messages may contain internal paths, credentials or process output.
             var message = error switch
             {
-                BuildServiceException e when e.Message == $"Plugin build timed out after {options.WorkerExecutionTimeout}." => e.Message,
-                BuildServiceException e when DockerBuildSandbox.IsPublicFailure(e.Message) => e.Message,
+                PublicBuildException e => e.Message,
                 OperationCanceledException => "The isolated build was cancelled or its lease expired.",
                 _ => "Plugin build failed in the isolated executor."
             };
