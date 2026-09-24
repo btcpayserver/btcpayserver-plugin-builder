@@ -417,7 +417,7 @@ public class DockerStartupHostedService(
         try
         {
             return await DockerCli.RunAsync(processRunner, arguments, operationTimeout ?? options.DockerOperationTimeout,
-                cancellationToken, outputCapture, errorCapture ?? new OutputCapture());
+                cancellationToken, outputCapture, errorCapture);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

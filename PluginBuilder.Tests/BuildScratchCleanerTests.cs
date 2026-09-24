@@ -195,7 +195,7 @@ public class BuildScratchCleanerTests
     {
         return new BuildScratchCleaner(
             NullLogger<BuildScratchCleaner>.Instance,
-            new ProcessRunner(NullLogger<ProcessRunner>.Instance),
+            new ProcessRunner(),
             new BuildExecutorOptions { UseRunc = useRunc });
     }
 

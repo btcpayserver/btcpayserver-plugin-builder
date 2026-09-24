@@ -1,5 +1,4 @@
 using System.Threading.Channels;
-using System.Text;
 using Dapper;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Configuration;
@@ -9,6 +8,7 @@ using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 
 using PluginBuilder.Builds;
+using PluginBuilder.Builds.BuildBroker;
 using PluginBuilder.Builds.Services;
 
 namespace PluginBuilder.Services;
@@ -233,11 +233,8 @@ public class BuildService
     public class BuildOutputCapture : IOutputCapture, IAsyncDisposable
     {
         private readonly Channel<string> lines = Channel.CreateUnbounded<string>();
-        private readonly object _gate = new();
         private readonly Task _saveTask;
         private readonly ILogger<BuildService> _logger;
-        private int _lineCount;
-        private int _byteCount;
 
         public BuildOutputCapture(FullBuildId fullBuildId, DBConnectionFactory connectionFactory, ILogger<BuildService> logger)
         {
@@ -262,22 +259,11 @@ public class BuildService
 
         public void AddLine(string line)
         {
+            // Broker lines arrive bounded, but the web adds its own, some quoting plugin input.
+            if (line.Length > BuildBrokerProtocol.MaximumLogLineCharacters)
+                line = line[..BuildBrokerProtocol.MaximumLogLineCharacters];
             // PostgreSQL text rejects NUL; preserve other characters, including tabs.
-            line = line.Replace("\0", string.Empty);
-            if (line.Length > BuildPolicy.MaxBuildLogLineBytes)
-                line = line[..BuildPolicy.MaxBuildLogLineBytes];
-
-            var bytes = Encoding.UTF8.GetByteCount(line) + 1;
-            lock (_gate)
-            {
-                if (_lineCount >= BuildPolicy.MaxBuildLogLines ||
-                    _byteCount + bytes > BuildPolicy.MaxBuildLogBytes)
-                    return;
-
-                _lineCount++;
-                _byteCount += bytes;
-                lines.Writer.TryWrite(line);
-            }
+            lines.Writer.TryWrite(line.Replace("\0", string.Empty));
         }
 
         private async Task SaveLoop()

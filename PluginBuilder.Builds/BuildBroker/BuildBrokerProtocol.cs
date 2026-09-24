@@ -8,6 +8,12 @@ public static class BuildBrokerProtocol
 {
     public const string InstanceHeader = "X-Build-Broker-Instance";
     public const int MaximumRequestBytes = 16 * 1024;
+    public const int MaximumLogPageBytes = 64 * 1024;
+    // A UTF-16 code unit encodes to at most three UTF-8 bytes; leave room for the newline.
+    public const int MaximumLogLineCharacters = MaximumLogPageBytes / 3 - 1;
+    public static readonly TimeSpan MaximumLeaseLifetime = TimeSpan.FromMinutes(45);
+    // Two independent 1 MiB metadata strings can expand sixfold when the
+    // surrounding JSON escapes characters. Keep the wire envelope bounded too.
     public const int MaximumStatusBytes = 16 * 1024 * 1024;
     public const long MaximumArtifactBytes = 256L * 1024 * 1024;
 

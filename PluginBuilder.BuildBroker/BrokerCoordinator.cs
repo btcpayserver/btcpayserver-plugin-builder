@@ -90,7 +90,7 @@ public sealed class BrokerCoordinator(
             for (var index = cursor; index < lease.Logs.Count; index++)
             {
                 var bytes = Encoding.UTF8.GetByteCount(lease.Logs[index]) + 1;
-                if (size + bytes > 64 * 1024) break;
+                if (size + bytes > BuildBrokerProtocol.MaximumLogPageBytes) break;
                 size += bytes;
                 chunk.Add(lease.Logs[index]);
             }
@@ -395,7 +395,8 @@ public sealed class BrokerCoordinator(
         public void AddLine(string line)
         {
             // Called from process event handlers: never throw from this callback.
-            if (line.Length > 16383) line = line[..16383];
+            if (line.Length > BuildBrokerProtocol.MaximumLogLineCharacters)
+                line = line[..BuildBrokerProtocol.MaximumLogLineCharacters];
             var bytes = Encoding.UTF8.GetByteCount(line) + 1;
             lock (Gate)
             {

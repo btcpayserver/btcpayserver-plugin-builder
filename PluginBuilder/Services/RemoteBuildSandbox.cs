@@ -337,11 +337,9 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
                     if (line is null || line.Contains('\n') || line.Contains('\r'))
                         throw ProtocolError();
                     var count = Encoding.UTF8.GetByteCount(line) + 1;
-                    if (count > BuildPolicy.MaxBuildLogLineBytes)
-                        throw ProtocolError();
                     chunkBytes += count;
                     logBytes += count;
-                    if (chunkBytes > 64 * 1024 || logBytes > BuildPolicy.MaxBuildLogBytes)
+                    if (chunkBytes > BuildBrokerProtocol.MaximumLogPageBytes || logBytes > BuildPolicy.MaxBuildLogBytes)
                         throw ProtocolError();
                     output.AddLine(line);
                 }

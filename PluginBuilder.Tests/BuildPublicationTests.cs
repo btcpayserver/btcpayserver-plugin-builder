@@ -241,6 +241,29 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Fact]
+    public async Task WebLogLinesAreBoundedLikeBrokerLines()
+    {
+        await using var tester = Create("WebLogLineBound");
+        await tester.Start();
+        var user = await tester.CreateFakeUserAsync();
+        var slug = new PluginSlug("loglines-" + Guid.NewGuid().ToString("N")[..8]);
+        var factory = tester.GetService<DBConnectionFactory>();
+        await using var connection = await factory.Open();
+        Assert.True(await connection.NewPlugin(slug, user));
+        var buildId = await connection.NewBuild(slug, new PluginBuildParameters("https://github.com/example/plugin"));
+
+        // The web adds its own lines, e.g. one quoting the plugin-controlled manifest identifier.
+        await using (var capture = new BuildService.BuildOutputCapture(new FullBuildId(slug, buildId), factory,
+                         Microsoft.Extensions.Logging.Abstractions.NullLogger<BuildService>.Instance))
+            capture.AddLine(new string('x', 1_000_000));
+
+        var line = Assert.Single(await connection.QueryAsync<string>(
+            "SELECT logs FROM builds_logs WHERE plugin_slug = @slug AND build_id = @buildId",
+            new { slug = slug.ToString(), buildId }));
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(line) < PluginBuilder.Builds.BuildBroker.BuildBrokerProtocol.MaximumLogPageBytes);
+    }
+
+    [Fact]
     public async Task ExecutionSlotRemainsHeldThroughUploadAndLocalDisposal()
     {
         var uploads = Channel.CreateUnbounded<AzureStagedUploadContractTests.BlobRequest>();

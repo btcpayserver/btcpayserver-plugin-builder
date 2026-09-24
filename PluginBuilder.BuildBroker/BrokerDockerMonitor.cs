@@ -50,7 +50,7 @@ public sealed class BrokerDockerMonitor(
                 // accumulation: only exit status matters. ProcessRunner kills the
                 // process tree when this deadline expires.
                 var code = await DockerCli.RunAsync(processRunner, ["version", "--format", "{{.Server.Version}}"],
-                    options.DockerProbeTimeout, stoppingToken, DiscardOutput.Instance, DiscardOutput.Instance);
+                    options.DockerProbeTimeout, stoppingToken);
                 stoppingToken.ThrowIfCancellationRequested();
                 if (code != 0)
                     FailClosed(generation, "Docker liveness probe returned a nonzero exit code.");

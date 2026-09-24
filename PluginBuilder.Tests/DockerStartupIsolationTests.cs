@@ -535,7 +535,7 @@ public class DockerStartupIsolationTests
         bool useRunc = false,
         TimeSpan? dockerOperationTimeout = null)
     {
-        var processRunner = new ProcessRunner(NullLogger<ProcessRunner>.Instance);
+        var processRunner = new ProcessRunner();
         var options = new BuildExecutorOptions
         {
             BuildScratchRoot = scratchRoot ?? fakeDocker.Directory,

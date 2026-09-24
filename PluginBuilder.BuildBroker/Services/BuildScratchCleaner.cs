@@ -62,7 +62,8 @@ public sealed class BuildScratchCleaner(
                 createArguments.AddRange(["-xdev", "-mindepth", "1", "-delete"]);
 
                 createAttempted = true;
-                var createCode = await RunDocker(createArguments, options.DockerOperationTimeout, cancellationToken);
+                var createCode = await DockerCli.RunAsync(processRunner, createArguments, options.DockerOperationTimeout,
+                    cancellationToken);
                 if (createCode != 0)
                 {
                     logger.LogCritical(
@@ -72,7 +73,7 @@ public sealed class BuildScratchCleaner(
                 }
                 createCompleted = true;
 
-                var startCode = await RunDocker(
+                var startCode = await DockerCli.RunAsync(processRunner,
                     ["container", "start", "--attach", cleanupContainer],
                     ScratchCleanupTimeout,
                     cancellationToken);
@@ -115,7 +116,4 @@ public sealed class BuildScratchCleaner(
         return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0 ||
                new DirectoryInfo(path).LinkTarget is not null;
     }
-
-    private Task<int> RunDocker(IReadOnlyList<string> arguments, TimeSpan timeout, CancellationToken cancellationToken) =>
-        DockerCli.RunAsync(processRunner, arguments, timeout, cancellationToken, error: new OutputCapture());
 }

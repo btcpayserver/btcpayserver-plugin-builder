@@ -463,7 +463,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             try
             {
                 code = await DockerCli.RunAsync(_owner._processRunner, ["container", "start", "--attach", CloneContainer],
-                    CloneTimeout, _stopToken, DiscardOutput.Instance, DiscardOutput.Instance);
+                    CloneTimeout, _stopToken);
             }
             catch (OperationCanceledException)
             {

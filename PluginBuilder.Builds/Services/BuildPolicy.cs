@@ -10,7 +10,6 @@ public static class BuildPolicy
     public const int WorkerPidLimit = 512;
     public const int MaxBuildMetadataBytes = 1024 * 1024;
     public const int MaxBuildLogBytes = 10 * 1024 * 1024;
-    public const int MaxBuildLogLineBytes = 64 * 1024;
     public const int MaxBuildLogLines = 10_000;
     private const int MaxRepositoryUrlCharacters = 2048;
     private const int MaxGitRefCharacters = 255;

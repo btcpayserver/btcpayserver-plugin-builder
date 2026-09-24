@@ -732,7 +732,7 @@ public class DockerBuildSandboxLifecycleTests
     private DockerBuildSandbox CreateSandbox(FakeDocker fakeDocker, BuildExecutorState state,
         TimeSpan? workerExecutionTimeout = null, bool useRunc = false)
     {
-        var processRunner = new ProcessRunner(NullLogger<ProcessRunner>.Instance);
+        var processRunner = new ProcessRunner();
         var options = new BuildExecutorOptions
         {
             BuildScratchRoot = fakeDocker.Directory,

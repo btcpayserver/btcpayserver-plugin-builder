@@ -1,13 +1,9 @@
 using System.Diagnostics;
+using System.Text;
 using PluginBuilder.Builds;
+using PluginBuilder.Builds.BuildBroker;
 
 namespace PluginBuilder.BuildBroker;
-
-internal sealed class DiscardOutput : IOutputCapture
-{
-    public static readonly DiscardOutput Instance = new();
-    public void AddLine(string line) { }
-}
 
 public class OutputCapture : IOutputCapture
 {
@@ -33,23 +29,12 @@ public class ProcessSpec
 {
     public string? Executable { get; set; }
     public IReadOnlyList<string>? Arguments { get; set; }
-    public string? EscapedArguments { get; set; }
     public IOutputCapture? OutputCapture { get; set; }
     public IOutputCapture? ErrorCapture { get; set; }
-
-    public string? Input { get; set; }
 }
 
 public class ProcessRunner
 {
-    public ProcessRunner(ILogger<ProcessRunner> logger)
-    {
-        Logger = logger;
-    }
-
-    private ILogger<ProcessRunner> Logger { get; }
-
-    // May not be necessary in the future. See https://github.com/dotnet/corefx/issues/12039
     public async Task<int> RunAsync(ProcessSpec processSpec, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(processSpec, nameof(processSpec));
@@ -57,70 +42,23 @@ public class ProcessRunner
 
         int exitCode;
 
-        Stopwatch stopwatch = new();
-
         using (var process = CreateProcess(processSpec))
-        using (ProcessState processState = new(process))
         {
-            var readOutput = false;
-            var readError = false;
-            if (processSpec.OutputCapture is not null)
-            {
-                readOutput = true;
-                process.OutputDataReceived += (_, a) =>
-                {
-                    if (!string.IsNullOrEmpty(a.Data))
-                        processSpec.OutputCapture.AddLine(a.Data);
-                };
-            }
-
-            if (processSpec.ErrorCapture is not null)
-            {
-                readError = true;
-                process.ErrorDataReceived += (_, a) =>
-                {
-                    if (!string.IsNullOrEmpty(a.Data))
-                        processSpec.ErrorCapture.AddLine(a.Data);
-                };
-            }
-
-            if (Logger.IsEnabled(LogLevel.Trace))
-            {
-                readOutput = true;
-                readError = true;
-                process.OutputDataReceived += (s, a) =>
-                {
-                    // a.Data.EndsWith("\u001b[K")
-                    Logger.LogInformation(a.Data);
-                };
-                process.ErrorDataReceived += (s, a) =>
-                {
-                    Logger.LogWarning(a.Data);
-                };
-            }
-
-
-            stopwatch.Start();
             process.Start();
-            using var cancellationRegistration = cancellationToken.Register(processState.TryKill);
-
-            if (readOutput)
-                process.BeginOutputReadLine();
-            if (readError)
-                process.BeginErrorReadLine();
-
-            if (processSpec.Input is not null)
+            using var cancellationRegistration = cancellationToken.Register(() => TryKill(process));
+            try
             {
-                await process.StandardInput.WriteLineAsync(processSpec.Input);
-                await process.StandardInput.FlushAsync();
-                process.StandardInput.Close();
+                // Always drain both streams; uncaptured output must not inherit the host console.
+                var output = ReadLinesAsync(process.StandardOutput, processSpec.OutputCapture);
+                var error = ReadLinesAsync(process.StandardError, processSpec.ErrorCapture);
+
+                // Cancellation kills the process; wait without a token to drain both streams.
+                await process.WaitForExitAsync();
+                await Task.WhenAll(output, error);
+                cancellationToken.ThrowIfCancellationRequested();
+                exitCode = process.ExitCode;
             }
-
-            await processState.Task;
-            cancellationToken.ThrowIfCancellationRequested();
-
-            exitCode = process.ExitCode;
-            stopwatch.Stop();
+            finally { TryKill(process); }
         }
 
         return exitCode;
@@ -130,88 +68,56 @@ public class ProcessRunner
     {
         Process process = new()
         {
-            EnableRaisingEvents = true,
             StartInfo =
             {
                 FileName = processSpec.Executable,
                 UseShellExecute = false,
-                RedirectStandardOutput = processSpec.OutputCapture is not null || Logger.IsEnabled(LogLevel.Trace),
-                RedirectStandardError = processSpec.ErrorCapture is not null || Logger.IsEnabled(LogLevel.Trace),
-                RedirectStandardInput = processSpec.Input is not null
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             }
         };
 
-        if (processSpec.EscapedArguments is not null)
-            process.StartInfo.Arguments = processSpec.EscapedArguments;
-        else if (processSpec.Arguments is not null)
+        if (processSpec.Arguments is not null)
             for (var i = 0; i < processSpec.Arguments.Count; i++)
                 process.StartInfo.ArgumentList.Add(processSpec.Arguments[i]);
 
         return process;
     }
 
-    private class ProcessState : IDisposable
+    // Untrusted build output may run for gigabytes without a newline. Keep at most one
+    // bounded line in memory and drop the rest of an overlong line until its end.
+    private static async Task ReadLinesAsync(StreamReader reader, IOutputCapture? capture)
     {
-        private readonly Process _process;
-        private readonly TaskCompletionSource _tcs = new();
-        private volatile bool _disposed;
-
-        public ProcessState(Process process)
+        var buffer = new char[8192];
+        var line = new StringBuilder();
+        int read;
+        while ((read = await reader.ReadAsync(buffer)) > 0)
         {
-            _process = process;
-            _process.Exited += OnExited;
-            Task = _tcs.Task.ContinueWith(_ =>
+            for (var i = 0; i < read; i++)
             {
-                try
-                {
-                    // We need to use two WaitForExit calls to ensure that all of the output/events are processed. Previously
-                    // this code used Process.Exited, which could result in us missing some output due to the ordering of
-                    // events.
-                    //
-                    // See the remarks here: https://docs.microsoft.com/en-us/dotnet/api/system.diagnostics.process.waitforexit#System_Diagnostics_Process_WaitForExit_System_Int32_
-                    if (!_process.WaitForExit(int.MaxValue))
-                        throw new TimeoutException();
-
-                    _process.WaitForExit();
-                }
-                catch (InvalidOperationException)
-                {
-                    // suppress if this throws if no process is associated with this object anymore.
-                }
-            });
-        }
-
-        public Task Task { get; }
-
-        public void Dispose()
-        {
-            if (!_disposed)
-            {
-                TryKill();
-                _disposed = true;
-                _process.Exited -= OnExited;
-                _process.Dispose();
+                var character = buffer[i];
+                if (character is '\n' or '\r')
+                    Complete();
+                else if (line.Length < BuildBrokerProtocol.MaximumLogLineCharacters)
+                    line.Append(character);
             }
         }
+        Complete();
 
-        public void TryKill()
+        void Complete()
         {
-            if (_disposed)
-                return;
-
-            try
-            {
-                if (_process is not null && !_process.HasExited)
-                    _process.Kill(true);
-            }
-            catch (Exception)
-            {
-            }
+            if (line.Length > 0)
+                capture?.AddLine(line.ToString());
+            line.Clear();
         }
+    }
 
-        private void OnExited(object? sender, EventArgs args)
+    private static void TryKill(Process process)
+    {
+        try
         {
-            _tcs.TrySetResult();
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
         }
+        catch (Exception) { }
     }
 }

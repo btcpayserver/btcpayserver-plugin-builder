@@ -206,7 +206,7 @@ public class BrokerDockerMonitorTests
             var options = probeTimeout is { } timeout
                 ? new BuildExecutorOptions { DockerProbeTimeout = timeout }
                 : new BuildExecutorOptions();
-            Monitor = new BrokerDockerMonitor(new ProcessRunner(NullLogger<ProcessRunner>.Instance), State, options,
+            Monitor = new BrokerDockerMonitor(new ProcessRunner(), State, options,
                 NullLogger<BrokerDockerMonitor>.Instance);
         }
 
