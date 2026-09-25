@@ -1,11 +1,13 @@
-version: "3"
+# Local development stack for the application running from Rider.
+# The broker is the only build component exposed to the host. Worker and
+# proxy containers are created on demand by the broker for each build.
 services:
   postgres:
     image: postgres:17.6
     environment:
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "61932:5432"
+      - "127.0.0.1:61932:5432"
     expose:
       - "5432"
 
@@ -15,15 +17,86 @@ services:
       LOCAL_STORAGE_ACCOUNT_NAME: satoshi
       LOCAL_STORAGE_ACCOUNT_KEY: Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==
     ports:
-      - "32827:11002"
+      - "127.0.0.1:32827:11002"
 
   # Mock SMTP server for email tests. Captures mail locally, never relays.
   # MP_SMTP_AUTH_* flags accept any/no credentials over plaintext.
   mailpit:
     image: axllent/mailpit:v1.27
     ports:
-      - "32828:8025"   # Web UI + HTTP API
-      - "32829:1025"   # SMTP
+      - "127.0.0.1:32828:8025"   # Web UI + HTTP API
+      - "127.0.0.1:32829:1025"   # SMTP
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  # This one-shot service makes `docker compose up --build` build the exact
+  # worker image consumed by the broker. It is not a long-running service and
+  # never receives build requests directly. The broker pulls the pinned proxy.
+  worker-image:
+    image: plugin-builder-worker
+    platform: linux/amd64
+    build:
+      context: ../PluginBuilder
+      dockerfile: ../Dockerfile.worker
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["exit 0"]
+    restart: "no"
+
+  build-broker:
+    image: plugin-builder-broker:dev
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: Dockerfile.broker
+      args:
+        VERSION: 0.0.0-dev
+    # Resolve the locally-built tag to an immutable image ID before starting
+    # the broker. The broker's production allowlist intentionally accepts
+    # only release tags or sha256 IDs; this keeps local testing on that same
+    # validation path without a registry pull for the worker.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -eu; export PBB_WORKER_IMAGE="$$(docker image inspect plugin-builder-worker --format '{{.Id}}')";
+        export PBB_BUILD_SCRATCH_HOST_ROOT="$$(docker volume inspect plugin-builder-dev-scratch --format '{{.Mountpoint}}')";
+        chmod 0700 /build-scratch;
+        exec /app/PluginBuilder.BuildBroker
+    depends_on:
+      worker-image:
+        condition: service_completed_successfully
+        restart: true
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      # Docker Desktop has no runsc. This explicit development mode is for
+      # trusted plugins only; Linux users can opt into gVisor with false.
+      PBB_USE_RUNC: ${PBB_USE_RUNC:-true}
+      PBB_DISABLE_PLUGIN_BUILDS: "false"
+      PBB_BUILD_SCRATCH_ROOT: /build-scratch
+      PBB_TOKEN_FILE: /run/secrets/build_broker_token
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - build_scratch:/build-scratch
+    secrets:
+      - build_broker_token
+    restart: unless-stopped
+    stop_grace_period: 210s
+    healthcheck:
+      test: ["CMD", "/app/PluginBuilder.BuildBroker", "--healthcheck"]
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  build_scratch:
+    name: plugin-builder-dev-scratch
+
+secrets:
+  # This is a deliberately non-secret development fixture. Never reuse it
+  # for a deployed broker.
+  build_broker_token:
+    file: ./dev-broker-token

@@ -5,7 +5,7 @@ namespace PluginBuilder;
 
 public record PluginSlug
 {
-    private static readonly Regex SlugRegex = new("^[a-z]{1,}[a-z0-9\\-]{0,}$");
+    private static readonly Regex SlugRegex = new("\\A[a-z]{1,}[a-z0-9\\-]{0,}\\z", RegexOptions.CultureInvariant);
 
     private readonly string slug;
 

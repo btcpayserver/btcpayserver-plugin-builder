@@ -19,6 +19,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Build application and broker images
+        timeout-minutes: 15
+        env:
+          DOCKER_BUILDKIT: 1
+        run: |
+          set -euo pipefail
+          docker build --pull=false --tag plugin-builder-web-ci \
+            --build-arg VERSION=0.0.0-ci --build-arg GIT_COMMIT="$GITHUB_SHA" .
+          docker build --pull=false --file Dockerfile.broker --tag plugin-builder-broker-ci \
+            --build-arg VERSION=0.0.0-ci .
+
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
@@ -36,42 +47,250 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-
 
-      - name: Install Playwright CLI + browsers (full install)
+      - name: Install Playwright browser and OS dependencies (cache miss)
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          dotnet tool install --global Microsoft.Playwright.CLI
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          playwright install --with-deps
+        run: pwsh PluginBuilder.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
-      - name: Install Playwright CLI only (cache hit)
+      - name: Install Playwright OS dependencies (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          dotnet tool install --global Microsoft.Playwright.CLI
-          export PATH="$PATH:$HOME/.dotnet/tools"
+        run: pwsh PluginBuilder.Tests/bin/Release/net10.0/playwright.ps1 install-deps chromium
 
-      - name: Start Docker containers
-        run: docker compose -f PluginBuilder.Tests/docker-compose.yml up -d
+      - name: Install gVisor runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+          curl -fsSL https://gvisor.dev/archive.key |
+            sudo gpg --dearmor --yes -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" |
+            sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y runsc
+          sudo runsc install
+          sudo systemctl restart docker
+          docker info --format '{{json .Runtimes}}' | grep -q '"runsc"'
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build plugin-builder image once
-        uses: docker/build-push-action@v7
+      - name: Build worker image with cache
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: PluginBuilder
-          file: PluginBuilder/PluginBuilder.Dockerfile
-          tags: plugin-builder
+          file: Dockerfile.worker
+          tags: plugin-builder-worker
           load: true
           push: false
-          cache-from: type=gha,scope=plugin-builder
-          cache-to: type=gha,mode=max,scope=plugin-builder
+          cache-from: type=gha,scope=plugin-builder-worker
+          cache-to: type=gha,mode=max,scope=plugin-builder-worker
 
-      - name: Run tests
+      - name: Prepare isolated build scratch directory
+        run: |
+          set -euo pipefail
+          sudo install -m 0700 -d /mnt/pluginbuilder-build-scratch
+
+      - name: Start Docker dependencies
+        run: docker compose -f PluginBuilder.Tests/docker-compose.yml up -d postgres azureblob mailpit
+
+      - name: Test local development Compose
+        timeout-minutes: 15
         env:
-          DOCKER_STARTUP_SKIP_BUILD: "true"
+          DOCKER_BUILDKIT: 1
           GITHUB_TOKEN: ${{ github.token }}
-        run: dotnet test PluginBuilder.Tests --configuration Release --no-build --verbosity normal
+        run: |
+          set -euo pipefail
+          compose=(docker compose -f PluginBuilder.Tests/docker-compose.yml)
+          token=$(tr -d '\r\n' < PluginBuilder.Tests/dev-broker-token)
+
+          "${compose[@]}" up --build -d
+          status=""
+          for attempt in {1..60}; do
+            if status=$(curl --fail --silent --show-error \
+                --header "Authorization: Bearer $token" \
+                http://127.0.0.1:8080/v1/status) &&
+                jq -e '.isReady == true' <<<"$status" >/dev/null; then
+              break
+            fi
+            status=""
+            sleep 2
+          done
+          if [[ -z "$status" ]]; then
+            "${compose[@]}" logs build-broker
+            echo 'Local development broker did not become ready.' >&2
+            exit 1
+          fi
+
+          initial_instance=$(jq -r '.instanceId' <<<"$status")
+          initial_worker=$(docker image inspect plugin-builder-worker --format '{{.Id}}')
+          initial_proxy=$(jq -r '.proxyImageId' <<<"$status")
+          jq -e --arg worker "$initial_worker" \
+            '.workerImageId == $worker and (.proxyImageId | test("^sha256:[0-9a-f]{64}$"))' <<<"$status" >/dev/null
+
+          printf 'FROM plugin-builder-worker\nLABEL org.btcpayserver.ci-refresh="%s"\n' "$GITHUB_SHA" |
+            docker build --pull=false --tag plugin-builder-worker -
+          refreshed_worker=$(docker image inspect plugin-builder-worker --format '{{.Id}}')
+          test "$refreshed_worker" != "$initial_worker"
+
+          "${compose[@]}" up --no-build -d
+          status=""
+          for attempt in {1..60}; do
+            if status=$(curl --fail --silent --show-error \
+                --header "Authorization: Bearer $token" \
+                http://127.0.0.1:8080/v1/status) &&
+                jq -e --arg instance "$initial_instance" --arg worker "$refreshed_worker" --arg proxy "$initial_proxy" \
+                  '.isReady == true and .instanceId != $instance and .workerImageId == $worker and .proxyImageId == $proxy' \
+                  <<<"$status" >/dev/null; then
+              break
+            fi
+            status=""
+            sleep 2
+          done
+          if [[ -z "$status" ]]; then
+            "${compose[@]}" logs build-broker
+            echo 'Local development broker did not adopt the rebuilt worker image.' >&2
+            exit 1
+          fi
+
+          # Exercise the real build mounts, staging and cleanup with the local
+          # volume mapping, not just the broker's startup readiness checks.
+          PB_BUILD_BROKER_URL=http://127.0.0.1:8080/ \
+          PB_BUILD_BROKER_TOKEN_FILE="$GITHUB_WORKSPACE/PluginBuilder.Tests/dev-broker-token" \
+            dotnet test PluginBuilder.Tests \
+              --configuration Release \
+              --no-build \
+              --filter "FullyQualifiedName=PluginBuilder.Tests.UnitTest1.CanPackPlugin" \
+              --logger "trx;LogFileName=local-compose-build.trx" \
+              --results-directory "$RUNNER_TEMP/local-compose-test-results" \
+              --verbosity normal
+          grep -Eq \
+            '<Counters [^>]*total="1"[^>]*passed="1"[^>]*failed="0"' \
+            "$RUNNER_TEMP/local-compose-test-results/local-compose-build.trx"
+
+          "${compose[@]}" rm --stop --force build-broker worker-image
+
+      - name: Run tests without a build executor
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          dotnet test PluginBuilder.Tests \
+            --configuration Release \
+            --no-build \
+            --filter "Category!=ExecutorIntegration" \
+            --logger "trx;LogFileName=without-executor.trx" \
+            --results-directory "$RUNNER_TEMP/without-executor-test-results" \
+            --verbosity normal
+          grep -Eq \
+            '<Counters [^>]*total="[1-9][0-9]*"' \
+            "$RUNNER_TEMP/without-executor-test-results/without-executor.trx"
+
+      - name: Start isolated build broker
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          umask 077
+          pb_broker_dir="$RUNNER_TEMP/pluginbuilder-broker"
+          install -m 0700 -d "$pb_broker_dir"
+          openssl rand -hex 32 > "$pb_broker_dir/token"
+          pb_worker_image=$(docker image inspect --format '{{.Id}}' plugin-builder-worker)
+
+          # The host test process reaches this private bridge directly. No broker
+          # port is published, and it receives no application/Azure/DB credentials.
+          docker network create --internal plugin-builder-broker-ci
+          docker run --detach --pull never --name plugin-builder-broker-ci \
+            --network plugin-builder-broker-ci --stop-timeout 210 \
+            --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
+            --mount type=bind,source=/mnt/pluginbuilder-build-scratch,target=/mnt/pluginbuilder-build-scratch \
+            --mount "type=bind,source=$pb_broker_dir/token,target=/run/secrets/build_broker_token,readonly" \
+            --env PBB_TOKEN_FILE=/run/secrets/build_broker_token \
+            --env PBB_BUILD_SCRATCH_ROOT=/mnt/pluginbuilder-build-scratch \
+            --env "PBB_WORKER_IMAGE=$pb_worker_image" \
+            plugin-builder-broker-ci
+          pb_broker_ip=$(docker inspect --format '{{(index .NetworkSettings.Networks "plugin-builder-broker-ci").IPAddress}}' plugin-builder-broker-ci)
+          echo "PB_BUILD_BROKER_URL=http://$pb_broker_ip:8080/" >> "$GITHUB_ENV"
+          echo "PB_BUILD_BROKER_TOKEN_FILE=$pb_broker_dir/token" >> "$GITHUB_ENV"
+
+          # Match the production bound for the application's private downloads.
+          pb_staging="$RUNNER_TEMP/pluginbuilder-web-config/BTCPayServer-PluginBuilder/broker-staging"
+          sudo install -m 0700 -d "$pb_staging"
+          sudo mount -t tmpfs -o size=600m,mode=0700,noexec,nosuid,nodev tmpfs "$pb_staging"
+
+          for attempt in {1..30}; do
+            if docker exec plugin-builder-broker-ci /app/PluginBuilder.BuildBroker --healthcheck; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs plugin-builder-broker-ci
+          echo 'Build broker did not become ready within the startup deadline.' >&2
+          exit 1
+
+      - name: Verify build executor readiness
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sudo env \
+            CI=true \
+            GITHUB_TOKEN="$GITHUB_TOKEN" \
+            PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" \
+            XDG_CONFIG_HOME="$RUNNER_TEMP/pluginbuilder-web-config" \
+            PB_BUILD_BROKER_URL="$PB_BUILD_BROKER_URL" \
+            PB_BUILD_BROKER_TOKEN_FILE="$PB_BUILD_BROKER_TOKEN_FILE" \
+            "$(command -v dotnet)" test PluginBuilder.Tests \
+              --configuration Release \
+              --no-build \
+              --filter "FullyQualifiedName=PluginBuilder.Tests.UnitTest1.ExecutorStartupBecomesReady" \
+              --logger "trx;LogFileName=executor-readiness.trx" \
+              --results-directory "$RUNNER_TEMP/executor-readiness-test-results" \
+              --verbosity normal
+          sudo grep -Eq \
+            '<Counters [^>]*total="1"[^>]*passed="1"[^>]*failed="0"' \
+            "$RUNNER_TEMP/executor-readiness-test-results/executor-readiness.trx"
+
+      - name: Run build executor and negative network canary tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sudo env \
+            CI=true \
+            GITHUB_TOKEN="$GITHUB_TOKEN" \
+            PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" \
+            XDG_CONFIG_HOME="$RUNNER_TEMP/pluginbuilder-web-config" \
+            PB_BUILD_BROKER_URL="$PB_BUILD_BROKER_URL" \
+            PB_BUILD_BROKER_TOKEN_FILE="$PB_BUILD_BROKER_TOKEN_FILE" \
+            "$(command -v dotnet)" test PluginBuilder.Tests \
+              --configuration Release \
+              --no-build \
+              --filter "Category=ExecutorIntegration" \
+              --logger "trx;LogFileName=executor-integration.trx" \
+              --results-directory "$RUNNER_TEMP/executor-test-results" \
+              --verbosity normal
+          sudo grep -Eq \
+            '<Counters [^>]*total="[1-9][0-9]*"' \
+            "$RUNNER_TEMP/executor-test-results/executor-integration.trx"
 
       - name: Cleanup Docker
         if: always()
-        run: docker compose -f PluginBuilder.Tests/docker-compose.yml down --volumes
+        run: |
+          cleanup_status=0
+          if docker container inspect plugin-builder-broker-ci >/dev/null 2>&1; then
+            docker logs plugin-builder-broker-ci || cleanup_status=$?
+            docker stop plugin-builder-broker-ci || cleanup_status=$?
+            docker rm --volumes plugin-builder-broker-ci || cleanup_status=$?
+          fi
+          if docker network inspect plugin-builder-broker-ci >/dev/null 2>&1; then
+            docker network rm plugin-builder-broker-ci || cleanup_status=$?
+          fi
+          docker compose -f PluginBuilder.Tests/docker-compose.yml down --volumes || cleanup_status=$?
+          docker ps -aq --filter 'label=BTCPAY_PLUGIN_BUILD' |
+            xargs -r docker rm --force || cleanup_status=$?
+          docker network ls -q --filter 'label=BTCPAY_PLUGIN_BUILD' |
+            xargs -r docker network rm || cleanup_status=$?
+          docker volume ls -q --filter 'label=BTCPAY_PLUGIN_BUILD' |
+            xargs -r docker volume rm || cleanup_status=$?
+          pb_staging="$RUNNER_TEMP/pluginbuilder-web-config/BTCPayServer-PluginBuilder/broker-staging"
+          if sudo mountpoint --quiet "$pb_staging"; then
+            sudo umount "$pb_staging" || cleanup_status=$?
+          fi
+          exit "$cleanup_status"

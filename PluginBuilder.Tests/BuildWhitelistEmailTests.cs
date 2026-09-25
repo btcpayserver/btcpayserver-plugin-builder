@@ -16,6 +16,8 @@ using PluginBuilder.ViewModels.Admin;
 using Xunit;
 using Xunit.Abstractions;
 
+using PluginBuilder.BuildBroker.HostedServices;
+
 namespace PluginBuilder.Tests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]

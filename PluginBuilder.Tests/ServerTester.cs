@@ -2,14 +2,19 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using PluginBuilder.Configuration;
 using PluginBuilder.Events;
+using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using Xunit;
+
+using PluginBuilder.Builds.Services;
 
 namespace PluginBuilder.Tests;
 
@@ -19,7 +24,6 @@ public class ServerTester : IAsyncDisposable
     public const string GitRef = "plugins/collection2";
     public const string PluginDir = "Plugins/BTCPayServer.Plugins.RockstarStylist";
     public const string BuildCfg = "Release";
-    public const string PluginSlug = "rockstar-stylist";
 
     private const string StorageConnectionString =
         "BlobEndpoint=http://127.0.0.1:32827/satoshi;AccountName=satoshi;AccountKey=Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==";
@@ -50,7 +54,6 @@ public class ServerTester : IAsyncDisposable
     public bool ReuseDatabase { get; set; } = true;
     public bool CheatMode { get; set; }
     public bool EnableLocalArtifactDownloadProxy { get; set; }
-    public int? BuildTimeoutSeconds { get; set; }
 
     public async ValueTask DisposeAsync()
     {
@@ -90,9 +93,8 @@ public class ServerTester : IAsyncDisposable
     public async Task Start()
     {
         var baseName = TestFolder.ToLowerInvariant();
-        var dbName = ReuseDatabase
-            ? baseName
-            : $"{baseName}_{Guid.NewGuid():N}".ToLowerInvariant();
+        // PostgreSQL truncates identifiers to 63 bytes: keep the whole unique suffix.
+        var dbName = ReuseDatabase ? baseName : $"{baseName[..Math.Min(baseName.Length, 30)]}_{Guid.NewGuid():N}";
 
         Logs.LogInformation("DbName: {dbName}", dbName);
 
@@ -114,9 +116,6 @@ public class ServerTester : IAsyncDisposable
             $"--cheat_mode={CheatMode.ToString().ToLowerInvariant()}",
             $"--enable_local_artifact_download_proxy={EnableLocalArtifactDownloadProxy.ToString().ToLowerInvariant()}"
         ];
-        if (BuildTimeoutSeconds is not null)
-            args.Add($"--build_timeout_seconds={BuildTimeoutSeconds}");
-
         var webappBuilder = host.CreateWebApplicationBuilder(new WebApplicationOptions
         {
             ContentRootPath = projectDir,
@@ -132,7 +131,6 @@ public class ServerTester : IAsyncDisposable
         });
 
         webappBuilder.Services.AddHttpClient();
-        webappBuilder.Logging.AddFilter(typeof(ProcessRunner).FullName, LogLevel.Error);
         webappBuilder.Logging.AddProvider(Logs);
         ConfigureServices?.Invoke(webappBuilder.Services);
 
@@ -148,6 +146,37 @@ public class ServerTester : IAsyncDisposable
         var address = webapp.Urls.First();
         Port = new Uri(address).Port;
         Logs.LogInformation("Server started on port {Port}", Port);
+
+        // The broker monitor starts in the background. Executor integration tests
+        // must observe its real readiness before submitting their first build.
+        // Fixtures that deliberately remove the monitor own their executor state.
+        if (webapp.Services.GetRequiredService<IBuildSandbox>() is RemoteBuildSandbox &&
+            webapp.Services.GetRequiredService<PluginBuilderOptions>().BuildBrokerTokenFile is not null &&
+            webapp.Services.GetServices<IHostedService>().Any(service => service is BuildBrokerMonitor))
+        {
+            var executor = webapp.Services.GetRequiredService<BuildExecutorState>();
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            try
+            {
+                while (!executor.Snapshot.IsReady)
+                    await Task.Delay(TimeSpan.FromMilliseconds(100), deadline.Token);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                var error = new InvalidOperationException(
+                    "The configured build broker did not become ready within 30 seconds: " +
+                    executor.Snapshot.UnavailableReason);
+                // UnitTestBase.Start cannot return this fixture on failure, so it
+                // still owns teardown of the host and any disposable database.
+                try { await DisposeAsync(); }
+                catch (Exception cleanupError)
+                {
+                    Logs.LogWarning("Cleanup after broker readiness failure also failed ({ErrorType}).",
+                        cleanupError.GetType().Name);
+                }
+                throw error;
+            }
+        }
     }
 
     public HttpClient CreateHttpClient()
@@ -176,12 +205,16 @@ public class ServerTester : IAsyncDisposable
         return directory;
     }
 
+    // Independent test databases share artifact storage, where published blobs cannot be overwritten.
+    public static string CreatePluginSlug() => "rockstar-" + Guid.NewGuid().ToString("N")[..20];
+
     public async Task<FullBuildId> CreateAndBuildPluginAsync(
         string userId,
-        string slug = PluginSlug,
+        string? slug = null,
         string gitRef = GitRef,
         string pluginDir = PluginDir)
     {
+        slug ??= CreatePluginSlug();
         await using var conn = await GetService<DBConnectionFactory>().Open();
         var buildService = GetService<BuildService>();
 
@@ -201,8 +234,9 @@ public class ServerTester : IAsyncDisposable
     /// Prepares a published pre-release for tests of existing plugins. No artifact is built or uploaded;
     /// use CreateAndBuildPluginAsync when exercising the build pipeline or artifact downloads.
     /// </summary>
-    public async Task<FullBuildId> CreatePublishedPluginAsync(string userId, string slug = PluginSlug)
+    public async Task<FullBuildId> CreatePublishedPluginAsync(string userId, string? slug = null)
     {
+        slug ??= CreatePluginSlug();
         var manifest = PluginManifest.Parse($$"""
             {
               "Identifier": "TestPlugin.{{slug.Replace('-', '_')}}",

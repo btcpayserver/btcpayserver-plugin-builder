@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../PluginBuilder.Builds/PluginBuilder.Builds.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PluginBuilder.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="squid.conf" LogicalName="squid.conf" />
+  </ItemGroup>
+</Project>

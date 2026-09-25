@@ -331,7 +331,7 @@ public static class NpgsqlConnectionExtensions
     }
 
     public static async Task<bool> SetVersionBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, PluginVersion version,
-        PluginVersion? minBTCPayVersion, PluginVersion? maxBTCPayVersion, bool preRelease)
+        PluginVersion? minBTCPayVersion, PluginVersion? maxBTCPayVersion, bool preRelease, NpgsqlTransaction? tx = null)
     {
         minBTCPayVersion ??= PluginVersion.Zero;
 
@@ -355,7 +355,7 @@ public static class NpgsqlConnectionExtensions
                 btcpay_min_ver = minBTCPayVersion.VersionParts,
                 btcpay_max_ver = maxBTCPayVersion?.VersionParts,
                 pre_release = preRelease
-            }) == 1;
+            }, tx) == 1;
     }
 
     public static async Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters,

@@ -9,7 +9,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests.PluginTests;
 
-[Collection("Playwright Tests")]
+[Collection(nameof(NonParallelizableCollectionDefinition))]
+[Trait("Category", "ExecutorIntegration")]
 public class ImportReviewUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("ImportReviewTests", output);

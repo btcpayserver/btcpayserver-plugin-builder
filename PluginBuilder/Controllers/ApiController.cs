@@ -16,6 +16,8 @@ using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 
+using PluginBuilder.Builds.Services;
+
 namespace PluginBuilder.Controllers;
 
 [ApiController]
@@ -393,7 +395,8 @@ public class ApiController(
             var identifier = await buildService.FetchIdentifierFromCsprojAsync(
                 model.GitRepository,
                 model.GitRef,
-                model.PluginDirectory);
+                model.PluginDirectory,
+                model.BuildConfig);
 
             var owns = await conn.EnsureIdentifierOwnership(pluginSlug, identifier);
             if (!owns)

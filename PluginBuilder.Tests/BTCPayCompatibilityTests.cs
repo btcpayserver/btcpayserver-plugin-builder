@@ -14,6 +14,8 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests;
 
+[Collection(nameof(NonParallelizableCollectionDefinition))]
+[Trait("Category", "ExecutorIntegration")]
 public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     private static readonly JsonSerializerSettings SerializerSettings = new() { ContractResolver = new CamelCasePropertyNamesContractResolver() };
