@@ -32,6 +32,15 @@ All parameters are configured via environment variables.
 
 ## API
 
+API requests denied with HTTP 401 or 403 produce one information-level log entry
+with the client IP, method, path, credential type (not its value), authenticated
+user ID when available, request ID and a shortened user agent. Successful requests
+are not logged by this middleware. Query strings, cookies and request bodies are
+excluded, and text fields are bounded and stripped of control characters.
+The IP uses the application's existing forwarded-header handling; keep the app
+behind the configured trusted reverse proxy. Repetitive authentication-handler
+messages are suppressed by default; `PB_VERBOSE=true` restores them for diagnostics.
+
 [Admin events and notifications](docs/admin-events.md) documents the admin polling API,
 email/webhook subscriptions, signatures, delivery retries, and local agent cursors.
 [Admin agent access](docs/admin-agent-access.md) covers revocable tokens, token activity
