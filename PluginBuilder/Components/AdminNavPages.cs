@@ -7,5 +7,6 @@ public enum AdminNavPages
     ListingRequests,
     EmailSettings,
     Settings,
+    EventSubscriptions,
     Logs
 }

@@ -196,6 +196,7 @@ public class Program
         services.AddHostedService<PluginCleanupHostedService>();
         services.AddHostedService<UserCleanupHostedService>();
         services.AddSingleton<AdminEventService>();
+        services.AddSingleton<AdminEventSubscriptionService>();
         services.AddScoped<ListingReviewService>();
         services.AddScoped<AdminAccessTokenService>();
         services.AddSingleton<AdminWebhookSender>();
