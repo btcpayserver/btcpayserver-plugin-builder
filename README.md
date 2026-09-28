@@ -27,20 +27,11 @@ All parameters are configured via environment variables.
 * `PB_BUILD_BROKER_TOKEN_FILE`: Path to the shared broker authentication token file. Deployments require an absolute path mounted read-only into only the application and broker. The development profile resolves its relative fixture path against the project directory. Do not put a production token value in environment variables or source control.
 * `PB_CHEAT_MODE`: If set to `true`, it's considered that the server is running in a development environment and will allow to bypass some security checks (right now only registering admin account).
 * `PB_ENABLE_LOCAL_ARTIFACT_DOWNLOAD_PROXY`: If set to `true`, loopback artifact URLs can be proxied through the API download endpoint for local development.
+* `PB_VERBOSE`: Set to `true` to retain detailed authentication-handler logs. By default, API 401/403 responses under `/api/v1` produce a single contextual denial log.
 * `ASPNETCORE_URLS`: The url the web server will be listening (example: `http://127.0.0.1:8080`)
 * `XDG_CONFIG_HOME`: Parent of the application's persistent data directory on Linux (example: `/datadir`, resulting in `/datadir/BTCPayServer-PluginBuilder`). Keep deployment mounts, including the private broker-download buffer, aligned with this setting.
 
 ## API
-
-Requests under `/api/v1` that are denied with HTTP 401 or 403 produce one
-information-level log entry with the client IP, method, path, credential type (not
-its value), authenticated user ID when available, request ID and a shortened user
-agent. Other paths, including `/apis/btcmaps/v1`, and successful requests are not
-logged by this middleware. Query strings, cookies and request bodies are
-excluded, and text fields are bounded and stripped of control characters.
-The IP uses the application's existing forwarded-header handling; keep the app
-behind the configured trusted reverse proxy. Repetitive authentication-handler
-messages are suppressed by default; `PB_VERBOSE=true` restores them for diagnostics.
 
 [Admin events and notifications](docs/admin-events.md) documents the admin polling API,
 email/webhook subscriptions, signatures, delivery retries, and local agent cursors.
