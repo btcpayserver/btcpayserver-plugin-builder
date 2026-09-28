@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Hosting;
@@ -27,7 +29,7 @@ public class AdminEventSubscriptionsUITests(ITestOutputHelper output) : UnitTest
         const string destination = "https://review.example.com/hooks/plugin-builder";
 
         await tester.GoToUrl(path);
-        await Expect(page.Locator("#AdminNav-EventSubscriptions")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("active"));
+        await Expect(page.Locator("#AdminNav-EventSubscriptions")).ToHaveClassAsync(new Regex("active"));
         await Expect(page.Locator("#SubscriptionList")).ToContainTextAsync("No subscriptions yet.");
 
         // An invalid destination is rejected by the same validation as the API, and nothing is stored.
@@ -109,6 +111,50 @@ public class AdminEventSubscriptionsUITests(ITestOutputHelper output) : UnitTest
         Assert.Equal("email", row.Kind);
         Assert.Empty(row.EventTypes);
         Assert.Null(row.ProtectedSecret);
+    }
+
+    [Fact]
+    public async Task NonAdminsAreDeniedAndPostsWithoutAntiforgeryTokenAreRejected()
+    {
+        await using var tester = CreateTester("EventSubscriptionsDeniedUi");
+        await tester.StartAsync();
+        var page = tester.Page!;
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+        var url = new Uri(tester.ServerUri!, "/admin/event-subscriptions").ToString();
+        var noRedirects = new APIRequestContextOptions { MaxRedirects = 0 };
+        static string Csrf(string html) =>
+            WebUtility.HtmlDecode(Regex.Match(html, "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value);
+
+        // A signed-in account without the ServerAdmin role is sent to the access-denied page, for the page and for creation.
+        var userEmail = $"user-{Guid.NewGuid():N}@test.com";
+        await tester.Server.CreateFakeUserAsync(userEmail);
+        await tester.LogIn(userEmail);
+        var get = await page.Context.APIRequest.GetAsync(url, noRedirects);
+        Assert.Equal(302, get.Status);
+        Assert.Contains("/errors/403", get.Headers["location"], StringComparison.Ordinal);
+
+        // Send the user's own valid antiforgery token, so the role check, not the token, is what refuses the post.
+        await tester.GoToUrl("/dashboard");
+        var userToken = Csrf(await page.ContentAsync());
+        Assert.False(string.IsNullOrEmpty(userToken), "The dashboard should render an antiforgery token for the signed-in user.");
+        var form = page.Context.APIRequest.CreateFormData();
+        form.Set("__RequestVerificationToken", userToken);
+        form.Set("Creation.Kind", "webhook");
+        form.Set("Creation.Destination", "https://review.example.com/hooks/plugin-builder");
+        var userPost = await page.Context.APIRequest.PostAsync(url, new APIRequestContextOptions { Form = form, MaxRedirects = 0 });
+        Assert.Equal(302, userPost.Status);
+        Assert.Contains("/errors/403", userPost.Headers["location"], StringComparison.Ordinal);
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_event_subscriptions"));
+
+        // An admin post without the antiforgery token is rejected before anything is written.
+        await tester.Logout();
+        await tester.LogIn(await tester.CreateServerAdminAsync());
+        var tokenless = page.Context.APIRequest.CreateFormData();
+        tokenless.Set("Creation.Kind", "webhook");
+        tokenless.Set("Creation.Destination", "https://review.example.com/hooks/plugin-builder");
+        var adminPost = await page.Context.APIRequest.PostAsync(url, new APIRequestContextOptions { Form = tokenless, MaxRedirects = 0 });
+        Assert.Equal(400, adminPost.Status);
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_event_subscriptions"));
     }
 
     private PlaywrightTester CreateTester(string name)
