@@ -2,6 +2,7 @@
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(AdminNavPages.Plugins, "Plugins");
+    var sortLabel = Model.Sort == "recent" ? "Most recent" : "Alphabetical";
 }
 
 <div class="d-flex flex-column flex-md-row align-items-center justify-content-between mb-4">
@@ -33,17 +34,40 @@
 
 <form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="ListPlugins" method="get">
     <input asp-for="Count" type="hidden" />
+    <input asp-for="Sort" type="hidden" />
+    <input asp-for="Status" type="hidden" />
     <input asp-for="SearchText" class="form-control" placeholder="Search…" />
 
-    <div class="dropdown">
-        <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+    <div class="dropdown flex-shrink-0">
+        <button class="btn btn-secondary dropdown-toggle text-nowrap" id="StatusOptionsToggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
             @(Model.Status ?? "All Status")
         </button>
         <div class="dropdown-menu" aria-labelledby="StatusOptionsToggle">
-            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="">All Status</a>
-            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="unlisted">Unlisted</a>
-            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="listed">Listed</a>
-            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="hidden">Hidden</a>
+            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="" asp-route-sort="@Model.Sort" asp-route-searchText="@Model.SearchText" asp-route-count="@Model.Count">All Status</a>
+            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="unlisted" asp-route-sort="@Model.Sort" asp-route-searchText="@Model.SearchText" asp-route-count="@Model.Count">Unlisted</a>
+            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="listed" asp-route-sort="@Model.Sort" asp-route-searchText="@Model.SearchText" asp-route-count="@Model.Count">Listed</a>
+            <a class="dropdown-item" asp-action="ListPlugins" asp-route-status="hidden" asp-route-sort="@Model.Sort" asp-route-searchText="@Model.SearchText" asp-route-count="@Model.Count">Hidden</a>
+        </div>
+    </div>
+    <div class="dropdown flex-shrink-0">
+        <button class="btn btn-secondary dropdown-toggle text-nowrap"
+                type="button"
+                id="SortOptionsToggle"
+                data-bs-toggle="dropdown"
+                aria-expanded="false">
+            @sortLabel
+        </button>
+        <div class="dropdown-menu dropdown-menu-end" aria-labelledby="SortOptionsToggle">
+            <a class="dropdown-item @(Model.Sort == "recent" ? "active" : "")"
+               asp-action="ListPlugins" asp-route-sort="recent"
+               asp-route-searchText="@Model.SearchText" asp-route-status="@Model.Status" asp-route-count="@Model.Count">
+                Most recent
+            </a>
+            <a class="dropdown-item @(Model.Sort != "recent" ? "active" : "")"
+               asp-action="ListPlugins" asp-route-sort="alpha"
+               asp-route-searchText="@Model.SearchText" asp-route-status="@Model.Status" asp-route-count="@Model.Count">
+                Alphabetical
+            </a>
         </div>
     </div>
 </form>
