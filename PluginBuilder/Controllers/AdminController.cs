@@ -62,6 +62,9 @@ public class AdminController(
     public async Task<IActionResult> ListPlugins(AdminPluginSettingViewModel? model = null)
     {
         model ??= new AdminPluginSettingViewModel();
+        var orderBy = model.Sort == "recent"
+            ? "v.updated_at DESC NULLS LAST, p.slug"
+            : "p.slug";
         var whereConditions = new List<string>();
         var parameters = new DynamicParameters();
         if (!string.IsNullOrEmpty(model.SearchText))
@@ -97,7 +100,7 @@ public class AdminController(
                                               ORDER BY plugin_slug, updated_at DESC
                                           ) v ON p.slug = v.plugin_slug
                                           {whereClause}
-                                          ORDER BY p.slug
+                                          ORDER BY {orderBy}
                                           OFFSET @skip LIMIT @take;
                                           """, parameters);
         List<AdminPluginViewModel> plugins = new();
