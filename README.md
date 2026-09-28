@@ -27,6 +27,7 @@ All parameters are configured via environment variables.
 * `PB_BUILD_BROKER_TOKEN_FILE`: Path to the shared broker authentication token file. Deployments require an absolute path mounted read-only into only the application and broker. The development profile resolves its relative fixture path against the project directory. Do not put a production token value in environment variables or source control.
 * `PB_CHEAT_MODE`: If set to `true`, it's considered that the server is running in a development environment and will allow to bypass some security checks (right now only registering admin account).
 * `PB_ENABLE_LOCAL_ARTIFACT_DOWNLOAD_PROXY`: If set to `true`, loopback artifact URLs can be proxied through the API download endpoint for local development.
+* `PB_VERBOSE`: Set to `true` to retain detailed authentication-handler logs. By default, API 401/403 responses under `/api/v1` produce a single contextual denial log.
 * `ASPNETCORE_URLS`: The url the web server will be listening (example: `http://127.0.0.1:8080`)
 * `XDG_CONFIG_HOME`: Parent of the application's persistent data directory on Linux (example: `/datadir`, resulting in `/datadir/BTCPayServer-PluginBuilder`). Keep deployment mounts, including the private broker-download buffer, aligned with this setting.
 

@@ -80,7 +80,12 @@ public class Program
 
         var verbose = builder.Configuration.GetValue<bool>("verbose");
         if (!verbose)
+        {
             builder.Logging.AddFilter("Events", LogLevel.Warning);
+            // ApiAccessLogMiddleware emits one contextual denial instead of a line per scheme.
+            builder.Logging.AddFilter(typeof(BasicAuthenticationHandler).FullName, LogLevel.Warning);
+            builder.Logging.AddFilter(typeof(AdminTokenAuthenticationHandler).FullName, LogLevel.Warning);
+        }
 
         builder.Services.AddHealthChecks().AddCheck<HealthService>("Dependencies");
 
@@ -129,6 +134,7 @@ public class Program
         app.UseRouting();
         app.UseRateLimiter();
         app.UseAuthentication();
+        app.UseMiddleware<ApiAccessLogMiddleware>();
         app.UseMiddleware<AdminApiAuditMiddleware>();
         app.UseAuthorization();
         app.UseOutputCache();
