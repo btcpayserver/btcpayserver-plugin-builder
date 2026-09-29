@@ -6,7 +6,8 @@ namespace PluginBuilder.Builds.Services;
 /// <summary>Shared build inputs and bounds; no Docker execution or application dependencies.</summary>
 public static class BuildPolicy
 {
-    public const int MaxConcurrentBuilds = 2;
+    // Three workers at their memory limit, plus proxies and download staging, fit an 8 GB host.
+    public const int MaxConcurrentBuilds = 3;
     // Bounds how much of the shared build queue one account can hold at a time.
     public const int MaxActiveBuildsPerUser = 2;
     public const int MaxBuildMetadataBytes = 1024 * 1024;

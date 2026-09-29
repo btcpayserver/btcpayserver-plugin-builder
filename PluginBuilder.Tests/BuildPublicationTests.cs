@@ -298,8 +298,9 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var slug = new PluginSlug("upload-queue-" + Guid.NewGuid().ToString("N")[..8]);
         await using var connection = await tester.GetService<DBConnectionFactory>().Open();
         Assert.True(await connection.NewPlugin(slug, user));
+        const int slots = BuildPolicy.MaxConcurrentBuilds;
         List<FullBuildId> ids = [];
-        for (var index = 0; index < 3; index++)
+        for (var index = 0; index <= slots; index++)
             ids.Add(new FullBuildId(slug, await connection.NewBuild(slug,
                 new PluginBuildParameters("https://github.com/example/plugin"))));
 
@@ -307,47 +308,48 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
         List<Task> executions = [];
         try
         {
-            executions.Add(buildService.Build(ids[0]));
-            var firstUpload = await uploads.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(ids[0], await sandbox.NextPrepared());
-            executions.Add(buildService.Build(ids[1]));
-            var secondUpload = await uploads.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(ids[1], await sandbox.NextPrepared());
-            Assert.Equal($"/satoshi/artifacts/{ids[0]}/Example.btcpay", firstUpload.Path);
-            Assert.Equal($"/satoshi/artifacts/{ids[1]}/Example.btcpay", secondUpload.Path);
+            List<AzureStagedUploadContractTests.BlobRequest> heldUploads = [];
+            for (var index = 0; index < slots; index++)
+            {
+                executions.Add(buildService.Build(ids[index]));
+                var upload = await uploads.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Equal(ids[index], await sandbox.NextPrepared());
+                Assert.Equal($"/satoshi/artifacts/{ids[index]}/Example.btcpay", upload.Path);
+                heldUploads.Add(upload);
+            }
 
-            executions.Add(buildService.Build(ids[2]));
-            var thirdPreparing = sandbox.NextPrepared();
-            // Remote cleanup has already finished, but both private artifacts
-            // still occupy the web application's buffer while Azure is blocked.
-            await Assert.ThrowsAsync<TimeoutException>(() => thirdPreparing.WaitAsync(TimeSpan.FromSeconds(1)));
-            Assert.Equal(2, sandbox.Prepared.Count);
-            Assert.Equal(2, Directory.GetFiles(sandbox.Root, "artifact.btcpay", SearchOption.AllDirectories).Length);
+            executions.Add(buildService.Build(ids[slots]));
+            var queuedPreparing = sandbox.NextPrepared();
+            // Remote cleanup has already finished, but every private artifact
+            // still occupies the web application's buffer while Azure is blocked.
+            await Assert.ThrowsAsync<TimeoutException>(() => queuedPreparing.WaitAsync(TimeSpan.FromSeconds(1)));
+            Assert.Equal(slots, sandbox.Prepared.Count);
+            Assert.Equal(slots, Directory.GetFiles(sandbox.Root, "artifact.btcpay", SearchOption.AllDirectories).Length);
             Assert.All(executions, execution => Assert.False(execution.IsCompleted));
 
-            releaseUploads[firstUpload.Path].TrySetResult();
+            releaseUploads[heldUploads[0].Path].TrySetResult();
             var first = sandbox.Prepared[ids[0]];
             await first.Disposing.Task.WaitAsync(TimeSpan.FromSeconds(10));
             // Finishing the upload is insufficient: retain the slot until its
             // local staging file has actually been discarded as well.
-            await Assert.ThrowsAsync<TimeoutException>(() => thirdPreparing.WaitAsync(TimeSpan.FromSeconds(1)));
+            await Assert.ThrowsAsync<TimeoutException>(() => queuedPreparing.WaitAsync(TimeSpan.FromSeconds(1)));
             Assert.False(executions[0].IsCompleted);
             Assert.True(File.Exists(first.ArtifactPath));
-            Assert.Equal(2, sandbox.Prepared.Count);
+            Assert.Equal(slots, sandbox.Prepared.Count);
 
             first.AllowDisposal.TrySetResult();
-            Assert.Equal(ids[2], await thirdPreparing.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.Equal(ids[slots], await queuedPreparing.WaitAsync(TimeSpan.FromSeconds(10)));
             Assert.False(File.Exists(first.ArtifactPath));
-            var thirdUpload = await uploads.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal($"/satoshi/artifacts/{ids[2]}/Example.btcpay", thirdUpload.Path);
-            Assert.Equal(2, Directory.GetFiles(sandbox.Root, "artifact.btcpay", SearchOption.AllDirectories).Length);
+            var queuedUpload = await uploads.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal($"/satoshi/artifacts/{ids[slots]}/Example.btcpay", queuedUpload.Path);
+            Assert.Equal(slots, Directory.GetFiles(sandbox.Root, "artifact.btcpay", SearchOption.AllDirectories).Length);
 
             releaseAllUploads.TrySetResult();
             sandbox.AllowAllDisposals.TrySetResult();
             await Task.WhenAll(executions).WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Empty(Directory.EnumerateFileSystemEntries(sandbox.Root));
-            Assert.Equal(3, storage.Requests.Count);
-            Assert.Equal(3, await connection.ExecuteScalarAsync<int>(
+            Assert.Equal(ids.Count, storage.Requests.Count);
+            Assert.Equal(ids.Count, await connection.ExecuteScalarAsync<int>(
                 "SELECT count(*) FROM builds WHERE plugin_slug=@slug AND state='uploaded'",
                 new { slug = slug.ToString() }));
         }

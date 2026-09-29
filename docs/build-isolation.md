@@ -48,7 +48,7 @@ queue service or broker database is introduced.
 
 1. **Admission.** The web application checks the build feature flag, user
    permissions/whitelist and executor availability before submission. The broker
-   validates the request and admits at most two leases, including retained results.
+   validates the request and admits at most three leases, including retained results.
 2. **Preparation.** The broker allocates a lease, private scratch directories,
    networks and a proxy, then starts execution automatically. There is no separate
    start authorization. Disabling new builds blocks submissions, not jobs already
@@ -68,7 +68,7 @@ queue service or broker database is introduced.
    private temporary file outside sandbox mounts, then disposes all sandbox
    resources. Only confirmed cleanup permits a successful result. The retained
    file is unlinked immediately and held only by the broker's open handle: no
-   downloadable result survives a broker restart. At most two artifacts of
+   downloadable result survives a broker restart. At most three artifacts of
    256 MiB each can be retained, released after download or lease expiry (45 minutes
    from admission). A transfer that fails on the broker retains the file until
    consumption or expiry; the web client does not automatically retry it.
@@ -138,7 +138,7 @@ or the Docker socket into a worker.
 
 Workers also run as non-root with a read-only root filesystem, dropped Linux
 capabilities, `no-new-privileges`, and CPU, memory, process and execution limits.
-The broker admits at most two concurrent build leases. See
+The broker admits at most three concurrent build leases. See
 [BuildPolicy](../PluginBuilder.Builds/Services/BuildPolicy.cs) and
 [DockerBuildSandbox](../PluginBuilder.BuildBroker/Services/DockerBuildSandbox.cs)
 for the enforced bounds.

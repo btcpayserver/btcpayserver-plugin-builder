@@ -212,7 +212,7 @@ jobs:
           # Match the production bound for the application's private downloads.
           pb_staging="$RUNNER_TEMP/pluginbuilder-web-config/BTCPayServer-PluginBuilder/broker-staging"
           sudo install -m 0700 -d "$pb_staging"
-          sudo mount -t tmpfs -o size=600m,mode=0700,noexec,nosuid,nodev tmpfs "$pb_staging"
+          sudo mount -t tmpfs -o size=800m,mode=0700,noexec,nosuid,nodev tmpfs "$pb_staging"
 
           for attempt in {1..30}; do
             if docker exec plugin-builder-broker-ci /app/PluginBuilder.BuildBroker --healthcheck; then
