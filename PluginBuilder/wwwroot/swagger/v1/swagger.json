@@ -2169,6 +2169,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "The user already has the maximum number of builds in progress (`too-many-active-builds`)"
           }
         }
       }

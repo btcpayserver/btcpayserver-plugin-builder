@@ -9,6 +9,8 @@ using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
 using PluginBuilder.ViewModels.Plugin;
 
+using PluginBuilder.Builds.Services;
+
 namespace PluginBuilder.Util.Extensions;
 
 public static class NpgsqlConnectionExtensions
@@ -358,8 +360,26 @@ public static class NpgsqlConnectionExtensions
             }, tx) == 1;
     }
 
+    /// <returns>The new build id, or null when the user already has the maximum number of unfinished builds.</returns>
+    public static async Task<long?> NewBuildWithinUserLimit(this NpgsqlConnection connection, PluginSlug pluginSlug,
+        PluginBuildParameters buildParameters, string userId)
+    {
+        await using var tx = await connection.BeginTransactionAsync();
+        // Lock the user's row so one user's concurrent requests cannot both pass the count.
+        await connection.ExecuteAsync("""SELECT 1 FROM "AspNetUsers" WHERE "Id" = @userId FOR UPDATE""", new { userId }, tx);
+        var unfinished = await connection.ExecuteScalarAsync<int>(
+            "SELECT count(*) FROM builds WHERE triggered_by = @userId AND state = ANY(@states)",
+            new { userId, states = BuildStatesExtensions.UnfinishedEventNames }, tx);
+        if (unfinished >= BuildPolicy.MaxActiveBuildsPerUser)
+            return null;
+
+        var buildId = await connection.NewBuild(pluginSlug, buildParameters, userId, tx);
+        await tx.CommitAsync();
+        return buildId;
+    }
+
     public static async Task<long> NewBuild(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginBuildParameters buildParameters,
-        string? triggeredBy = null)
+        string? triggeredBy = null, NpgsqlTransaction? tx = null)
     {
         BuildInfo bi = new()
         {
@@ -382,7 +402,7 @@ public static class NpgsqlConnectionExtensions
                 state = BuildStates.Queued.ToEventName(),
                 buildInfo = bi.ToString(),
                 triggeredBy
-            });
+            }, tx);
         return buildId;
     }
 
