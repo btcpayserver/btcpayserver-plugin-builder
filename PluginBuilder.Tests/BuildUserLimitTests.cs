@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text;
-using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -18,6 +17,8 @@ using Xunit.Abstractions;
 
 using PluginBuilder.Builds;
 using PluginBuilder.Builds.Services;
+
+using static PluginBuilder.Tests.HttpTestHelpers;
 
 namespace PluginBuilder.Tests;
 
@@ -57,8 +58,8 @@ public class BuildUserLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
         // Claim the identifier up front; this test is about admission, not the first-build identifier claim.
         await conn.ExecuteAsync("UPDATE plugins SET identifier = @identifier WHERE slug = @slug",
             new { identifier = GatedGitProvider.Identifier, slug = slug.ToString() });
-        using var owner = CreateClient(tester).SetBasicAuth(ownerEmail, Password);
-        using var coOwner = CreateClient(tester).SetBasicAuth(coOwnerEmail, Password);
+        using var owner = CreateBrowser(tester).SetBasicAuth(ownerEmail, Password);
+        using var coOwner = CreateBrowser(tester).SetBasicAuth(coOwnerEmail, Password);
 
         try
         {
@@ -108,8 +109,8 @@ public class BuildUserLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
         for (var i = 0; i < BuildPolicy.MaxActiveBuildsPerUser; i++)
             await conn.NewBuild(slug, new PluginBuildParameters(git.RepositoryUrl), triggeredBy: userId);
 
-        using var browser = CreateClient(tester);
-        await LogIn(browser, email);
+        using var browser = CreateBrowser(tester);
+        await LogIn(browser, email, Password);
         using var page = await browser.GetAsync($"/plugins/{slug}/create");
         page.EnsureSuccessStatusCode();
         using var form = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -187,34 +188,6 @@ public class BuildUserLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
                    "SELECT EXISTS(SELECT 1 FROM builds WHERE plugin_slug = @slug AND state = ANY(@states))",
                    new { slug = slug.ToString(), states = BuildStatesExtensions.UnfinishedEventNames }))
             await Task.Delay(10, timeout.Token);
-    }
-
-    private static HttpClient CreateClient(ServerTester tester) => new(new HttpClientHandler
-    {
-        AllowAutoRedirect = false,
-        CookieContainer = new CookieContainer()
-    }) { BaseAddress = new Uri(tester.WebApp.Urls.First()) };
-
-    private static async Task LogIn(HttpClient client, string email)
-    {
-        using var page = await client.GetAsync("/login");
-        page.EnsureSuccessStatusCode();
-        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["Email"] = email,
-            ["Password"] = Password,
-            ["__RequestVerificationToken"] = AntiforgeryToken(await page.Content.ReadAsStringAsync())
-        });
-        using var response = await client.PostAsync("/login", form);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-    }
-
-    private static string AntiforgeryToken(string html)
-    {
-        var input = Regex.Match(html, "<input\\b(?=[^>]*\\bname=\"__RequestVerificationToken\")[^>]*\\bvalue=\"([^\"]+)\"",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        Assert.True(input.Success, "Page must contain an antiforgery token.");
-        return WebUtility.HtmlDecode(input.Groups[1].Value);
     }
 
     private sealed class GatedGitProvider(int requests) : IGitHostingProvider
