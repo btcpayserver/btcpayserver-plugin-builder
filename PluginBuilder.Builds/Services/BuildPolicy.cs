@@ -7,6 +7,8 @@ namespace PluginBuilder.Builds.Services;
 public static class BuildPolicy
 {
     public const int MaxConcurrentBuilds = 2;
+    // Bounds how much of the shared build queue one account can hold at a time.
+    public const int MaxActiveBuildsPerUser = 2;
     public const int MaxBuildMetadataBytes = 1024 * 1024;
     public const int MaxBuildLogBytes = 10 * 1024 * 1024;
     public const int MaxBuildLogLines = 10_000;

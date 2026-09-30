@@ -75,8 +75,10 @@ public class DatabaseStartupHostedService : IHostedService
 
     private async Task CleanupScript(NpgsqlConnection conn)
     {
+        // No build survives a restart, so none may keep counting against its user's active build limit.
         await conn.ExecuteAsync(
-            "UPDATE builds SET state = 'failed', build_info = '{\"error\": \"Interrupted because the server restarted\"}'::JSONB WHERE state IN ('running', 'queued', 'uploading');");
+            "UPDATE builds SET state = 'failed', build_info = '{\"error\": \"Interrupted because the server restarted\"}'::JSONB WHERE state = ANY(@states);",
+            new { states = BuildStatesExtensions.UnfinishedEventNames });
     }
 
     private async Task RunScripts(NpgsqlConnection conn)

@@ -319,7 +319,13 @@ public class PluginController(
         if (!adminSettingsCache.NewBuildsEnabled && !isWhitelisted)
             return BuildsUnavailable();
 
-        var buildId = await conn.NewBuild(pluginSlug, model.ToBuildParameter(), triggeredBy: userManager.GetUserId(User));
+        if (await conn.NewBuildWithinUserLimit(pluginSlug, model.ToBuildParameter(), userManager.GetUserId(User)!) is not { } buildId)
+        {
+            TempData[TempDataConstant.WarningMessage] =
+                $"You already have {BuildPolicy.MaxActiveBuildsPerUser} builds in progress. Wait for one to finish before starting another.";
+            return View(model);
+        }
+
         if (buildId == 0)
         {
             var existingSetting = await conn.GetSettings(pluginSlug) ?? new PluginSettings();

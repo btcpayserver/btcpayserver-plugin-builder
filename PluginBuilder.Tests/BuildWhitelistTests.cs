@@ -18,6 +18,8 @@ using Xunit.Abstractions;
 
 using PluginBuilder.Builds.Services;
 
+using static PluginBuilder.Tests.HttpTestHelpers;
+
 namespace PluginBuilder.Tests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
@@ -64,7 +66,7 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         });
 
         using var browser = CreateBrowser(tester);
-        await LogIn(browser, email);
+        await LogIn(browser, email, Password);
         // Keep the same login session and form token while changing the setting.
         using var initialPage = await browser.GetAsync($"/plugins/{slug}/create");
         initialPage.EnsureSuccessStatusCode();
@@ -156,8 +158,8 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
         using var admin = CreateBrowser(tester);
         using var owner = CreateBrowser(tester);
-        await LogIn(admin, adminEmail);
-        await LogIn(owner, ownerEmail);
+        await LogIn(admin, adminEmail, Password);
+        await LogIn(owner, ownerEmail, Password);
         using var editor = await admin.GetAsync("/admin/SettingsEditor");
         editor.EnsureSuccessStatusCode();
         var editorHtml = await editor.Content.ReadAsStringAsync();
@@ -241,8 +243,8 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await MakeAdmin(conn, secondAdminId);
         using var firstAdmin = CreateBrowser(tester);
         using var secondAdmin = CreateBrowser(tester);
-        await LogIn(firstAdmin, firstAdminEmail);
-        await LogIn(secondAdmin, secondAdminEmail);
+        await LogIn(firstAdmin, firstAdminEmail, Password);
+        await LogIn(secondAdmin, secondAdminEmail, Password);
 
         var firstPage = await GetEditor(firstAdmin);
         var secondPage = await GetEditor(secondAdmin);
@@ -283,8 +285,8 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await MakeAdmin(blocking, secondId);
         using var firstAdmin = CreateBrowser(tester);
         using var secondAdmin = CreateBrowser(tester);
-        await LogIn(firstAdmin, firstEmail);
-        await LogIn(secondAdmin, secondEmail);
+        await LogIn(firstAdmin, firstEmail, Password);
+        await LogIn(secondAdmin, secondEmail, Password);
         var firstPage = await GetEditor(firstAdmin);
         var secondPage = await GetEditor(secondAdmin);
         Assert.Equal(firstPage.Version, secondPage.Version);
@@ -354,7 +356,7 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await MakeAdmin(conn, adminId);
         await SetAccess(tester, conn, false, email);
         using var admin = CreateBrowser(tester);
-        await LogIn(admin, adminEmail);
+        await LogIn(admin, adminEmail, Password);
         var before = await GetEditor(admin);
 
         await conn.ExecuteAsync("""DELETE FROM "AspNetUsers" WHERE "Id" = @originalId""", new { originalId });
@@ -409,7 +411,7 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await SetAccess(tester, conn, false, email);
 
         using var browser = CreateBrowser(tester);
-        await LogIn(browser, email);
+        await LogIn(browser, email, Password);
         using var initialPage = await browser.GetAsync($"/plugins/{slug}/create");
         initialPage.EnsureSuccessStatusCode();
         var token = AntiforgeryToken(await initialPage.Content.ReadAsStringAsync());
@@ -483,7 +485,7 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await conn.NewPlugin(otherSlug, otherId);
         await SetAccess(tester, conn, false, email);
         using var browser = CreateBrowser(tester);
-        await LogIn(browser, email);
+        await LogIn(browser, email, Password);
         using var ownPage = await browser.GetAsync($"/plugins/{ownSlug}/create");
         ownPage.EnsureSuccessStatusCode();
         var token = AntiforgeryToken(await ownPage.Content.ReadAsStringAsync());
@@ -540,7 +542,7 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
             client.SetBasicAuth(email, Password);
         else
         {
-            await LogIn(client, email);
+            await LogIn(client, email, Password);
             using var page = await client.GetAsync($"/plugins/{slug}/create");
             page.EnsureSuccessStatusCode();
             token = AntiforgeryToken(await page.Content.ReadAsStringAsync());
@@ -587,7 +589,7 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await tester.GetService<AdminSettingsCache>().RefreshAllAdminSettings(conn);
 
         using var browser = CreateBrowser(tester);
-        await LogIn(browser, email);
+        await LogIn(browser, email, Password);
         using var get = await browser.GetAsync($"/plugins/{slug}/create");
         Assert.Equal(HttpStatusCode.Redirect, get.StatusCode);
         Assert.Contains("account", get.Headers.Location?.ToString(), StringComparison.OrdinalIgnoreCase);
@@ -697,38 +699,6 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
                    "SELECT state FROM builds WHERE plugin_slug = @slug AND id = @buildId", new { slug = slug.ToString(), buildId })
                != BuildStates.Failed.ToEventName())
             await Task.Delay(10, timeout.Token);
-    }
-
-    private static HttpClient CreateBrowser(ServerTester tester) => new(new HttpClientHandler
-    {
-        AllowAutoRedirect = false,
-        CookieContainer = new CookieContainer()
-    }) { BaseAddress = new Uri(tester.WebApp.Urls.First()) };
-
-    private static async Task LogIn(HttpClient client, string email)
-    {
-        using var page = await client.GetAsync("/login");
-        page.EnsureSuccessStatusCode();
-        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["Email"] = email,
-            ["Password"] = Password,
-            ["__RequestVerificationToken"] = AntiforgeryToken(await page.Content.ReadAsStringAsync())
-        });
-        using var response = await client.PostAsync("/login", form);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-    }
-
-    private static string AntiforgeryToken(string html) => InputValue(html, "__RequestVerificationToken");
-
-    private static string InputValue(string html, string name)
-    {
-        var input = Regex.Match(html, $"<input\\b(?=[^>]*\\bname=\"{Regex.Escape(name)}\")[^>]*>",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        Assert.True(input.Success, $"Page must contain the {name} input.");
-        var value = Regex.Match(input.Value, "\\bvalue=\"([^\"]+)\"");
-        Assert.True(value.Success);
-        return WebUtility.HtmlDecode(value.Groups[1].Value);
     }
 
     private static HttpContent BuildJson(string repository) => new StringContent(new JObject
