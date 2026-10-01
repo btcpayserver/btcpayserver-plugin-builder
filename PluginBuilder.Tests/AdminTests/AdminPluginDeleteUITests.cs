@@ -10,7 +10,6 @@ using Xunit.Abstractions;
 namespace PluginBuilder.Tests.AdminTests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
-[Trait("Category", "ExecutorIntegration")]
 public class AdminPluginDeleteUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("AdminPluginDeleteUITests", output);
@@ -25,7 +24,7 @@ public class AdminPluginDeleteUITests(ITestOutputHelper output) : PageTest
         var adminEmail = await tester.CreateServerAdminAsync();
         var ownerId = await tester.Server.CreateFakeUserAsync("owner@admin-delete.test", confirmEmail: true, githubVerified: true);
         var slug = $"admin-delete-{Guid.NewGuid():N}".Substring(0, 20);
-        await tester.Server.CreateAndBuildPluginAsync(ownerId, slug);
+        await tester.Server.CreatePublishedPluginAsync(ownerId, slug);
 
         await tester.LogIn(adminEmail);
         await tester.GoToUrl("/admin/plugins");

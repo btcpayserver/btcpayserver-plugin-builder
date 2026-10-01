@@ -15,7 +15,6 @@ using Xunit.Abstractions;
 namespace PluginBuilder.Tests.PluginTests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
-[Trait("Category", "ExecutorIntegration")]
 public class ImagesUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("ImagesUITests", output);
@@ -38,7 +37,7 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
 
         var pluginSlug = "images-settings-" + PlaywrightTester.GetRandomUInt256()[..8];
         var userId = await conn.QuerySingleAsync<string>("SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"Email\" = @Email", new { Email = user });
-        await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+        await t.Server.CreatePublishedPluginAsync(userId, pluginSlug);
 
         var old1 = "https://example.com/old-1.png";
         var old2 = "https://example.com/old-2.png";
@@ -91,7 +90,7 @@ public class ImagesUITests(ITestOutputHelper output) : PageTest
 
         var ownerId = await t.Server.CreateFakeUserAsync(confirmEmail: true, githubVerified: true);
         var pluginSlug = "images-carousel-" + PlaywrightTester.GetRandomUInt256()[..8];
-        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await t.Server.CreatePublishedPluginAsync(ownerId, pluginSlug);
 
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @PluginSlug AND id = @BuildId",

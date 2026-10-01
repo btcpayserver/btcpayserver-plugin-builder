@@ -12,7 +12,6 @@ using Xunit.Abstractions;
 namespace PluginBuilder.Tests.PluginTests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
-[Trait("Category", "ExecutorIntegration")]
 public class BuildUITests(ITestOutputHelper output) : PageTest
 {
     private const string DirWithoutCsproj = "docs";
@@ -178,7 +177,7 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
         var ownerEmail = $"{ownerEmailPrefix}-{Guid.NewGuid():N}@test.com";
         var ownerId = await t.Server.CreateFakeUserAsync(ownerEmail, confirmEmail: true, githubVerified: true);
         var pluginSlug = pluginSlugPrefix + PlaywrightTester.GetRandomUInt256()[..8];
-        var fullBuildId = await t.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await t.Server.CreatePublishedPluginAsync(ownerId, pluginSlug);
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
             new { pluginSlug, buildId = fullBuildId.BuildId });
@@ -203,6 +202,7 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
+    [Trait("Category", "ExecutorIntegration")]
     public async Task CreateBuild_And_ValidatesCsproj()
     {
         await using var t = new PlaywrightTester(_log) { Server = { ReuseDatabase = false } };

@@ -15,7 +15,6 @@ using Xunit.Abstractions;
 namespace PluginBuilder.Tests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
-[Trait("Category", "ExecutorIntegration")]
 public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     private static readonly JsonSerializerSettings SerializerSettings = new() { ContractResolver = new CamelCasePropertyNamesContractResolver() };
@@ -76,7 +75,7 @@ public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(log
 
         var ownerId = await tester.CreateFakeUserAsync();
         var pluginSlug = "btcpay-rc-" + Guid.NewGuid().ToString("N")[..8];
-        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await tester.CreatePublishedPluginAsync(ownerId, pluginSlug);
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         var buildRow = await conn.QuerySingleAsync<(string manifest_info, string build_info)>(
@@ -131,7 +130,7 @@ public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(log
 
         var ownerId = await tester.CreateFakeUserAsync();
         var pluginSlug = "btcpay-max-" + Guid.NewGuid().ToString("N")[..8];
-        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await tester.CreatePublishedPluginAsync(ownerId, pluginSlug);
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         var buildRow = await conn.QuerySingleAsync<(string manifest_info, string build_info)>(
@@ -176,7 +175,7 @@ public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(log
 
         var ownerId = await tester.CreateFakeUserAsync();
         var pluginSlug = "btcpay-short-max-" + Guid.NewGuid().ToString("N")[..8];
-        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await tester.CreatePublishedPluginAsync(ownerId, pluginSlug);
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         var buildRow = await conn.QuerySingleAsync<(string manifest_info, string build_info)>(
@@ -213,7 +212,7 @@ public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(log
 
         var ownerId = await tester.CreateFakeUserAsync();
         var pluginSlug = "btcpay-range-" + Guid.NewGuid().ToString("N")[..8];
-        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await tester.CreatePublishedPluginAsync(ownerId, pluginSlug);
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         var buildRow = await conn.QuerySingleAsync<(string manifest_info, string build_info)>(
@@ -262,7 +261,7 @@ public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(log
 
         var ownerId = await tester.CreateFakeUserAsync();
         var pluginSlug = "btcpay-override-" + Guid.NewGuid().ToString("N")[..8];
-        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await tester.CreatePublishedPluginAsync(ownerId, pluginSlug);
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         var buildRow = await conn.QuerySingleAsync<(string manifest_info, string build_info)>(

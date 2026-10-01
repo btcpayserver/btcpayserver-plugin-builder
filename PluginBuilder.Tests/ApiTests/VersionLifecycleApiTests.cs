@@ -14,7 +14,6 @@ using Xunit.Abstractions;
 namespace PluginBuilder.Tests.ApiTests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
-[Trait("Category", "ExecutorIntegration")]
 public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     private static readonly JsonSerializerSettings SerializerSettings = new() { ContractResolver = new CamelCasePropertyNamesContractResolver() };
@@ -26,7 +25,7 @@ public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(log
         tester.ReuseDatabase = false;
         await tester.Start();
 
-        var scenario = await CreateBuiltPluginScenarioAsync(tester);
+        var scenario = await CreatePublishedPluginScenarioAsync(tester);
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
 
         var queuedBuildId = await conn.NewBuild(new PluginSlug(scenario.PluginSlug), new PluginBuildParameters(ServerTester.RepoUrl)
@@ -85,7 +84,7 @@ public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(log
         tester.ReuseDatabase = false;
         await tester.Start();
 
-        var scenario = await CreateBuiltPluginScenarioAsync(tester);
+        var scenario = await CreatePublishedPluginScenarioAsync(tester);
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.UpdateBuild(scenario.FullBuildId, BuildStates.Failed, null);
 
@@ -105,7 +104,7 @@ public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(log
         tester.ReuseDatabase = false;
         await tester.Start();
 
-        var scenario = await CreateBuiltPluginScenarioAsync(tester);
+        var scenario = await CreatePublishedPluginScenarioAsync(tester);
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.SetPluginSettings(new PluginSlug(scenario.PluginSlug), new PluginSettings
         {
@@ -143,13 +142,13 @@ public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(log
         return body["errors"]?.ToObject<ValidationError[]>(JsonSerializer.Create(SerializerSettings)) ?? [];
     }
 
-    private async Task<TestScenario> CreateBuiltPluginScenarioAsync(ServerTester tester)
+    private async Task<TestScenario> CreatePublishedPluginScenarioAsync(ServerTester tester)
     {
         var email = $"api-{Guid.NewGuid():N}@example.com";
         const string password = "123456";
         var ownerId = await tester.CreateFakeUserAsync(email, password);
         var pluginSlug = "api-vl-" + Guid.NewGuid().ToString("N")[..8];
-        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await tester.CreatePublishedPluginAsync(ownerId, pluginSlug);
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         var version = string.Join('.',
