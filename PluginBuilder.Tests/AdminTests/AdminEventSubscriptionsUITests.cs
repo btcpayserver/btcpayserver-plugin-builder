@@ -4,7 +4,6 @@ using Dapper;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Playwright;
-using PluginBuilder.BuildBroker.HostedServices;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 using Xunit;
@@ -90,6 +89,52 @@ public class AdminEventSubscriptionsUITests(ITestOutputHelper output) : UnitTest
     }
 
     [Fact]
+    public async Task ClosingWebhookCreationClearsTheSecretAndClipboardFallback()
+    {
+        await using var tester = CreateTester("EventSubscriptionsSecretCleanupUi");
+        await tester.StartAsync();
+        await tester.LogIn(await tester.CreateServerAdminAsync());
+        await tester.GoToUrl("/admin/event-subscriptions");
+        var page = tester.Page!;
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+
+        await page.Locator("#CreateSubscription").ClickAsync();
+        var modal = page.Locator("#CreateSubscriptionModal");
+        await modal.Locator("#Creation_Destination").FillAsync("https://review.example.com/hooks/plugin-builder");
+        await modal.Locator("#CreateSubscriptionForm").GetByRole(AriaRole.Button, new() { Name = "Create subscription", Exact = true }).ClickAsync();
+        await Expect(modal.Locator("#SubscriptionSuccess")).ToBeVisibleAsync();
+        var secret = await modal.Locator("#IssuedSecret").InputValueAsync();
+        Assert.Equal(32, Convert.FromBase64String(secret).Length);
+
+        await page.EvaluateAsync("""
+            () => Object.defineProperty(navigator, 'clipboard', {
+                configurable: true,
+                value: { writeText: () => Promise.reject(new DOMException('Clipboard denied', 'NotAllowedError')) }
+            })
+            """);
+        await modal.GetByRole(AriaRole.Button, new() { Name = "Copy secret", Exact = true }).ClickAsync();
+        await Expect(modal.Locator("#SecretCopyFallback")).ToBeVisibleAsync();
+        Assert.Equal(secret, await modal.Locator("#SecretCopyText").InputValueAsync());
+
+        // Close without navigation: a reload would discard the document even if cleanup were broken.
+        await modal.EvaluateAsync("element => { window.subscriptionCleanupModal = element; }");
+        await modal.GetByRole(AriaRole.Button, new() { Name = "Done", Exact = true }).ClickAsync();
+        await Expect(modal).ToBeHiddenAsync();
+        Assert.True(await modal.EvaluateAsync<bool>("element => element === window.subscriptionCleanupModal"),
+            "Closing the modal must keep the current document so its cleanup is actually tested.");
+        await Expect(page.Locator("#IssuedSecret, #SecretCopyText")).ToHaveCountAsync(0);
+        Assert.False((await page.ContentAsync()).Contains(secret, StringComparison.Ordinal),
+            "Closing the modal must remove the secret from all text and value attributes.");
+
+        await page.Locator("#CreateSubscription").ClickAsync();
+        await Expect(modal.Locator("#CreateSubscriptionForm")).ToBeVisibleAsync();
+        await Expect(modal.Locator("#Creation_Destination")).ToHaveValueAsync("");
+        await Expect(modal.Locator("#SubscriptionSuccess")).ToBeHiddenAsync();
+        await Expect(page.Locator("#IssuedSecret, #SecretCopyText")).ToHaveCountAsync(0);
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_event_subscriptions"));
+    }
+
+    [Fact]
     public async Task EmailSubscriptionIsCreatedWithoutASecret()
     {
         await using var tester = CreateTester("EventSubscriptionsEmailUi");
@@ -165,8 +210,7 @@ public class AdminEventSubscriptionsUITests(ITestOutputHelper output) : UnitTest
         {
             foreach (var descriptor in services.Where(descriptor =>
                          descriptor.ServiceType == typeof(IHostedService) &&
-                         (descriptor.ImplementationType == typeof(DockerStartupHostedService) ||
-                          descriptor.ImplementationType == typeof(AzureStartupHostedService))).ToArray())
+                         descriptor.ImplementationType == typeof(AzureStartupHostedService)).ToArray())
                 services.Remove(descriptor);
         };
         return tester;
