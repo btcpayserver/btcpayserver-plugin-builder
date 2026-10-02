@@ -1,0 +1,219 @@
+@using PluginBuilder.Components
+@using PluginBuilder.DataModels
+@using PluginBuilder.Services
+@model PluginBuilder.Controllers.AdminEventSubscriptionsController.SubscriptionPage
+@{
+    ViewData.SetActivePage(AdminNavPages.EventSubscriptions, "Event subscriptions");
+    var selected = Model.Creation.EventTypes ?? [];
+}
+
+<div id="EventSubscriptions">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+        <h1 class="mb-0">@ViewData["Title"]</h1>
+        <button id="CreateSubscription" type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#CreateSubscriptionModal">Create subscription</button>
+    </div>
+    <p class="text-muted mb-4">Send admin events, such as new builds and listing requests, to a webhook or an email address. Subscriptions are server-wide and apply to future events only.</p>
+    <div id="SubscriptionList">
+        @if (Model.Subscriptions.Count == 0)
+        {
+            <p class="text-muted py-4">No subscriptions yet.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead><tr><th>Destination</th><th>Events</th><th>Status</th><th>Failed deliveries</th><th>Created</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+                    <tbody>
+                    @foreach (var subscription in Model.Subscriptions)
+                    {
+                        <tr data-subscription-id="@subscription.Id">
+                            <td class="text-break"><span class="badge bg-light text-dark me-1">@subscription.Kind</span><span data-subscription-destination>@subscription.Destination</span></td>
+                            <td data-subscription-events>@(subscription.EventTypes.Length == 0 ? "All events" : string.Join(", ", subscription.EventTypes))</td>
+                            <td><span data-subscription-status class="badge @(subscription.Enabled ? "bg-success" : "bg-secondary")">@(subscription.Enabled ? "Enabled" : "Disabled")</span></td>
+                            <td data-subscription-failed>@subscription.FailedDeliveries</td>
+                            <td class="text-nowrap" title="@subscription.CreatedAt.ToString("u")">@subscription.CreatedAt.ToString("yyyy-MM-dd")</td>
+                            <td class="text-end text-nowrap">
+                                <form asp-action="SetEnabled" asp-route-id="@subscription.Id" method="post" class="d-inline">
+                                    <input type="hidden" name="enabled" value="@(subscription.Enabled ? "false" : "true")" />
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm">@(subscription.Enabled ? "Disable" : "Enable")</button>
+                                </form>
+                                <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#ConfirmModal" data-action="@Url.Action("Delete", new { id = subscription.Id })" data-title="Delete the subscription to @subscription.Destination?">Delete</button>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="modal fade" id="CreateSubscriptionModal" tabindex="-1" aria-labelledby="CreateSubscriptionTitle" aria-hidden="true" data-open="@((Model.Issued is not null || !ViewData.ModelState.IsValid) ? "true" : "false")">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="CreateSubscriptionTitle">@(Model.Issued is null ? "Create subscription" : "Subscription created")</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"><vc:icon symbol="close" /></button>
+            </div>
+            <form id="CreateSubscriptionForm" asp-action="Create" method="post" hidden="@(Model.Issued is not null)">
+                <div class="modal-body">
+                    <div id="SubscriptionValidation" asp-validation-summary="All" class="text-danger" role="alert"></div>
+                    <div id="SubscriptionCreationError" class="alert alert-danger" role="alert" hidden></div>
+                    <div class="mb-3">
+                        <label asp-for="Creation.Kind" class="form-label">Send to</label>
+                        <select asp-for="Creation.Kind" class="form-select">
+                            <option value="webhook">Webhook (HTTPS URL)</option>
+                            <option value="email">Email address</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Creation.Destination" class="form-label">Destination</label>
+                        <input asp-for="Creation.Destination" class="form-control" maxlength="2048" placeholder="https://example.com/hooks/plugin-builder" autocomplete="off" required />
+                    </div>
+                    <fieldset class="mb-3">
+                        <legend class="form-label fs-6">Events</legend>
+                        <div class="form-text mt-0 mb-2">Leave all unchecked to receive every event type.</div>
+                        @foreach (var type in AdminEventService.EventTypes)
+                        {
+                            var id = "EventType-" + type.Replace('.', '-');
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="Creation.EventTypes" value="@type" id="@id" checked="@selected.Contains(type)" />
+                                <label class="form-check-label" for="@id"><code>@type</code></label>
+                            </div>
+                        }
+                    </fieldset>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-primary" type="submit">Create subscription</button>
+                </div>
+            </form>
+            <div id="SubscriptionSuccess" hidden="@(Model.Issued is null)">
+                @if (Model.Issued is { } issued)
+                {
+                    <div class="modal-body">
+                        @if (issued.Secret is { } secret)
+                        {
+                            <div class="alert alert-success">Subscription created. Copy the signing secret into the receiving service now: it will not be shown again.</div>
+                            <label for="IssuedSecret" class="form-label">Signing secret</label>
+                            <div class="input-group">
+                                <input id="IssuedSecret" class="form-control font-monospace" value="@secret" readonly autocomplete="off" spellcheck="false" />
+                                <button type="button" class="btn btn-secondary" data-copy="secret" aria-label="Copy secret" title="Copy secret">
+                                    <span aria-hidden="true"><vc:icon symbol="copy" /></span>
+                                </button>
+                            </div>
+                            <p id="SecretCopyStatus" class="small mt-3 mb-0" role="status"></p>
+                            <div id="SecretCopyFallback" class="mt-3" hidden>
+                                <label for="SecretCopyText" class="form-label">Select and copy this text</label>
+                                <textarea id="SecretCopyText" class="form-control font-monospace" rows="2" readonly spellcheck="false"></textarea>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-success">Subscription created. Email subscriptions have no signing secret.</div>
+                        }
+                        <p class="small text-muted mt-3 mb-0">Subscription ID <code data-issued-id>@issued.Id</code></p>
+                    </div>
+                    <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button></div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@section FooterScripts {
+    <partial name="_Confirm" model='new ConfirmModel("Delete subscription", "Events are no longer delivered to this destination, and its delivery history is removed. This cannot be undone.", "Delete")' />
+    <script>
+        (() => {
+            const modal = document.getElementById('CreateSubscriptionModal');
+            const form = document.getElementById('CreateSubscriptionForm');
+            const success = document.getElementById('SubscriptionSuccess');
+            const title = document.getElementById('CreateSubscriptionTitle');
+            const submit = form.querySelector('[type="submit"]');
+            const error = document.getElementById('SubscriptionCreationError');
+            let pending = false;
+
+            modal.addEventListener('shown.bs.modal', () => {
+                const focus = success.querySelector('[data-copy="secret"]') || document.getElementById('Creation_Destination');
+                focus.focus();
+            });
+            modal.addEventListener('hide.bs.modal', event => {
+                if (pending) event.preventDefault();
+            });
+            modal.addEventListener('hidden.bs.modal', () => {
+                // Drop the secret from the DOM, including the value attribute and any fallback text.
+                success.replaceChildren();
+                success.hidden = true;
+                form.hidden = false;
+                title.textContent = 'Create subscription';
+                form.reset();
+                document.getElementById('Creation_Destination').value = '';
+                document.getElementById('SubscriptionValidation').replaceChildren();
+            });
+
+            form.addEventListener('submit', async event => {
+                event.preventDefault();
+                if (!modal.classList.contains('show') || form.hidden || submit.disabled) return;
+                pending = true;
+                submit.disabled = true;
+                submit.textContent = 'Creating...';
+                error.hidden = true;
+                try {
+                    // Reuse the MVC response so a reload of this page is a GET and can never create a second subscription.
+                    const response = await fetch(form.action, {
+                        method: 'POST', body: new FormData(form), credentials: 'same-origin',
+                        headers: { 'Accept': 'text/html' }
+                    });
+                    if (!response.ok || response.redirected) throw new Error('Creation response unavailable');
+                    const result = new DOMParser().parseFromString(await response.text(), 'text/html');
+                    const issued = result.getElementById('SubscriptionSuccess');
+                    const list = result.getElementById('SubscriptionList');
+                    const validation = result.getElementById('SubscriptionValidation');
+                    if (!issued || !list || !validation) throw new Error('Creation response unavailable');
+                    if (issued.querySelector('[data-issued-id]')) {
+                        success.replaceChildren(...issued.childNodes);
+                        document.getElementById('SubscriptionList').replaceChildren(...list.childNodes);
+                        form.hidden = true;
+                        success.hidden = false;
+                        title.textContent = 'Subscription created';
+                        (success.querySelector('[data-copy="secret"]') || success.querySelector('[data-bs-dismiss]')).focus();
+                    } else {
+                        document.getElementById('SubscriptionValidation').replaceWith(validation);
+                    }
+                    submit.disabled = false;
+                } catch {
+                    // The request may have succeeded even if its response was lost. Require a list check before retrying.
+                    error.textContent = 'We could not confirm whether the subscription was created. Reload this page and check the list. Delete any new subscription whose secret you could not save before creating another.';
+                    error.hidden = false;
+                } finally {
+                    pending = false;
+                    submit.textContent = 'Create subscription';
+                }
+            });
+
+            success.addEventListener('click', async event => {
+                const button = event.target.closest('[data-copy="secret"]');
+                if (!button) return;
+                const secret = success.querySelector('#IssuedSecret').value;
+                const status = success.querySelector('#SecretCopyStatus');
+                try {
+                    await navigator.clipboard.writeText(secret);
+                    if (!success.contains(status)) return;
+                    status.textContent = 'Secret copied.';
+                    success.querySelector('#SecretCopyFallback').hidden = true;
+                    success.querySelector('#SecretCopyText').value = '';
+                } catch {
+                    if (!success.contains(status)) return;
+                    status.textContent = 'Clipboard access is unavailable. Copy the selected text manually.';
+                    success.querySelector('#SecretCopyFallback').hidden = false;
+                    const field = success.querySelector('#SecretCopyText');
+                    field.value = secret;
+                    field.focus();
+                    field.select();
+                }
+            });
+
+            if (modal.dataset.open === 'true') bootstrap.Modal.getOrCreateInstance(modal).show();
+        })();
+    </script>
+}

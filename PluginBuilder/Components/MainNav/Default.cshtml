@@ -144,6 +144,13 @@
                                     </a>
                                 </li>
                                 <li class="nav-item">
+                                    <a asp-area="" asp-controller="AdminEventSubscriptions" asp-action="Index"
+                                       class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.EventSubscriptions)" id="AdminNav-EventSubscriptions">
+                                        <vc:icon symbol="notifications" />
+                                        <span text-translate="true">Event Subscriptions</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
                                     <a asp-area="" asp-controller="Admin" asp-action="LogsView"
                                        class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.Logs)" id="AdminNav-Logs">
                                         <vc:icon symbol="server-settings" />

@@ -1,11 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
-using System.Security.Cryptography;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
-using MimeKit;
 using PluginBuilder.Authentication;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
@@ -16,9 +13,9 @@ namespace PluginBuilder.Controllers;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Route("api/v1/admin/events")]
 [Authorize(Roles = Roles.ServerAdmin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.AdminApi)]
-public class AdminEventsController(DBConnectionFactory connections, AdminEventService events, IDataProtectionProvider protection) : ControllerBase
+public class AdminEventsController(DBConnectionFactory connections, AdminEventService events, AdminEventSubscriptionService subscriptions) : ControllerBase
 {
-    public const string SecretPurpose = "PluginBuilder.AdminEventWebhooks.v1";
+    public const string SecretPurpose = AdminEventSubscriptionService.SecretPurpose;
 
     [HttpGet]
     public async Task<IActionResult> Get([FromQuery, Range(0, long.MaxValue)] long after = 0,
@@ -47,49 +44,21 @@ public class AdminEventsController(DBConnectionFactory connections, AdminEventSe
     [HttpPost("subscriptions")]
     public async Task<IActionResult> Create(SubscriptionRequest request, CancellationToken cancellationToken)
     {
-        if (request.EventTypes.Any(t => !AdminEventService.EventTypes.Contains(t)))
-            return BadRequest(new { message = "Unknown event type. Use an empty array to subscribe to all events." });
-        if (request.Kind == "webhook")
-        {
-            if (!AdminWebhookSender.IsValidDestination(request.Destination))
-                return BadRequest(new { message = "Webhook destination must be an HTTPS URL without credentials or a fragment." });
-        }
-        else if (request.Kind != "email" || !MailboxAddress.TryParse(request.Destination, out var mailbox) ||
-                 mailbox.Address != request.Destination || request.Destination.Contains('\r') || request.Destination.Contains('\n'))
-            return BadRequest(new { message = "Specify kind webhook or email, and a single valid destination." });
-
-        var id = Guid.NewGuid();
-        var secret = request.Kind == "webhook" ? Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)) : null;
-        var protectedSecret = secret is null ? null : protection.CreateProtector(SecretPurpose).Protect(secret);
-        await using var conn = await connections.Open(cancellationToken);
-        await conn.ExecuteAsync(new CommandDefinition("""
-            INSERT INTO admin_event_subscriptions(id, kind, destination, protected_secret, event_types, created_by)
-            VALUES (@id, @Kind, @Destination, @protectedSecret, @eventTypes, @createdBy)
-            """, new { id, request.Kind, request.Destination, protectedSecret,
-                eventTypes = request.EventTypes.Distinct().ToArray(), createdBy = User.FindFirstValue(ClaimTypes.NameIdentifier)! },
-            cancellationToken: cancellationToken));
+        if (AdminEventSubscriptionService.Validate(request.Kind, request.Destination, request.EventTypes) is { } error)
+            return BadRequest(new { message = error });
+        var created = await subscriptions.Create(User.FindFirstValue(ClaimTypes.NameIdentifier)!, request.Kind, request.Destination,
+            request.EventTypes, cancellationToken);
         Response.Headers.CacheControl = "no-store";
-        return StatusCode(201, new { id, secret });
+        return StatusCode(201, new { id = created.Id, secret = created.Secret });
     }
 
     [HttpPut("subscriptions/{id:guid}/enabled")]
-    public async Task<IActionResult> Enable(Guid id, EnableRequest request, CancellationToken cancellationToken)
-    {
-        await using var conn = await connections.Open(cancellationToken);
-        var changed = await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE admin_event_subscriptions SET enabled = @Enabled WHERE id = @id", new { id, request.Enabled },
-            cancellationToken: cancellationToken));
-        return changed == 0 ? NotFound() : NoContent();
-    }
+    public async Task<IActionResult> Enable(Guid id, EnableRequest request, CancellationToken cancellationToken) =>
+        await subscriptions.SetEnabled(id, request.Enabled, cancellationToken) ? NoContent() : NotFound();
 
     [HttpDelete("subscriptions/{id:guid}")]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
-    {
-        await using var conn = await connections.Open(cancellationToken);
-        var changed = await conn.ExecuteAsync(new CommandDefinition("DELETE FROM admin_event_subscriptions WHERE id = @id", new { id },
-            cancellationToken: cancellationToken));
-        return changed == 0 ? NotFound() : NoContent();
-    }
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken) =>
+        await subscriptions.Delete(id, cancellationToken) ? NoContent() : NotFound();
 
     [HttpGet("subscriptions/{id:guid}/deliveries")]
     public async Task<IActionResult> Deliveries(Guid id, [FromQuery, Range(0, long.MaxValue)] long after = 0,
