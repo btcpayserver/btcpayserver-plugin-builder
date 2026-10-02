@@ -105,8 +105,8 @@ public class BuildSandboxContractTests
         Assert.DoesNotContain("--privileged", arguments);
         Assert.DoesNotContain("--cgroupns", arguments);
         Assert.DoesNotContain("--cap-add", arguments);
-        AssertOption(arguments, "--memory", "3g");
-        AssertOption(arguments, "--memory-swap", "3g");
+        AssertOption(arguments, "--memory", "1536m");
+        AssertOption(arguments, "--memory-swap", "1536m");
         AssertOption(arguments, "--cpus", "2");
         AssertOption(arguments, "--pids-limit", "512");
         AssertOption(arguments, "--ulimit", "nofile=4096:4096");

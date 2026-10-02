@@ -266,7 +266,7 @@ public class BuildBrokerSecurityTests
     }
 
     [Fact]
-    public async Task ParallelClientsCannotAllocateMoreThanTwoLeases()
+    public async Task ParallelClientsCannotAllocateMoreThanTheLeaseLimit()
     {
         await using var fixture = await BrokerFixture.Start();
         var submissions = await Task.WhenAll(Enumerable.Range(0, 12).Select(async id =>
@@ -277,17 +277,17 @@ public class BuildBrokerSecurityTests
             return (response.StatusCode, Lease: lease);
         }));
         var accepted = submissions.Where(result => result.StatusCode == HttpStatusCode.Accepted).ToArray();
-        Assert.Equal(2, accepted.Length);
+        Assert.Equal(BuildPolicy.MaxConcurrentBuilds, accepted.Length);
         Assert.All(submissions.Where(result => result.Lease is null), result =>
             Assert.Equal(HttpStatusCode.TooManyRequests, result.StatusCode));
-        await Eventually(() => fixture.Sandbox.PrepareCalls == 2);
-        Assert.Equal(2, fixture.Sandbox.PrepareCalls);
-        Assert.NotEqual(accepted[0].Lease, accepted[1].Lease);
+        await Eventually(() => fixture.Sandbox.PrepareCalls == BuildPolicy.MaxConcurrentBuilds);
+        Assert.Equal(BuildPolicy.MaxConcurrentBuilds, fixture.Sandbox.PrepareCalls);
+        Assert.Equal(accepted.Length, accepted.Select(result => result.Lease).Distinct().Count());
         Assert.All(accepted, result => Assert.Matches("\\A[0-9a-f]{32}\\z", result.Lease!));
         foreach (var lease in accepted)
             await fixture.WaitForExecution(lease.Lease!);
         await fixture.StopAsync();
-        Assert.Equal(2, fixture.Sandbox.DisposalCount);
+        Assert.Equal(BuildPolicy.MaxConcurrentBuilds, fixture.Sandbox.DisposalCount);
     }
 
     [Theory]
@@ -354,14 +354,15 @@ public class BuildBrokerSecurityTests
     {
         await using var fixture = await BrokerFixture.Start(TimeSpan.FromSeconds(3));
         fixture.Sandbox.CompleteImmediately = true;
-        var first = await fixture.Submit(94);
-        var second = await fixture.Submit(95);
-        using var result1 = await fixture.WaitForResult(first);
-        using var result2 = await fixture.WaitForResult(second);
-        Assert.Equal(2, fixture.Sandbox.DisposalCount);
+        List<string> leases = [];
+        for (var i = 0; i < BuildPolicy.MaxConcurrentBuilds; i++)
+            leases.Add(await fixture.Submit(90 + i));
+        foreach (var lease in leases)
+            (await fixture.WaitForResult(lease)).Dispose();
+        Assert.Equal(BuildPolicy.MaxConcurrentBuilds, fixture.Sandbox.DisposalCount);
         using var rejected = await fixture.PostRaw(JsonSerializer.Serialize(ValidRequest(96)));
         Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
-        await Eventually(async () => (await fixture.Client.GetAsync($"/v1/builds/{first}")).StatusCode == HttpStatusCode.NotFound,
+        await Eventually(async () => (await fixture.Client.GetAsync($"/v1/builds/{leases[0]}")).StatusCode == HttpStatusCode.NotFound,
             TimeSpan.FromSeconds(10));
         await fixture.Submit(97);
     }
@@ -502,8 +503,8 @@ public class BuildBrokerSecurityTests
         Assert.True(fixture.Executor.TryResumeAdmission(generation));
         fixture.Sandbox.PrepareFailure = null;
         fixture.Sandbox.BeforePrepare = null;
-        await fixture.Submit(33);
-        await fixture.Submit(34);
+        for (var i = 0; i < BuildPolicy.MaxConcurrentBuilds; i++)
+            await fixture.Submit(33 + i);
     }
 
     [Theory]
