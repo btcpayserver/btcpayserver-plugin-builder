@@ -16,7 +16,6 @@ using Xunit.Abstractions;
 namespace PluginBuilder.Tests.PluginTests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
-[Trait("Category", "ExecutorIntegration")]
 public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("PluginRequestListingUITest", output);
@@ -55,6 +54,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
     }
 
     [Fact]
+    [Trait("Category", "ExecutorIntegration")]
     public async Task RequestListing_Tests()
     {
         await using var t = new PlaywrightTester(_log);
@@ -437,7 +437,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         // Create a plugin with a pending listing request
         var pluginSlug = "test-plugin-" + PlaywrightTester.GetRandomUInt256()[..8];
         var userId = await t.Server.CreateFakeUserAsync();
-        await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+        await t.Server.CreatePublishedPluginAsync(userId, pluginSlug);
 
         // Create a listing request
         var requestId = await conn.CreateListingRequest(
@@ -504,7 +504,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         // Create a plugin with a pending listing request
         var pluginSlug = "test-plugin-reject-" + PlaywrightTester.GetRandomUInt256()[..8];
         var userId = await t.Server.CreateFakeUserAsync();
-        await t.Server.CreateAndBuildPluginAsync(userId, pluginSlug);
+        await t.Server.CreatePublishedPluginAsync(userId, pluginSlug);
 
         var requestId = await conn.CreateListingRequest(
             pluginSlug,

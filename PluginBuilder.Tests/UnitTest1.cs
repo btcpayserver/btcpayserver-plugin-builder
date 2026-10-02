@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using Microsoft.AspNetCore.Http;
 using Dapper;
 using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json;
@@ -13,7 +15,6 @@ using PluginBuilder.Builds.Services;
 namespace PluginBuilder.Tests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
-[Trait("Category", "ExecutorIntegration")]
 public class UnitTest1 : UnitTestBase
 {
     public UnitTest1(ITestOutputHelper logs) : base(logs)
@@ -21,6 +22,7 @@ public class UnitTest1 : UnitTestBase
     }
 
     [Fact]
+    [Trait("Category", "ExecutorIntegration")]
     public async Task ExecutorStartupBecomesReady()
     {
         await using var tester = await Start();
@@ -35,10 +37,12 @@ public class UnitTest1 : UnitTestBase
     [Fact]
     public async Task PluginsSearchWithNullByte_DoesNotReturnServerError()
     {
-        await using var tester = await Start();
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        await tester.Start();
 
         var ownerId = await tester.CreateFakeUserAsync();
-        await tester.CreateAndBuildPluginAsync(ownerId);
+        await tester.CreatePublishedPluginAsync(ownerId);
 
         var client = tester.CreateHttpClient();
         var urls = new[]
@@ -69,6 +73,7 @@ public class UnitTest1 : UnitTestBase
     }
 
     [Fact]
+    [Trait("Category", "ExecutorIntegration")]
     public async Task CanPackPlugin()
     {
         await using var tester = Create();
@@ -179,54 +184,79 @@ public class UnitTest1 : UnitTestBase
         Assert.DoesNotContain(res, p => p.ProjectSlug == pluginSlug);
     }
     [Fact]
-    public async Task DownloadEndpoint_UsesInternalLoopbackRedirectWhenLocalArtifactProxyEnabled()
-    {
-        await using var tester = Create();
-        tester.ReuseDatabase = false;
-        tester.EnableLocalArtifactDownloadProxy = true;
-        await tester.Start();
-
-        var ownerId = await tester.CreateFakeUserAsync();
-        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId);
-
-        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
-        client.BaseAddress = new Uri(tester.WebApp.Urls.First(), UriKind.Absolute);
-
-        using var response = await client.GetAsync($"api/v1/plugins/{fullBuildId.PluginSlug}/versions/1.0.2.0/download");
-
-        Assert.Equal(System.Net.HttpStatusCode.Found, response.StatusCode);
-        Assert.NotNull(response.Headers.Location);
-        Assert.Equal(
-            $"/api/v1/plugins/{fullBuildId.PluginSlug}/versions/1.0.2.0/download-loopback",
-            response.Headers.Location!.OriginalString);
-
-        using var proxiedResponse = await client.GetAsync(response.Headers.Location);
-
-        Assert.Equal(System.Net.HttpStatusCode.OK, proxiedResponse.StatusCode);
-        Assert.Equal("application/zip", proxiedResponse.Content.Headers.ContentType?.MediaType);
-        Assert.True((await proxiedResponse.Content.ReadAsByteArrayAsync()).Length > 0);
-    }
+    public Task DownloadEndpoint_UsesInternalLoopbackRedirectWhenLocalArtifactProxyEnabled()
+        => AssertArtifactDownloadAsync(useProxy: true);
 
     [Fact]
-    public async Task DownloadEndpoint_DoesNotUseInternalLoopbackRedirectWhenLocalArtifactProxyDisabled()
+    public Task DownloadEndpoint_DoesNotUseInternalLoopbackRedirectWhenLocalArtifactProxyDisabled()
+        => AssertArtifactDownloadAsync(useProxy: false);
+
+    private async Task AssertArtifactDownloadAsync(bool useProxy)
     {
         await using var tester = Create();
         tester.ReuseDatabase = false;
+        tester.EnableLocalArtifactDownloadProxy = useProxy;
         await tester.Start();
 
         var ownerId = await tester.CreateFakeUserAsync();
-        var fullBuildId = await tester.CreateAndBuildPluginAsync(ownerId);
+        var slug = "download-" + Guid.NewGuid().ToString("N")[..16];
+        var fullBuildId = await tester.CreatePublishedPluginAsync(ownerId, slug);
 
-        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
-        client.BaseAddress = new Uri(tester.WebApp.Urls.First(), UriKind.Absolute);
+        // These tests exercise delivery, not compilation. Store a real ZIP with known bytes.
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using var writer = new StreamWriter(archive.CreateEntry("download-test.txt").Open());
+            writer.Write("Artifact download test payload");
+        }
+        var expectedBytes = stream.ToArray();
+        var storage = tester.GetService<AzureStorageClient>();
+        var blobName = $"{slug}/download-test.btcpay";
 
-        using var response = await client.GetAsync($"api/v1/plugins/{fullBuildId.PluginSlug}/versions/1.0.2.0/download");
+        try
+        {
+            var url = await storage.UploadImageFile(new FormFile(stream, 0, stream.Length, "artifact", "download-test.btcpay")
+            {
+                Headers = new HeaderDictionary(),
+                ContentType = "application/zip"
+            }, blobName);
+            await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+            Assert.Equal(1, await conn.ExecuteAsync(
+                """
+                UPDATE builds
+                SET build_info = jsonb_set(build_info, '{url}', to_jsonb(CAST(@url AS text)))
+                WHERE plugin_slug = @slug AND id = @buildId
+                """,
+                new { url, slug, buildId = fullBuildId.BuildId }));
 
-        Assert.Equal(System.Net.HttpStatusCode.Found, response.StatusCode);
-        Assert.NotNull(response.Headers.Location);
-        Assert.DoesNotContain("download-loopback", response.Headers.Location!.OriginalString, StringComparison.Ordinal);
-        Assert.True(response.Headers.Location.IsAbsoluteUri);
-        Assert.True(response.Headers.Location.IsLoopback);
+            using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+            client.BaseAddress = new Uri(tester.WebApp.Urls.First(), UriKind.Absolute);
+            using var response = await client.GetAsync($"api/v1/plugins/{slug}/versions/1.0.2.0/download");
+
+            Assert.Equal(System.Net.HttpStatusCode.Found, response.StatusCode);
+            Assert.NotNull(response.Headers.Location);
+            if (useProxy)
+            {
+                Assert.Equal($"/api/v1/plugins/{slug}/versions/1.0.2.0/download-loopback",
+                    response.Headers.Location!.OriginalString);
+            }
+            else
+            {
+                Assert.DoesNotContain("download-loopback", response.Headers.Location!.OriginalString, StringComparison.Ordinal);
+                Assert.True(response.Headers.Location.IsAbsoluteUri);
+                Assert.True(response.Headers.Location.IsLoopback);
+                Assert.Equal(new Uri(url), response.Headers.Location);
+            }
+
+            using var download = await client.GetAsync(response.Headers.Location);
+            Assert.Equal(System.Net.HttpStatusCode.OK, download.StatusCode);
+            Assert.Equal("application/zip", download.Content.Headers.ContentType?.MediaType);
+            Assert.Equal(expectedBytes, await download.Content.ReadAsByteArrayAsync());
+        }
+        finally
+        {
+            await storage.DeleteImageFileIfExists(blobName);
+        }
     }
 
 }

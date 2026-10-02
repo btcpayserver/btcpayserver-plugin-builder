@@ -15,7 +15,6 @@ using Xunit.Abstractions;
 namespace PluginBuilder.Tests.AdminTests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
-[Trait("Category", "ExecutorIntegration")]
 public class AdminBTCPayCompatibilityUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("AdminBTCPayCompatibilityUITests", output);
@@ -95,7 +94,7 @@ public class AdminBTCPayCompatibilityUITests(ITestOutputHelper output) : PageTes
 
         var ownerId = await tester.Server.CreateFakeUserAsync("owner@compat-ui-reset.test", confirmEmail: true, githubVerified: true);
         var pluginSlug = "admin-reset-" + Guid.NewGuid().ToString("N")[..8];
-        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await tester.Server.CreatePublishedPluginAsync(ownerId, pluginSlug);
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
             new { pluginSlug, buildId = fullBuildId.BuildId });
@@ -180,7 +179,7 @@ public class AdminBTCPayCompatibilityUITests(ITestOutputHelper output) : PageTes
 
         var ownerId = await tester.Server.CreateFakeUserAsync(ownerEmail, confirmEmail: true, githubVerified: true);
         var pluginSlug = pluginSlugPrefix + Guid.NewGuid().ToString("N")[..8];
-        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await tester.Server.CreatePublishedPluginAsync(ownerId, pluginSlug);
         var manifestInfoJson = await conn.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
             new { pluginSlug, buildId = fullBuildId.BuildId });

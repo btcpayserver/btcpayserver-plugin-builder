@@ -12,7 +12,6 @@ using Xunit.Abstractions;
 namespace PluginBuilder.Tests.PluginTests;
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
-[Trait("Category", "ExecutorIntegration")]
 public class ReleaseNotesUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("ReleaseNotesUITests", output);
@@ -110,7 +109,7 @@ public class ReleaseNotesUITests(ITestOutputHelper output) : PageTest
         var ownerEmail = $"release-notes-{Guid.NewGuid():N}@test.com";
         var ownerId = await tester.Server.CreateFakeUserAsync(ownerEmail, confirmEmail: true, githubVerified: true);
         var pluginSlug = "release-notes-" + PlaywrightTester.GetRandomUInt256()[..8];
-        var fullBuildId = await tester.Server.CreateAndBuildPluginAsync(ownerId, pluginSlug);
+        var fullBuildId = await tester.Server.CreatePublishedPluginAsync(ownerId, pluginSlug);
         var manifestInfoJson = await connection.QuerySingleAsync<string>(
             "SELECT manifest_info FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
             new { pluginSlug, buildId = fullBuildId.BuildId });
