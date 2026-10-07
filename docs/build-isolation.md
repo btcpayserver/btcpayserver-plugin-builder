@@ -138,10 +138,14 @@ or the Docker socket into a worker.
 
 Workers also run as non-root with a read-only root filesystem, dropped Linux
 capabilities, `no-new-privileges`, and CPU, memory, process and execution limits.
+Each worker has a hard memory limit of 2253 MiB (approximately 2.2 GiB) and no
+access to swap.
 The broker admits at most three concurrent build leases. See
 [BuildPolicy](../PluginBuilder.Builds/Services/BuildPolicy.cs) and
 [DockerBuildSandbox](../PluginBuilder.BuildBroker/Services/DockerBuildSandbox.cs)
-for the enforced bounds.
+for the enforced bounds. Three workers and their 256 MiB proxies can use up to
+approximately 7.35 GiB. Allow additional memory for the broker, web application,
+artifact staging and retention, and other host services.
 
 Local development explicitly permits `runc` for Docker Desktop. Production
 rejects this option rather than silently falling back when gVisor is unavailable.
