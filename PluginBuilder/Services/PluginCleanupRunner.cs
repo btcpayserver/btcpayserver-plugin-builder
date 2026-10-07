@@ -33,16 +33,21 @@ public class PluginCleanupRunner
         await using var conn = await _connectionFactory.Open(cancellationToken);
 
         var threshold = DateTimeOffset.UtcNow.AddMonths(-6);
-        var deletedCount = await conn.ExecuteAsync(
+        var deletedSlugs = (await conn.QueryAsync<string>(
             """
             DELETE FROM plugins 
             WHERE added_at < @Threshold 
             AND NOT EXISTS (SELECT 1 FROM versions WHERE plugin_slug = plugins.slug)
+            RETURNING slug
             """,
-            new { Threshold = threshold });
+            new { Threshold = threshold })).ToList();
 
-        _logger.LogInformation("Deleted {DeletedCount} stale plugins.", deletedCount);
+        // Name the slugs: the admin event feed has no deletion event, so this line is the only record of what went.
+        if (deletedSlugs.Count == 0)
+            _logger.LogInformation("Deleted 0 stale plugins.");
+        else
+            _logger.LogInformation("Deleted {DeletedCount} stale plugins: {DeletedSlugs}", deletedSlugs.Count, string.Join(", ", deletedSlugs));
 
-        return deletedCount;
+        return deletedSlugs.Count;
     }
 }
