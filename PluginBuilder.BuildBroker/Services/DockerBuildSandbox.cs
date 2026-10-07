@@ -159,7 +159,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         string runtime)
     {
         var arguments = DockerCli.HardenedContainer(containerName, $"{BuildExecutorDocker.ManagedResourceLabel}={buildId}",
-            runtime, internalNetwork, "1536m", WorkerPidLimit,
+            runtime, internalNetwork, "2253m", WorkerPidLimit,
             user: $"{WorkerUserId}:{WorkerUserId}", cpus: "2", nofile: 4096, stopTimeout: true, logs: ContainerLogs.None);
         arguments.AddRange(IsolatedEgressArguments(proxyIp));
         arguments.AddRange(
