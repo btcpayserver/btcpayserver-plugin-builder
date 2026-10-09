@@ -96,7 +96,7 @@ agent to approve listings: put the review policy in its local instructions.
 | `GET /admin/me` | Current account, roles and verification status. |
 | `GET /admin/status` | User/plugin counts, active builds, pending listings, failed deliveries and registration/build flags. |
 | `GET /admin/users?after=&limit=50&email=` | Account list; optional exact, case-insensitive email match. |
-| `GET /admin/users/{userId}` | Verification information, roles, lockout/2FA status; no password hashes or security stamps. |
+| `GET /admin/users/{userId}` | Verification information, roles, lockout/2FA status and any active `adminLock`; no password hashes or security stamps. |
 | `GET /admin/plugins?after=&limit=50&userId=` | All visibility levels; optional owner filter. Includes settings and owner IDs. |
 | `GET /admin/plugins/{pluginSlug}` | Plugin details, including hidden or unlisted projects. |
 | `GET /admin/plugins/{pluginSlug}/builds?before=&limit=50` | Builds, newest first, including actor, metadata, manifest and version associations. |
@@ -145,7 +145,11 @@ shows every action an agent took and why.
   so the build executor also
   refuses a build whose account is locked when it starts. The account's unfinished builds
   are cancelled in the same transaction. Server admin accounts cannot be locked through the
-  API (HTTP 409). Unlocking clears the lockout and the failed-login count.
+  API (HTTP 409). The lock is recorded apart from Identity's lockout, which failed logins also
+  set: only an admin lock suspends builds, and user responses show it as `adminLock`
+  (`until`, `reason`, `lockedBy`, `lockedAt`; null when there is none or it has expired).
+  Unlocking clears the admin lock, the lockout and the failed-login count, so it can also end a
+  failed-login lockout early.
 - **Cancel** marks an unfinished build `failed` with its reason in `buildInfo.error`, then
   stops this instance's pipeline for it: a build waiting for a slot never starts, and a
   running one stops polling and publishes nothing. The pipeline's own state updates never

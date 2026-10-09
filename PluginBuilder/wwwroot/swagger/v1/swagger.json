@@ -986,7 +986,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The locked account (id, email, lockoutEnabled, lockoutEnd).",
+            "description": "The locked account (id, email, lockoutEnabled, lockoutEnd, adminLock).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1090,7 +1090,7 @@
             "description": "Account not found."
           },
           "409": {
-            "description": "The account is not locked."
+            "description": "The account has neither an admin lock nor an active lockout."
           }
         },
         "requestBody": {

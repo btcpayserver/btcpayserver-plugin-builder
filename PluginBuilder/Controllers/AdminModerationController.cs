@@ -26,6 +26,12 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
     public const string CancelledByAdmin = "Cancelled by a server admin.";
     public const string CancelledByLock = "Cancelled: the account that started this build was locked by a server admin.";
 
+    /// <summary>The account's admin lock, or null; failed-login lockouts show only in lockoutEnd.</summary>
+    public const string AdminLockJson = """
+        (SELECT jsonb_build_object('until', l.locked_until, 'reason', l.reason, 'lockedBy', l.locked_by, 'lockedAt', l.locked_at)
+         FROM admin_account_locks l WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP)
+        """;
+
     [HttpPost("users/{userId}/lock")]
     public async Task<IActionResult> Lock(string userId, LockRequest request, CancellationToken cancellationToken)
     {
@@ -48,13 +54,19 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
             return Conflict(new { message = "Server admin accounts cannot be locked through the API." });
 
         // The new security stamp ends the account's sessions at their next validation and invalidates any token bound to it.
+        // Identity's lockout refuses sign-in and tokens; the admin lock row is what suspends the account's builds,
+        // since failed logins set Identity's lockout too.
         await conn.ExecuteAsync(new CommandDefinition("""
             UPDATE "AspNetUsers" SET "LockoutEnabled" = TRUE, "LockoutEnd" = @end,
               "SecurityStamp" = @stamp, "ConcurrencyStamp" = @concurrency
-            WHERE "Id" = @userId
+            WHERE "Id" = @userId;
+            INSERT INTO admin_account_locks (user_id, locked_until, reason, locked_by) VALUES (@userId, @end, @reason, @by)
+            ON CONFLICT (user_id) DO UPDATE SET locked_until = EXCLUDED.locked_until, reason = EXCLUDED.reason,
+              locked_by = EXCLUDED.locked_by, locked_at = CURRENT_TIMESTAMP
             """, new
         {
-            userId, end = request.Until ?? DateTimeOffset.MaxValue,
+            userId, end = request.Until ?? DateTimeOffset.MaxValue, reason = request.Reason.Trim(),
+            by = User.FindFirstValue(ClaimTypes.NameIdentifier),
             stamp = Guid.NewGuid().ToString("N").ToUpperInvariant(), concurrency = Guid.NewGuid().ToString()
         }, tx, cancellationToken: cancellationToken));
         var unfinished = (await conn.QueryAsync<BuildRow>(new CommandDefinition("""
@@ -82,15 +94,19 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
         await using var conn = await connections.Open(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
         var target = await conn.QuerySingleOrDefaultAsync<UserRow>(new CommandDefinition("""
-            SELECT "Id" AS Id, "LockoutEnd" AS LockoutEnd FROM "AspNetUsers" WHERE "Id" = @userId FOR UPDATE
+            SELECT u."Id" AS Id, u."LockoutEnd" AS LockoutEnd,
+              EXISTS(SELECT 1 FROM admin_account_locks l WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP) AS AdminLocked
+            FROM "AspNetUsers" u WHERE u."Id" = @userId FOR UPDATE OF u
             """, new { userId }, tx, cancellationToken: cancellationToken));
         if (target is null)
             return NotFound();
-        if (target.LockoutEnd is not { } end || end <= DateTimeOffset.UtcNow)
+        // Lifts an admin lock, and also a failed-login lockout an admin wants to end early.
+        if (!target.AdminLocked && (target.LockoutEnd is not { } end || end <= DateTimeOffset.UtcNow))
             return Conflict(new { message = "This account is not locked." });
 
         await conn.ExecuteAsync(new CommandDefinition("""
-            UPDATE "AspNetUsers" SET "LockoutEnd" = NULL, "AccessFailedCount" = 0, "ConcurrencyStamp" = @concurrency WHERE "Id" = @userId
+            UPDATE "AspNetUsers" SET "LockoutEnd" = NULL, "AccessFailedCount" = 0, "ConcurrencyStamp" = @concurrency WHERE "Id" = @userId;
+            DELETE FROM admin_account_locks WHERE user_id = @userId
             """, new { userId, concurrency = Guid.NewGuid().ToString() }, tx, cancellationToken: cancellationToken));
         await Emit(conn, tx, "user.unlocked", new JObject { ["userId"] = userId, ["reason"] = request.Reason.Trim() }, cancellationToken);
         await tx.CommitAsync(cancellationToken);
@@ -162,9 +178,10 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
 
     private async Task<IActionResult> ReadUser(NpgsqlConnection conn, string userId, CancellationToken cancellationToken)
     {
-        var json = await conn.QuerySingleAsync<string>(new CommandDefinition("""
-            SELECT jsonb_build_object('id', "Id", 'email', "Email", 'lockoutEnabled', "LockoutEnabled", 'lockoutEnd', "LockoutEnd")::text
-            FROM "AspNetUsers" WHERE "Id" = @userId
+        var json = await conn.QuerySingleAsync<string>(new CommandDefinition($"""
+            SELECT jsonb_build_object('id', u."Id", 'email', u."Email", 'lockoutEnabled', u."LockoutEnabled", 'lockoutEnd', u."LockoutEnd",
+              'adminLock', {AdminLockJson})::text
+            FROM "AspNetUsers" u WHERE u."Id" = @userId
             """, new { userId }, cancellationToken: cancellationToken));
         return Ok(JObject.Parse(json));
     }
@@ -181,6 +198,7 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
         public string Id { get; set; } = "";
         public DateTimeOffset? LockoutEnd { get; set; }
         public bool IsAdmin { get; set; }
+        public bool AdminLocked { get; set; }
     }
 
     public class ReasonRequest

@@ -62,6 +62,10 @@ public class AdminModerationApiTests(ITestOutputHelper logs) : UnitTestBase(logs
         Assert.True(lockedUser.Value<bool>("lockoutEnabled"));
         // An indefinite lock is stored as Postgres infinity, the same as Identity's own DateTimeOffset.MaxValue lockout.
         Assert.Equal("infinity", lockedUser.Value<string>("lockoutEnd"));
+        Assert.Equal("scripted sign-up burst", lockedUser["adminLock"]!.Value<string>("reason"));
+        Assert.Equal(admin.Id, lockedUser["adminLock"]!.Value<string>("lockedBy"));
+        var listed = JObject.Parse(await adminClient.GetStringAsync($"/api/v1/admin/users/{owner.Id}"));
+        Assert.Equal("scripted sign-up burst", listed["adminLock"]!.Value<string>("reason"));
 
         // The account can no longer use the API, and anything bound to its old security stamp is void.
         Assert.Equal(HttpStatusCode.Unauthorized, (await ownerClient.GetAsync($"/api/v1/plugins/{slug}/builds")).StatusCode);
@@ -90,7 +94,10 @@ public class AdminModerationApiTests(ITestOutputHelper logs) : UnitTestBase(logs
         Assert.Equal(HttpStatusCode.BadRequest, (await adminClient.PostAsJsonAsync($"/api/v1/admin/users/{owner.Id}/unlock", new { reason = "" })).StatusCode);
         var unlocked = await adminClient.PostAsJsonAsync($"/api/v1/admin/users/{owner.Id}/unlock", new { reason = "false positive" });
         Assert.Equal(HttpStatusCode.OK, unlocked.StatusCode);
-        Assert.Equal(JTokenType.Null, JObject.Parse(await unlocked.Content.ReadAsStringAsync())["lockoutEnd"]!.Type);
+        var unlockedUser = JObject.Parse(await unlocked.Content.ReadAsStringAsync());
+        Assert.Equal(JTokenType.Null, unlockedUser["lockoutEnd"]!.Type);
+        Assert.Equal(JTokenType.Null, unlockedUser["adminLock"]!.Type);
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_account_locks"));
         Assert.Equal(HttpStatusCode.OK, (await ownerClient.GetAsync($"/api/v1/plugins/{slug}/builds")).StatusCode);
         var unlockEvent = JObject.Parse(await conn.ExecuteScalarAsync<string>("SELECT data::text FROM admin_events WHERE type = 'user.unlocked'"));
         Assert.Equal("false positive", unlockEvent.Value<string>("reason"));
@@ -101,15 +108,27 @@ public class AdminModerationApiTests(ITestOutputHelper logs) : UnitTestBase(logs
     [Fact]
     public async Task ATimedLockExpiresOnItsOwn()
     {
-        await using var tester = await StartAdminServer();
+        var sandbox = new AdmissionTestSandbox();
+        await using var tester = await StartBuildServer(sandbox);
         var (admin, owner) = await AdminAndOwner(tester);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        var slug = new PluginSlug("moderation-timed-lock");
+        await conn.NewPlugin(slug, owner.Id);
         var (adminClient, _) = await TokenClient(tester, admin);
         var until = DateTimeOffset.UtcNow.AddSeconds(3);
         Assert.Equal(HttpStatusCode.OK, (await adminClient.PostAsJsonAsync($"/api/v1/admin/users/{owner.Id}/lock", new { reason = "cool down", until })).StatusCode);
         using var ownerClient = tester.CreateHttpClient().SetBasicAuth(owner.Email!, Password);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await ownerClient.GetAsync("/api/v1/plugins/none/builds")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await ownerClient.GetAsync($"/api/v1/plugins/{slug}/builds")).StatusCode);
+        Assert.Equal(JTokenType.Object, JObject.Parse(await adminClient.GetStringAsync($"/api/v1/admin/users/{owner.Id}"))["adminLock"]!.Type);
+
         await Task.Delay(until - DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(500));
-        Assert.NotEqual(HttpStatusCode.Unauthorized, (await ownerClient.GetAsync("/api/v1/plugins/none/builds")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await ownerClient.GetAsync($"/api/v1/plugins/{slug}/builds")).StatusCode);
+        Assert.Equal(JTokenType.Null, JObject.Parse(await adminClient.GetStringAsync($"/api/v1/admin/users/{owner.Id}"))["adminLock"]!.Type);
+        // The executor no longer refuses the account: the build reaches the sandbox (which fails every build it prepares).
+        var buildId = await conn.NewBuild(slug, new PluginBuildParameters(Repository), owner.Id);
+        await Assert.ThrowsAsync<BuildServiceException>(() =>
+            tester.GetService<BuildService>().Build(new FullBuildId(slug, buildId), false).WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.True(sandbox.StartedPreparations.ContainsKey(new FullBuildId(slug, buildId)));
     }
 
     [Fact]
@@ -256,6 +275,40 @@ public class AdminModerationApiTests(ITestOutputHelper logs) : UnitTestBase(logs
         Assert.Equal("failed", await State(conn, slug, buildId));
         Assert.Equal("Builds by this account are suspended by a server admin.", await Error(conn, slug, buildId));
         Assert.Empty(sandbox.StartedPreparations);
+    }
+
+    [Fact]
+    public async Task AFailedLoginLockoutIsNotAnAdminSuspension()
+    {
+        // Anyone who knows an account's email can trip Identity's lockout with bad passwords; that must not fail the
+        // account's builds or read as a moderation action.
+        var sandbox = new AdmissionTestSandbox();
+        await using var tester = await StartBuildServer(sandbox);
+        var (admin, owner) = await AdminAndOwner(tester);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        var slug = new PluginSlug("moderation-failed-logins");
+        await conn.NewPlugin(slug, owner.Id);
+        using (var attacker = tester.CreateHttpClient().SetBasicAuth(owner.Email!, "wrong-password"))
+            for (var i = 0; i < 5; i++)
+                Assert.Equal(HttpStatusCode.Unauthorized, (await attacker.GetAsync($"/api/v1/plugins/{slug}/builds")).StatusCode);
+        Assert.True(await conn.ExecuteScalarAsync<bool>(
+            "SELECT \"LockoutEnd\" > CURRENT_TIMESTAMP FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = owner.Id }));
+
+        var (adminClient, _) = await TokenClient(tester, admin);
+        var user = JObject.Parse(await adminClient.GetStringAsync($"/api/v1/admin/users/{owner.Id}"));
+        Assert.Equal(JTokenType.Null, user["adminLock"]!.Type);
+
+        // The test sandbox fails every build once it is prepared; reaching it is what shows the build was not refused.
+        var buildId = await conn.NewBuild(slug, new PluginBuildParameters(Repository), owner.Id);
+        await Assert.ThrowsAsync<BuildServiceException>(() =>
+            tester.GetService<BuildService>().Build(new FullBuildId(slug, buildId), false).WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.True(sandbox.StartedPreparations.ContainsKey(new FullBuildId(slug, buildId)));
+        Assert.Equal("Plugin build failed.", await Error(conn, slug, buildId));
+
+        // An admin may still lift the failed-login lockout early.
+        Assert.Equal(HttpStatusCode.OK, (await adminClient.PostAsJsonAsync($"/api/v1/admin/users/{owner.Id}/unlock", new { reason = "owner confirmed" })).StatusCode);
+        using var ownerClient = tester.CreateHttpClient().SetBasicAuth(owner.Email!, Password);
+        Assert.Equal(HttpStatusCode.OK, (await ownerClient.GetAsync($"/api/v1/plugins/{slug}/builds")).StatusCode);
     }
 
     [Fact]

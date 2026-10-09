@@ -219,9 +219,8 @@ public class BuildService
     {
         await using var connection = await ConnectionFactory.Open();
         var locked = await connection.ExecuteScalarAsync<bool>("""
-            SELECT EXISTS(SELECT 1 FROM builds b JOIN "AspNetUsers" u ON u."Id" = b.triggered_by
-              WHERE b.plugin_slug = @pluginSlug AND b.id = @buildId
-                AND u."LockoutEnabled" AND u."LockoutEnd" > CURRENT_TIMESTAMP)
+            SELECT EXISTS(SELECT 1 FROM builds b JOIN admin_account_locks l ON l.user_id = b.triggered_by
+              WHERE b.plugin_slug = @pluginSlug AND b.id = @buildId AND l.locked_until > CURRENT_TIMESTAMP)
             """, new { pluginSlug = fullBuildId.PluginSlug.ToString(), buildId = fullBuildId.BuildId });
         if (!locked)
             return false;
