@@ -432,7 +432,8 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
             using var content = api ? BuildJson(git.RepositoryUrl) : BuildForm(git.RepositoryUrl, token);
             using var response = await (client ?? browser).PostAsync(
                 api ? $"/api/v1/plugins/{slug}/builds" : $"/plugins/{slug}/create", content);
-            Assert.Equal(requireConfirmedEmail ? HttpStatusCode.ServiceUnavailable :
+            var blockedStatus = api ? HttpStatusCode.Unauthorized : HttpStatusCode.ServiceUnavailable;
+            Assert.Equal(requireConfirmedEmail ? blockedStatus :
                 api ? HttpStatusCode.Created : HttpStatusCode.Redirect, response.StatusCode);
             if (!requireConfirmedEmail)
             {
