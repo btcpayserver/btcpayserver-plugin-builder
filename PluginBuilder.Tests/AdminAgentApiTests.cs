@@ -13,10 +13,13 @@ using MimeKit;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.Authentication;
+using PluginBuilder.Controllers.Logic;
+using PluginBuilder.DataModels;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
+using PluginBuilder.ViewModels.Admin;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -185,9 +188,9 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         return tester;
     }
 
-    private static async Task<IdentityUser> AddUser(UserManager<IdentityUser> users, string email, bool admin = false, string password = "test-password:with-colons:123")
+    private static async Task<IdentityUser> AddUser(UserManager<IdentityUser> users, string email, bool admin = false, string password = "test-password:with-colons:123", bool emailConfirmed = true)
     {
-        var user = new IdentityUser { UserName = email, Email = email, EmailConfirmed = true };
+        var user = new IdentityUser { UserName = email, Email = email, EmailConfirmed = emailConfirmed };
         Assert.True((await users.CreateAsync(user, password)).Succeeded);
         if (admin)
             Assert.True((await users.AddToRoleAsync(user, Roles.ServerAdmin)).Succeeded);
@@ -317,6 +320,53 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.False(response.Headers.Contains("Set-Cookie"));
         await users.SetLockoutEndDateAsync(admin, DateTimeOffset.UtcNow.AddMinutes(5));
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/admin/me")).StatusCode);
+    }
+
+    [Theory]
+    [InlineData(true, true, false, HttpStatusCode.Unauthorized)]
+    [InlineData(true, true, true, HttpStatusCode.OK)]
+    [InlineData(false, true, false, HttpStatusCode.OK)]
+    [InlineData(true, false, false, HttpStatusCode.OK)]
+    public async Task BasicAuthAppliesBrowserEmailVerificationPolicy(
+        bool verificationRequired, bool smtpConfigured, bool emailConfirmed, HttpStatusCode expectedStatus)
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "email-policy@example.com", admin: true, emailConfirmed: emailConfirmed);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.SettingsSetAsync(SettingsKeys.VerifiedEmailForLogin, verificationRequired ? "true" : "false");
+        await tester.GetService<AdminSettingsCache>().RefreshIsVerifiedEmailRequiredForLogin(conn);
+        if (smtpConfigured)
+        {
+            await tester.GetService<EmailService>().SaveEmailSettingsToDatabase(new EmailSettingsViewModel
+            {
+                Server = "smtp.example.com", Port = 587, Username = "plugin-builder@example.com",
+                Password = "smtp-password", From = "plugin-builder@example.com"
+            });
+        }
+        var slug = new PluginSlug("email-policy");
+        Assert.True(await conn.NewPlugin(slug, admin.Id));
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.UserName!, "test-password:with-colons:123");
+        var paths = new[] { "/api/v1/admin/me", $"/api/v1/plugins/{slug}/builds" };
+        foreach (var path in paths)
+        {
+            using var response = await client.GetAsync(path);
+            Assert.Equal(expectedStatus, response.StatusCode);
+            Assert.False(response.Headers.Contains("Set-Cookie"));
+        }
+
+        if (expectedStatus == HttpStatusCode.Unauthorized)
+        {
+            var token = await users.GenerateEmailConfirmationTokenAsync(admin);
+            Assert.True((await users.ConfirmEmailAsync(admin, token)).Succeeded);
+            foreach (var path in paths)
+            {
+                using var response = await client.GetAsync(path);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                Assert.False(response.Headers.Contains("Set-Cookie"));
+            }
+        }
     }
 
     [Fact]
