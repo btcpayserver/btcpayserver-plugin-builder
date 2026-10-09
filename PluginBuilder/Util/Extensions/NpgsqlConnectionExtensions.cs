@@ -259,6 +259,30 @@ public static class NpgsqlConnectionExtensions
             }, tx);
     }
 
+    /// <summary>
+    /// The build pipeline's state update: it only moves a build that has not finished. An admin cancellation marks a
+    /// build failed while the pipeline may still be running it; false tells the pipeline to stop instead of reviving it.
+    /// </summary>
+    public static async Task<bool> UpdateUnfinishedBuild(this NpgsqlConnection connection, FullBuildId fullBuildId, BuildStates newState,
+        JObject? buildInfo, PluginManifest? manifestInfo = null, NpgsqlTransaction? tx = null)
+    {
+        return await connection.ExecuteAsync(
+            "UPDATE builds " +
+            "SET state = @state, " +
+            "build_info=COALESCE(build_info || @build_info::JSONB, @build_info::JSONB, build_info), " +
+            "manifest_info=COALESCE(@manifest_info::JSONB, manifest_info) " +
+            "WHERE plugin_slug=@plugin_slug AND id=@buildId AND state <> ALL(@terminal)",
+            new
+            {
+                state = newState.ToEventName(),
+                build_info = buildInfo?.ToString(),
+                manifest_info = manifestInfo?.ToString(),
+                plugin_slug = fullBuildId.PluginSlug.ToString(),
+                buildId = fullBuildId.BuildId,
+                terminal = BuildStatesExtensions.TerminalEventNames
+            }, tx) == 1;
+    }
+
     public static async Task<bool> UpdateVersionReleaseStatus(this NpgsqlConnection connection, PluginSlug pluginSlug, string command, PluginVersion version,
         SignatureProof? signatureProof = null)
     {

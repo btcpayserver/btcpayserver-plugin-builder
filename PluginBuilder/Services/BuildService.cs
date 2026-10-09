@@ -22,6 +22,7 @@ public class BuildService
     private readonly IBuildSandbox _buildSandbox;
     private readonly BuildExecutorState _executorState;
     private readonly IHostApplicationLifetime _lifetime;
+    private readonly BuildCancellationRegistry _cancellations;
 
     public BuildService(
         ILogger<BuildService> logger,
@@ -33,7 +34,8 @@ public class BuildService
         AdminSettingsCache adminSettingsCache,
         IBuildSandbox buildSandbox,
         BuildExecutorState executorState,
-        IHostApplicationLifetime lifetime)
+        IHostApplicationLifetime lifetime,
+        BuildCancellationRegistry cancellations)
     {
         Logger = logger;
         _options = options;
@@ -45,6 +47,7 @@ public class BuildService
         _buildSandbox = buildSandbox;
         _executorState = executorState;
         _lifetime = lifetime;
+        _cancellations = cancellations;
     }
 
     public ILogger<BuildService> Logger { get; }
@@ -56,18 +59,43 @@ public class BuildService
 
     public async Task Build(FullBuildId fullBuildId, bool isWhitelisted)
     {
+        var cancellation = _cancellations.Register(fullBuildId, _lifetime.ApplicationStopping);
+        try
+        {
+            await Build(fullBuildId, isWhitelisted, cancellation);
+        }
+        catch (Exception err) when (err is BuildCancelledException || IsAdminCancellation(cancellation))
+        {
+            // The cancelling request already marked the build failed and recorded why.
+            Logger.LogInformation("Build {BuildId} was cancelled by a server admin", fullBuildId);
+        }
+        finally
+        {
+            _cancellations.Unregister(fullBuildId, cancellation);
+        }
+    }
+
+    private bool IsAdminCancellation(CancellationTokenSource cancellation) =>
+        cancellation.IsCancellationRequested && !_lifetime.ApplicationStopping.IsCancellationRequested;
+
+    private async Task Build(FullBuildId fullBuildId, bool isWhitelisted, CancellationTokenSource cancellation)
+    {
+        var token = cancellation.Token;
         // Keep the whitelist exception approved when this build was accepted, even if it is later revoked.
-        if (await RejectBuildIfDisabled(fullBuildId, isWhitelisted))
+        if (await AlreadyFinished(fullBuildId) || await RejectBuildIfDisabled(fullBuildId, isWhitelisted) ||
+            await RejectBuildIfAccountLocked(fullBuildId))
             return;
 
         await EnsureExecutorAvailable(fullBuildId);
         BuildInfo completedBuildParameters;
-        await _semaphore.WaitAsync();
+        await _semaphore.WaitAsync(token);
         try
         {
-            // A build may have been waiting for an execution slot when the setting changed.
-            if (await RejectBuildIfDisabled(fullBuildId, isWhitelisted))
+            // A build may have been waiting for an execution slot when the setting changed or its account was locked.
+            if (await AlreadyFinished(fullBuildId) || await RejectBuildIfDisabled(fullBuildId, isWhitelisted) ||
+                await RejectBuildIfAccountLocked(fullBuildId))
                 return;
+            token.ThrowIfCancellationRequested();
 
             var buildParameters = await GetBuildInfo(fullBuildId);
             try
@@ -77,7 +105,7 @@ public class BuildService
                 bool ownsIdentifier;
                 await using (BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory, Logger))
                 {
-                    await using (var prepared = await _buildSandbox.PrepareAsync(fullBuildId, buildParameters, _lifetime.ApplicationStopping))
+                    await using (var prepared = await _buildSandbox.PrepareAsync(fullBuildId, buildParameters, token))
                     {
                         JObject runningInfo = new()
                         {
@@ -106,7 +134,7 @@ public class BuildService
                         url = await AzureStorageClient.UploadStagedArtifact(
                             staged.StagingDirectory,
                             $"{fullBuildId}/{staged.AssemblyName}.btcpay",
-                            _lifetime.ApplicationStopping);
+                            token);
                     }
 
                     await using var connection = await ConnectionFactory.Open();
@@ -123,10 +151,20 @@ public class BuildService
                     if (ownsIdentifier)
                         await connection.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion,
                             manifest.BTCPayMaxVersion, true, transaction);
-                    await connection.UpdateBuild(fullBuildId, BuildStates.Uploaded, publishedInfo, tx: transaction);
+                    // A cancellation that won the race keeps the build failed and publishes no version.
+                    if (!await connection.UpdateUnfinishedBuild(fullBuildId, BuildStates.Uploaded, publishedInfo, tx: transaction))
+                    {
+                        await transaction.RollbackAsync();
+                        throw new BuildCancelledException();
+                    }
                     await transaction.CommitAsync();
                 }
                 EventAggregator.Publish(new BuildChanged(fullBuildId, BuildStates.Uploaded) { BuildInfo = publishedInfo.ToString() });
+            }
+            catch (Exception err) when (err is BuildCancelledException || IsAdminCancellation(cancellation))
+            {
+                // Never overwrite the cancellation's recorded reason with a generic failure.
+                throw new BuildCancelledException();
             }
             catch (Exception err)
             {
@@ -168,6 +206,32 @@ public class BuildService
         throw new BuildServiceException(error);
     }
 
+    /// <summary>An admin may have cancelled the build before this pipeline started or while it waited for a slot.</summary>
+    private async Task<bool> AlreadyFinished(FullBuildId fullBuildId)
+    {
+        await using var connection = await ConnectionFactory.Open();
+        var state = await connection.ExecuteScalarAsync<string?>("SELECT state FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
+            new { pluginSlug = fullBuildId.PluginSlug.ToString(), buildId = fullBuildId.BuildId });
+        return state is not null && BuildStatesExtensions.TerminalEventNames.Contains(state);
+    }
+
+    private async Task<bool> RejectBuildIfAccountLocked(FullBuildId fullBuildId)
+    {
+        await using var connection = await ConnectionFactory.Open();
+        var locked = await connection.ExecuteScalarAsync<bool>("""
+            SELECT EXISTS(SELECT 1 FROM builds b JOIN "AspNetUsers" u ON u."Id" = b.triggered_by
+              WHERE b.plugin_slug = @pluginSlug AND b.id = @buildId
+                AND u."LockoutEnabled" AND u."LockoutEnd" > CURRENT_TIMESTAMP)
+            """, new { pluginSlug = fullBuildId.PluginSlug.ToString(), buildId = fullBuildId.BuildId });
+        if (!locked)
+            return false;
+
+        Logger.LogWarning("Skipping build {BuildId} because its account is locked", fullBuildId);
+        await UpdateBuild(fullBuildId, BuildStates.Failed,
+            new JObject { ["error"] = "Builds by this account are suspended by a server admin." });
+        return true;
+    }
+
     private async Task<bool> RejectBuildIfDisabled(FullBuildId fullBuildId, bool isWhitelisted)
     {
         if (_adminSettingsCache.NewBuildsEnabled || isWhitelisted)
@@ -205,7 +269,8 @@ public class BuildService
     public async Task UpdateBuild(FullBuildId fullBuildId, BuildStates newState, JObject? buildInfo, PluginManifest? manifestInfo = null)
     {
         await using var connection = await ConnectionFactory.Open();
-        await connection.UpdateBuild(fullBuildId, newState, buildInfo, manifestInfo);
+        if (!await connection.UpdateUnfinishedBuild(fullBuildId, newState, buildInfo, manifestInfo))
+            throw new BuildCancelledException();
         EventAggregator.Publish(new BuildChanged(fullBuildId, newState) { BuildInfo = buildInfo?.ToString(), ManifestInfo = manifestInfo?.ToString() });
     }
 
@@ -288,3 +353,6 @@ public class BuildService
     }
 
 }
+
+/// <summary>The build finished elsewhere (an admin cancelled it) while this pipeline was still running it.</summary>
+public sealed class BuildCancelledException() : Exception("The build was cancelled.");
