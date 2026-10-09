@@ -4,6 +4,7 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
+using PluginBuilder.Controllers.Logic;
 
 namespace PluginBuilder.Authentication;
 
@@ -12,6 +13,7 @@ public class BasicAuthenticationHandler : AuthenticationHandler<PluginBuilderAut
     private readonly IOptionsMonitor<IdentityOptions> _identityOptions;
     private readonly SignInManager<IdentityUser> _signInManager;
     private readonly UserManager<IdentityUser> _userManager;
+    private readonly UserVerifiedLogic _userVerifiedLogic;
 
     public BasicAuthenticationHandler(
         IOptionsMonitor<IdentityOptions> identityOptions,
@@ -19,11 +21,13 @@ public class BasicAuthenticationHandler : AuthenticationHandler<PluginBuilderAut
         ILoggerFactory logger,
         UrlEncoder encoder,
         SignInManager<IdentityUser> signInManager,
-        UserManager<IdentityUser> userManager) : base(options, logger, encoder)
+        UserManager<IdentityUser> userManager,
+        UserVerifiedLogic userVerifiedLogic) : base(options, logger, encoder)
     {
         _identityOptions = identityOptions;
         _signInManager = signInManager;
         _userManager = userManager;
+        _userVerifiedLogic = userVerifiedLogic;
     }
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -40,17 +44,22 @@ public class BasicAuthenticationHandler : AuthenticationHandler<PluginBuilderAut
         if (user is null)
             return AuthenticateResult.Fail("Invalid Basic credentials.");
         // Validate each API request without issuing a persistent browser cookie.
-        // CheckPasswordSignInAsync retains Identity lockout/confirmation checks.
+        // CheckPasswordSignInAsync retains Identity lockout checks.
         var result = await _signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true);
         if (!result.Succeeded || await _userManager.GetTwoFactorEnabledAsync(user))
             return AuthenticateResult.Fail("Invalid Basic credentials.");
 
         List<Claim> claims = new() { new Claim(_identityOptions.CurrentValue.ClaimsIdentity.UserIdClaimType, user.Id) };
         claims.AddRange((await _userManager.GetRolesAsync(user)).Select(s => new Claim(_identityOptions.CurrentValue.ClaimsIdentity.RoleClaimType, s)));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, PluginBuilderAuthenticationSchemes.BasicAuth));
+
+        // Apply the same configurable email-confirmation policy as the browser login.
+        if (_userVerifiedLogic.IsEmailVerificationRequiredForLogin &&
+            !await _userVerifiedLogic.IsUserEmailVerifiedForLogin(principal))
+            return AuthenticateResult.Fail("Invalid Basic credentials.");
 
         return AuthenticateResult.Success(new AuthenticationTicket(
-            new ClaimsPrincipal(new ClaimsIdentity(claims, PluginBuilderAuthenticationSchemes.BasicAuth)),
-            PluginBuilderAuthenticationSchemes.BasicAuth));
+            principal, PluginBuilderAuthenticationSchemes.BasicAuth));
     }
 
     public static bool TryParseCredentials(string header, out string username, out string password)
