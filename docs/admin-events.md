@@ -18,6 +18,8 @@ No AI provider or review engine runs inside Plugin Builder.
 | `build.failed` | A build transitions to `failed`. |
 | `listing.requested` | A new listing request is saved. Email reminders do not create another request event. |
 | `listing.approved` / `listing.rejected` | A pending request receives a decision. Includes reviewing account, token ID and note. |
+| `user.locked` / `user.unlocked` | An admin locks or unlocks an account through the API. Includes the acting account and token ID, the reason, `until` (null when indefinite) and, for a lock, the builds it cancelled. |
+| `build.cancelled` | An admin cancels an unfinished build, directly or by locking the account that started it. Precedes that build's `build.failed`. Includes the acting account and token ID, the reason and the state it was cancelled from. |
 | `admin.token_created` / `admin.token_revoked` | An admin issues or explicitly revokes a delegated token. Includes its ID, never its secret. |
 
 Events and delivery jobs are inserted in the same transaction as the underlying

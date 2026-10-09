@@ -96,7 +96,7 @@ agent to approve listings: put the review policy in its local instructions.
 | `GET /admin/me` | Current account, roles and verification status. |
 | `GET /admin/status` | User/plugin counts, active builds, pending listings, failed deliveries and registration/build flags. |
 | `GET /admin/users?after=&limit=50&email=` | Account list; optional exact, case-insensitive email match. |
-| `GET /admin/users/{userId}` | Verification information, roles, lockout/2FA status; no password hashes or security stamps. |
+| `GET /admin/users/{userId}` | Verification information, roles, lockout/2FA status and any active `adminLock`; no password hashes or security stamps. |
 | `GET /admin/plugins?after=&limit=50&userId=` | All visibility levels; optional owner filter. Includes settings and owner IDs. |
 | `GET /admin/plugins/{pluginSlug}` | Plugin details, including hidden or unlisted projects. |
 | `GET /admin/plugins/{pluginSlug}/builds?before=&limit=50` | Builds, newest first, including actor, metadata, manifest and version associations. |
@@ -106,6 +106,9 @@ agent to approve listings: put the review policy in its local instructions.
 | `GET /admin/listing-requests?status=pending&after=0&limit=50` | Pending, approved, rejected or all requests. |
 | `GET /admin/listing-requests/{id}` | Submission and review details, including reviewing account/token. |
 | `POST /admin/listing-requests/{id}/review` | `{"decision":"approve","note":"Review findings…"}` or `reject`; nonempty note up to 10,000 characters. |
+| `POST /admin/users/{userId}/lock` | `{"reason":"Spam burst","until":"2026-10-10T00:00:00Z"}`; omit `until` for an indefinite lock. See [Moderation](#moderation). |
+| `POST /admin/users/{userId}/unlock` | `{"reason":"False positive"}`. HTTP 409 if the account is not locked. |
+| `POST /admin/plugins/{pluginSlug}/builds/{buildId}/cancel` | `{"reason":"Exec in csproj"}`. HTTP 409 if the build has already finished. |
 | `GET /admin/audit?tokenId={id}&before=&limit=50` | Inspect API activity for a token, or omit tokenId to inspect all admin API activity. |
 
 Lists return `{items,nextCursor,hasMore}` with a decimal/string cursor. `limit` is
@@ -129,6 +132,30 @@ To submit a review with the helper, save a JSON body locally and explicitly invo
 ```powershell
 ./scripts/Invoke-AdminApi.ps1 -Method POST -ApiPath 'admin/listing-requests/123/review' -BodyFile .agents/review.json
 ```
+
+## Moderation
+
+Containment actions need a reason (up to 1,000 characters). Each one commits together
+with its admin event, which records the acting account and token, so the event stream
+shows every action an agent took and why.
+
+- **Lock** sets the account's Identity lockout (indefinite unless `until` is given) and
+  rotates its security stamp. Basic authentication and admin tokens are refused at once;
+  browser sessions end at their next security stamp validation (by default within 30 minutes),
+  so the build executor also
+  refuses a build whose account is locked when it starts. The account's unfinished builds
+  are cancelled in the same transaction. Server admin accounts cannot be locked through the
+  API (HTTP 409). The lock is recorded apart from Identity's lockout, which failed logins also
+  set: only an admin lock suspends builds, and user responses show it as `adminLock`
+  (`until`, `reason`, `lockedBy`, `lockedAt`; null when there is none or it has expired).
+  Unlocking clears the admin lock, the lockout and the failed-login count, so it can also end a
+  failed-login lockout early.
+- **Cancel** marks an unfinished build `failed` with its reason in `buildInfo.error`, then
+  stops this instance's pipeline for it: a build waiting for a slot never starts, and a
+  running one stops polling and publishes nothing. The pipeline's own state updates never
+  move a finished build, so a cancellation that races the final publish wins or is refused
+  with HTTP 409. The broker job itself is not killed; its lease deadline reclaims it. An
+  artifact uploaded just before a losing publish is left unreferenced in storage.
 
 ## Audit semantics
 
