@@ -105,6 +105,58 @@ public class AdminModerationApiTests(ITestOutputHelper logs) : UnitTestBase(logs
         Assert.Equal(HttpStatusCode.Conflict, (await adminClient.PostAsJsonAsync($"/api/v1/admin/users/{owner.Id}/unlock", new { reason = "again" })).StatusCode);
     }
 
+    [UnixFact]
+    public async Task AnIndefiniteLockCanBeReplacedAndUnlockedInANegativeTimeZone()
+    {
+        // This collection disables parallelization, so changing the process timezone is isolated from other tests.
+        var previousTimeZone = Environment.GetEnvironmentVariable("TZ");
+        try
+        {
+            Environment.SetEnvironmentVariable("TZ", "Etc/GMT+3");
+            TimeZoneInfo.ClearCachedData();
+            Assert.Equal(TimeSpan.FromHours(-3), TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow));
+
+            await using var tester = await StartAdminServer();
+            var (admin, owner) = await AdminAndOwner(tester);
+            var (adminClient, _) = await TokenClient(tester, admin);
+            var url = $"/api/v1/admin/users/{owner.Id}";
+
+            Assert.Equal(HttpStatusCode.OK,
+                (await adminClient.PostAsJsonAsync(url + "/lock", new { reason = "initial suspension" })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK,
+                (await adminClient.PostAsJsonAsync(url + "/lock", new { reason = "confirmed suspension" })).StatusCode);
+            var response = await adminClient.PostAsJsonAsync(url + "/unlock", new { reason = "resolved" });
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var unlockedUser = JObject.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(JTokenType.Null, unlockedUser["lockoutEnd"]!.Type);
+            Assert.Equal(JTokenType.Null, unlockedUser["adminLock"]!.Type);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TZ", previousTimeZone);
+            TimeZoneInfo.ClearCachedData();
+        }
+    }
+
+    [Theory]
+    [InlineData(-3)]
+    [InlineData(5.5)]
+    public async Task ATimedLockAcceptsNonUtcOffsets(double offsetHours)
+    {
+        await using var tester = await StartAdminServer();
+        var (admin, owner) = await AdminAndOwner(tester);
+        var (adminClient, _) = await TokenClient(tester, admin);
+        // Use whole seconds so the database's microsecond precision does not change the expected instant.
+        var until = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600)
+            .ToOffset(TimeSpan.FromHours(offsetHours));
+
+        var response = await adminClient.PostAsJsonAsync($"/api/v1/admin/users/{owner.Id}/lock", new { reason = "cool down", until });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var lockedUser = JObject.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(until, lockedUser["lockoutEnd"]!.ToObject<DateTimeOffset>());
+        Assert.Equal(until, lockedUser["adminLock"]!["until"]!.ToObject<DateTimeOffset>());
+    }
+
     [Fact]
     public async Task ATimedLockExpiresOnItsOwn()
     {

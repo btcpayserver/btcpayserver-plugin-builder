@@ -43,7 +43,7 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
         await using var conn = await connections.Open(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
         var target = await conn.QuerySingleOrDefaultAsync<UserRow>(new CommandDefinition("""
-            SELECT u."Id" AS Id, u."LockoutEnd" AS LockoutEnd,
+            SELECT u."Id" AS Id,
               EXISTS(SELECT 1 FROM "AspNetUserRoles" ur JOIN "AspNetRoles" r ON r."Id" = ur."RoleId"
                      WHERE ur."UserId" = u."Id" AND r."Name" = 'ServerAdmin') AS IsAdmin
             FROM "AspNetUsers" u WHERE u."Id" = @userId FOR UPDATE OF u
@@ -65,7 +65,7 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
               locked_by = EXCLUDED.locked_by, locked_at = CURRENT_TIMESTAMP
             """, new
         {
-            userId, end = request.Until ?? DateTimeOffset.MaxValue, reason = request.Reason.Trim(),
+            userId, end = request.Until?.ToUniversalTime() ?? DateTimeOffset.MaxValue, reason = request.Reason.Trim(),
             by = User.FindFirstValue(ClaimTypes.NameIdentifier),
             stamp = Guid.NewGuid().ToString("N").ToUpperInvariant(), concurrency = Guid.NewGuid().ToString()
         }, tx, cancellationToken: cancellationToken));
@@ -94,14 +94,14 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
         await using var conn = await connections.Open(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
         var target = await conn.QuerySingleOrDefaultAsync<UserRow>(new CommandDefinition("""
-            SELECT u."Id" AS Id, u."LockoutEnd" AS LockoutEnd,
+            SELECT u."Id" AS Id, COALESCE(u."LockoutEnd" > CURRENT_TIMESTAMP, FALSE) AS LockedOut,
               EXISTS(SELECT 1 FROM admin_account_locks l WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP) AS AdminLocked
             FROM "AspNetUsers" u WHERE u."Id" = @userId FOR UPDATE OF u
             """, new { userId }, tx, cancellationToken: cancellationToken));
         if (target is null)
             return NotFound();
         // Lifts an admin lock, and also a failed-login lockout an admin wants to end early.
-        if (!target.AdminLocked && (target.LockoutEnd is not { } end || end <= DateTimeOffset.UtcNow))
+        if (!target.AdminLocked && !target.LockedOut)
             return Conflict(new { message = "This account is not locked." });
 
         await conn.ExecuteAsync(new CommandDefinition("""
@@ -196,7 +196,7 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
     private sealed class UserRow
     {
         public string Id { get; set; } = "";
-        public DateTimeOffset? LockoutEnd { get; set; }
+        public bool LockedOut { get; set; }
         public bool IsAdmin { get; set; }
         public bool AdminLocked { get; set; }
     }
