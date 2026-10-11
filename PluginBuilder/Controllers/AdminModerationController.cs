@@ -35,8 +35,6 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
     [HttpPost("users/{userId}/lock")]
     public async Task<IActionResult> Lock(string userId, LockRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Reason))
-            return BadRequest(new { message = "Give a nonempty reason." });
         if (request.Until is { } until && until <= DateTimeOffset.UtcNow)
             return BadRequest(new { message = "until must be in the future; omit it for an indefinite lock." });
 
@@ -88,9 +86,6 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
     [HttpPost("users/{userId}/unlock")]
     public async Task<IActionResult> Unlock(string userId, ReasonRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Reason))
-            return BadRequest(new { message = "Give a nonempty reason." });
-
         await using var conn = await connections.Open(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
         var target = await conn.QuerySingleOrDefaultAsync<UserRow>(new CommandDefinition("""
@@ -116,9 +111,6 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
     [HttpPost("plugins/{pluginSlug}/builds/{buildId:long}/cancel")]
     public async Task<IActionResult> CancelBuild(string pluginSlug, long buildId, ReasonRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Reason))
-            return BadRequest(new { message = "Give a nonempty reason." });
-
         await using var conn = await connections.Open(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
         var state = await conn.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
