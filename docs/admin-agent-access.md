@@ -106,7 +106,7 @@ agent to approve listings: put the review policy in its local instructions.
 | `GET /admin/listing-requests?status=pending&after=0&limit=50` | Pending, approved, rejected or all requests. |
 | `GET /admin/listing-requests/{id}` | Submission and review details, including reviewing account/token. |
 | `POST /admin/listing-requests/{id}/review` | `{"decision":"approve","note":"Review findings…"}` or `reject`; nonempty note up to 10,000 characters. |
-| `POST /admin/users/{userId}/lock` | `{"reason":"Spam burst","until":"2026-10-10T00:00:00Z"}`; omit `until` for an indefinite lock. See [Moderation](#moderation). |
+| `POST /admin/users/{userId}/lock` | `{"reason":"Spam burst"}` for an indefinite lock; optionally set `until` to a future ISO-8601 timestamp. See [Moderation](#moderation). |
 | `POST /admin/users/{userId}/unlock` | `{"reason":"False positive"}`. HTTP 409 if the account is not locked. |
 | `POST /admin/plugins/{pluginSlug}/builds/{buildId}/cancel` | `{"reason":"Exec in csproj"}`. HTTP 409 if the build has already finished. |
 | `GET /admin/audit?tokenId={id}&before=&limit=50` | Inspect API activity for a token, or omit tokenId to inspect all admin API activity. |
@@ -195,8 +195,8 @@ receiver storage; deleting local history cannot erase copies held by recipients.
 
 ## Deployment and verification
 
-Deploy the application with migrations 25–27. Use a normal single migration
-runner/startup during deployment, then start all replicas against the upgraded DB.
+When deploying multiple replicas, start one instance first so it can apply
+pending migrations before the others start.
 Keep the existing Data Protection keys in `PB_DATADIR` for webhook signing secrets.
 Configure SMTP only if email notifications are wanted; polling requires neither
 SMTP nor a webhook receiver. The agent requires a deployed API and an operator-issued
