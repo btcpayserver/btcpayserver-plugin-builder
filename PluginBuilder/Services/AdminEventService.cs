@@ -7,8 +7,8 @@ public class AdminEventService(DBConnectionFactory connections)
 {
     public static readonly IReadOnlyList<string> EventTypes = Array.AsReadOnly(new[]
     {
-        "user.registered", "user.github_verified", "user.first_build_triggered",
-        "build.triggered", "build.succeeded", "build.failed", "listing.requested", "listing.approved", "listing.rejected",
+        "user.registered", "user.github_verified", "user.first_build_triggered", "user.locked", "user.unlocked",
+        "build.triggered", "build.succeeded", "build.failed", "build.cancelled", "listing.requested", "listing.approved", "listing.rejected",
         "admin.token_created", "admin.token_revoked"
     });
 

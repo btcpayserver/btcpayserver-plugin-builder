@@ -211,6 +211,7 @@ public class Program
         services.AddSingleton<RemoteBuildSandbox>();
         services.AddSingleton<IBuildSandbox>(provider => provider.GetRequiredService<RemoteBuildSandbox>());
         services.AddSingleton<BuildService>();
+        services.AddSingleton<BuildCancellationRegistry>();
         services.AddSingleton<GPGKeyService>();
         services.AddSingleton<AzureStorageClient>();
         services.AddSingleton<ServerEnvironment>();

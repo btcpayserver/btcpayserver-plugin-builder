@@ -17,12 +17,13 @@ namespace PluginBuilder.Controllers;
 [Authorize(Roles = Roles.ServerAdmin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.AdminApi)]
 public class AdminReviewController(DBConnectionFactory connections, ListingReviewService reviews, AdminSettingsCache settings) : ControllerBase
 {
-    private const string UserJson = """
+    private const string UserJson = $"""
         jsonb_build_object('id', u."Id", 'email', u."Email", 'createdAt', u."CreatedAt",
           'emailVerified', u."EmailConfirmed", 'githubVerified', NULLIF(u."GithubGistUrl", '') IS NOT NULL,
           'github', u."AccountDetail"->>'github', 'githubProofUrl', u."GithubGistUrl",
           'nostrNpub', u."AccountDetail"->'nostr'->>'npub', 'nostrProof', u."AccountDetail"->'nostr'->>'proof',
           'lockoutEnabled', u."LockoutEnabled", 'lockoutEnd', u."LockoutEnd", 'twoFactorEnabled', u."TwoFactorEnabled",
+          'adminLock', {AdminModerationController.AdminLockJson},
           'roles', COALESCE((SELECT jsonb_agg(r."Name" ORDER BY r."Name") FROM "AspNetUserRoles" ur
             JOIN "AspNetRoles" r ON r."Id" = ur."RoleId" WHERE ur."UserId" = u."Id"), '[]'::jsonb))
         """;

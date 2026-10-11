@@ -16,6 +16,9 @@ public static class BuildStatesExtensions
     public static readonly string[] UnfinishedEventNames =
         Enum.GetValues<BuildStates>().Where(s => !s.IsTerminal()).Select(s => s.ToEventName()).ToArray();
 
+    public static readonly string[] TerminalEventNames =
+        Enum.GetValues<BuildStates>().Where(s => s.IsTerminal()).Select(s => s.ToEventName()).ToArray();
+
     public static string ToEventName(this BuildStates buildState)
     {
         return buildState switch

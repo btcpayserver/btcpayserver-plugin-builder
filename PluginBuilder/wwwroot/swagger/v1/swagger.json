@@ -959,6 +959,248 @@
         }
       }
     },
+    "/admin/users/{userId}/lock": {
+      "post": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Lock an account",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md#moderation for semantics and limits.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The locked account (id, email, lockoutEnabled, lockoutEnd, adminLock).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing reason, or until is not in the future."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Account not found."
+          },
+          "409": {
+            "description": "Server admin accounts cannot be locked through the API."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "description": "Why; recorded in the admin event."
+                  },
+                  "until": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional end of the lock; omit for an indefinite lock."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/users/{userId}/unlock": {
+      "post": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Unlock an account",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md#moderation for semantics and limits.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The unlocked account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing reason."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Account not found."
+          },
+          "409": {
+            "description": "The account has neither an admin lock nor an active lockout."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "description": "Why; recorded in the admin event."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/plugins/{pluginSlug}/builds/{buildId}/cancel": {
+      "post": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Cancel an unfinished build",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md#moderation for semantics and limits.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buildId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The build, now failed with the cancellation recorded in buildInfo.error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing reason."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Build not found."
+          },
+          "409": {
+            "description": "The build has already finished."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "description": "Why; recorded in the admin event."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/audit": {
       "get": {
         "tags": [
