@@ -380,6 +380,119 @@ public class AdminModerationApiTests(ITestOutputHelper logs) : UnitTestBase(logs
         Assert.Equal("cancelled", await Error(conn, slug, id.BuildId));
     }
 
+    [Fact]
+    public async Task VisibilityChangesWithAReasonAndLeavesTheCachedListing()
+    {
+        await using var tester = await StartAdminServer();
+        var (admin, owner) = await AdminAndOwner(tester);
+        var slug = "moderation-visibility";
+        await tester.CreatePublishedPluginAsync(owner.Id, slug);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug, Description = "visibility test", GitRepository = Repository },
+            PluginVisibilityEnum.Listed);
+        var (adminClient, tokenId) = await TokenClient(tester, admin);
+        var url = $"/api/v1/admin/plugins/{slug}/visibility";
+        using var anonymous = tester.CreateHttpClient();
+        // The listing is output-cached: reading it first puts the plugin in the cache the change must evict.
+        Assert.True(await Listed(anonymous, slug));
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await adminClient.PutAsJsonAsync(url, new { visibility = "hidden", reason = " " })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await adminClient.PutAsJsonAsync(url, new { visibility = "secret", reason = "x" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await adminClient.PutAsJsonAsync(url, new { visibility = "0", reason = "x" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await adminClient.PutAsJsonAsync("/api/v1/admin/plugins/no-such-plugin/visibility", new { visibility = "hidden", reason = "x" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await adminClient.PutAsJsonAsync(url, new { visibility = "listed", reason = "x" })).StatusCode);
+        using var ownerClient = tester.CreateHttpClient().SetBasicAuth(owner.Email!, Password);
+        Assert.Equal(HttpStatusCode.Forbidden, (await ownerClient.PutAsJsonAsync(url, new { visibility = "hidden", reason = "x" })).StatusCode);
+        Assert.Equal("listed", await Visibility(conn, slug));
+        Assert.Empty(await Events(conn, "plugin.visibility_changed"));
+
+        var response = await adminClient.PutAsJsonAsync(url, new { visibility = " Hidden ", reason = "Malware report" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = JObject.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("hidden", body.Value<string>("visibility"));
+        Assert.Equal("listed", body.Value<string>("previousVisibility"));
+        Assert.Equal("hidden", await Visibility(conn, slug));
+        Assert.False(await Listed(anonymous, slug));
+
+        var changed = JObject.Parse(Assert.Single(await Events(conn, "plugin.visibility_changed")));
+        Assert.Equal(slug, changed.Value<string>("pluginSlug"));
+        Assert.Equal("listed", changed.Value<string>("previousVisibility"));
+        Assert.Equal("hidden", changed.Value<string>("visibility"));
+        Assert.Equal("Malware report", changed.Value<string>("reason"));
+        Assert.Equal(admin.Id, changed.Value<string>("by"));
+        Assert.Equal(tokenId, changed.Value<string>("tokenId"));
+
+        Assert.Equal(HttpStatusCode.OK, (await adminClient.PutAsJsonAsync(url, new { visibility = "listed", reason = "False positive" })).StatusCode);
+        Assert.True(await Listed(anonymous, slug));
+        Assert.Equal(2, (await Events(conn, "plugin.visibility_changed")).Count);
+    }
+
+    [Fact]
+    public async Task RevokeStopsServingOneVersionAndRecordsWhy()
+    {
+        await using var tester = await StartAdminServer();
+        var (admin, owner) = await AdminAndOwner(tester);
+        var slug = "moderation-revoke";
+        var build = await tester.CreatePublishedPluginAsync(owner.Id, slug);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        var identifier = $"TestPlugin.{slug.Replace('-', '_')}";
+        var (adminClient, tokenId) = await TokenClient(tester, admin);
+        var url = $"/api/v1/admin/plugins/{slug}/versions/1.0.2.0/revoke";
+        using var anonymous = tester.CreateHttpClient();
+        Assert.Equal(new[] { "1.0.2.0" }, await Served(anonymous, identifier));
+        // Its only version, so revoking it must also take the plugin out of the output-cached listing.
+        Assert.True(await Listed(anonymous, slug));
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await adminClient.PostAsJsonAsync(url, new { reason = "" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await adminClient.PostAsJsonAsync($"/api/v1/admin/plugins/{slug}/versions/not-a-version/revoke", new { reason = "x" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await adminClient.PostAsJsonAsync($"/api/v1/admin/plugins/{slug}/versions/9.9.9.9/revoke", new { reason = "x" })).StatusCode);
+        using var ownerClient = tester.CreateHttpClient().SetBasicAuth(owner.Email!, Password);
+        Assert.Equal(HttpStatusCode.Forbidden, (await ownerClient.PostAsJsonAsync(url, new { reason = "x" })).StatusCode);
+        Assert.Equal(new[] { "1.0.2.0" }, await Served(anonymous, identifier));
+
+        var response = await adminClient.PostAsJsonAsync(url, new { reason = "Ships an unexplained binary" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = JObject.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(body.Value<bool>("revoked"));
+        Assert.Equal(build.BuildId, body.Value<long>("buildId"));
+        Assert.Empty(await Served(anonymous, identifier));
+        Assert.False(await Listed(anonymous, slug));
+        Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync($"/api/v1/plugins/{slug}/versions/1.0.2.0/download")).StatusCode);
+        Assert.Equal("removed", await State(conn, build.PluginSlug, build.BuildId));
+        Assert.Equal(HttpStatusCode.NotFound, (await adminClient.PostAsJsonAsync(url, new { reason = "again" })).StatusCode);
+
+        var revoked = JObject.Parse(Assert.Single(await Events(conn, "version.revoked")));
+        Assert.Equal(slug, revoked.Value<string>("pluginSlug"));
+        Assert.Equal("1.0.2.0", revoked.Value<string>("version"));
+        Assert.Equal(build.BuildId, revoked.Value<long>("buildId"));
+        Assert.Equal("Ships an unexplained binary", revoked.Value<string>("reason"));
+        Assert.Equal(admin.Id, revoked.Value<string>("by"));
+        Assert.Equal(tokenId, revoked.Value<string>("tokenId"));
+        // Moving a published build to removed is not a build outcome: the feed shows the revocation, not a failure.
+        Assert.Empty(await Events(conn, "build.failed"));
+    }
+
+    private static async Task<bool> Listed(HttpClient client, string slug)
+    {
+        var plugins = JArray.Parse(await client.GetStringAsync("/api/v1/plugins?includePreRelease=true"));
+        return plugins.Any(p => p.Value<string>("projectSlug") == slug);
+    }
+
+    private static async Task<string[]> Served(HttpClient client, string identifier)
+    {
+        var versions = JArray.Parse(await client.GetStringAsync($"/api/v1/plugins/{identifier}?includePreRelease=true&includeAllVersions=true"));
+        return versions.Select(v => v.Value<string>("version")!).ToArray();
+    }
+
+    private static Task<string?> Visibility(NpgsqlConnection conn, string slug) =>
+        conn.ExecuteScalarAsync<string?>("SELECT visibility::text FROM plugins WHERE slug = @slug", new { slug });
+
+    private static async Task<List<string>> Events(NpgsqlConnection conn, string type) =>
+        (await conn.QueryAsync<string>("SELECT data::text FROM admin_events WHERE type = @type ORDER BY id", new { type })).ToList();
+
     private async Task<ServerTester> StartAdminServer()
     {
         var tester = Create();

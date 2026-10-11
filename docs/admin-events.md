@@ -20,6 +20,8 @@ No AI provider or review engine runs inside Plugin Builder.
 | `listing.approved` / `listing.rejected` | A pending request receives a decision. Includes reviewing account, token ID and note. |
 | `user.locked` / `user.unlocked` | An admin locks or unlocks an account through the API. Includes the acting account and token ID, the reason, `until` (null when indefinite) and, for a lock, the builds it cancelled. |
 | `build.cancelled` | An admin cancels an unfinished build, directly or by locking the account that started it. Precedes that build's `build.failed`. Includes the acting account and token ID, the reason and the state it was cancelled from. |
+| `plugin.visibility_changed` | An admin changes a plugin's visibility through the API. Includes the acting account and token ID, the reason and the previous and new visibility. |
+| `version.revoked` | An admin revokes a published version through the API. Includes the acting account and token ID, the reason, the version and its build ID. The build's move to `removed` emits no build event. |
 | `admin.token_created` / `admin.token_revoked` | An admin issues or explicitly revokes a delegated token. Includes its ID, never its secret. |
 
 Events and delivery jobs are inserted in the same transaction as the underlying
