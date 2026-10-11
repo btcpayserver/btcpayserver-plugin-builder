@@ -12,7 +12,6 @@ using PluginBuilder.Events;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
-using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Controllers;
 
@@ -186,7 +185,9 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
             return NotFound();
 
         var build = new FullBuildId(new PluginSlug(pluginSlug), buildId.Value);
-        await conn.UpdateBuild(build, BuildStates.Removed, null, tx: tx);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE builds SET state = 'removed' WHERE plugin_slug = @pluginSlug AND id = @buildId",
+            new { pluginSlug, buildId = buildId.Value }, tx, cancellationToken: cancellationToken));
         await conn.ExecuteAsync(new CommandDefinition(
             "DELETE FROM versions WHERE plugin_slug = @pluginSlug AND ver = @ver",
             new { pluginSlug, ver = version.VersionParts }, tx, cancellationToken: cancellationToken));
