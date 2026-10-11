@@ -1,12 +1,15 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http.Json;
 using System.Threading.Channels;
 using Dapper;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using PluginBuilder.Controllers;
 using PluginBuilder.Events;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
@@ -237,6 +240,105 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
             var published = Assert.Single(events, evt => evt.State == BuildStates.Uploaded.ToEventName());
             Assert.True(published.CleanupAcknowledged);
             Assert.False(published.ArtifactExists);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancellationAfterUploadRollsBackVersionPublication(bool hasPreviousVersion)
+    {
+        await using var storage = await AzureStagedUploadContractTests.BlobServer.Start();
+        using var sandbox = new UploadSandbox();
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        tester.ConfigureServices = services =>
+        {
+            foreach (var service in services.Where(service => service.ServiceType == typeof(IHostedService) &&
+                         service.ImplementationType != typeof(DatabaseStartupHostedService)).ToArray())
+                services.Remove(service);
+            services.RemoveAll<IBuildSandbox>();
+            services.AddSingleton<IBuildSandbox>(sandbox);
+            services.RemoveAll<AzureStorageClient>();
+            services.AddSingleton(storage.CreateClient());
+            services.RemoveAll<IGitHostingProvider>();
+        };
+        await tester.Start();
+        tester.GetService<BuildExecutorState>().MarkReady(
+            "sha256:" + new string('1', 64), "sha256:" + new string('2', 64));
+        var owner = await tester.CreateFakeUserAsync();
+        const string adminEmail = "admin@publication.test";
+        const string password = "test-password:with-colons:123";
+        var adminId = await tester.CreateFakeUserAsync(adminEmail, password);
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var admin = (await users.FindByIdAsync(adminId))!;
+            Assert.True((await users.AddToRoleAsync(admin, Roles.ServerAdmin)).Succeeded);
+        }
+        using var adminClient = tester.CreateHttpClient().SetBasicAuth(adminEmail, password);
+        var slug = new PluginSlug("cancel-publication");
+        await using var connection = await tester.GetService<DBConnectionFactory>().Open();
+        Assert.True(await connection.NewPlugin(slug, owner));
+        Assert.True(await connection.EnsureIdentifierOwnership(slug, "Example"));
+        long? previousBuild = null;
+        if (hasPreviousVersion)
+        {
+            previousBuild = await connection.NewBuild(slug, new PluginBuildParameters("https://github.com/example/plugin"), owner);
+            var previousId = new FullBuildId(slug, previousBuild.Value);
+            Assert.True(await connection.SetVersionBuild(previousId, PluginVersion.Parse("1.0.0"), null, null, true));
+            await connection.UpdateBuild(previousId, BuildStates.Uploaded,
+                new JObject { ["url"] = "https://example.com/previous.btcpay" });
+        }
+        var id = new FullBuildId(slug, await connection.NewBuild(slug,
+            new PluginBuildParameters("https://github.com/example/plugin"), owner));
+        var events = new ConcurrentQueue<string>();
+        using var subscription = tester.GetService<EventAggregator>().Subscribe<BuildChanged>(evt =>
+        {
+            if (evt.FullBuildId == id)
+                events.Enqueue(evt.EventName);
+        });
+
+        var execution = tester.GetService<BuildService>().Build(id);
+        try
+        {
+            var preparedId = await sandbox.NextPrepared().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(id, preparedId);
+            var prepared = sandbox.Prepared[id];
+            // Disposal is reached only after the Azure SDK has returned successfully. Hold it here so
+            // the API cancellation commits before the final version/state transaction can start.
+            await prepared.Disposing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(Artifact, storage.StoredArtifact);
+            Assert.False(execution.IsCompleted);
+            Assert.Equal("uploading", await connection.ExecuteScalarAsync<string>(
+                "SELECT state FROM builds WHERE plugin_slug=@slug AND id=@buildId",
+                new { slug = slug.ToString(), buildId = id.BuildId }));
+            using var cancelled = await adminClient.PostAsJsonAsync(
+                $"/api/v1/admin/plugins/{slug}/builds/{id.BuildId}/cancel", new { reason = "cancel before publication" });
+            Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
+
+            prepared.AllowDisposal.TrySetResult();
+            await execution.WaitAsync(TimeSpan.FromSeconds(10));
+
+            var build = await connection.QuerySingleAsync<(string State, string Error, string? Url)>(
+                "SELECT state, build_info->>'error' AS error, build_info->>'url' AS url FROM builds WHERE plugin_slug=@slug AND id=@buildId",
+                new { slug = slug.ToString(), buildId = id.BuildId });
+            Assert.Equal("failed", build.State);
+            Assert.Equal(AdminModerationController.CancelledByAdmin, build.Error);
+            Assert.Null(build.Url);
+            var versions = (await connection.QueryAsync<long>(
+                "SELECT build_id FROM versions WHERE plugin_slug=@slug", new { slug = slug.ToString() })).ToArray();
+            if (previousBuild is { } previous)
+                Assert.Equal(previous, Assert.Single(versions));
+            else
+                Assert.Empty(versions);
+            Assert.DoesNotContain("uploaded", events);
+            Assert.Contains("failed", events);
+        }
+        finally
+        {
+            sandbox.AllowAllDisposals.TrySetResult();
+            await execution.WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 
