@@ -39,7 +39,8 @@ public class HomeController(
     ILogger<HomeController> logger,
     HealthCheckService healthCheckService,
     AdminSettingsCache adminSettingsCache,
-    IdentityDbContext<IdentityUser> identityDbContext)
+    IdentityDbContext<IdentityUser> identityDbContext,
+    ITurnstileVerifier turnstile)
     : Controller
 {
     [AllowAnonymous]
@@ -182,6 +183,13 @@ public class HomeController(
         ViewData["ReturnUrl"] = returnUrl;
         if (!ModelState.IsValid)
             return View(model);
+
+        if (turnstile.Enabled && !await turnstile.VerifyAsync(Request.Form[TurnstileVerifier.ResponseField].ToString(),
+                HttpContext.Connection.RemoteIpAddress?.ToString(), HttpContext.RequestAborted))
+        {
+            ModelState.AddModelError("", "Please complete the human check and try again.");
+            return View(model);
+        }
 
         IdentityUser user = new() { UserName = model.Email, Email = model.Email };
         var result = await userManager.CreateAsync(user, model.Password);
