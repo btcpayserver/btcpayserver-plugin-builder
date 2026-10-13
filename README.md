@@ -28,6 +28,7 @@ All parameters are configured via environment variables.
 * `PB_CHEAT_MODE`: If set to `true`, it's considered that the server is running in a development environment and will allow to bypass some security checks (right now only registering admin account).
 * `PB_ENABLE_LOCAL_ARTIFACT_DOWNLOAD_PROXY`: If set to `true`, loopback artifact URLs can be proxied through the API download endpoint for local development.
 * `PB_VERBOSE`: Set to `true` to retain detailed authentication-handler logs. By default, API 401/403 responses under `/api/v1` produce a single contextual denial log.
+* `PB_TURNSTILE_SITEKEY` and `PB_TURNSTILE_SECRET`: Cloudflare Turnstile site key and secret. When both are set, registration requires passing the Turnstile check (verified server-side; a check that cannot be verified refuses the registration). Leave unset to register without it.
 * `ASPNETCORE_URLS`: The url the web server will be listening (example: `http://127.0.0.1:8080`)
 * `XDG_CONFIG_HOME`: Parent of the application's persistent data directory on Linux (example: `/datadir`, resulting in `/datadir/BTCPayServer-PluginBuilder`). Keep deployment mounts, including the private broker-download buffer, aligned with this setting.
 

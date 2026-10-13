@@ -1,4 +1,5 @@
 @inject ServerEnvironment env
+@inject ITurnstileVerifier turnstile
 @using PluginBuilder.Services
 @model RegisterViewModel
 @{
@@ -41,6 +42,13 @@
                     <label asp-for="IsAdmin" class="form-check-label"></label>
                     <span asp-validation-for="IsAdmin" class="text-danger"></span>
                 </div>
+            }
+            @if (turnstile.Enabled)
+            {
+                <div class="form-group mt-3">
+                    <div class="cf-turnstile" data-sitekey="@turnstile.SiteKey"></div>
+                </div>
+                <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
             }
             <div class="form-group mt-4">
                 <button type="submit" class="btn btn-primary btn-lg w-100" id="RegisterButton">Create account</button>

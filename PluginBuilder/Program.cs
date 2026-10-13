@@ -258,6 +258,8 @@ public class Program
             if (!string.IsNullOrWhiteSpace(token))
                 client.DefaultRequestHeaders.Add("PRIVATE-TOKEN", token);
         });
+        services.AddHttpClient(HttpClientNames.Turnstile, client => client.Timeout = TimeSpan.FromSeconds(10));
+        services.AddSingleton<ITurnstileVerifier, TurnstileVerifier>();
         services.AddSingleton<IGitHostingProvider, GitHubHostingProvider>();
         services.AddSingleton<IGitHostingProvider, GitLabHostingProvider>();
         services.AddSingleton<GitHostingProviderFactory>();
