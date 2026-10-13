@@ -3,24 +3,29 @@ using System.Security.Claims;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.Authentication;
+using PluginBuilder.DataModels;
 using PluginBuilder.Events;
+using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 
 namespace PluginBuilder.Controllers;
 
 /// <summary>
-/// Containment for the admin agent: lock an account and stop a build. Every action needs a reason and emits an admin
+/// Containment for the admin agent: lock an account, stop a build, change a plugin's visibility and revoke a published
+/// version. Every action needs a reason and emits an admin
 /// event in the same transaction as the change, so a rollback leaves neither behind.
 /// </summary>
 [ApiController]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Route("api/v1/admin")]
 [Authorize(Roles = Roles.ServerAdmin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.AdminApi)]
-public class AdminModerationController(DBConnectionFactory connections, BuildCancellationRegistry cancellations, EventAggregator events)
+public class AdminModerationController(DBConnectionFactory connections, BuildCancellationRegistry cancellations, EventAggregator events,
+    IOutputCacheStore outputCache)
     : ControllerBase
 {
     public const string CancelledByAdmin = "Cancelled by a server admin.";
@@ -132,6 +137,73 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
         return Ok(JObject.Parse(rows.Single()));
     }
 
+    /// <summary>The same change as the admin edit page, with a reason and an event. Hidden and unlisted plugins leave the
+    /// public listing and hidden ones leave update checks; direct version links keep working, so revoke a version to stop
+    /// it being served.</summary>
+    [HttpPut("plugins/{pluginSlug}/visibility")]
+    public async Task<IActionResult> SetVisibility(string pluginSlug, VisibilityRequest request, CancellationToken cancellationToken)
+    {
+        var visibility = request.Visibility.Trim().ToLowerInvariant();
+        if (!Visibilities.Contains(visibility))
+            return BadRequest(new { message = "visibility must be hidden, unlisted or listed." });
+
+        await using var conn = await connections.Open(cancellationToken);
+        await using var tx = await conn.BeginTransactionAsync(cancellationToken);
+        var current = await conn.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            "SELECT visibility::text FROM plugins WHERE slug = @pluginSlug FOR UPDATE",
+            new { pluginSlug }, tx, cancellationToken: cancellationToken));
+        if (current is null)
+            return NotFound();
+        if (current == visibility)
+            return Conflict(new { message = $"This plugin is already {current}." });
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE plugins SET visibility = @visibility::plugin_visibility_enum WHERE slug = @pluginSlug",
+            new { pluginSlug, visibility }, tx, cancellationToken: cancellationToken));
+        await Emit(conn, tx, "plugin.visibility_changed", new JObject
+        {
+            ["pluginSlug"] = pluginSlug, ["previousVisibility"] = current, ["visibility"] = visibility, ["reason"] = request.Reason.Trim()
+        }, cancellationToken);
+        await tx.CommitAsync(cancellationToken);
+        await outputCache.EvictByTagAsync(CacheTags.Plugins, cancellationToken);
+        return Ok(new JObject { ["pluginSlug"] = pluginSlug, ["previousVisibility"] = current, ["visibility"] = visibility });
+    }
+
+    /// <summary>Stops serving one published version: the owner's Remove, done by an admin with a reason and an event. The
+    /// build is kept and marked removed; the version cannot be restored, only published again from a new build, so lock
+    /// the account as well when the owner is the problem.</summary>
+    [HttpPost("plugins/{pluginSlug}/versions/{version}/revoke")]
+    public async Task<IActionResult> RevokeVersion(string pluginSlug, [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion version,
+        ReasonRequest request, CancellationToken cancellationToken)
+    {
+        await using var conn = await connections.Open(cancellationToken);
+        await using var tx = await conn.BeginTransactionAsync(cancellationToken);
+        var buildId = await conn.QuerySingleOrDefaultAsync<long?>(new CommandDefinition(
+            "SELECT build_id FROM versions WHERE plugin_slug = @pluginSlug AND ver = @ver",
+            new { pluginSlug, ver = version.VersionParts }, tx, cancellationToken: cancellationToken));
+        if (buildId is null)
+            return NotFound();
+
+        var build = new FullBuildId(new PluginSlug(pluginSlug), buildId.Value);
+        // Match owner removal and plugin deletion: lock the build before deleting its version.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE builds SET state = 'removed' WHERE plugin_slug = @pluginSlug AND id = @buildId",
+            new { pluginSlug, buildId = buildId.Value }, tx, cancellationToken: cancellationToken));
+        var removed = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM versions WHERE plugin_slug = @pluginSlug AND ver = @ver AND build_id = @buildId",
+            new { pluginSlug, ver = version.VersionParts, buildId = buildId.Value }, tx, cancellationToken: cancellationToken));
+        if (removed == 0)
+            return NotFound(); // Roll back the build update if this version was removed or replaced while we waited.
+        await Emit(conn, tx, "version.revoked", new JObject
+        {
+            ["pluginSlug"] = pluginSlug, ["version"] = version.ToString(), ["buildId"] = buildId.Value, ["reason"] = request.Reason.Trim()
+        }, cancellationToken);
+        await tx.CommitAsync(cancellationToken);
+        events.Publish(new BuildChanged(build, BuildStates.Removed));
+        await outputCache.EvictByTagAsync(CacheTags.Plugins, cancellationToken);
+        return Ok(new JObject { ["pluginSlug"] = pluginSlug, ["version"] = version.ToString(), ["buildId"] = buildId.Value, ["revoked"] = true });
+    }
+
     /// <summary>Marks each locked build row failed with <paramref name="error"/>; build.cancelled precedes the trigger's build.failed.</summary>
     private async Task Cancel(NpgsqlConnection conn, NpgsqlTransaction tx, List<BuildRow> builds, string error, string reason,
         CancellationToken cancellationToken)
@@ -196,6 +268,13 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
     public class ReasonRequest
     {
         [Required, MaxLength(1000)] public string Reason { get; set; } = "";
+    }
+
+    private static readonly HashSet<string> Visibilities = ["hidden", "unlisted", "listed"];
+
+    public sealed class VisibilityRequest : ReasonRequest
+    {
+        [Required, MaxLength(20)] public string Visibility { get; set; } = "";
     }
 
     public sealed class LockRequest : ReasonRequest

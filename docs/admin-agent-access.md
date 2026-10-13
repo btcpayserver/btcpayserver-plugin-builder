@@ -109,6 +109,8 @@ agent to approve listings: put the review policy in its local instructions.
 | `POST /admin/users/{userId}/lock` | `{"reason":"Spam burst"}` for an indefinite lock; optionally set `until` to a future ISO-8601 timestamp. See [Moderation](#moderation). |
 | `POST /admin/users/{userId}/unlock` | `{"reason":"False positive"}`. HTTP 409 if the account is not locked. |
 | `POST /admin/plugins/{pluginSlug}/builds/{buildId}/cancel` | `{"reason":"Exec in csproj"}`. HTTP 409 if the build has already finished. |
+| `PUT /admin/plugins/{pluginSlug}/visibility` | `{"visibility":"hidden","reason":"Malware report"}`; `hidden`, `unlisted` or `listed`. HTTP 409 if it already has that visibility. |
+| `POST /admin/plugins/{pluginSlug}/versions/{version}/revoke` | `{"reason":"Ships an unexplained binary"}`. Stops serving that version. HTTP 404 if it is not published. |
 | `GET /admin/audit?tokenId={id}&before=&limit=50` | Inspect API activity for a token, or omit tokenId to inspect all admin API activity. |
 
 Lists return `{items,nextCursor,hasMore}` with a decimal/string cursor. `limit` is
@@ -156,6 +158,15 @@ shows every action an agent took and why.
   move a finished build, so a cancellation that races the final publish wins or is refused
   with HTTP 409. The broker job itself is not killed; its lease deadline reclaims it. An
   artifact uploaded just before a losing publish is left unreferenced in storage.
+- **Visibility** makes the same change as the admin edit page. Hidden and unlisted plugins
+  leave the public listing, and hidden ones leave update checks, but a plugin's identifier,
+  version and download endpoints do not check visibility: a client that already knows a
+  hidden plugin can still fetch it. To stop a version being served, revoke it.
+- **Revoke** stops serving one published version, as the owner's Remove does: the version
+  leaves the listing, the identifier and version endpoints and its download link, and its
+  build is kept and marked `removed`. Servers that already installed it keep their copy. A
+  revoked version cannot be restored; it can only be published again from a new build, so
+  lock the account as well when the owner is the problem.
 
 ## Audit semantics
 

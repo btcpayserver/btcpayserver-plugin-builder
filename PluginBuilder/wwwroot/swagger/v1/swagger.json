@@ -1201,6 +1201,174 @@
         }
       }
     },
+    "/admin/plugins/{pluginSlug}/visibility": {
+      "put": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Change a plugin's visibility",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md#moderation for semantics and limits.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The plugin slug with its previous and new visibility.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing reason, or visibility is not hidden, unlisted or listed."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Plugin not found."
+          },
+          "409": {
+            "description": "The plugin already has that visibility."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "visibility",
+                  "reason"
+                ],
+                "properties": {
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "hidden",
+                      "unlisted",
+                      "listed"
+                    ],
+                    "description": "Case-insensitive."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "description": "Why; recorded in the admin event."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/plugins/{pluginSlug}/versions/{version}/revoke": {
+      "post": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Revoke a published version",
+        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md#moderation for semantics and limits.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "For example 1.0.2.0."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The plugin slug, version and build ID, with revoked true.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing reason or an invalid version."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "No such published version."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "description": "Why; recorded in the admin event."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/audit": {
       "get": {
         "tags": [

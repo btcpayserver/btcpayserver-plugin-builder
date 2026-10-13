@@ -9,6 +9,7 @@ public class AdminEventService(DBConnectionFactory connections)
     {
         "user.registered", "user.github_verified", "user.first_build_triggered", "user.locked", "user.unlocked",
         "build.triggered", "build.succeeded", "build.failed", "build.cancelled", "listing.requested", "listing.approved", "listing.rejected",
+        "plugin.visibility_changed", "version.revoked",
         "admin.token_created", "admin.token_revoked"
     });
 
