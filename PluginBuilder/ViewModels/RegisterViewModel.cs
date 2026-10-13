@@ -1,5 +1,6 @@
 #nullable disable
 using System.ComponentModel.DataAnnotations;
+using PluginBuilder.Util;
 
 namespace PluginBuilder.ViewModels;
 
@@ -7,6 +8,7 @@ public class RegisterViewModel
 {
     [Required]
     [EmailAddress]
+    [NotDisposableEmail]
     [Display(Name = "Email")]
     public string Email { get; set; }
 
