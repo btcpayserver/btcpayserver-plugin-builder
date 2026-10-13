@@ -475,6 +475,60 @@ public class AdminModerationApiTests(ITestOutputHelper logs) : UnitTestBase(logs
         Assert.Empty(await Events(conn, "build.failed"));
     }
 
+    [Fact]
+    public async Task RevokePreservesOtherPublishedVersionsAndBuilds()
+    {
+        await using var tester = await StartAdminServer();
+        var (admin, owner) = await AdminAndOwner(tester);
+        var slug = "moderation-revoke-scope";
+        var revokedBuild = await tester.CreatePublishedPluginAsync(owner.Id, slug);
+        var otherSlug = "moderation-revoke-other";
+        var otherBuild = await tester.CreatePublishedPluginAsync(owner.Id, otherSlug);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+
+        var buildRow = await conn.QuerySingleAsync<(string manifest_info, string build_info)>(
+            "SELECT manifest_info, build_info FROM builds WHERE plugin_slug = @slug AND id = @buildId",
+            new { slug, buildId = revokedBuild.BuildId });
+        var manifestJson = JObject.Parse(buildRow.manifest_info);
+        manifestJson["Version"] = "1.0.1.0";
+        var manifest = PluginManifest.Parse(manifestJson.ToString());
+        var retainedBuild = new FullBuildId(slug, await conn.NewBuild(slug, new PluginBuildParameters(Repository)));
+        var retainedUrl = $"https://example.invalid/{retainedBuild}/{manifest.Identifier}.btcpay";
+        var buildInfo = JObject.Parse(buildRow.build_info);
+        buildInfo["url"] = retainedUrl;
+        await conn.UpdateBuild(retainedBuild, BuildStates.Uploaded, buildInfo, manifest);
+        Assert.True(await conn.SetVersionBuild(retainedBuild, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, true));
+
+        var identifier = $"TestPlugin.{slug.Replace('-', '_')}";
+        var otherIdentifier = $"TestPlugin.{otherSlug.Replace('-', '_')}";
+        var (adminClient, _) = await TokenClient(tester, admin);
+        using var anonymous = tester.CreateHttpClient();
+        Assert.Equal(new[] { "1.0.2.0", "1.0.1.0" }, await Served(anonymous, identifier));
+        Assert.Equal(new[] { "1.0.2.0" }, await Served(anonymous, otherIdentifier));
+        // Cache the latest version before revoking it; the listing must fall back to the retained version.
+        var before = JArray.Parse(await anonymous.GetStringAsync("/api/v1/plugins?includePreRelease=true"));
+        Assert.Equal("1.0.2.0", Assert.Single(before, p => p.Value<string>("projectSlug") == slug).Value<string>("version"));
+
+        var response = await adminClient.PostAsJsonAsync($"/api/v1/admin/plugins/{slug}/versions/1.0.2.0/revoke", new { reason = "Withdraw only this version" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(new[] { "1.0.1.0" }, await Served(anonymous, identifier));
+        Assert.Equal(new[] { "1.0.2.0" }, await Served(anonymous, otherIdentifier));
+        Assert.Equal("removed", await State(conn, revokedBuild.PluginSlug, revokedBuild.BuildId));
+        Assert.Equal("uploaded", await State(conn, retainedBuild.PluginSlug, retainedBuild.BuildId));
+        Assert.Equal("uploaded", await State(conn, otherBuild.PluginSlug, otherBuild.BuildId));
+
+        var after = JArray.Parse(await anonymous.GetStringAsync("/api/v1/plugins?includePreRelease=true"));
+        var listed = Assert.Single(after, p => p.Value<string>("projectSlug") == slug);
+        Assert.Equal("1.0.1.0", listed.Value<string>("version"));
+        Assert.Equal(retainedBuild.BuildId, listed.Value<long>("buildId"));
+        var retained = JObject.Parse(await anonymous.GetStringAsync($"/api/v1/plugins/{slug}/versions/1.0.1.0"));
+        Assert.Equal(retainedBuild.BuildId, retained.Value<long>("buildId"));
+        using var downloads = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = anonymous.BaseAddress };
+        using var download = await downloads.GetAsync($"/api/v1/plugins/{slug}/versions/1.0.1.0/download");
+        Assert.Equal(HttpStatusCode.Redirect, download.StatusCode);
+        Assert.Equal(new Uri(retainedUrl), download.Headers.Location);
+    }
+
     private static async Task<bool> Listed(HttpClient client, string slug)
     {
         var plugins = JArray.Parse(await client.GetStringAsync("/api/v1/plugins?includePreRelease=true"));
