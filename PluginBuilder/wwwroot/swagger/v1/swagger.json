@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "BTCPay Server Plugin Builder API",
-    "description": "REST API for the BTCPay Server Plugin Builder. Provides endpoints for querying published plugin versions, downloading plugin binaries, checking for updates, and triggering new plugin builds.\n\nThe live server is available at [plugin-builder.btcpayserver.org](https://plugin-builder.btcpayserver.org/).",
+    "description": "REST API for the BTCPay Server Plugin Builder. Provides endpoints for querying published plugin versions, downloading plugin binaries, checking for updates, and building and releasing plugin versions.\n\nThe live server is available at [plugin-builder.btcpayserver.org](https://plugin-builder.btcpayserver.org/).\n\n## Publishing a plugin\n\nEndpoints tagged **Builds** and **Versions** use HTTP Basic authentication with your Plugin Builder email and password. The account must own the plugin and have a verified email address and a verified GitHub account. Create the plugin and its settings once in the web UI; after that, a version can be published entirely over the API:\n\n1. `POST /plugins/{pluginSlug}/builds` starts a build and returns its `buildId`.\n2. Poll `GET /plugins/{pluginSlug}/builds/{buildId}` until `state` is final: `uploaded` (success), `failed` or `removed`. A successful build becomes a pre-release of the version in its manifest. A version that is already released is not replaced, so bump the version for a new release.\n3. `POST /plugins/{pluginSlug}/versions/{version}/release` releases it. If the plugin requires signed releases, send a detached GPG signature of the manifest hash shown on the build page.\n\nPublic endpoints are rate limited per IP address and answer `429` when the limit is reached.",
     "version": "1.0.0",
     "contact": {
       "name": "BTCPay Server",
@@ -39,6 +39,10 @@
     {
       "name": "Builds",
       "description": "Plugin build management (requires authentication)"
+    },
+    {
+      "name": "Versions",
+      "description": "Releasing, unreleasing and removing plugin versions (requires authentication)"
     }
   ],
   "paths": {
@@ -2056,6 +2060,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests from this IP address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2116,7 +2130,14 @@
             "description": "Plugin not found or no compatible published version is available"
           },
           "429": {
-            "description": "Too many requests"
+            "description": "Too many requests from this IP address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2181,6 +2202,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests from this IP address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2225,6 +2256,69 @@
           },
           "404": {
             "description": "Plugin version not found"
+          },
+          "429": {
+            "description": "Too many requests from this IP address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Versions"],
+        "summary": "Remove a version",
+        "description": "Removes the version and marks its build as `removed`. BTCPay Server instances are no longer offered it.",
+        "operationId": "removeVersion",
+        "security": [
+          {
+            "Basic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "description": "Plugin slug. You must be an owner of this plugin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Plugin version, as in the build's manifest (e.g. `1.5.1`).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1.5.1"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Version removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionRemoveResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Not an owner of this plugin"
+          },
+          "404": {
+            "description": "Version not found"
           }
         }
       }
@@ -2270,6 +2364,146 @@
           },
           "404": {
             "description": "Plugin version not found"
+          },
+          "429": {
+            "description": "Too many requests from this IP address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/{pluginSlug}/versions/{version}/release": {
+      "post": {
+        "tags": ["Versions"],
+        "summary": "Release a version",
+        "description": "Turns a pre-release into a release, so BTCPay Server instances offer it without enabling pre-releases. The version's build must be in the `uploaded` state. If the plugin requires signed releases, `signature` is required.",
+        "operationId": "releaseVersion",
+        "security": [
+          {
+            "Basic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "description": "Plugin slug. You must be an owner of this plugin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Plugin version, as in the build's manifest (e.g. `1.5.1`).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1.5.1"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseVersionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Version released",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionReleaseResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Not an owner of this plugin"
+          },
+          "404": {
+            "description": "Version not found"
+          },
+          "422": {
+            "description": "The build is not `uploaded`, a required signature is missing, or the signature does not verify",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/{pluginSlug}/versions/{version}/unrelease": {
+      "post": {
+        "tags": ["Versions"],
+        "summary": "Unrelease a version",
+        "description": "Turns a release back into a pre-release. The version stays downloadable, but only instances that enable pre-releases are offered it.",
+        "operationId": "unreleaseVersion",
+        "security": [
+          {
+            "Basic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "description": "Plugin slug. You must be an owner of this plugin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Plugin version, as in the build's manifest (e.g. `1.5.1`).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1.5.1"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Version unreleased",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionReleaseResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Not an owner of this plugin"
+          },
+          "404": {
+            "description": "Version not found"
           }
         }
       }
@@ -2343,11 +2577,64 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests from this IP address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitResponse"
+                }
+              }
+            }
           }
         }
       }
     },
     "/plugins/{pluginSlug}/builds": {
+      "get": {
+        "tags": ["Builds"],
+        "summary": "List builds",
+        "description": "Returns the plugin's 50 most recent builds, newest first.",
+        "operationId": "listBuilds",
+        "security": [
+          {
+            "Basic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "description": "Plugin slug. You must be an owner of this plugin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Builds, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BuildData"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Not an owner of this plugin"
+          }
+        }
+      },
       "post": {
         "tags": ["Builds"],
         "summary": "Create a new build",
@@ -2400,10 +2687,10 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Not an owner of this plugin"
+            "description": "Not an owner of this plugin, or the account's email address or GitHub account is not verified"
           },
           "422": {
-            "description": "Validation error",
+            "description": "Validation error, such as a missing repository, a manifest that cannot be read, or a plugin identifier that belongs to another plugin",
             "content": {
               "application/json": {
                 "schema": {
@@ -2413,7 +2700,24 @@
             }
           },
           "429": {
-            "description": "The user already has the maximum number of builds in progress (`too-many-active-builds`)"
+            "description": "The account already has the maximum number of builds in progress (`too-many-active-builds`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "New builds are temporarily disabled on this server (`builds-disabled`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2461,6 +2765,7 @@
                 "example": {
                   "projectSlug": "lnbank",
                   "buildId": 8,
+                  "state": "uploaded",
                   "buildInfo": {
                     "gitRepository": "https://github.com/dennisreimann/btcpayserver-plugin-lnbank",
                     "gitRef": "v1.5.1",
@@ -2504,6 +2809,9 @@
           },
           "403": {
             "description": "Not an owner of this plugin"
+          },
+          "404": {
+            "description": "Build not found"
           }
         }
       }
@@ -2537,23 +2845,23 @@
             "description": "Plugin version.",
             "example": "1.5.1"
           },
-          "btcpayMinVersion": {
+          "btcPayMinVersion": {
             "type": "string",
             "description": "Effective minimum compatible BTCPay Server version.",
             "example": "1.9.0"
           },
-            "btcpayMaxVersion": {
-                "type": "string",
-                "nullable": true,
-                "description": "Effective maximum compatible BTCPay Server version.",
-                "example": "2.0.0"
-            },
-            "changelog": {
-                "type": "string",
-                "nullable": true,
-                "description": "Release notes for this version.",
-                "example": "Added support for ..."
-            },
+          "btcPayMaxVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Effective maximum compatible BTCPay Server version.",
+            "example": "2.0.0"
+          },
+          "changelog": {
+            "type": "string",
+            "nullable": true,
+            "description": "Release notes for this version.",
+            "example": "Added support for ..."
+          },
           "buildId": {
             "type": "integer",
             "format": "int64",
@@ -2564,7 +2872,7 @@
             "$ref": "#/components/schemas/BuildInfo"
           },
           "manifestInfo": {
-            "$ref": "#/components/schemas/PluginManifest"
+            "$ref": "#/components/schemas/PublishedManifest"
           },
           "pluginLogo": {
             "type": "string",
@@ -2587,6 +2895,19 @@
             "nullable": true,
             "description": "Short description of the plugin."
           },
+          "videoUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL of the plugin's demonstration video."
+          },
+          "images": {
+            "type": "array",
+            "nullable": true,
+            "description": "URLs of the plugin's screenshots.",
+            "items": {
+              "type": "string"
+            }
+          },
           "fingerprint": {
             "type": "string",
             "nullable": true,
@@ -2608,6 +2929,12 @@
             "format": "int64",
             "description": "Build ID.",
             "example": 8
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "waiting-upload", "uploading", "uploaded", "failed", "removed"],
+            "description": "Build state. `uploaded` (success), `failed` and `removed` are final; the others mean the build is still in progress.",
+            "example": "uploaded"
           },
           "buildInfo": {
             "allOf": [
@@ -2634,11 +2961,11 @@
           },
           "published": {
             "type": "boolean",
-            "description": "Whether this build has been published as a release."
+            "description": "Whether this build is the current build of a plugin version, as a release or a pre-release."
           },
           "prerelease": {
             "type": "boolean",
-            "description": "Whether this is a pre-release version."
+            "description": "Whether that version is still a pre-release. Release it with `POST /plugins/{pluginSlug}/versions/{version}/release`."
           },
           "commit": {
             "type": "string",
@@ -2730,7 +3057,7 @@
       },
       "PluginManifest": {
         "type": "object",
-        "description": "Plugin manifest from the built assembly.",
+        "description": "Plugin manifest from the built assembly, as returned by the build endpoints.",
         "properties": {
           "identifier": {
             "type": "string",
@@ -2778,6 +3105,59 @@
             "type": "string",
             "description": "Version condition (e.g. `>=1.9.0` or `>=1.9.0 && <=2.0.0`).",
             "example": ">=1.9.0 && <=2.0.0"
+          }
+        }
+      },
+      "PublishedManifest": {
+        "type": "object",
+        "description": "Plugin manifest as stored with a published version. Unlike the build endpoints, its keys start with a capital letter.",
+        "properties": {
+          "Identifier": {
+            "type": "string",
+            "description": "Unique plugin identifier.",
+            "example": "BTCPayServer.Plugins.LNbank"
+          },
+          "Name": {
+            "type": "string",
+            "description": "Display name of the plugin.",
+            "example": "LNbank"
+          },
+          "Version": {
+            "type": "string",
+            "description": "Plugin version.",
+            "example": "1.5.1"
+          },
+          "Description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Plugin description."
+          },
+          "SystemPlugin": {
+            "type": "boolean",
+            "description": "Whether this is a system plugin."
+          },
+          "Dependencies": {
+            "type": "array",
+            "description": "Plugin dependencies. The BTCPay Server dependency reflects the effective compatibility range.",
+            "items": {
+              "$ref": "#/components/schemas/PublishedDependency"
+            }
+          }
+        }
+      },
+      "PublishedDependency": {
+        "type": "object",
+        "description": "A plugin dependency requirement, as stored with a published version.",
+        "properties": {
+          "Identifier": {
+            "type": "string",
+            "description": "Dependency identifier.",
+            "example": "BTCPayServer"
+          },
+          "Condition": {
+            "type": "string",
+            "description": "Version condition (e.g. `>=1.9.0` or `>=1.9.0 && <=2.0.0`).",
+            "example": ">=1.9.0"
           }
         }
       },
@@ -2846,6 +3226,75 @@
             "type": "string",
             "description": "Currently installed version.",
             "example": "1.5.0"
+          }
+        }
+      },
+      "ReleaseVersionRequest": {
+        "type": "object",
+        "description": "Optional body for releasing a version.",
+        "properties": {
+          "signature": {
+            "type": "string",
+            "format": "byte",
+            "nullable": true,
+            "description": "Base64-encoded detached GPG signature of the manifest hash shown on the build page. Required when the plugin requires signed releases."
+          }
+        }
+      },
+      "VersionReleaseResponse": {
+        "type": "object",
+        "description": "Result of releasing or unreleasing a version.",
+        "properties": {
+          "version": {
+            "type": "string",
+            "example": "1.5.1"
+          },
+          "released": {
+            "type": "boolean",
+            "description": "`true` after a release, `false` after an unrelease."
+          }
+        }
+      },
+      "VersionRemoveResponse": {
+        "type": "object",
+        "description": "Result of removing a version.",
+        "properties": {
+          "version": {
+            "type": "string",
+            "example": "1.5.1"
+          },
+          "removed": {
+            "type": "boolean",
+            "example": true
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "An error with a stable machine-readable code.",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error code, such as `too-many-active-builds` or `builds-disabled`.",
+            "example": "too-many-active-builds"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable explanation."
+          }
+        }
+      },
+      "RateLimitResponse": {
+        "type": "object",
+        "description": "Returned with status 429 when the public rate limit is reached.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "429"
+          },
+          "message": {
+            "type": "string",
+            "example": "Too many requests. Please try again later."
           }
         }
       },
