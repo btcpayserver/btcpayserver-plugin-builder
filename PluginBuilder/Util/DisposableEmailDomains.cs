@@ -209,7 +209,7 @@ public static class DisposableEmailDomains
     private static readonly HashSet<string> Lookup = new(Domains, StringComparer.OrdinalIgnoreCase);
 
     // Characters that IDNA reads as a dot between labels, as mail software does when it sends to the address.
-    private static readonly char[] Dots = ['.', '\u3002', '\uFF0E', '\uFF61'];
+    private static readonly char[] IdnaDots = ['\u3002', '\uFF0E', '\uFF61'];
 
     public static bool IsDisposable(string? email)
     {
@@ -217,7 +217,11 @@ public static class DisposableEmailDomains
         if (at < 0)
             return false;
 
-        var domain = email![(at + 1)..].Trim().TrimEnd(Dots);
+        var domain = email![(at + 1)..].Trim();
+        // Map them to '.' first, so the lookup below still sees the labels when the name is not valid IDNA.
+        foreach (var dot in IdnaDots)
+            domain = domain.Replace(dot, '.');
+        domain = domain.TrimEnd('.');
         try
         {
             // "mailinator\u3002com" and full-width letters reach the same inbox as "mailinator.com".

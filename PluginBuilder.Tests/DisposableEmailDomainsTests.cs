@@ -27,6 +27,8 @@ public class DisposableEmailDomainsTests
     [InlineData("someone@mailinator\uFF0Ecom")]
     [InlineData("someone@mailinator\uFF61com")]
     [InlineData("someone@mailinator.com\u3002")]
+    // Not valid IDNA ("xn--" alone), so the conversion fails; the dots must still separate the labels.
+    [InlineData("someone@xn--\u3002mailinator.com")]
     [InlineData("someone@\uFF4D\uFF41\uFF49\uFF4C\uFF49\uFF4E\uFF41\uFF54\uFF4F\uFF52.com")]
     public void AListedDomainOrOneOfItsSubdomainsIsDisposable(string email) =>
         Assert.True(DisposableEmailDomains.IsDisposable(email));
