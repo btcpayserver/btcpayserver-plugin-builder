@@ -8,6 +8,7 @@ public class RegisterViewModel
 {
     [Required]
     [EmailAddress]
+    [StringLength(DisposableEmailDomains.MaxEmailLength, ErrorMessage = "Please provide a valid email address.")]
     [NotDisposableEmail]
     [Display(Name = "Email")]
     public string Email { get; set; }

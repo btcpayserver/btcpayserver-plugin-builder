@@ -33,6 +33,14 @@ public class DisposableEmailDomainsTests
     public void AListedDomainOrOneOfItsSubdomainsIsDisposable(string email) =>
         Assert.True(DisposableEmailDomains.IsDisposable(email));
 
+    [Fact]
+    public void ADisposableAddressAtTheMaximumLengthIsStillRefused()
+    {
+        const string suffix = "@mailinator.com";
+        var email = new string('a', 256 - suffix.Length) + suffix;
+        Assert.True(DisposableEmailDomains.IsDisposable(email));
+    }
+
     [Theory]
     [InlineData("someone@gmail.com")]
     [InlineData("someone@proton.me")]
@@ -71,13 +79,52 @@ public class DisposableEmailDomainsTests
         model.Email = "someone@example.org";
         Assert.True(Validator.TryValidateObject(model, new ValidationContext(model), errors, validateAllProperties: true));
     }
+
+    [Theory]
+    [InlineData(256, true)]
+    [InlineData(257, false)]
+    [InlineData(16384, false)]
+    public void RegistrationValidatesEmailLength(int length, bool expected)
+    {
+        const string suffix = "@example.org";
+        var model = new RegisterViewModel
+        {
+            Email = new string('a', length - suffix.Length) + suffix,
+            Password = "123456",
+            ConfirmPassword = "123456"
+        };
+        var errors = new List<ValidationResult>();
+
+        Assert.Equal(expected, Validator.TryValidateObject(model, new ValidationContext(model), errors, validateAllProperties: true));
+        if (!expected)
+        {
+            var error = Assert.Single(errors);
+            Assert.Equal("Please provide a valid email address.", error.ErrorMessage);
+            Assert.Equal([nameof(RegisterViewModel.Email)], error.MemberNames);
+        }
+    }
+
+    [Theory]
+    [InlineData("example.org")]
+    [InlineData("mailinator.com")]
+    public void OversizedDomainsDoNotAllocatePerSuffix(string domain)
+    {
+        var email = "someone@" + string.Concat(Enumerable.Repeat("a.", 8192)) + domain;
+        DisposableEmailDomains.IsDisposable("someone@example.org");
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        DisposableEmailDomains.IsDisposable(email);
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.InRange(allocated, 0, 64 * 1024);
+    }
 }
 
 [Collection(nameof(NonParallelizableCollectionDefinition))]
 public class DisposableEmailRegistrationTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     [Fact]
-    public async Task ADisposableAddressCannotRegisterAndANormalOneCan()
+    public async Task DisposableAndOversizedAddressesCannotRegisterAndANormalOneCan()
     {
         await using var tester = Create();
         tester.ReuseDatabase = false;
@@ -95,15 +142,21 @@ public class DisposableEmailRegistrationTests(ITestOutputHelper logs) : UnitTest
         };
         var page = await (await client.GetAsync("/register")).Content.ReadAsStringAsync();
 
-        foreach (var domain in new[] { "Mailinator.com", "mailinator\u3002com" })
+        var rejectedEmails = new[]
         {
-            var disposable = $"disposable-{Guid.NewGuid():N}@{domain}";
-            using (var response = await client.PostAsync("/register", Form(disposable, AntiforgeryToken(page))))
+            $"disposable-{Guid.NewGuid():N}@Mailinator.com",
+            $"disposable-{Guid.NewGuid():N}@mailinator\u3002com",
+            new string('a', 245) + "@example.org", // 257 characters: just above the database's limit.
+            "someone@" + string.Concat(Enumerable.Repeat("a.", 8192)) + "example.org"
+        };
+        foreach (var email in rejectedEmails)
+        {
+            using (var response = await client.PostAsync("/register", Form(email, AntiforgeryToken(page))))
             {
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                 Assert.Contains("Please provide a valid email address.", await response.Content.ReadAsStringAsync());
             }
-            Assert.False(await UserExists(conn, disposable));
+            Assert.False(await UserExists(conn, email));
         }
 
         var normal = $"normal-{Guid.NewGuid():N}@example.org";

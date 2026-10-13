@@ -9,6 +9,9 @@ namespace PluginBuilder.Util;
 /// </summary>
 public static class DisposableEmailDomains
 {
+    // Matches the maximum email and username length in AspNetUsers.
+    public const int MaxEmailLength = 256;
+
     public static readonly string[] Domains =
     [
         "10mail.org",
@@ -213,11 +216,15 @@ public static class DisposableEmailDomains
 
     public static bool IsDisposable(string? email)
     {
-        var at = email?.LastIndexOf('@') ?? -1;
+        // Bound the work even when IDNA conversion fails and falls back to scanning every suffix.
+        if (email is null || email.Length > MaxEmailLength)
+            return false;
+
+        var at = email.LastIndexOf('@');
         if (at < 0)
             return false;
 
-        var domain = email![(at + 1)..].Trim();
+        var domain = email[(at + 1)..].Trim();
         // Map them to '.' first, so the lookup below still sees the labels when the name is not valid IDNA.
         foreach (var dot in IdnaDots)
             domain = domain.Replace(dot, '.');
