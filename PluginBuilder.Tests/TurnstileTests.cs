@@ -42,7 +42,7 @@ public class TurnstileVerifierTests
 
         var (request, body) = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Post, request.Method);
-        Assert.Equal(TurnstileVerifier.SiteVerifyUrl, request.RequestUri);
+        Assert.Equal(new Uri("https://challenges.cloudflare.com/turnstile/v0/siteverify"), request.RequestUri);
         Assert.Contains("secret=secret-key", body);
         Assert.Contains("response=token-from-widget", body);
         Assert.Contains("remoteip=203.0.113.7", body);
@@ -221,7 +221,7 @@ public class TurnstileRegistrationTests(ITestOutputHelper logs) : UnitTestBase(l
             ["__RequestVerificationToken"] = antiforgeryToken
         };
         if (turnstileToken is not null)
-            fields[TurnstileVerifier.ResponseField] = turnstileToken;
+            fields["cf-turnstile-response"] = turnstileToken;
         return new FormUrlEncodedContent(fields);
     }
 

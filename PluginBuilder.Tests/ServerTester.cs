@@ -123,11 +123,13 @@ public class ServerTester : IAsyncDisposable
             Args = args.ToArray()
         });
 
-        // Added after the app's AddEnvironmentVariables("PB_") so it wins over any ambient PB_CHEAT_MODE,
-        // keeping this tester's CheatMode authoritative (read lazily via ServerEnvironment at request time).
+        // Override ambient PB_* settings owned by the fixture. Turnstile tests enable
+        // the check explicitly by replacing the verifier.
         webappBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["CHEAT_MODE"] = CheatMode.ToString().ToLowerInvariant()
+            ["CHEAT_MODE"] = CheatMode.ToString().ToLowerInvariant(),
+            ["TURNSTILE_SITEKEY"] = null,
+            ["TURNSTILE_SECRET"] = null
         });
 
         webappBuilder.Services.AddHttpClient();
