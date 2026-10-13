@@ -22,6 +22,12 @@ public class DisposableEmailDomainsTests
     [InlineData("someone@mailinator.com.")]
     [InlineData("someone@yopmail.fr")]
     [InlineData("someone@sharklasers.com")]
+    // Mail software converts these to mailinator.com (IDNA), so they reach the same inbox.
+    [InlineData("someone@mailinator\u3002com")]
+    [InlineData("someone@mailinator\uFF0Ecom")]
+    [InlineData("someone@mailinator\uFF61com")]
+    [InlineData("someone@mailinator.com\u3002")]
+    [InlineData("someone@\uFF4D\uFF41\uFF49\uFF4C\uFF49\uFF4E\uFF41\uFF54\uFF4F\uFF52.com")]
     public void AListedDomainOrOneOfItsSubdomainsIsDisposable(string email) =>
         Assert.True(DisposableEmailDomains.IsDisposable(email));
 
@@ -30,6 +36,8 @@ public class DisposableEmailDomainsTests
     [InlineData("someone@proton.me")]
     [InlineData("someone@mymailinator.com")]
     [InlineData("someone@mailinator.com.example.org")]
+    [InlineData("someone@b\u00FCcher.example")]
+    [InlineData("someone@mailinator..com")]
     [InlineData("mailinator.com@example.org")]
     [InlineData("someone@")]
     [InlineData("mailinator.com")]
@@ -85,13 +93,16 @@ public class DisposableEmailRegistrationTests(ITestOutputHelper logs) : UnitTest
         };
         var page = await (await client.GetAsync("/register")).Content.ReadAsStringAsync();
 
-        var disposable = $"disposable-{Guid.NewGuid():N}@Mailinator.com";
-        using (var response = await client.PostAsync("/register", Form(disposable, AntiforgeryToken(page))))
+        foreach (var domain in new[] { "Mailinator.com", "mailinator\u3002com" })
         {
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Contains("Please provide a valid email address.", await response.Content.ReadAsStringAsync());
+            var disposable = $"disposable-{Guid.NewGuid():N}@{domain}";
+            using (var response = await client.PostAsync("/register", Form(disposable, AntiforgeryToken(page))))
+            {
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                Assert.Contains("Please provide a valid email address.", await response.Content.ReadAsStringAsync());
+            }
+            Assert.False(await UserExists(conn, disposable));
         }
-        Assert.False(await UserExists(conn, disposable));
 
         var normal = $"normal-{Guid.NewGuid():N}@example.org";
         using (var response = await client.PostAsync("/register", Form(normal, AntiforgeryToken(page))))

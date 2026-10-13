@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace PluginBuilder.Util;
 
 /// <summary>
@@ -206,13 +208,26 @@ public static class DisposableEmailDomains
 
     private static readonly HashSet<string> Lookup = new(Domains, StringComparer.OrdinalIgnoreCase);
 
+    // Characters that IDNA reads as a dot between labels, as mail software does when it sends to the address.
+    private static readonly char[] Dots = ['.', '\u3002', '\uFF0E', '\uFF61'];
+
     public static bool IsDisposable(string? email)
     {
         var at = email?.LastIndexOf('@') ?? -1;
         if (at < 0)
             return false;
 
-        var domain = email![(at + 1)..].Trim().TrimEnd('.');
+        var domain = email![(at + 1)..].Trim().TrimEnd(Dots);
+        try
+        {
+            // "mailinator\u3002com" and full-width letters reach the same inbox as "mailinator.com".
+            domain = new IdnMapping().GetAscii(domain);
+        }
+        catch (ArgumentException)
+        {
+            // Not a valid international domain name: check it as written.
+        }
+
         while (domain.Length > 0)
         {
             if (Lookup.Contains(domain))
