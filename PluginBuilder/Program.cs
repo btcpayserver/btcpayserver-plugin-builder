@@ -139,6 +139,7 @@ public class Program
         app.UseAuthorization();
         app.UseOutputCache();
         app.MapHub<PluginHub>("hub");
+        app.MapHub<PluginHub>("/dashboard/hub");
         app.MapHub<PluginHub>("/plugins/{pluginSlug}/hub");
         app.MapHub<PluginHub>("/plugins/{pluginSlug}/builds/{buildId}/hub");
         // no default routes
