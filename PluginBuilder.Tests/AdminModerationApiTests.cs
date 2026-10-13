@@ -529,6 +529,130 @@ public class AdminModerationApiTests(ITestOutputHelper logs) : UnitTestBase(logs
         Assert.Equal(new Uri(retainedUrl), download.Headers.Location);
     }
 
+    [Fact]
+    public async Task OwnerRemovalAndRevocationSerializeWithoutDeadlock()
+    {
+        await using var tester = await StartAdminServer();
+        var (admin, owner) = await AdminAndOwner(tester);
+        var slug = "moderation-remove-race";
+        var build = await tester.CreatePublishedPluginAsync(owner.Id, slug);
+        var (adminClient, _) = await TokenClient(tester, admin);
+        using var ownerClient = tester.CreateHttpClient().SetBasicAuth(owner.Email!, Password);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await using var observer = await tester.GetService<DBConnectionFactory>().Open();
+        await using var blocker = await conn.BeginTransactionAsync();
+        await conn.ExecuteAsync("SELECT id FROM builds WHERE plugin_slug = @slug AND id = @buildId FOR UPDATE",
+            new { slug, buildId = build.BuildId }, blocker);
+        using var requestsTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var pending = new List<Task<HttpResponseMessage>>();
+        var url = $"/api/v1/plugins/{slug}/versions/1.0.2.0";
+        try
+        {
+            pending.Add(ownerClient.DeleteAsync(url, requestsTimeout.Token));
+            await WaitForBlockedRequests(observer, conn.ProcessID, pending);
+            pending.Add(adminClient.PostAsJsonAsync($"/api/v1/admin/plugins/{slug}/versions/1.0.2.0/revoke",
+                new { reason = "Concurrent withdrawal" }, requestsTimeout.Token));
+            await WaitForBlockedRequests(observer, conn.ProcessID, pending);
+            await blocker.CommitAsync(requestsTimeout.Token);
+
+            var responses = await Task.WhenAll(pending).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(HttpStatusCode.OK, responses[0].StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, responses[1].StatusCode);
+            Assert.Equal("removed", await State(observer, build.PluginSlug, build.BuildId));
+            Assert.Equal(0, await observer.ExecuteScalarAsync<int>("SELECT count(*) FROM versions WHERE plugin_slug = @slug", new { slug }));
+            Assert.Empty(await Events(observer, "version.revoked"));
+            Assert.Equal(HttpStatusCode.NotFound, (await ownerClient.DeleteAsync(url, requestsTimeout.Token)).StatusCode);
+        }
+        finally
+        {
+            requestsTimeout.Cancel();
+            await blocker.DisposeAsync();
+            foreach (var request in pending)
+                try
+                {
+                    (await request.WaitAsync(TimeSpan.FromSeconds(10))).Dispose();
+                }
+                catch
+                {
+                    // Preserve the original failure while releasing blocked HTTP requests.
+                }
+        }
+    }
+
+    [Fact]
+    public async Task RevocationPreservesAConcurrentReplacementBuild()
+    {
+        await using var tester = await StartAdminServer();
+        var (admin, owner) = await AdminAndOwner(tester);
+        var slug = "moderation-revoke-replaced";
+        var build = await tester.CreatePublishedPluginAsync(owner.Id, slug);
+        var (adminClient, _) = await TokenClient(tester, admin);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await using var observer = await tester.GetService<DBConnectionFactory>().Open();
+        var published = await conn.QuerySingleAsync<(string manifest_info, string build_info)>(
+            "SELECT manifest_info, build_info FROM builds WHERE plugin_slug = @slug AND id = @buildId",
+            new { slug, buildId = build.BuildId });
+        var manifest = PluginManifest.Parse(published.manifest_info);
+        var replacement = new FullBuildId(slug, await conn.NewBuild(slug, new PluginBuildParameters(Repository)));
+        await conn.UpdateBuild(replacement, BuildStates.Uploaded, JObject.Parse(published.build_info), manifest);
+        await using var blocker = await conn.BeginTransactionAsync();
+        await conn.ExecuteAsync("SELECT id FROM builds WHERE plugin_slug = @slug AND id = @buildId FOR UPDATE",
+            new { slug, buildId = build.BuildId }, blocker);
+        using var requestsTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var pending = new[]
+        {
+            adminClient.PostAsJsonAsync($"/api/v1/admin/plugins/{slug}/versions/1.0.2.0/revoke",
+                new { reason = "Withdraw the current build" }, requestsTimeout.Token)
+        };
+        try
+        {
+            await WaitForBlockedRequests(observer, conn.ProcessID, pending);
+            Assert.True(await observer.SetVersionBuild(replacement, manifest.Version, manifest.BTCPayMinVersion,
+                manifest.BTCPayMaxVersion, true).WaitAsync(TimeSpan.FromSeconds(10)));
+            await blocker.CommitAsync(requestsTimeout.Token);
+
+            Assert.Equal(HttpStatusCode.NotFound, (await pending[0].WaitAsync(TimeSpan.FromSeconds(10))).StatusCode);
+            Assert.Equal("uploaded", await State(observer, build.PluginSlug, build.BuildId));
+            Assert.Equal("uploaded", await State(observer, replacement.PluginSlug, replacement.BuildId));
+            Assert.Equal(replacement.BuildId, await observer.QuerySingleAsync<long>(
+                "SELECT build_id FROM versions WHERE plugin_slug = @slug AND ver = @ver", new { slug, ver = manifest.Version.VersionParts }));
+            Assert.Empty(await Events(observer, "version.revoked"));
+        }
+        finally
+        {
+            requestsTimeout.Cancel();
+            await blocker.DisposeAsync();
+            try
+            {
+                (await pending[0].WaitAsync(TimeSpan.FromSeconds(10))).Dispose();
+            }
+            catch
+            {
+                // Preserve the original failure while releasing the blocked HTTP request.
+            }
+        }
+    }
+
+    private static async Task WaitForBlockedRequests(NpgsqlConnection observer, int blockingPid,
+        IReadOnlyCollection<Task<HttpResponseMessage>> pending)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        // Include indirect waiters: a request can wait for another request already blocked by our transaction.
+        while (await observer.ExecuteScalarAsync<int>(new CommandDefinition("""
+                   WITH RECURSIVE blocked(pid) AS (
+                       SELECT @blockingPid
+                       UNION
+                       SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid))
+                       WHERE a.datname = current_database()
+                   )
+                   SELECT count(*) FROM blocked WHERE pid <> @blockingPid
+                   """, new { blockingPid }, cancellationToken: timeout.Token)) < pending.Count)
+        {
+            Assert.All(pending, request => Assert.False(request.IsCompleted, "The operations must reach the contested locks."));
+            await Task.Delay(10, timeout.Token);
+        }
+    }
+
     private static async Task<bool> Listed(HttpClient client, string slug)
     {
         var plugins = JArray.Parse(await client.GetStringAsync("/api/v1/plugins?includePreRelease=true"));

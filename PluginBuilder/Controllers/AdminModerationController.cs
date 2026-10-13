@@ -179,18 +179,21 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
         await using var conn = await connections.Open(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
         var buildId = await conn.QuerySingleOrDefaultAsync<long?>(new CommandDefinition(
-            "SELECT build_id FROM versions WHERE plugin_slug = @pluginSlug AND ver = @ver FOR UPDATE",
+            "SELECT build_id FROM versions WHERE plugin_slug = @pluginSlug AND ver = @ver",
             new { pluginSlug, ver = version.VersionParts }, tx, cancellationToken: cancellationToken));
         if (buildId is null)
             return NotFound();
 
         var build = new FullBuildId(new PluginSlug(pluginSlug), buildId.Value);
+        // Match owner removal and plugin deletion: lock the build before deleting its version.
         await conn.ExecuteAsync(new CommandDefinition(
             "UPDATE builds SET state = 'removed' WHERE plugin_slug = @pluginSlug AND id = @buildId",
             new { pluginSlug, buildId = buildId.Value }, tx, cancellationToken: cancellationToken));
-        await conn.ExecuteAsync(new CommandDefinition(
-            "DELETE FROM versions WHERE plugin_slug = @pluginSlug AND ver = @ver",
-            new { pluginSlug, ver = version.VersionParts }, tx, cancellationToken: cancellationToken));
+        var removed = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM versions WHERE plugin_slug = @pluginSlug AND ver = @ver AND build_id = @buildId",
+            new { pluginSlug, ver = version.VersionParts, buildId = buildId.Value }, tx, cancellationToken: cancellationToken));
+        if (removed == 0)
+            return NotFound(); // Roll back the build update if this version was removed or replaced while we waited.
         await Emit(conn, tx, "version.revoked", new JObject
         {
             ["pluginSlug"] = pluginSlug, ["version"] = version.ToString(), ["buildId"] = buildId.Value, ["reason"] = request.Reason.Trim()
