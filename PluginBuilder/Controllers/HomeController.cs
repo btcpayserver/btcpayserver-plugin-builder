@@ -362,6 +362,8 @@ public class HomeController(
             return NotFound();
 
         model ??= new PluginDetailsViewModel();
+        model.Skip = Math.Max(0, model.Skip);
+        model.Count = Math.Clamp(model.Count, 1, 500);
 
         var sort = string.Equals(model.Sort, "helpful", StringComparison.OrdinalIgnoreCase) ? "helpful" : "newest";
 
@@ -573,6 +575,7 @@ public class HomeController(
             Plugin = plugin,
             Sort = sort,
             Skip = model.Skip,
+            Count = model.Count,
             Reviews = items,
             IsAdmin = isAdmin,
             IsOwner = userId != null && userId == primaryOwnerId,
