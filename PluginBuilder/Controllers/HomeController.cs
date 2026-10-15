@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.APIModels;
+using PluginBuilder.Authentication;
 using PluginBuilder.Components.PluginVersion;
 using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
@@ -29,7 +30,7 @@ namespace PluginBuilder.Controllers;
 public class HomeController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
-    SignInManager<IdentityUser> signInManager,
+    PluginBuilderSignInManager signInManager,
     EmailService emailService,
     UserVerifiedLogic userVerifiedLogic,
     PluginBuilderOptions options,
@@ -157,11 +158,11 @@ public class HomeController(
         return await SignInOrRequireSecondFactor(user, model, returnUrl);
     }
 
-    // The password was checked above. The sign-in itself goes through Identity's PasswordSignInAsync so that an account
-    // with two-factor authentication gets Identity's own second step (its two-factor user cookie) instead of a session.
+    // The password was checked above, once. An account with two-factor authentication gets Identity's own second step
+    // (its two-factor user cookie) instead of a session.
     private async Task<IActionResult> SignInOrRequireSecondFactor(IdentityUser user, LoginViewModel model, string? returnUrl)
     {
-        var result = await signInManager.PasswordSignInAsync(user, model.Password, model.RememberMe, true);
+        var result = await signInManager.SignInAfterPasswordCheckAsync(user, model.RememberMe);
         if (result.RequiresTwoFactor)
             return RedirectToAction(nameof(LoginWith2fa), new { returnUrl, rememberMe = model.RememberMe });
         if (result.Succeeded)

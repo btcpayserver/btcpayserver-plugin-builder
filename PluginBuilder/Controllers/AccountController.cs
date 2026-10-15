@@ -158,11 +158,25 @@ public class AccountController(
             return View(await WithAuthenticatorKey(user, model));
         }
 
-        await userManager.SetTwoFactorEnabledAsync(user, true);
+        var enabled = await userManager.SetTwoFactorEnabledAsync(user, true);
+        if (!enabled.Succeeded)
+        {
+            foreach (var error in enabled.Errors)
+                ModelState.AddModelError(string.Empty, error.Description);
+            return View(await WithAuthenticatorKey(user, model));
+        }
+
         var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, TwoFactorSetup.RecoveryCodeCount);
         // Enabling changes the security stamp: refresh this session so it is not signed out at the next validation.
         await signInManager.RefreshSignInAsync(user);
         logger.LogInformation("User {UserId} enabled two-factor authentication", user.Id);
+        if (codes is null)
+        {
+            TempData[TempDataConstant.WarningMessage] =
+                "Two-factor authentication is on, but your recovery codes could not be created. Generate them below.";
+            return RedirectToAction(nameof(TwoFactorAuthentication));
+        }
+
         return RecoveryCodes(codes);
     }
 
@@ -175,7 +189,13 @@ public class AccountController(
         if (!await PasswordConfirmed(user, model))
             return RedirectToAction(nameof(TwoFactorAuthentication));
 
-        await userManager.SetTwoFactorEnabledAsync(user, false);
+        var disabled = await userManager.SetTwoFactorEnabledAsync(user, false);
+        if (!disabled.Succeeded)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Two-factor authentication could not be turned off. Try again.";
+            return RedirectToAction(nameof(TwoFactorAuthentication));
+        }
+
         // A new key, so the old authenticator entry is useless if 2FA is turned on again; and this browser is no
         // longer a remembered second factor.
         await userManager.ResetAuthenticatorKeyAsync(user);
@@ -197,6 +217,12 @@ public class AccountController(
 
         // New codes replace every earlier one.
         var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, TwoFactorSetup.RecoveryCodeCount);
+        if (codes is null)
+        {
+            TempData[TempDataConstant.WarningMessage] = "New recovery codes could not be created. Your current codes still work.";
+            return RedirectToAction(nameof(TwoFactorAuthentication));
+        }
+
         logger.LogInformation("User {UserId} generated new two-factor recovery codes", user.Id);
         return RecoveryCodes(codes);
     }
@@ -237,10 +263,10 @@ public class AccountController(
     }
 
     // Recovery codes are shown once, in this response, and never stored anywhere the browser keeps.
-    private ViewResult RecoveryCodes(IEnumerable<string>? codes)
+    private ViewResult RecoveryCodes(IEnumerable<string> codes)
     {
         Response.Headers.CacheControl = "no-store";
-        return View("ShowRecoveryCodes", new ShowRecoveryCodesViewModel { RecoveryCodes = codes?.ToArray() ?? [] });
+        return View("ShowRecoveryCodes", new ShowRecoveryCodesViewModel { RecoveryCodes = codes.ToArray() });
     }
 
     [HttpGet("VerifyGithubAccount")]

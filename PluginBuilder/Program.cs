@@ -361,7 +361,8 @@ public class Program
                 options.Password.RequireUppercase = false;
             })
             .AddDefaultTokenProviders()
-            .AddEntityFrameworkStores<IdentityDbContext<IdentityUser>>();
+            .AddEntityFrameworkStores<IdentityDbContext<IdentityUser>>()
+            .AddSignInManager<PluginBuilderSignInManager>();
 
         services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, opt =>
         {
