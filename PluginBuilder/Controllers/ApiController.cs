@@ -22,7 +22,7 @@ namespace PluginBuilder.Controllers;
 
 [ApiController]
 [Route("~/api/v1")]
-[Authorize(Policy = Policies.OwnPlugin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.BasicAuth)]
+[Authorize(Policy = Policies.OwnPlugin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.PublisherApi)]
 public class ApiController(
     DBConnectionFactory connectionFactory,
     BuildService buildService,
