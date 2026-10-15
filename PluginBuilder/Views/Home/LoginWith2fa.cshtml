@@ -1,0 +1,40 @@
+@model LoginWith2faViewModel
+@{
+    ViewData["Title"] = "Two-factor authentication";
+    Layout = "_LayoutHomeModal";
+}
+
+<div class="row justify-content-center mb-2">
+    <div class="col text-center">
+        <a tabindex="-1" href="/">
+            <img src="~/img/btcpay-logo.svg" alt="BTCPay Server" class="mb-4" height="70" />
+        </a>
+        <h1 class="h2 mb-3">Welcome to BTCPay&nbsp;Server Plugin Builder</h1>
+    </div>
+</div>
+<div class="account-form">
+    <h4>@ViewData["Title"]</h4>
+    <p>Enter the 6-digit code from your authenticator app.</p>
+    <form asp-route-returnurl="@ViewData["ReturnUrl"]" method="post" id="login-2fa-form" asp-action="LoginWith2fa">
+        <input asp-for="RememberMe" type="hidden" />
+        <fieldset>
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div class="form-group">
+                <label asp-for="TwoFactorCode" class="form-label"></label>
+                <input asp-for="TwoFactorCode" class="form-control" autocomplete="one-time-code" inputmode="numeric" required autofocus tabindex="1" />
+                <span asp-validation-for="TwoFactorCode" class="text-danger"></span>
+            </div>
+            <div class="form-check mt-2">
+                <input asp-for="RememberMachine" class="form-check-input" tabindex="2" />
+                <label asp-for="RememberMachine" class="form-check-label"></label>
+            </div>
+            <div class="form-group mt-4">
+                <button type="submit" class="btn btn-primary btn-lg w-100" id="LoginWith2faButton" tabindex="3">Sign in</button>
+            </div>
+        </fieldset>
+    </form>
+    <p class="text-center mt-2 mb-0">
+        No access to your authenticator app?
+        <a id="LoginWithRecoveryCode" asp-action="LoginWithRecoveryCode" asp-route-returnurl="@ViewData["ReturnUrl"]" tabindex="4">Use a recovery code</a>
+    </p>
+</div>

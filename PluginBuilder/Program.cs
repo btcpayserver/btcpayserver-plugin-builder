@@ -200,6 +200,7 @@ public class Program
         services.AddSingleton<AdminEventSubscriptionService>();
         services.AddScoped<ListingReviewService>();
         services.AddScoped<AdminAccessTokenService>();
+        services.AddSingleton<TwoFactorRequirement>();
         services.AddSingleton<AdminWebhookSender>();
         services.AddHostedService<AdminEventDeliveryHostedService>();
         services.AddSingleton<AdminHistoryRetention>();

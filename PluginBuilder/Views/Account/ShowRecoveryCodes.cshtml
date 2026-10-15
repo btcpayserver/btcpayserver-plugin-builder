@@ -1,0 +1,22 @@
+@model ShowRecoveryCodesViewModel
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage("Account Settings", title: "Recovery codes");
+}
+
+<h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+<div class="row">
+    <div class="col-xl-8 col-xxl-constrain">
+        <div class="alert alert-warning">
+            Save these codes somewhere safe now: they are shown only this once. Each one signs you in a single time
+            if you lose your authenticator app.
+        </div>
+        <ul id="RecoveryCodes" class="list-unstyled font-monospace fs-5">
+            @foreach (var code in Model.RecoveryCodes)
+            {
+                <li class="recovery-code">@code</li>
+            }
+        </ul>
+        <a asp-action="TwoFactorAuthentication" class="btn btn-primary" id="RecoveryCodesSaved">I have saved them</a>
+    </div>
+</div>

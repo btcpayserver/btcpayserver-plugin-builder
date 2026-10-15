@@ -1,0 +1,32 @@
+@model EnableAuthenticatorViewModel
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage("Account Settings", title: "Set up an authenticator app");
+}
+
+<h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+<div class="row">
+    <div class="col-xl-8 col-xxl-constrain">
+        <ol>
+            <li class="mb-3">
+                Add an account in your authenticator app with this key (spaces and case do not matter):
+                <div class="mt-2"><code id="AuthenticatorKey" class="fs-5">@Model.SharedKey</code></div>
+            </li>
+            <li class="mb-3">
+                Or, if your app takes a link, use:
+                <div class="mt-2"><code id="AuthenticatorUri" class="text-break">@Model.AuthenticatorUri</code></div>
+            </li>
+            <li>Enter the 6-digit code the app shows.</li>
+        </ol>
+        <form asp-action="EnableAuthenticator" method="post" id="enable-2fa-form">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div class="form-group">
+                <label asp-for="Code" class="form-label"></label>
+                <input asp-for="Code" class="form-control" autocomplete="one-time-code" inputmode="numeric" required autofocus />
+                <span asp-validation-for="Code" class="text-danger"></span>
+            </div>
+            <button type="submit" class="btn btn-primary mt-3" id="VerifyAuthenticator">Verify and turn on</button>
+            <a asp-action="TwoFactorAuthentication" class="btn btn-link mt-3">Cancel</a>
+        </form>
+    </div>
+</div>

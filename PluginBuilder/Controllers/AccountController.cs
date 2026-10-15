@@ -16,6 +16,8 @@ public class AccountController(
     GPGKeyService _gpgService,
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
+    SignInManager<IdentityUser> signInManager,
+    TwoFactorRequirement twoFactorRequirement,
     ExternalAccountVerificationService externalAccountVerificationService,
     EmailService emailService,
     NostrService nostrService,
@@ -114,6 +116,129 @@ public class AccountController(
         await conn.SetAccountDetailSettings(accountSettings, user!.Id);
         TempData[TempDataConstant.SuccessMessage] = "Account details updated successfully";
         return RedirectToAction(nameof(AccountDetails));
+    }
+
+    [HttpGet("2fa")]
+    public async Task<IActionResult> TwoFactorAuthentication()
+    {
+        var user = await CurrentUser();
+        return View(new TwoFactorStatusViewModel
+        {
+            IsEnabled = await userManager.GetTwoFactorEnabledAsync(user),
+            RecoveryCodesLeft = await userManager.CountRecoveryCodesAsync(user),
+            IsRequired = await twoFactorRequirement.IsRequiredAsync(user)
+        });
+    }
+
+    [HttpGet("2fa/enable")]
+    public async Task<IActionResult> EnableAuthenticator()
+    {
+        var user = await CurrentUser();
+        if (await userManager.GetTwoFactorEnabledAsync(user))
+            return RedirectToAction(nameof(TwoFactorAuthentication));
+
+        return View(await WithAuthenticatorKey(user, new EnableAuthenticatorViewModel()));
+    }
+
+    [HttpPost("2fa/enable")]
+    public async Task<IActionResult> EnableAuthenticator(EnableAuthenticatorViewModel model)
+    {
+        var user = await CurrentUser();
+        if (await userManager.GetTwoFactorEnabledAsync(user))
+            return RedirectToAction(nameof(TwoFactorAuthentication));
+        if (!ModelState.IsValid)
+            return View(await WithAuthenticatorKey(user, model));
+
+        // 2FA is switched on only after the app has proven it holds the key.
+        var valid = await userManager.VerifyTwoFactorTokenAsync(user,
+            userManager.Options.Tokens.AuthenticatorTokenProvider, TwoFactorSetup.NormalizeCode(model.Code));
+        if (!valid)
+        {
+            ModelState.AddModelError(nameof(model.Code), "That code is not valid. Check that your device's clock is right and enter the current code.");
+            return View(await WithAuthenticatorKey(user, model));
+        }
+
+        await userManager.SetTwoFactorEnabledAsync(user, true);
+        var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, TwoFactorSetup.RecoveryCodeCount);
+        // Enabling changes the security stamp: refresh this session so it is not signed out at the next validation.
+        await signInManager.RefreshSignInAsync(user);
+        logger.LogInformation("User {UserId} enabled two-factor authentication", user.Id);
+        return RecoveryCodes(codes);
+    }
+
+    [HttpPost("2fa/disable")]
+    public async Task<IActionResult> DisableTwoFactor(ConfirmPasswordViewModel model)
+    {
+        var user = await CurrentUser();
+        if (!await userManager.GetTwoFactorEnabledAsync(user))
+            return RedirectToAction(nameof(TwoFactorAuthentication));
+        if (!await PasswordConfirmed(user, model))
+            return RedirectToAction(nameof(TwoFactorAuthentication));
+
+        await userManager.SetTwoFactorEnabledAsync(user, false);
+        // A new key, so the old authenticator entry is useless if 2FA is turned on again; and this browser is no
+        // longer a remembered second factor.
+        await userManager.ResetAuthenticatorKeyAsync(user);
+        await signInManager.ForgetTwoFactorClientAsync();
+        await signInManager.RefreshSignInAsync(user);
+        logger.LogInformation("User {UserId} disabled two-factor authentication", user.Id);
+        TempData[TempDataConstant.SuccessMessage] = "Two-factor authentication is off.";
+        return RedirectToAction(nameof(TwoFactorAuthentication));
+    }
+
+    [HttpPost("2fa/recovery-codes")]
+    public async Task<IActionResult> GenerateRecoveryCodes(ConfirmPasswordViewModel model)
+    {
+        var user = await CurrentUser();
+        if (!await userManager.GetTwoFactorEnabledAsync(user))
+            return RedirectToAction(nameof(TwoFactorAuthentication));
+        if (!await PasswordConfirmed(user, model))
+            return RedirectToAction(nameof(TwoFactorAuthentication));
+
+        // New codes replace every earlier one.
+        var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, TwoFactorSetup.RecoveryCodeCount);
+        logger.LogInformation("User {UserId} generated new two-factor recovery codes", user.Id);
+        return RecoveryCodes(codes);
+    }
+
+    private async Task<IdentityUser> CurrentUser() =>
+        await userManager.GetUserAsync(User) ?? throw new InvalidOperationException("User not found");
+
+    private async Task<EnableAuthenticatorViewModel> WithAuthenticatorKey(IdentityUser user, EnableAuthenticatorViewModel model)
+    {
+        var key = await userManager.GetAuthenticatorKeyAsync(user);
+        if (string.IsNullOrEmpty(key))
+        {
+            await userManager.ResetAuthenticatorKeyAsync(user);
+            await signInManager.RefreshSignInAsync(user);
+            key = await userManager.GetAuthenticatorKeyAsync(user);
+        }
+
+        model.SharedKey = TwoFactorSetup.FormatKey(key!);
+        model.AuthenticatorUri = TwoFactorSetup.AuthenticatorUri(user.Email ?? user.UserName ?? user.Id, key!);
+        return model;
+    }
+
+    // Disabling 2FA or replacing the recovery codes needs the password, and a wrong one counts towards lockout.
+    private async Task<bool> PasswordConfirmed(IdentityUser user, ConfirmPasswordViewModel model)
+    {
+        var result = string.IsNullOrEmpty(model.Password)
+            ? Microsoft.AspNetCore.Identity.SignInResult.Failed
+            : await signInManager.CheckPasswordSignInAsync(user, model.Password, true);
+        if (result.Succeeded)
+            return true;
+
+        TempData[TempDataConstant.WarningMessage] = result.IsLockedOut
+            ? "Too many failed attempts. Try again in a few minutes."
+            : "The password is not correct.";
+        return false;
+    }
+
+    // Recovery codes are shown once, in this response, and never stored anywhere the browser keeps.
+    private ViewResult RecoveryCodes(IEnumerable<string>? codes)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return View("ShowRecoveryCodes", new ShowRecoveryCodesViewModel { RecoveryCodes = codes?.ToArray() ?? [] });
     }
 
     [HttpGet("VerifyGithubAccount")]
