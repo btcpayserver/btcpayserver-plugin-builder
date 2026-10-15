@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Routing;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
+using PluginBuilder.Authentication;
 using PluginBuilder.Controllers;
 using PluginBuilder.Util;
 using Xunit;
@@ -22,6 +23,10 @@ public class PublisherApiDocumentationTests
     {
         var actions = typeof(ApiController).GetMethods().Where(m => m.DeclaringType == typeof(ApiController)).ToArray();
         Assert.NotEmpty(actions);
+        var auth = typeof(ApiController).GetCustomAttribute<AuthorizeAttribute>()!;
+        var schemes = auth.AuthenticationSchemes!.Contains(PluginBuilderAuthenticationSchemes.PublisherToken)
+            ? new[] { "Basic", "PublisherToken" }
+            : new[] { "Basic" };
         foreach (var action in actions)
         {
             if (action.GetCustomAttribute<ApiExplorerSettingsAttribute>()?.IgnoreApi == true)
@@ -39,9 +44,17 @@ public class PublisherApiDocumentationTests
                         continue;
                     }
 
-                    // Everything else needs Basic auth, which the controller requires for all its routes.
-                    var requirement = Assert.Single(Assert.IsType<JArray>(operation!["security"]).OfType<JObject>());
-                    Assert.Equal("Basic", Assert.Single(requirement.Properties()).Name);
+                    // Everything else takes the schemes the controller requires for all its routes.
+                    var security = Assert.IsType<JArray>(operation!["security"]);
+                    Assert.Equal(schemes.Length, security.Count);
+                    foreach (var scheme in schemes)
+                    {
+                        // Separate objects mean OR; combined or empty objects change the access contract.
+                        var requirement = Assert.Single(security.OfType<JObject>(), r => r.ContainsKey(scheme));
+                        Assert.Single(requirement.Properties());
+                        Assert.Empty(Assert.IsType<JArray>(requirement[scheme]));
+                        Assert.NotNull(Spec["components"]!["securitySchemes"]![scheme]);
+                    }
                 }
             }
         }

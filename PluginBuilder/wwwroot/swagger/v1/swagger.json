@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "BTCPay Server Plugin Builder API",
-    "description": "REST API for the BTCPay Server Plugin Builder. Provides endpoints for querying published plugin versions, downloading plugin binaries, checking for updates, and building and releasing plugin versions.\n\nThe live server is available at [plugin-builder.btcpayserver.org](https://plugin-builder.btcpayserver.org/).\n\n## Publishing a plugin\n\nEndpoints tagged **Builds** and **Versions** use HTTP Basic authentication with your Plugin Builder email and password. The account must own the plugin and have a verified email address and a verified GitHub account. Create the plugin and its settings once in the web UI; after that, a version can be published entirely over the API:\n\n1. `POST /plugins/{pluginSlug}/builds` starts a build and returns its `buildId`.\n2. Poll `GET /plugins/{pluginSlug}/builds/{buildId}` until `state` is final: `uploaded` (success), `failed` or `removed`. A successful build becomes a pre-release of the version in its manifest. A version that is already released is not replaced, so bump the version for a new release.\n3. `POST /plugins/{pluginSlug}/versions/{version}/release` releases it. If the plugin requires signed releases, send a detached GPG signature of the manifest hash shown on the build page.\n\nPublic endpoints are rate limited per IP address and answer `429` when the limit is reached.",
+    "description": "REST API for the BTCPay Server Plugin Builder. Provides endpoints for querying published plugin versions, downloading plugin binaries, checking for updates, and building and releasing plugin versions.\n\nThe live server is available at [plugin-builder.btcpayserver.org](https://plugin-builder.btcpayserver.org/).\n\n## Publishing a plugin\n\nEndpoints tagged **Builds** and **Versions** accept a personal API token (`Authorization: Bearer pb_pub_...`, created in Account Settings > API tokens for one plugin) or HTTP Basic authentication with your Plugin Builder email and password. Accounts with two-factor authentication must use a token. The account must own the plugin and have a verified email address and a verified GitHub account. Create the plugin and its settings once in the web UI; after that, a version can be published entirely over the API:\n\n1. `POST /plugins/{pluginSlug}/builds` starts a build and returns its `buildId`.\n2. Poll `GET /plugins/{pluginSlug}/builds/{buildId}` until `state` is final: `uploaded` (success), `failed` or `removed`. A successful build becomes a pre-release of the version in its manifest. A version that is already released is not replaced, so bump the version for a new release.\n3. `POST /plugins/{pluginSlug}/versions/{version}/release` releases it. If the plugin requires signed releases, send a detached GPG signature of the manifest hash shown on the build page.\n\nPublic endpoints are rate limited per IP address and answer `429` when the limit is reached.",
     "version": "1.0.0",
     "contact": {
       "name": "BTCPay Server",
@@ -2445,6 +2445,9 @@
         "security": [
           {
             "Basic": []
+          },
+          {
+            "PublisherToken": []
           }
         ],
         "parameters": [
@@ -2483,7 +2486,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Not an owner of this plugin"
+            "description": "Not an owner of this plugin, or the token was created for another plugin"
           },
           "404": {
             "description": "Version not found"
@@ -2555,6 +2558,9 @@
         "security": [
           {
             "Basic": []
+          },
+          {
+            "PublisherToken": []
           }
         ],
         "parameters": [
@@ -2603,7 +2609,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Not an owner of this plugin"
+            "description": "Not an owner of this plugin, or the token was created for another plugin"
           },
           "404": {
             "description": "Version not found"
@@ -2630,6 +2636,9 @@
         "security": [
           {
             "Basic": []
+          },
+          {
+            "PublisherToken": []
           }
         ],
         "parameters": [
@@ -2668,7 +2677,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Not an owner of this plugin"
+            "description": "Not an owner of this plugin, or the token was created for another plugin"
           },
           "404": {
             "description": "Version not found"
@@ -2768,6 +2777,9 @@
         "security": [
           {
             "Basic": []
+          },
+          {
+            "PublisherToken": []
           }
         ],
         "parameters": [
@@ -2799,7 +2811,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Not an owner of this plugin"
+            "description": "Not an owner of this plugin, or the token was created for another plugin"
           }
         }
       },
@@ -2811,6 +2823,9 @@
         "security": [
           {
             "Basic": []
+          },
+          {
+            "PublisherToken": []
           }
         ],
         "parameters": [
@@ -2855,7 +2870,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Not an owner of this plugin, or the account's email address or GitHub account is not verified"
+            "description": "Not an owner of this plugin, the token was created for another plugin, or the account's email address or GitHub account is not verified"
           },
           "422": {
             "description": "Validation error, such as a missing repository, a manifest that cannot be read, or a plugin identifier that belongs to another plugin",
@@ -2899,6 +2914,9 @@
         "security": [
           {
             "Basic": []
+          },
+          {
+            "PublisherToken": []
           }
         ],
         "parameters": [
@@ -2976,7 +2994,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Not an owner of this plugin"
+            "description": "Not an owner of this plugin, or the token was created for another plugin"
           },
           "404": {
             "description": "Build not found"
@@ -2991,6 +3009,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Revocable admin access token issued in Account Settings. Admin API only; token management requires Basic auth."
+      },
+      "PublisherToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Personal API token created in Account Settings > API tokens. Format: `Authorization: Bearer pb_pub_...`. Reaches only the plugin it was created for, and works for accounts with two-factor authentication, which cannot use Basic auth. It stops working when revoked, when it expires, or when the account's password changes."
       },
       "Basic": {
         "type": "http",
