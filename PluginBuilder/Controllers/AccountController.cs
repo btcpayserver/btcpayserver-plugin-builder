@@ -198,10 +198,18 @@ public class AccountController(
 
         // A new key, so the old authenticator entry is useless if 2FA is turned on again; and this browser is no
         // longer a remembered second factor.
-        await userManager.ResetAuthenticatorKeyAsync(user);
+        var reset = await userManager.ResetAuthenticatorKeyAsync(user);
         await signInManager.ForgetTwoFactorClientAsync();
         await signInManager.RefreshSignInAsync(user);
         logger.LogInformation("User {UserId} disabled two-factor authentication", user.Id);
+        if (!reset.Succeeded)
+        {
+            logger.LogWarning("User {UserId}: the authenticator key could not be replaced after disabling two-factor authentication", user.Id);
+            TempData[TempDataConstant.WarningMessage] =
+                "Two-factor authentication is off, but your old authenticator key could not be replaced. If you turn it on again, the setup page will offer that same key.";
+            return RedirectToAction(nameof(TwoFactorAuthentication));
+        }
+
         TempData[TempDataConstant.SuccessMessage] = "Two-factor authentication is off.";
         return RedirectToAction(nameof(TwoFactorAuthentication));
     }
