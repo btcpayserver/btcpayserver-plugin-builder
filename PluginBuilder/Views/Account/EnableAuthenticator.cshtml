@@ -5,28 +5,35 @@
 }
 
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
+<partial name="_AccountNav" />
 <div class="row">
-    <div class="col-xl-8 col-xxl-constrain">
-        <ol>
-            <li class="mb-3">
-                Add an account in your authenticator app with this key (spaces and case do not matter):
-                <div class="mt-2"><code id="AuthenticatorKey" class="fs-5">@Model.SharedKey</code></div>
+    <div class="col-xl-8 col-xxl-constrain two-factor-settings">
+        <ol class="ps-3">
+            <li class="mb-4">
+                <p class="fw-semibold">Scan this QR code with your authenticator app.</p>
+                <div id="AuthenticatorQrCode" class="mb-3">
+                    <vc:qr-code data="@Model.AuthenticatorUri" alt="QR code to set up your authenticator app" />
+                </div>
+                <p>On the same device? <a id="AuthenticatorUri" href="@Model.AuthenticatorUri">Open your authenticator app</a>.</p>
+                <details>
+                    <summary>Can't scan the code?</summary>
+                    <p class="mt-2 mb-2">Enter this key manually and select time-based (TOTP). Spaces and case do not matter.</p>
+                    <div class="authenticator-key"><code id="AuthenticatorKey">@Model.SharedKey</code></div>
+                </details>
             </li>
-            <li class="mb-3">
-                Or, if your app takes a link, use:
-                <div class="mt-2"><code id="AuthenticatorUri" class="text-break">@Model.AuthenticatorUri</code></div>
+            <li>
+                <p class="fw-semibold">Enter the 6-digit code from your app.</p>
+                <form asp-action="EnableAuthenticator" method="post" id="enable-2fa-form">
+                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+                    <div class="form-group">
+                        <label asp-for="Code" class="form-label"></label>
+                        <input asp-for="Code" class="form-control" autocomplete="one-time-code" inputmode="numeric" required />
+                        <span asp-validation-for="Code" class="text-danger"></span>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3" id="VerifyAuthenticator">Verify and turn on</button>
+                    <a asp-action="TwoFactorAuthentication" class="btn btn-link mt-3">Cancel</a>
+                </form>
             </li>
-            <li>Enter the 6-digit code the app shows.</li>
         </ol>
-        <form asp-action="EnableAuthenticator" method="post" id="enable-2fa-form">
-            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
-            <div class="form-group">
-                <label asp-for="Code" class="form-label"></label>
-                <input asp-for="Code" class="form-control" autocomplete="one-time-code" inputmode="numeric" required autofocus />
-                <span asp-validation-for="Code" class="text-danger"></span>
-            </div>
-            <button type="submit" class="btn btn-primary mt-3" id="VerifyAuthenticator">Verify and turn on</button>
-            <a asp-action="TwoFactorAuthentication" class="btn btn-link mt-3">Cancel</a>
-        </form>
     </div>
 </div>

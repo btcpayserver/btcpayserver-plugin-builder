@@ -200,7 +200,6 @@ public class Program
         services.AddSingleton<AdminEventSubscriptionService>();
         services.AddScoped<ListingReviewService>();
         services.AddScoped<AdminAccessTokenService>();
-        services.AddSingleton<TwoFactorRequirement>();
         services.AddSingleton<AdminWebhookSender>();
         services.AddHostedService<AdminEventDeliveryHostedService>();
         services.AddSingleton<AdminHistoryRetention>();
@@ -361,8 +360,7 @@ public class Program
                 options.Password.RequireUppercase = false;
             })
             .AddDefaultTokenProviders()
-            .AddEntityFrameworkStores<IdentityDbContext<IdentityUser>>()
-            .AddSignInManager<PluginBuilderSignInManager>();
+            .AddEntityFrameworkStores<IdentityDbContext<IdentityUser>>();
 
         services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, opt =>
         {

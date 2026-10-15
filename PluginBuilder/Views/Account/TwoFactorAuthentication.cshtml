@@ -5,51 +5,66 @@
 }
 
 <h2 class="mt-1 mb-4">@ViewData["Title"]</h2>
-<div class="row">
+<partial name="_AccountNav" />
+<div class="row two-factor-settings">
     <div class="col-xl-8 col-xxl-constrain">
-        @if (Model.IsRequired && !Model.IsEnabled)
-        {
-            <div class="alert alert-warning">Your account must use two-factor authentication. Set it up below.</div>
-        }
+        <section class="two-factor-card" aria-labelledby="AuthenticatorAppTitle">
+            <div class="d-flex align-items-start gap-3">
+                <span class="two-factor-icon" aria-hidden="true"><i class="fa fa-shield"></i></span>
+                <div class="flex-grow-1">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                        <h3 class="h5 mb-0" id="AuthenticatorAppTitle">Authenticator app</h3>
+                        <span id="TwoFactorStatus" class="badge @(Model.IsEnabled ? "bg-success" : "bg-warning text-black")">@(Model.IsEnabled ? "Enabled" : "Not enabled")</span>
+                    </div>
+                    @if (Model.IsEnabled)
+                    {
+                        <p class="mb-0">Your account is protected with an additional verification step when you sign in.</p>
+                    }
+                    else
+                    {
+                        <p class="mb-2">Add a code from an authenticator app to protect your account alongside your password.</p>
+                        <p class="two-factor-hint mb-0">Works with Aegis, 2FAS, Google Authenticator and 1Password.</p>
+                    }
+                </div>
+            </div>
+            @if (!Model.IsEnabled)
+            {
+                <div class="mt-4">
+                    <a asp-action="EnableAuthenticator" class="btn btn-primary" id="EnableTwoFactor">Set up an authenticator app</a>
+                </div>
+            }
+        </section>
+
         @if (Model.IsEnabled)
         {
-            <p id="TwoFactorStatus">
-                <span class="badge bg-success">On</span>
-                Signing in asks for a code from your authenticator app after your password.
-            </p>
-            <p id="RecoveryCodesLeft">Recovery codes left: <strong>@Model.RecoveryCodesLeft</strong></p>
-            @if (Model.RecoveryCodesLeft <= 3)
-            {
-                <div class="alert alert-warning">You are running low on recovery codes. Generate new ones below.</div>
-            }
+            <section class="two-factor-card mt-4" aria-labelledby="RecoveryCodesTitle">
+                <h3 class="h5" id="RecoveryCodesTitle">Recovery codes</h3>
+                <p id="RecoveryCodesLeft" class="mb-2"><strong>@Model.RecoveryCodesLeft</strong> recovery codes remaining.</p>
+                <p>Use a recovery code if you lose access to your authenticator app. Generating new codes replaces all your current codes.</p>
+                @if (Model.RecoveryCodesLeft <= 3)
+                {
+                    <div class="alert alert-warning">You are running low on recovery codes. Generate new ones below.</div>
+                }
+                <form asp-action="GenerateRecoveryCodes" method="post" id="generate-recovery-codes-form">
+                    <div class="form-group">
+                        <label for="RegeneratePassword" class="form-label">Current password</label>
+                        <input id="RegeneratePassword" name="Password" type="password" class="form-control" autocomplete="current-password" required />
+                    </div>
+                    <button type="submit" class="btn btn-secondary mt-2" id="GenerateRecoveryCodes">Generate new recovery codes</button>
+                </form>
+            </section>
 
-            <h4 class="mt-4">New recovery codes</h4>
-            <p>Replaces all of your current recovery codes.</p>
-            <form asp-action="GenerateRecoveryCodes" method="post" id="generate-recovery-codes-form" class="mb-4">
-                <div class="form-group">
-                    <label for="RegeneratePassword" class="form-label">Current password</label>
-                    <input id="RegeneratePassword" name="Password" type="password" class="form-control" autocomplete="current-password" required />
-                </div>
-                <button type="submit" class="btn btn-secondary mt-2" id="GenerateRecoveryCodes">Generate new recovery codes</button>
-            </form>
-
-            <h4 class="mt-4">Turn off</h4>
-            <p>Your account will be protected by your password only.</p>
-            <form asp-action="DisableTwoFactor" method="post" id="disable-2fa-form">
-                <div class="form-group">
-                    <label for="DisablePassword" class="form-label">Current password</label>
-                    <input id="DisablePassword" name="Password" type="password" class="form-control" autocomplete="current-password" required />
-                </div>
-                <button type="submit" class="btn btn-outline-danger mt-2" id="DisableTwoFactor">Turn off two-factor authentication</button>
-            </form>
-        }
-        else
-        {
-            <p id="TwoFactorStatus">
-                <span class="badge bg-secondary">Off</span>
-                Add a second step to signing in: a code from an authenticator app (such as Aegis, 2FAS, Google Authenticator or 1Password).
-            </p>
-            <a asp-action="EnableAuthenticator" class="btn btn-primary" id="EnableTwoFactor">Set up an authenticator app</a>
+            <section class="two-factor-card mt-4" aria-labelledby="DisableTwoFactorTitle">
+                <h3 class="h5" id="DisableTwoFactorTitle">Turn off two-factor authentication</h3>
+                <p>Signing in will only require your password.</p>
+                <form asp-action="DisableTwoFactor" method="post" id="disable-2fa-form">
+                    <div class="form-group">
+                        <label for="DisablePassword" class="form-label">Current password</label>
+                        <input id="DisablePassword" name="Password" type="password" class="form-control" autocomplete="current-password" required />
+                    </div>
+                    <button type="submit" class="btn btn-outline-danger mt-2" id="DisableTwoFactor">Turn off two-factor authentication</button>
+                </form>
+            </section>
         }
     </div>
 </div>

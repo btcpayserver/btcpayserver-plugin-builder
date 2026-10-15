@@ -2,14 +2,21 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
+using StbImageSharp;
 using Xunit;
 using Xunit.Abstractions;
+using ZXing;
 
 namespace PluginBuilder.Tests.AuthTests;
 
@@ -55,10 +62,21 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         using var client = HttpTestHelpers.CreateBrowser(tester);
         await HttpTestHelpers.LogIn(client, email, Password);
 
-        Assert.Contains(">Off<", await Page(client, "/account/2fa"));
+        Assert.Contains(">Not enabled<", await Page(client, "/account/2fa"));
         var setup = await Page(client, "/account/2fa/enable");
         var key = SharedKey(setup);
         Assert.Contains($"secret={key}&amp;issuer=", setup);
+        var qrImage = Regex.Match(setup, "src=\"data:image/png;base64,([^\"]+)\"");
+        Assert.True(qrImage.Success, "The setup page must display the QR code inline.");
+        var qrUri = new Uri(DecodeQrCode(qrImage.Groups[1].Value));
+        Assert.Equal("otpauth", qrUri.Scheme);
+        Assert.Equal("totp", qrUri.Host);
+        Assert.Equal($"{TwoFactorSetup.Issuer}:{email}", Uri.UnescapeDataString(qrUri.AbsolutePath.TrimStart('/')));
+        var qrParameters = QueryHelpers.ParseQuery(qrUri.Query);
+        var qrKey = qrParameters["secret"].ToString();
+        Assert.Equal(key, qrKey);
+        Assert.Equal(TwoFactorSetup.Issuer, qrParameters["issuer"].ToString());
+        Assert.Equal("6", qrParameters["digits"].ToString());
         // The setup page carries the authenticator secret: the browser must not cache it.
         using (var again = await client.GetAsync("/account/2fa/enable"))
             Assert.True(again.Headers.CacheControl?.NoStore);
@@ -68,13 +86,16 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         {
             Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
             Assert.True(refused.Headers.CacheControl?.NoStore);
-            Assert.Contains("That code is not valid", await refused.Content.ReadAsStringAsync());
+            var invalidSetup = await refused.Content.ReadAsStringAsync();
+            Assert.Contains("That code is not valid", invalidSetup);
+            Assert.Equal(key, SharedKey(invalidSetup));
+            Assert.Contains(qrImage.Value, invalidSetup);
         }
         Assert.False(await TwoFactorEnabled(tester, email));
 
         // The current code turns it on and shows ten recovery codes, once and uncached.
         string[] recoveryCodes;
-        using (var enabled = await Post(client, "/account/2fa/enable", setup, ("Code", Totp(key))))
+        using (var enabled = await Post(client, "/account/2fa/enable", setup, ("Code", Totp(qrKey))))
         {
             Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
             Assert.True(enabled.Headers.CacheControl?.NoStore);
@@ -194,6 +215,45 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Assert.Equal(HttpStatusCode.Redirect, fresh.StatusCode);
     }
 
+    [Theory]
+    [InlineData("not-the-password")]
+    [InlineData("")]
+    public async Task RecoveryCodeReplacementRequiresTheCurrentPassword(string password)
+    {
+        await using var tester = await StartServer("TwoFactorRegeneratePassword");
+        var email = $"2fa-regen-password-{Guid.NewGuid():N}@example.com";
+        await tester.CreateFakeUserAsync(email, Password);
+        using var client = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(client, email, Password);
+        var setup = await Page(client, "/account/2fa/enable");
+        string[] codes;
+        using (var enabled = await Post(client, "/account/2fa/enable", setup, ("Code", Totp(SharedKey(setup)))))
+        {
+            Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+            codes = RecoveryCodes(await enabled.Content.ReadAsStringAsync());
+        }
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount, codes.Length);
+
+        var status = await Page(client, "/account/2fa");
+        using (var refused = await Post(client, "/account/2fa/recovery-codes", status, ("Password", password)))
+        {
+            Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+            Assert.Equal("/account/2fa", new Uri(client.BaseAddress!, refused.Headers.Location!).AbsolutePath);
+        }
+        var error = await Page(client, "/account/2fa");
+        Assert.Contains("The password is not correct.", error);
+        Assert.Empty(RecoveryCodes(error));
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount, await RecoveryCodesLeft(tester, email));
+
+        // Refusing the replacement must leave the saved codes usable for sign-in.
+        await LogOut(client);
+        Assert.StartsWith("/login/2fa", await PasswordStep(client, email, Password));
+        var recoveryPage = await Page(client, "/login/recovery-code");
+        using (var accepted = await Post(client, "/login/recovery-code", recoveryPage, ("RecoveryCode", codes[0])))
+            Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
+        await AssertSignedIn(client);
+    }
+
     [Fact]
     public async Task BasicAuthOnTheApiStaysRefusedForATwoFactorAccount()
     {
@@ -214,11 +274,215 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Assert.Equal(HttpStatusCode.Unauthorized, after.StatusCode);
     }
 
-    private async Task<ServerTester> StartServer(string name)
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RecoveryCodesRespectAccountEligibilityAfterThePasswordStep(bool lockedOut)
+    {
+        await using var tester = await StartServer("TwoFactorEligibility");
+        var email = $"2fa-eligibility-{Guid.NewGuid():N}@example.com";
+        await tester.CreateFakeUserAsync(email, Password);
+        await TurnOnTwoFactor(tester, email);
+        string[] codes;
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = (await users.FindByEmailAsync(email))!;
+            codes = (await users.GenerateNewTwoFactorRecoveryCodesAsync(user, TwoFactorSetup.RecoveryCodeCount))!.ToArray();
+        }
+        using var client = HttpTestHelpers.CreateBrowser(tester);
+        await PasswordStep(client, email, Password);
+        var recoveryPage = await Page(client, "/login/recovery-code");
+
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = (await users.FindByEmailAsync(email))!;
+            if (lockedOut)
+                Assert.True((await users.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(5))).Succeeded);
+            else
+            {
+                user.EmailConfirmed = false;
+                Assert.True((await users.UpdateAsync(user)).Succeeded);
+                tester.GetService<IOptions<IdentityOptions>>().Value.SignIn.RequireConfirmedEmail = true;
+            }
+        }
+
+        using (var refused = await Post(client, "/login/recovery-code", recoveryPage, ("RecoveryCode", codes[0])))
+        {
+            Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
+            Assert.Contains(lockedOut ? "Too many failed attempts" : "Invalid login attempt", await refused.Content.ReadAsStringAsync());
+        }
+        await AssertSignedOut(client);
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount, await RecoveryCodesLeft(tester, email));
+
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = (await users.FindByEmailAsync(email))!;
+            if (lockedOut)
+                Assert.True((await users.SetLockoutEndDateAsync(user, null)).Succeeded);
+            else
+            {
+                user.EmailConfirmed = true;
+                Assert.True((await users.UpdateAsync(user)).Succeeded);
+            }
+        }
+        using (var accepted = await Post(client, "/login/recovery-code", recoveryPage, ("RecoveryCode", codes[0])))
+            Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
+        await AssertSignedIn(client);
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount - 1, await RecoveryCodesLeft(tester, email));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task FailedEnablingDoesNotLeaveTwoFactorPartiallyEnabled(int failedUpdate)
+    {
+        var failure = new FailedIdentityUpdate();
+        await using var tester = await StartServer("TwoFactorEnableFailure", failure);
+        var email = $"2fa-enable-failure-{Guid.NewGuid():N}@example.com";
+        await tester.CreateFakeUserAsync(email, Password);
+        using var client = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(client, email, Password);
+        var setup = await Page(client, "/account/2fa/enable");
+        var key = SharedKey(setup);
+
+        failure.FailOnUpdate = failedUpdate;
+        using (var refused = await Post(client, "/account/2fa/enable", setup, ("Code", Totp(key))))
+            Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.True(failure.WasTriggered);
+        Assert.False(await TwoFactorEnabled(tester, email));
+        Assert.Equal(0, await RecoveryCodesLeft(tester, email));
+        Assert.Contains("could not be saved", await Page(client, "/account/2fa"));
+        await AssertSignedIn(client);
+
+        using var retried = await Post(client, "/account/2fa/enable", setup, ("Code", Totp(key)));
+        Assert.Equal(HttpStatusCode.OK, retried.StatusCode);
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount, RecoveryCodes(await retried.Content.ReadAsStringAsync()).Length);
+        Assert.True(await TwoFactorEnabled(tester, email));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task FailedDisablingKeepsTheAuthenticatorAndRecoveryCodes(int failedUpdate)
+    {
+        var failure = new FailedIdentityUpdate();
+        await using var tester = await StartServer("TwoFactorDisableFailure", failure);
+        var email = $"2fa-disable-failure-{Guid.NewGuid():N}@example.com";
+        await tester.CreateFakeUserAsync(email, Password);
+        using var client = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(client, email, Password);
+        var setup = await Page(client, "/account/2fa/enable");
+        var key = SharedKey(setup);
+        using (var enabled = await Post(client, "/account/2fa/enable", setup, ("Code", Totp(key))))
+            Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+        var status = await Page(client, "/account/2fa");
+
+        failure.FailOnUpdate = failedUpdate;
+        using (var refused = await Post(client, "/account/2fa/disable", status, ("Password", Password)))
+            Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.True(failure.WasTriggered);
+        Assert.True(await TwoFactorEnabled(tester, email));
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount, await RecoveryCodesLeft(tester, email));
+        var error = await Page(client, "/account/2fa");
+        Assert.Contains("could not be saved", error);
+        Assert.DoesNotContain("Two-factor authentication is off.", error);
+
+        await LogOut(client);
+        await PasswordStep(client, email, Password);
+        var codePage = await Page(client, "/login/2fa");
+        using (var accepted = await Post(client, "/login/2fa", codePage, ("TwoFactorCode", Totp(key))))
+            Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
+        await AssertSignedIn(client);
+    }
+
+    [Fact]
+    public async Task FailedRecoveryCodeReplacementPreservesThePreviousCodes()
+    {
+        var failure = new FailedIdentityUpdate();
+        await using var tester = await StartServer("TwoFactorRecoveryFailure", failure);
+        var email = $"2fa-recovery-failure-{Guid.NewGuid():N}@example.com";
+        await tester.CreateFakeUserAsync(email, Password);
+        using var client = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(client, email, Password);
+        var setup = await Page(client, "/account/2fa/enable");
+        string[] codes;
+        using (var enabled = await Post(client, "/account/2fa/enable", setup, ("Code", Totp(SharedKey(setup)))))
+            codes = RecoveryCodes(await enabled.Content.ReadAsStringAsync());
+        var status = await Page(client, "/account/2fa");
+
+        failure.FailOnUpdate = 1;
+        using (var refused = await Post(client, "/account/2fa/recovery-codes", status, ("Password", Password)))
+            Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.True(failure.WasTriggered);
+        Assert.Contains("could not be saved", await Page(client, "/account/2fa"));
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount, await RecoveryCodesLeft(tester, email));
+
+        await LogOut(client);
+        await PasswordStep(client, email, Password);
+        var recoveryPage = await Page(client, "/login/recovery-code");
+        using (var accepted = await Post(client, "/login/recovery-code", recoveryPage, ("RecoveryCode", codes[0])))
+            Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
+        await AssertSignedIn(client);
+    }
+
+    [Fact]
+    public async Task FailedKeyCreationDoesNotExposeAnUnsavedAuthenticatorKey()
+    {
+        var failure = new FailedIdentityUpdate();
+        await using var tester = await StartServer("TwoFactorKeyFailure", failure);
+        var email = $"2fa-key-failure-{Guid.NewGuid():N}@example.com";
+        await tester.CreateFakeUserAsync(email, Password);
+        using var client = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(client, email, Password);
+
+        failure.FailOnUpdate = 1;
+        using (var refused = await client.GetAsync("/account/2fa/enable"))
+            Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.True(failure.WasTriggered);
+        Assert.Contains("could not be saved", await Page(client, "/account/2fa"));
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            Assert.Null(await users.GetAuthenticatorKeyAsync((await users.FindByEmailAsync(email))!));
+        }
+        Assert.NotEmpty(SharedKey(await Page(client, "/account/2fa/enable")));
+    }
+
+    private sealed class FailedIdentityUpdate : SaveChangesInterceptor
+    {
+        public int FailOnUpdate { get; set; }
+        public bool WasTriggered { get; set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            var user = eventData.Context!.ChangeTracker.Entries<IdentityUser>()
+                .SingleOrDefault(entry => entry.State == EntityState.Modified);
+            if (user is not null && FailOnUpdate > 0 && --FailOnUpdate == 0)
+            {
+                WasTriggered = true;
+                // Force EF's real concurrency check to fail, including its transaction rollback.
+                user.Property(u => u.ConcurrencyStamp).OriginalValue = $"stale-{Guid.NewGuid():N}";
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private async Task<ServerTester> StartServer(string name, FailedIdentityUpdate? failure = null)
     {
         var tester = Create(name);
         tester.ReuseDatabase = false;
-        tester.ConfigureServices = WithoutBackgroundServices;
+        tester.ConfigureServices = services =>
+        {
+            WithoutBackgroundServices(services);
+            if (failure is not null)
+            {
+                services.AddDbContext<IdentityDbContext<IdentityUser>>(options => options.AddInterceptors(failure));
+            }
+        };
         await tester.Start();
         return tester;
     }
@@ -295,6 +559,16 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         using var response = await client.GetAsync("/account/details");
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/login", response.Headers.Location!.OriginalString);
+    }
+
+    private static string DecodeQrCode(string base64Image)
+    {
+        var image = ImageResult.FromMemory(Convert.FromBase64String(WebUtility.HtmlDecode(base64Image)), ColorComponents.RedGreenBlue);
+        var pixels = new RGBLuminanceSource(image.Data, image.Width, image.Height, RGBLuminanceSource.BitmapFormat.RGB24);
+        var result = new BarcodeReaderGeneric().Decode(pixels);
+        Assert.NotNull(result);
+        Assert.Equal(BarcodeFormat.QR_CODE, result.BarcodeFormat);
+        return result.Text;
     }
 
     private static string SharedKey(string setupPage)

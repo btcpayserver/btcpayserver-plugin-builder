@@ -96,6 +96,86 @@ a.unobtrusive-link {
     transform: rotate(-180deg);
 }
 
+/* Account security */
+.two-factor-card {
+    padding: 1.5rem;
+    border: 1px solid var(--btcpay-body-border-medium);
+    border-radius: .75rem;
+    background: var(--btcpay-body-bg-light);
+}
+
+.two-factor-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: .5rem;
+    background: var(--btcpay-body-bg-medium);
+    font-size: 1.5rem;
+}
+
+.two-factor-hint {
+    font-size: .875rem;
+}
+
+.qr-code {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+}
+
+.authenticator-key {
+    max-width: 26rem;
+    padding: .75rem;
+    border: 1px solid var(--btcpay-body-border-medium);
+    border-radius: .375rem;
+    background: var(--btcpay-body-bg-light);
+    font-size: 1.125rem;
+    overflow-wrap: anywhere;
+}
+
+.two-factor-settings form {
+    max-width: 26rem;
+}
+
+.two-factor-settings .btn {
+    min-height: 2.75rem;
+    white-space: normal;
+}
+
+.two-factor-settings .btn-primary {
+    background-color: var(--btcpay-primary-800);
+    border-color: var(--btcpay-primary-800);
+}
+
+.two-factor-settings .btn-primary:hover {
+    background-color: var(--btcpay-primary-900);
+    border-color: var(--btcpay-primary-900);
+}
+
+#SectionNav.account-nav .nav-link {
+    color: var(--btcpay-body-text);
+}
+
+#SectionNav.account-nav .nav-link:focus-visible,
+.two-factor-settings .btn:focus-visible {
+    outline: 2px solid var(--btcpay-body-text);
+    outline-offset: 3px;
+}
+
+@media (max-width: 575.98px) {
+    .two-factor-card {
+        padding: 1rem;
+    }
+
+    .two-factor-settings .btn {
+        width: 100%;
+    }
+}
+
 /* Badges */
 .badge-new {
     background: #d4edda;

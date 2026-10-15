@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using PluginBuilder.DataModels;
 using PluginBuilder.Services;
@@ -17,7 +18,7 @@ public class AccountController(
     DBConnectionFactory connectionFactory,
     UserManager<IdentityUser> userManager,
     SignInManager<IdentityUser> signInManager,
-    TwoFactorRequirement twoFactorRequirement,
+    IdentityDbContext<IdentityUser> identityDbContext,
     ExternalAccountVerificationService externalAccountVerificationService,
     EmailService emailService,
     NostrService nostrService,
@@ -125,8 +126,7 @@ public class AccountController(
         return View(new TwoFactorStatusViewModel
         {
             IsEnabled = await userManager.GetTwoFactorEnabledAsync(user),
-            RecoveryCodesLeft = await userManager.CountRecoveryCodesAsync(user),
-            IsRequired = await twoFactorRequirement.IsRequiredAsync(user)
+            RecoveryCodesLeft = await userManager.CountRecoveryCodesAsync(user)
         });
     }
 
@@ -137,7 +137,7 @@ public class AccountController(
         if (await userManager.GetTwoFactorEnabledAsync(user))
             return RedirectToAction(nameof(TwoFactorAuthentication));
 
-        return View(await WithAuthenticatorKey(user, new EnableAuthenticatorViewModel()));
+        return await AuthenticatorSetup(user, new EnableAuthenticatorViewModel());
     }
 
     [HttpPost("2fa/enable")]
@@ -147,7 +147,7 @@ public class AccountController(
         if (await userManager.GetTwoFactorEnabledAsync(user))
             return RedirectToAction(nameof(TwoFactorAuthentication));
         if (!ModelState.IsValid)
-            return View(await WithAuthenticatorKey(user, model));
+            return await AuthenticatorSetup(user, model);
 
         // 2FA is switched on only after the app has proven it holds the key.
         var valid = await userManager.VerifyTwoFactorTokenAsync(user,
@@ -155,28 +155,19 @@ public class AccountController(
         if (!valid)
         {
             ModelState.AddModelError(nameof(model.Code), "That code is not valid. Check that your device's clock is right and enter the current code.");
-            return View(await WithAuthenticatorKey(user, model));
+            return await AuthenticatorSetup(user, model);
         }
 
-        var enabled = await userManager.SetTwoFactorEnabledAsync(user, true);
-        if (!enabled.Succeeded)
-        {
-            foreach (var error in enabled.Errors)
-                ModelState.AddModelError(string.Empty, error.Description);
-            return View(await WithAuthenticatorKey(user, model));
-        }
-
+        await using var transaction = await identityDbContext.Database.BeginTransactionAsync();
+        if (!(await userManager.SetTwoFactorEnabledAsync(user, true)).Succeeded)
+            return TwoFactorSaveFailed();
         var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, TwoFactorSetup.RecoveryCodeCount);
+        if (codes is null)
+            return TwoFactorSaveFailed();
+        await transaction.CommitAsync();
         // Enabling changes the security stamp: refresh this session so it is not signed out at the next validation.
         await signInManager.RefreshSignInAsync(user);
         logger.LogInformation("User {UserId} enabled two-factor authentication", user.Id);
-        if (codes is null)
-        {
-            TempData[TempDataConstant.WarningMessage] =
-                "Two-factor authentication is on, but your recovery codes could not be created. Generate them below.";
-            return RedirectToAction(nameof(TwoFactorAuthentication));
-        }
-
         return RecoveryCodes(codes);
     }
 
@@ -189,27 +180,17 @@ public class AccountController(
         if (!await PasswordConfirmed(user, model))
             return RedirectToAction(nameof(TwoFactorAuthentication));
 
-        var disabled = await userManager.SetTwoFactorEnabledAsync(user, false);
-        if (!disabled.Succeeded)
-        {
-            TempData[TempDataConstant.WarningMessage] = "Two-factor authentication could not be turned off. Try again.";
-            return RedirectToAction(nameof(TwoFactorAuthentication));
-        }
-
+        await using var transaction = await identityDbContext.Database.BeginTransactionAsync();
+        if (!(await userManager.SetTwoFactorEnabledAsync(user, false)).Succeeded)
+            return TwoFactorSaveFailed();
         // A new key, so the old authenticator entry is useless if 2FA is turned on again; and this browser is no
         // longer a remembered second factor.
-        var reset = await userManager.ResetAuthenticatorKeyAsync(user);
+        if (!(await userManager.ResetAuthenticatorKeyAsync(user)).Succeeded)
+            return TwoFactorSaveFailed();
+        await transaction.CommitAsync();
         await signInManager.ForgetTwoFactorClientAsync();
         await signInManager.RefreshSignInAsync(user);
         logger.LogInformation("User {UserId} disabled two-factor authentication", user.Id);
-        if (!reset.Succeeded)
-        {
-            logger.LogWarning("User {UserId}: the authenticator key could not be replaced after disabling two-factor authentication", user.Id);
-            TempData[TempDataConstant.WarningMessage] =
-                "Two-factor authentication is off, but your old authenticator key could not be replaced. If you turn it on again, the setup page will offer that same key.";
-            return RedirectToAction(nameof(TwoFactorAuthentication));
-        }
-
         TempData[TempDataConstant.SuccessMessage] = "Two-factor authentication is off.";
         return RedirectToAction(nameof(TwoFactorAuthentication));
     }
@@ -226,11 +207,7 @@ public class AccountController(
         // New codes replace every earlier one.
         var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, TwoFactorSetup.RecoveryCodeCount);
         if (codes is null)
-        {
-            TempData[TempDataConstant.WarningMessage] = "New recovery codes could not be created. Your current codes still work.";
-            return RedirectToAction(nameof(TwoFactorAuthentication));
-        }
-
+            return TwoFactorSaveFailed();
         logger.LogInformation("User {UserId} generated new two-factor recovery codes", user.Id);
         return RecoveryCodes(codes);
     }
@@ -238,12 +215,13 @@ public class AccountController(
     private async Task<IdentityUser> CurrentUser() =>
         await userManager.GetUserAsync(User) ?? throw new InvalidOperationException("User not found");
 
-    private async Task<EnableAuthenticatorViewModel> WithAuthenticatorKey(IdentityUser user, EnableAuthenticatorViewModel model)
+    private async Task<IActionResult> AuthenticatorSetup(IdentityUser user, EnableAuthenticatorViewModel model)
     {
         var key = await userManager.GetAuthenticatorKeyAsync(user);
         if (string.IsNullOrEmpty(key))
         {
-            await userManager.ResetAuthenticatorKeyAsync(user);
+            if (!(await userManager.ResetAuthenticatorKeyAsync(user)).Succeeded)
+                return TwoFactorSaveFailed();
             await signInManager.RefreshSignInAsync(user);
             key = await userManager.GetAuthenticatorKeyAsync(user);
         }
@@ -252,7 +230,13 @@ public class AccountController(
         Response.Headers.CacheControl = "no-store";
         model.SharedKey = TwoFactorSetup.FormatKey(key!);
         model.AuthenticatorUri = TwoFactorSetup.AuthenticatorUri(user.Email ?? user.UserName ?? user.Id, key!);
-        return model;
+        return View("EnableAuthenticator", model);
+    }
+
+    private IActionResult TwoFactorSaveFailed()
+    {
+        TempData[TempDataConstant.WarningMessage] = "Your two-factor authentication changes could not be saved. Please try again.";
+        return RedirectToAction(nameof(TwoFactorAuthentication));
     }
 
     // Disabling 2FA or replacing the recovery codes needs the password, and a wrong one counts towards lockout.
