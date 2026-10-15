@@ -214,6 +214,8 @@ public class AccountController(
             key = await userManager.GetAuthenticatorKeyAsync(user);
         }
 
+        // The page carries the authenticator secret, so the browser must not keep a copy of it.
+        Response.Headers.CacheControl = "no-store";
         model.SharedKey = TwoFactorSetup.FormatKey(key!);
         model.AuthenticatorUri = TwoFactorSetup.AuthenticatorUri(user.Email ?? user.UserName ?? user.Id, key!);
         return model;

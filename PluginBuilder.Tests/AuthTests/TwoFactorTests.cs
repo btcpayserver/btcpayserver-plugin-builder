@@ -59,11 +59,15 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var setup = await Page(client, "/account/2fa/enable");
         var key = SharedKey(setup);
         Assert.Contains($"secret={key}&amp;issuer=", setup);
+        // The setup page carries the authenticator secret: the browser must not cache it.
+        using (var again = await client.GetAsync("/account/2fa/enable"))
+            Assert.True(again.Headers.CacheControl?.NoStore);
 
         // A wrong code does not turn 2FA on.
         using (var refused = await Post(client, "/account/2fa/enable", setup, ("Code", WrongCode(key))))
         {
             Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
+            Assert.True(refused.Headers.CacheControl?.NoStore);
             Assert.Contains("That code is not valid", await refused.Content.ReadAsStringAsync());
         }
         Assert.False(await TwoFactorEnabled(tester, email));
