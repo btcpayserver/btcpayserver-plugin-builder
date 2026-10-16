@@ -297,6 +297,7 @@ public class BuildService
 
     public class BuildOutputCapture : IOutputCapture, IAsyncDisposable
     {
+        private const int MaximumBatchLines = 256;
         private readonly Channel<string> lines = Channel.CreateUnbounded<string>();
         private readonly Task _saveTask;
         private readonly ILogger<BuildService> _logger;
@@ -335,18 +336,23 @@ public class BuildService
         {
             while (await lines.Reader.WaitToReadAsync())
             {
-                List<string> rows = new();
-                while (lines.Reader.TryRead(out var l))
+                List<string> rows = new(MaximumBatchLines);
+                while (rows.Count < MaximumBatchLines && lines.Reader.TryRead(out var l))
                     rows.Add(l);
                 await using var conn = await ConnectionFactory.Open();
-                await conn.ExecuteAsync("INSERT INTO builds_logs VALUES (@pluginSlug, @buildId, @log)",
-                    rows.Select(row =>
-                        new
-                        {
-                            pluginSlug = FullBuildId.PluginSlug.ToString(),
-                            buildId = FullBuildId.BuildId,
-                            log = row
-                        }).ToArray());
+                // Dapper's enumerable parameters execute once per item. Expand a single
+                // array parameter in PostgreSQL instead, preserving the channel order.
+                await conn.ExecuteAsync("""
+                    INSERT INTO builds_logs (plugin_slug, build_id, logs)
+                    SELECT @pluginSlug, @buildId, line
+                    FROM unnest(@logs::text[]) WITH ORDINALITY AS batch(line, position)
+                    ORDER BY position
+                    """, new
+                    {
+                        pluginSlug = FullBuildId.PluginSlug.ToString(),
+                        buildId = FullBuildId.BuildId,
+                        logs = rows.ToArray()
+                    });
             }
         }
     }
