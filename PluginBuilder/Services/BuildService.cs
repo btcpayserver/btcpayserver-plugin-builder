@@ -105,7 +105,7 @@ public class BuildService
                 bool ownsIdentifier;
                 await using (BuildOutputCapture buildLogCapture = new(fullBuildId, ConnectionFactory, Logger))
                 {
-                    await using (var prepared = await _buildSandbox.PrepareAsync(fullBuildId, buildParameters, token))
+                    await using (var prepared = await _buildSandbox.PrepareAsync(fullBuildId, buildParameters, token, buildLogCapture))
                     {
                         JObject runningInfo = new()
                         {

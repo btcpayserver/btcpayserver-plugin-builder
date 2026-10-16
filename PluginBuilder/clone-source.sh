@@ -56,12 +56,18 @@ export GIT_CONFIG_KEY_1=protocol.https.allow
 export GIT_CONFIG_VALUE_1=always
 unset SSH_AUTH_SOCK
 
+# Both phases use this immutable worker image. Keep the header and Git's
+# checkout messages on one stream so they precede the compiler output.
+git --version
+# The checkout container only has a writable home and temporary space under /tmp.
+DOTNET_CLI_HOME="$HOME" TMPDIR=/tmp dotnet --info
+
 clone_args=(clone --depth 1 --recurse-submodules --shallow-submodules --single-branch)
 if [[ -n "$GIT_REF" ]]; then
     clone_args+=(--branch "$GIT_REF")
 fi
 clone_args+=(-- "$GIT_REPO" /source/repository)
-git "${clone_args[@]}"
+git "${clone_args[@]}" 2>&1
 
 git -C /source/repository rev-parse --verify 'HEAD^{commit}' >/dev/null ||
     fail "checkout has no valid commit"

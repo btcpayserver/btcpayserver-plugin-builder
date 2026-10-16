@@ -489,12 +489,15 @@ public class BuildBrokerSecurityTests
     {
         await using var fixture = await BrokerFixture.Start();
         var generation = fixture.Executor.StopToken;
+        fixture.Sandbox.PreparationLogLines = ["git version 2.43.0", "fatal: Remote branch missing not found"];
         fixture.Sandbox.PrepareFailure = new BuildServiceException("Checkout failed after confirmed cleanup.");
         fixture.Sandbox.BeforePrepare = () => fixture.Executor.SuspendAdmission("Docker probes timed out");
         var lease = await fixture.Submit(32);
         await Eventually(async () =>
         {
             var status = await fixture.Client.GetFromJsonAsync<BrokerBuildStatus>($"/v1/builds/{lease}");
+            if (status!.State == "failed")
+                Assert.Equal(fixture.Sandbox.PreparationLogLines, status.Logs);
             return status!.State == "failed";
         });
         using var consumed = await fixture.Client.GetAsync($"/v1/builds/{lease}");
@@ -511,13 +514,14 @@ public class BuildBrokerSecurityTests
     [InlineData("running")]
     [InlineData("succeeded")]
     [InlineData("failed")]
-    public async Task WorkerLogPaginationIsBoundedAndDefersTerminalStateUntilAllLogsAreRead(string buildState)
+    public async Task BuildLogPaginationIsBoundedAndDefersTerminalStateUntilAllLogsAreRead(string buildState)
     {
         await using var fixture = await BrokerFixture.Start();
+        fixture.Sandbox.PreparationLogLines = ["git version 2.43.0", ".NET SDK:", "Cloning into '/source/repository'..."];
         fixture.Sandbox.LogLines = Enumerable.Range(0, 200).Select(i => $"{i:D4}:" + new string('x', 1024)).ToArray();
         fixture.Sandbox.CompleteImmediately = buildState == "succeeded";
         fixture.Sandbox.RunFailure = buildState == "failed" ? new InvalidOperationException("Test build failed.") : null;
-        var expectedLines = fixture.Sandbox.LogLines
+        var expectedLines = fixture.Sandbox.PreparationLogLines.Concat(fixture.Sandbox.LogLines)
             .Concat(buildState == "succeeded" ? new[] { "Test plugin compiled." } : Array.Empty<string>()).ToArray();
         var lease = await fixture.Submit(35);
         await fixture.Sandbox.WaitForStarted(35);
@@ -529,7 +533,7 @@ public class BuildBrokerSecurityTests
         else await Eventually(async () =>
         {
             var status = await fixture.Client.GetFromJsonAsync<BrokerBuildStatus>(
-                $"/v1/builds/{lease}?cursor={fixture.Sandbox.LogLines.Length}");
+                $"/v1/builds/{lease}?cursor={fixture.Sandbox.PreparationLogLines.Length + fixture.Sandbox.LogLines.Length}");
             return status!.State == buildState;
         });
         var cursor = 0;
@@ -1005,11 +1009,15 @@ public class BuildBrokerSecurityTests
         public Action? BeforeDisposal { get; set; }
         public string ManifestJson { get; set; } = "{\"identifier\":\"Test.Plugin\"}";
         public string[] LogLines { get; set; } = [];
+        public string[] PreparationLogLines { get; set; } = [];
         public ConcurrentDictionary<long, FakePrepared> Prepared { get; } = new();
 
-        public async Task<IPreparedBuild> PrepareAsync(FullBuildId buildId, BuildInfo buildInfo, CancellationToken cancellationToken = default)
+        public async Task<IPreparedBuild> PrepareAsync(FullBuildId buildId, BuildInfo buildInfo,
+            CancellationToken cancellationToken = default, IOutputCapture? preparationOutput = null)
         {
             Interlocked.Increment(ref _prepareCalls);
+            foreach (var line in PreparationLogLines)
+                preparationOutput?.AddLine(line);
             BeforePrepare?.Invoke();
             if (PreparationBlockedUntil is { } preparation)
                 await preparation.WaitAsync(cancellationToken);

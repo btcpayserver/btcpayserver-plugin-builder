@@ -33,7 +33,8 @@ public class DockerBuildSandboxLifecycleTests
         var state = ReadyExecutor();
         var sandbox = CreateSandbox(fakeDocker, state, useRunc: useRunc);
         var runtime = useRunc ? "runc" : "runsc";
-        await using var prepared = await sandbox.PrepareAsync(BuildId(), BuildInfo());
+        var output = new OutputCapture();
+        await using var prepared = await sandbox.PrepareAsync(BuildId(), BuildInfo(), preparationOutput: output);
 
         Assert.StartsWith("pb-worker-", prepared.WorkerContainer, StringComparison.Ordinal);
         Assert.StartsWith("pb-clone-", prepared.CloneContainer, StringComparison.Ordinal);
@@ -190,9 +191,8 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(commands.IndexOf(cloneStart) < commands.IndexOf(cloneRemove));
         Assert.True(commands.IndexOf(cloneRemove) < commands.IndexOf(workerCreate));
 
-        var output = new OutputCapture();
         var staged = await prepared.RunAndStageAsync(output);
-        Assert.Contains("worker log", output.Lines);
+        Assert.Equal(["git version 2.43.0", ".NET SDK:", "Cloning into '/source/repository'...", "worker log"], output.Lines);
         Assert.Equal("Example", staged.AssemblyName);
         Assert.Equal("{}", staged.ManifestJson.Trim());
         Assert.Equal("https://gitlab.com/example/plugin", staged.BuildEnvironment["gitRepository"]?.Value<string>());
@@ -310,11 +310,13 @@ public class DockerBuildSandboxLifecycleTests
     {
         await using var fakeDocker = await FakeDocker.Create(failCloneStart: true);
         var state = ReadyExecutor();
+        var output = new OutputCapture();
 
         var exception = await Assert.ThrowsAsync<PublicBuildException>(() =>
-            CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo()));
+            CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo(), preparationOutput: output));
 
         Assert.Contains("repository checkout failed", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("simulated checkout failure", output.Lines);
         var commands = await fakeDocker.ReadCommands();
         Assert.Contains(
             commands,
@@ -920,6 +922,7 @@ public class DockerBuildSandboxLifecycleTests
                                     printf '%s\n' 'simulated checkout failure' >&2
                                     exit 29
                                 fi
+                                printf '%s\n' 'git version 2.43.0' '.NET SDK:' "Cloning into '/source/repository'..."
                                 ;;
                             pb-stager-*)
                                 if [ "${PB_FAKE_FAIL_STAGER_START:-false}" = "true" ]; then

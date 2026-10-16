@@ -107,7 +107,7 @@ public sealed class BrokerCoordinator(
         var preparationCompleted = false;
         try
         {
-            lease.Prepared = await sandbox.PrepareAsync(id, info, lease.Token);
+            lease.Prepared = await sandbox.PrepareAsync(id, info, lease.Token, lease);
             preparationCompleted = true;
             lease.Token.ThrowIfCancellationRequested();
             lock (lease.Gate) lease.State = "running";

@@ -48,10 +48,12 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         _scratchCleaner = scratchCleaner;
     }
 
-    async Task<IPreparedBuild> IBuildSandbox.PrepareAsync(FullBuildId buildId, BuildInfo buildInfo, CancellationToken cancellationToken) =>
-        await PrepareAsync(buildId, buildInfo, cancellationToken);
+    async Task<IPreparedBuild> IBuildSandbox.PrepareAsync(FullBuildId buildId, BuildInfo buildInfo,
+        CancellationToken cancellationToken, IOutputCapture? preparationOutput) =>
+        await PrepareAsync(buildId, buildInfo, cancellationToken, preparationOutput);
 
-    public async Task<PreparedBuild> PrepareAsync(FullBuildId buildId, BuildInfo buildInfo, CancellationToken cancellationToken = default)
+    public async Task<PreparedBuild> PrepareAsync(FullBuildId buildId, BuildInfo buildInfo,
+        CancellationToken cancellationToken = default, IOutputCapture? preparationOutput = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         // BrokerCoordinator validates and normalizes inputs before admission.
@@ -71,7 +73,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             cancellationToken);
         try
         {
-            await prepared.PrepareAsync();
+            await prepared.PrepareAsync(preparationOutput);
             return prepared;
         }
         catch
@@ -262,7 +264,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
         private string ProxyResolverFile { get; }
         private string ProxyConfigurationFile { get; }
 
-        internal async Task PrepareAsync()
+        internal async Task PrepareAsync(IOutputCapture? preparationOutput)
         {
             CreateScratchDirectories();
             await InitializeScratchOwnership();
@@ -311,7 +313,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 throw new BuildServiceException("The isolated build proxy has no valid internal IPv4 address.");
 
             _stopToken.ThrowIfCancellationRequested();
-            await CloneSource(proxyIp);
+            await CloneSource(proxyIp, preparationOutput);
             _stopToken.ThrowIfCancellationRequested();
 
             await CreateResource(
@@ -433,7 +435,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             return arguments;
         }
 
-        private async Task CloneSource(string proxyIp)
+        private async Task CloneSource(string proxyIp, IOutputCapture? preparationOutput)
         {
             await CreateResource(
                 DockerResourceKind.Container,
@@ -444,7 +446,7 @@ public sealed class DockerBuildSandbox : IBuildSandbox
             try
             {
                 code = await DockerCli.RunAsync(_owner._processRunner, ["container", "start", "--attach", CloneContainer],
-                    CloneTimeout, _stopToken);
+                    CloneTimeout, _stopToken, preparationOutput, preparationOutput);
             }
             catch (OperationCanceledException)
             {

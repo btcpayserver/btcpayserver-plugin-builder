@@ -474,7 +474,8 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
         public ConcurrentDictionary<FullBuildId, PreparedBuild> Prepared { get; } = new();
         public TaskCompletionSource AllowAllDisposals { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task<IPreparedBuild> PrepareAsync(FullBuildId id, BuildInfo info, CancellationToken cancellationToken = default)
+        public Task<IPreparedBuild> PrepareAsync(FullBuildId id, BuildInfo info,
+            CancellationToken cancellationToken = default, IOutputCapture? preparationOutput = null)
         {
             var prepared = new PreparedBuild(this, Path.Combine(Root, id.BuildId.ToString()));
             Assert.True(Prepared.TryAdd(id, prepared));

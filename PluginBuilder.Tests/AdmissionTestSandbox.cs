@@ -27,7 +27,8 @@ internal sealed class AdmissionTestSandbox : IBuildSandbox
     }
 
     public async Task<IPreparedBuild> PrepareAsync(
-        FullBuildId buildId, BuildInfo buildInfo, CancellationToken cancellationToken = default)
+        FullBuildId buildId, BuildInfo buildInfo, CancellationToken cancellationToken = default,
+        IOutputCapture? preparationOutput = null)
     {
         var prepared = new PreparedBuild();
         Assert.True(StartedPreparations.TryAdd(buildId, prepared));

@@ -78,7 +78,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
     }
 
     public async Task<IPreparedBuild> PrepareAsync(FullBuildId buildId, BuildInfo buildInfo,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, IOutputCapture? preparationOutput = null)
     {
         TaskCompletionSource submitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_lifecycleGate)
