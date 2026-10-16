@@ -13,10 +13,8 @@ using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
-using StbImageSharp;
 using Xunit;
 using Xunit.Abstractions;
-using ZXing;
 
 namespace PluginBuilder.Tests.AuthTests;
 
@@ -68,15 +66,17 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Contains($"secret={key}&amp;issuer=", setup);
         var qrImage = Regex.Match(setup, "src=\"data:image/png;base64,([^\"]+)\"");
         Assert.True(qrImage.Success, "The setup page must display the QR code inline.");
-        var qrUri = new Uri(DecodeQrCode(qrImage.Groups[1].Value));
-        Assert.Equal("otpauth", qrUri.Scheme);
-        Assert.Equal("totp", qrUri.Host);
-        Assert.Equal($"{TwoFactorSetup.Issuer}:{email}", Uri.UnescapeDataString(qrUri.AbsolutePath.TrimStart('/')));
-        var qrParameters = QueryHelpers.ParseQuery(qrUri.Query);
-        var qrKey = qrParameters["secret"].ToString();
-        Assert.Equal(key, qrKey);
-        Assert.Equal(TwoFactorSetup.Issuer, qrParameters["issuer"].ToString());
-        Assert.Equal("6", qrParameters["digits"].ToString());
+        var authenticatorLink = Regex.Match(setup, "<a\\b(?=[^>]*\\bid=\"AuthenticatorUri\")[^>]*\\bhref=\"([^\"]+)\"");
+        Assert.True(authenticatorLink.Success, "The setup page must link to the authenticator app.");
+        var authenticatorUri = new Uri(WebUtility.HtmlDecode(authenticatorLink.Groups[1].Value));
+        Assert.Equal("otpauth", authenticatorUri.Scheme);
+        Assert.Equal("totp", authenticatorUri.Host);
+        Assert.Equal($"{TwoFactorSetup.Issuer}:{email}", Uri.UnescapeDataString(authenticatorUri.AbsolutePath.TrimStart('/')));
+        var authenticatorParameters = QueryHelpers.ParseQuery(authenticatorUri.Query);
+        var uriKey = authenticatorParameters["secret"].ToString();
+        Assert.Equal(key, uriKey);
+        Assert.Equal(TwoFactorSetup.Issuer, authenticatorParameters["issuer"].ToString());
+        Assert.Equal("6", authenticatorParameters["digits"].ToString());
         // The setup page carries the authenticator secret: the browser must not cache it.
         using (var again = await client.GetAsync("/account/2fa/enable"))
             Assert.True(again.Headers.CacheControl?.NoStore);
@@ -95,7 +95,7 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
         // The current code turns it on and shows ten recovery codes, once and uncached.
         string[] recoveryCodes;
-        using (var enabled = await Post(client, "/account/2fa/enable", setup, ("Code", Totp(qrKey))))
+        using (var enabled = await Post(client, "/account/2fa/enable", setup, ("Code", Totp(uriKey))))
         {
             Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
             Assert.True(enabled.Headers.CacheControl?.NoStore);
@@ -559,16 +559,6 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         using var response = await client.GetAsync("/account/details");
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/login", response.Headers.Location!.OriginalString);
-    }
-
-    private static string DecodeQrCode(string base64Image)
-    {
-        var image = ImageResult.FromMemory(Convert.FromBase64String(WebUtility.HtmlDecode(base64Image)), ColorComponents.RedGreenBlue);
-        var pixels = new RGBLuminanceSource(image.Data, image.Width, image.Height, RGBLuminanceSource.BitmapFormat.RGB24);
-        var result = new BarcodeReaderGeneric().Decode(pixels);
-        Assert.NotNull(result);
-        Assert.Equal(BarcodeFormat.QR_CODE, result.BarcodeFormat);
-        return result.Text;
     }
 
     private static string SharedKey(string setupPage)
