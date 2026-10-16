@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using Dapper;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Services;
 
 namespace PluginBuilder.Authentication;
@@ -11,7 +12,8 @@ namespace PluginBuilder.Authentication;
 // plugin (PublisherTokenPluginClaim, enforced by the OwnPlugin requirement). It carries no roles, so even an admin's
 // token is only a publisher credential. It works for accounts with two-factor authentication, which Basic auth refuses.
 public class PublisherTokenAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger,
-    UrlEncoder encoder, DBConnectionFactory connections) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    UrlEncoder encoder, DBConnectionFactory connections, UserVerifiedLogic userVerifiedLogic)
+    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string Prefix = "pb_pub_";
 
@@ -44,7 +46,11 @@ public class PublisherTokenAuthenticationHandler(IOptionsMonitor<AuthenticationS
             new(PluginBuilderAuthenticationSchemes.PublisherTokenIdClaim, identity.TokenId.ToString()),
             new(PluginBuilderAuthenticationSchemes.PublisherTokenPluginClaim, identity.PluginSlug)
         };
-        return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name)), Scheme.Name));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name));
+        if (userVerifiedLogic.IsEmailVerificationRequiredForLogin &&
+            !await userVerifiedLogic.IsUserEmailVerifiedForLogin(principal))
+            return AuthenticateResult.Fail("Invalid publisher access token.");
+        return AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name));
     }
 
     private sealed class TokenIdentity

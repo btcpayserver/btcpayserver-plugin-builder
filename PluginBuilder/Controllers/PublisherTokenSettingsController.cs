@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using PluginBuilder.Services;
@@ -14,7 +15,7 @@ namespace PluginBuilder.Controllers;
 [AutoValidateAntiforgeryToken]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Route("account/api-tokens")]
-public class PublisherTokenSettingsController(PublisherAccessTokenService tokens) : Controller
+public class PublisherTokenSettingsController(PublisherAccessTokenService tokens, SignInManager<IdentityUser> signInManager) : Controller
 {
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -24,12 +25,20 @@ public class PublisherTokenSettingsController(PublisherAccessTokenService tokens
     [HttpPost]
     public async Task<IActionResult> Create(TokenPage model)
     {
+        // Cookie stamp validation is periodic; token issuance must reject a stale session immediately.
+        var user = await signInManager.ValidateSecurityStampAsync(User);
+        if (user is null)
+        {
+            await signInManager.SignOutAsync();
+            return Challenge();
+        }
+
         if (ModelState.IsValid)
         {
             try
             {
                 model.Issued = await tokens.Create(UserId, model.Creation.PluginSlug, model.Creation.Name,
-                    model.Creation.ExpiresInDays == 0 ? null : model.Creation.ExpiresInDays);
+                    model.Creation.ExpiresInDays == 0 ? null : model.Creation.ExpiresInDays, user.SecurityStamp!);
             }
             catch (ArgumentException ex)
             {

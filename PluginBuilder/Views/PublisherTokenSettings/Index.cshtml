@@ -82,7 +82,8 @@
                     <tbody>
                     @foreach (var token in Model.Tokens)
                     {
-                        var status = token.RevokedAt is not null ? "Revoked" : token.ExpiresAt is { } expires && expires <= now ? "Expired" : "Active";
+                        var status = token.RevokedAt is not null ? "Revoked" : token.Invalidated ? "Invalidated"
+                            : token.ExpiresAt is { } expires && expires <= now ? "Expired" : "Active";
                         <tr data-token-id="@token.Id">
                             <td class="text-break" data-token-name>@token.Name</td>
                             <td><code>@token.PluginSlug</code></td>

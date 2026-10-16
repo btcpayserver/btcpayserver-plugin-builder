@@ -6,9 +6,12 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using PluginBuilder.Authentication;
+using PluginBuilder.Controllers.Logic;
+using PluginBuilder.DataModels;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
+using PluginBuilder.ViewModels.Admin;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -32,7 +35,7 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await conn.NewPlugin(new PluginSlug("token-b"), owner.Id);
         await conn.NewPlugin(new PluginSlug("token-c"), other.Id);
 
-        var issued = await tokens.Create(owner.Id, "token-a", "CI release", 30);
+        var issued = await tokens.Create(owner.Id, "token-a", "CI release", 30, owner.SecurityStamp!);
         Assert.StartsWith(PublisherTokenAuthenticationHandler.Prefix, issued.Token);
         Assert.Equal(AdminTokenAuthenticationHandler.Hash(issued.Token),
             await conn.ExecuteScalarAsync<string>("SELECT token_hash FROM publisher_access_tokens WHERE id = @id", new { id = issued.Id }));
@@ -58,8 +61,8 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", PublisherTokenAuthenticationHandler.Prefix + "short");
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/plugins/token-b/builds")).StatusCode);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => tokens.Create(owner.Id, "token-c", "Not mine", 30));
-        await Assert.ThrowsAsync<ArgumentException>(() => tokens.Create(owner.Id, "token-b", "Too long", 366));
+        await Assert.ThrowsAsync<ArgumentException>(() => tokens.Create(owner.Id, "token-c", "Not mine", 30, owner.SecurityStamp!));
+        await Assert.ThrowsAsync<ArgumentException>(() => tokens.Create(owner.Id, "token-b", "Too long", 366, owner.SecurityStamp!));
     }
 
     [Fact]
@@ -80,7 +83,7 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
             return (await client.GetAsync("/api/v1/plugins/refusals/builds")).StatusCode;
         }
 
-        var revoked = await tokens.Create(owner.Id, "refusals", "Revoked", 30);
+        var revoked = await tokens.Create(owner.Id, "refusals", "Revoked", 30, owner.SecurityStamp!);
         Assert.Equal(HttpStatusCode.OK, await Call(revoked.Token));
         // Only the token's owner can revoke it.
         Assert.False(await tokens.Revoke(other.Id, revoked.Id));
@@ -88,11 +91,11 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.True(await tokens.Revoke(owner.Id, revoked.Id));
         Assert.Equal(HttpStatusCode.Unauthorized, await Call(revoked.Token));
 
-        var expired = await tokens.Create(owner.Id, "refusals", "Expired", 30);
+        var expired = await tokens.Create(owner.Id, "refusals", "Expired", 30, owner.SecurityStamp!);
         await conn.ExecuteAsync("UPDATE publisher_access_tokens SET expires_at = CURRENT_TIMESTAMP - interval '1 minute' WHERE id = @id", new { id = expired.Id });
         Assert.Equal(HttpStatusCode.Unauthorized, await Call(expired.Token));
 
-        var forever = await tokens.Create(owner.Id, "refusals", "No expiry", null);
+        var forever = await tokens.Create(owner.Id, "refusals", "No expiry", null, owner.SecurityStamp!);
         Assert.Null(forever.ExpiresAt);
         Assert.Equal(HttpStatusCode.OK, await Call(forever.Token));
         await users.SetLockoutEndDateAsync(owner, DateTimeOffset.UtcNow.AddHours(1));
@@ -122,7 +125,7 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
             bearer.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
             return (await bearer.GetAsync("/api/v1/plugins/two-factor/builds")).StatusCode;
         }
-        var before = await tokens.Create(owner.Id, "two-factor", "Before 2FA", 90);
+        var before = await tokens.Create(owner.Id, "two-factor", "Before 2FA", 90, owner.SecurityStamp!);
         Assert.Equal(HttpStatusCode.OK, (await basic.GetAsync("/api/v1/plugins/two-factor/builds")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, await Call(before.Token));
 
@@ -130,7 +133,7 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(HttpStatusCode.Unauthorized, (await basic.GetAsync("/api/v1/plugins/two-factor/builds")).StatusCode);
         // Turning two-factor on rotates the security stamp: tokens made before it stop, and new ones work.
         Assert.Equal(HttpStatusCode.Unauthorized, await Call(before.Token));
-        var issued = await tokens.Create(owner.Id, "two-factor", "CI", 90);
+        var issued = await tokens.Create(owner.Id, "two-factor", "CI", 90, owner.SecurityStamp!);
         Assert.Equal(HttpStatusCode.OK, await Call(issued.Token));
     }
 
@@ -154,7 +157,7 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
         // Someone else's plugin, posted by hand, is refused and creates nothing.
         var refused = await Create(browser, page, "Not mine", "page-theirs", 30);
-        Assert.Contains("You can only create a token for a plugin you own.", refused);
+        Assert.Contains("You can only create a token for a plugin you own with a current session.", refused);
         Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM publisher_access_tokens"));
 
         var created = await Create(browser, page, "GitHub Actions", "page-mine", 0);
@@ -179,6 +182,131 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
         using (var revoke = await browser.PostAsync($"/account/api-tokens/{id}/revoke", form))
             Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await api.GetAsync("/api/v1/plugins/page-mine/builds")).StatusCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StaleSessionsCannotCreateTokensAfterCredentialChanges(bool enableTwoFactor)
+    {
+        await using var tester = await StartServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var owner = await AddUser(users, "owner@example.com");
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(new PluginSlug("stale-session"), owner.Id);
+        using var browser = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(browser, owner.Email!, Password);
+        var page = await Page(browser, "/account/api-tokens");
+
+        if (enableTwoFactor)
+            Assert.True((await users.SetTwoFactorEnabledAsync(owner, true)).Succeeded);
+        else
+        {
+            var reset = await users.GeneratePasswordResetTokenAsync(owner);
+            Assert.True((await users.ResetPasswordAsync(owner, reset, Password + "-new")).Succeeded);
+        }
+
+        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Creation.Name"] = "Stale session",
+            ["Creation.PluginSlug"] = "stale-session",
+            ["Creation.ExpiresInDays"] = "0",
+            ["__RequestVerificationToken"] = HttpTestHelpers.AntiforgeryToken(page)
+        });
+        using var response = await browser.PostAsync("/account/api-tokens", form);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/login", new Uri(browser.BaseAddress!, response.Headers.Location!).AbsolutePath);
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM publisher_access_tokens"));
+    }
+
+    [Fact]
+    public async Task TokenCreationRefusesAStampRotatedAfterSessionValidation()
+    {
+        await using var tester = await StartServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var tokens = scope.ServiceProvider.GetRequiredService<PublisherAccessTokenService>();
+        var owner = await AddUser(users, "owner@example.com");
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(new PluginSlug("stamp-race"), owner.Id);
+        // Simulate a credential change between validating the session and inserting its token.
+        var sessionStamp = owner.SecurityStamp!;
+        Assert.True((await users.UpdateSecurityStampAsync(owner)).Succeeded);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            tokens.Create(owner.Id, "stamp-race", "Old session", null, sessionStamp));
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM publisher_access_tokens"));
+        var issued = await tokens.Create(owner.Id, "stamp-race", "Current session", 30, owner.SecurityStamp!);
+        using var api = tester.CreateHttpClient();
+        api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
+        Assert.Equal(HttpStatusCode.OK, (await api.GetAsync("/api/v1/plugins/stamp-race/builds")).StatusCode);
+    }
+
+    [Theory]
+    [InlineData(true, true, false, HttpStatusCode.Unauthorized)]
+    [InlineData(true, true, true, HttpStatusCode.OK)]
+    [InlineData(false, true, false, HttpStatusCode.OK)]
+    [InlineData(true, false, false, HttpStatusCode.OK)]
+    public async Task TokensApplyTheSameEmailVerificationPolicyAsBasicAuth(
+        bool verificationRequired, bool smtpConfigured, bool emailConfirmed, HttpStatusCode expectedStatus)
+    {
+        await using var tester = await StartServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var owner = await AddUser(users, "owner@example.com", emailConfirmed);
+        await tester.CreatePublishedPluginAsync(owner.Id, "email-policy");
+        var issued = await scope.ServiceProvider.GetRequiredService<PublisherAccessTokenService>()
+            .Create(owner.Id, "email-policy", "Before SMTP configuration", 30, owner.SecurityStamp!);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.SettingsSetAsync(SettingsKeys.VerifiedEmailForLogin, verificationRequired ? "true" : "false");
+        await tester.GetService<AdminSettingsCache>().RefreshIsVerifiedEmailRequiredForLogin(conn);
+        if (smtpConfigured)
+            await tester.GetService<EmailService>().SaveEmailSettingsToDatabase(new EmailSettingsViewModel
+            {
+                Server = "smtp.example.invalid", Port = 587, Username = "publisher@example.invalid",
+                Password = "fixture-only", From = "publisher@example.invalid"
+            });
+
+        using var basic = tester.CreateHttpClient().SetBasicAuth(owner.UserName!, Password);
+        using var bearer = tester.CreateHttpClient();
+        bearer.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
+        const string release = "/api/v1/plugins/email-policy/versions/1.0.2.0/release";
+        Assert.Equal(expectedStatus, (await basic.PostAsync(release, null)).StatusCode);
+        Assert.Equal(expectedStatus, (await bearer.PostAsync(release, null)).StatusCode);
+        Assert.Equal(expectedStatus == HttpStatusCode.Unauthorized,
+            await conn.ExecuteScalarAsync<bool>("SELECT pre_release FROM versions WHERE plugin_slug = 'email-policy'"));
+
+        if (expectedStatus == HttpStatusCode.Unauthorized)
+        {
+            var confirmation = await users.GenerateEmailConfirmationTokenAsync(owner);
+            Assert.True((await users.ConfirmEmailAsync(owner, confirmation)).Succeeded);
+            Assert.Equal(HttpStatusCode.OK, (await bearer.PostAsync(release, null)).StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task PasswordInvalidatedTokensAreShownAsInvalidatedAfterFreshLogin()
+    {
+        await using var tester = await StartServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var owner = await AddUser(users, "owner@example.com");
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(new PluginSlug("token-status"), owner.Id);
+        var issued = await scope.ServiceProvider.GetRequiredService<PublisherAccessTokenService>()
+            .Create(owner.Id, "token-status", "Old credential", null, owner.SecurityStamp!);
+        Assert.True((await users.ChangePasswordAsync(owner, Password, Password + "-new")).Succeeded);
+        using var browser = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(browser, owner.Email!, Password + "-new");
+        var page = await Page(browser, "/account/api-tokens");
+        var row = Regex.Match(page, $"<tr data-token-id=\"{issued.Id}\">.*?</tr>", RegexOptions.Singleline).Value;
+        Assert.Contains(">Invalidated</span>", row);
+        Assert.DoesNotContain(">Active</span>", row);
+        using var api = tester.CreateHttpClient();
+        api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await api.GetAsync("/api/v1/plugins/token-status/builds")).StatusCode);
+        var created = await Create(browser, page, "Current credential", "token-status", 30);
+        Assert.Contains(">Active</span>", created);
     }
 
     private static async Task<string> Create(HttpClient browser, string pageWithForm, string name, string plugin, int days)
@@ -216,9 +344,9 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
         return tester;
     }
 
-    private static async Task<IdentityUser> AddUser(UserManager<IdentityUser> users, string email)
+    private static async Task<IdentityUser> AddUser(UserManager<IdentityUser> users, string email, bool emailConfirmed = true)
     {
-        var user = new IdentityUser { UserName = email, Email = email, EmailConfirmed = true };
+        var user = new IdentityUser { UserName = email, Email = email, EmailConfirmed = emailConfirmed };
         Assert.True((await users.CreateAsync(user, Password)).Succeeded);
         return user;
     }
