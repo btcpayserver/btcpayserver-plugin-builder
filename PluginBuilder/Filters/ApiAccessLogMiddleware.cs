@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Claims;
+using PluginBuilder.Authentication;
 
 namespace PluginBuilder.Filters;
 
@@ -22,16 +23,19 @@ public class ApiAccessLogMiddleware(RequestDelegate next, ILogger<ApiAccessLogMi
         var authorization = http.Request.Headers.Authorization.ToString();
         var credentialType = string.IsNullOrEmpty(authorization) ? "none"
             : authorization.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase) ? "basic"
+            : authorization.StartsWith("Bearer " + PublisherTokenAuthenticationHandler.Prefix, StringComparison.OrdinalIgnoreCase) ? "publisher-token"
             : authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? "bearer"
             : "other";
         var userId = http.User.Identity?.IsAuthenticated is true
             ? http.User.FindFirstValue(ClaimTypes.NameIdentifier)
             : null;
+        // The token's id, never the token: which publisher token was refused, e.g. on another plugin.
+        var tokenId = http.User.FindFirstValue(PluginBuilderAuthenticationSchemes.PublisherTokenIdClaim);
 
         logger.LogInformation(
-            "API access denied: status={StatusCode} method={Method} path={Path} ip={ClientIp} auth={CredentialType} user={UserId} requestId={RequestId} userAgent={UserAgent}",
+            "API access denied: status={StatusCode} method={Method} path={Path} ip={ClientIp} auth={CredentialType} user={UserId} token={TokenId} requestId={RequestId} userAgent={UserAgent}",
             http.Response.StatusCode, SafeField(http.Request.Method, 16), SafeField(http.Request.Path.Value, 256),
-            address?.ToString() ?? "unknown", credentialType, SafeField(userId, 128),
+            address?.ToString() ?? "unknown", credentialType, SafeField(userId, 128), SafeField(tokenId, 64),
             SafeField(http.TraceIdentifier, 128), SafeField(http.Request.Headers.UserAgent.ToString(), 160));
     }
 

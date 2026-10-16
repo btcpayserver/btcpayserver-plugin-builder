@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using PluginBuilder.Authentication;
 using PluginBuilder.ModelBinders;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
@@ -38,6 +39,14 @@ public class PluginBuilderAuthorizationHandler : AuthorizationHandler<OwnPluginR
         }
 
         if (slug is null)
+        {
+            context.Fail();
+            return;
+        }
+
+        // A publisher token reaches the one plugin it was created for, even when its user owns others.
+        var tokenPlugin = context.User.FindFirst(PluginBuilderAuthenticationSchemes.PublisherTokenPluginClaim)?.Value;
+        if (tokenPlugin is not null && tokenPlugin != slug.ToString())
         {
             context.Fail();
             return;
