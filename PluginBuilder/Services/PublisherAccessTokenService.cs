@@ -8,8 +8,6 @@ namespace PluginBuilder.Services;
 // returned once, at creation.
 public class PublisherAccessTokenService(DBConnectionFactory connections)
 {
-    public static readonly int[] LifetimeChoices = [30, 90, 365];
-
     public async Task<IReadOnlyList<TokenInfo>> List(string userId, CancellationToken cancellationToken = default)
     {
         await using var conn = await connections.Open(cancellationToken);

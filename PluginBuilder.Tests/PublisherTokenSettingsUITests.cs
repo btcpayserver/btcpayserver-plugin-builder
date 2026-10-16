@@ -40,7 +40,8 @@ public class PublisherTokenSettingsUITests(ITestOutputHelper output) : UnitTestB
         await Expect(modal).ToBeVisibleAsync();
         await modal.Locator("#Creation_Name").FillAsync("Release <agent>");
         await modal.Locator("#Creation_PluginSlug").SelectOptionAsync("ui-mine");
-        await modal.Locator("#Creation_ExpiresInDays").SelectOptionAsync("0");
+        await modal.Locator("#TokenLifetime").SelectOptionAsync("0");
+        await Expect(modal.Locator("#TokenExpiryPreview")).ToHaveTextAsync("Never expires.");
         var response = await page.RunAndWaitForResponseAsync(
             () => modal.Locator("button[type='submit']").ClickAsync(),
             result => result.Request.Method == "POST" && new Uri(result.Url).AbsolutePath == "/account/api-tokens");
@@ -62,6 +63,8 @@ public class PublisherTokenSettingsUITests(ITestOutputHelper output) : UnitTestB
         await Expect(page.Locator("#ActiveTokensTab")).ToHaveTextAsync("Active (1)");
         var row = page.Locator($"tr[data-token-id='{id}']");
         await Expect(row.Locator("[data-token-name]")).ToHaveTextAsync("Release <agent>");
+        await row.Locator("[data-copy-id]").ClickAsync();
+        Assert.Equal(id.ToString(), await page.EvaluateAsync<string>("() => navigator.clipboard.readText()"));
 
         using var agent = tester.Server.CreateHttpClient();
         agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -96,8 +99,16 @@ public class PublisherTokenSettingsUITests(ITestOutputHelper output) : UnitTestB
         await Expect(modal.Locator("#Creation_Name")).ToHaveValueAsync("   ");
         Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM publisher_access_tokens"));
         await modal.Locator("#Creation_Name").FillAsync("Copy fallback");
+        await modal.Locator("#TokenLifetime").SelectOptionAsync("custom");
+        await Expect(modal.Locator("#Creation_ExpiresInDays")).ToBeVisibleAsync();
+        await modal.Locator("#Creation_ExpiresInDays").FillAsync("0");
+        Assert.False(await modal.Locator("#Creation_ExpiresInDays").EvaluateAsync<bool>("element => element.checkValidity()"));
+        await modal.Locator("#Creation_ExpiresInDays").FillAsync("12");
+        await Expect(modal.Locator("#TokenExpiryPreview")).ToContainTextAsync("Expires");
         await modal.Locator("button[type='submit']").ClickAsync();
         await Expect(modal.Locator("#TokenSuccess")).ToBeVisibleAsync();
+        var expiry = await conn.ExecuteScalarAsync<DateTime>("SELECT expires_at FROM publisher_access_tokens WHERE name = 'Copy fallback'");
+        Assert.InRange((expiry - DateTime.UtcNow).TotalDays, 11.9, 12.1);
         var token = await modal.Locator("#IssuedToken").InputValueAsync();
         await page.EvaluateAsync("""
             () => Object.defineProperty(navigator, 'clipboard', {

@@ -9,8 +9,8 @@
 }
 
 <div id="PublisherTokens">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h2 class="mb-0">@ViewData["Title"]</h2>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+        <h1 class="mb-0">@ViewData["Title"]</h1>
         <button id="CreateToken" type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#CreateTokenModal" disabled="@(Model.Plugins.Count == 0)">Create token</button>
     </div>
     <partial name="~/Views/Account/_AccountNav.cshtml" />
@@ -21,8 +21,8 @@
     }
 
     <div id="TokenList">
-        <nav class="mb-3" aria-label="Token status">
-            <div class="nav nav-pills gap-3" role="tablist">
+        <nav class="section-nav" aria-label="Token status">
+            <div class="nav nav-pills gap-4" role="tablist">
                 <button id="ActiveTokensTab" class="nav-link active" data-bs-toggle="tab" data-bs-target="#ActiveTokens" type="button" role="tab" aria-controls="ActiveTokens" aria-selected="true">Active (@active.Length)</button>
                 <button id="InactiveTokensTab" class="nav-link" data-bs-toggle="tab" data-bs-target="#InactiveTokens" type="button" role="tab" aria-controls="InactiveTokens" aria-selected="false">Inactive (@inactive.Length)</button>
             </div>
@@ -39,7 +39,7 @@
                     {
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead><tr><th>Name</th><th>Plugin</th><th>Last used</th><th>Expires</th><th>Status</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+                                <thead><tr><th>Name / ID</th><th>Plugin</th><th>Last used</th><th>Expires</th><th>Status</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
                                 <tbody>
                                 @foreach (var token in group.Tokens)
                                 {
@@ -48,6 +48,7 @@
                                     <tr data-token-id="@token.Id">
                                         <td class="text-break">
                                             <span data-token-name>@token.Name</span>
+                                            <div><button type="button" class="btn btn-link btn-sm p-0" data-copy-id="@token.Id" title="Copy token ID: @token.Id" aria-label="Copy token ID for @token.Name"><code>@(token.Id.ToString()[..8])…</code></button></div>
                                             <div class="small text-muted" title="@token.CreatedAt.ToString("u")">Created @token.CreatedAt.ToString("yyyy-MM-dd")</div>
                                         </td>
                                         <td><code>@token.PluginSlug</code></td>
@@ -70,6 +71,7 @@
             }
         </div>
     </div>
+    <p id="TokenCopyStatus" class="small text-muted" role="status"></p>
 </div>
 
 <div class="modal fade" id="CreateTokenModal" tabindex="-1" aria-labelledby="CreateTokenTitle" aria-hidden="true" data-open="@((Model.Issued is not null || !ViewData.ModelState.IsValid) ? "true" : "false")">
@@ -87,6 +89,7 @@
                     <div class="mb-3">
                         <label asp-for="Creation.Name" class="form-label">Token name</label>
                         <input asp-for="Creation.Name" class="form-control" maxlength="100" placeholder="e.g. GitHub Actions release" autocomplete="off" required />
+                        <div class="form-text">Choose a name that identifies the agent or automation.</div>
                     </div>
                     <div class="mb-3">
                         <label asp-for="Creation.PluginSlug" class="form-label">Plugin</label>
@@ -98,15 +101,20 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label asp-for="Creation.ExpiresInDays" class="form-label">Expires in</label>
-                        <select asp-for="Creation.ExpiresInDays" class="form-select">
-                            @foreach (var days in PluginBuilder.Services.PublisherAccessTokenService.LifetimeChoices)
-                            {
-                                <option value="@days">@days days</option>
-                            }
+                        <label for="TokenLifetime" class="form-label">Expires in</label>
+                        <select id="TokenLifetime" class="form-select">
+                            <option value="7">7 days</option>
+                            <option value="30">30 days</option>
+                            <option value="90" selected>90 days</option>
+                            <option value="custom">Custom</option>
                             <option value="0">Never</option>
                         </select>
                     </div>
+                    <div id="CustomTokenLifetime" class="mb-3" hidden>
+                        <label asp-for="Creation.ExpiresInDays" class="form-label">Number of days</label>
+                        <input asp-for="Creation.ExpiresInDays" class="form-control" type="number" min="1" max="365" required aria-describedby="TokenExpiryPreview" />
+                    </div>
+                    <p id="TokenExpiryPreview" class="form-text mb-0" aria-live="polite"></p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -122,7 +130,7 @@
                         <label for="IssuedToken" class="form-label">Your token</label>
                         <div class="input-group">
                             <input id="IssuedToken" class="form-control font-monospace" value="@issued.Token" readonly autocomplete="off" spellcheck="false" />
-                            <button type="button" class="btn btn-secondary" data-copy="token" aria-label="Copy token" title="Copy token"><vc:icon symbol="copy" /></button>
+                            <button type="button" class="btn btn-secondary" data-copy="token" aria-label="Copy token" title="Copy token"><span aria-hidden="true"><vc:icon symbol="copy" /></span></button>
                         </div>
                         <p class="form-text mt-3 mb-0">Use it as <code>Authorization: Bearer &lt;token&gt;</code>. Changing your password or two-factor settings invalidates existing tokens.</p>
                         <p id="SecretCopyStatus" class="small mt-3 mb-0" role="status"></p>
@@ -142,14 +150,33 @@
     <partial name="_Confirm" model='new ConfirmModel("Revoke token", "The token stops working immediately. Requests already running may finish. This cannot be undone.", "Revoke token")' />
     <script>
         (() => {
+            const root = document.getElementById('PublisherTokens');
             const modal = document.getElementById('CreateTokenModal');
             const form = document.getElementById('CreateTokenForm');
             const success = document.getElementById('TokenSuccess');
             const title = document.getElementById('CreateTokenTitle');
+            const lifetime = document.getElementById('TokenLifetime');
+            const days = document.getElementById('Creation_ExpiresInDays');
             const submit = form.querySelector('[type="submit"]');
             const error = document.getElementById('TokenCreationError');
             let pending = false;
 
+            function updateExpiry() {
+                const never = lifetime.value === '0';
+                document.getElementById('CustomTokenLifetime').hidden = lifetime.value !== 'custom';
+                if (lifetime.value !== 'custom') days.value = lifetime.value;
+                days.min = never ? '0' : '1';
+                const valid = days.checkValidity();
+                const expiry = new Date(Date.now() + Number(days.value) * 86400000);
+                document.getElementById('TokenExpiryPreview').textContent = never ? 'Never expires.' : valid
+                    ? `Expires ${expiry.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}.`
+                    : 'Choose between 1 and 365 days.';
+            }
+
+            lifetime.value = ['7', '30', '90', '0'].includes(days.value) ? days.value : 'custom';
+            updateExpiry();
+            lifetime.addEventListener('change', updateExpiry);
+            days.addEventListener('input', updateExpiry);
             modal.addEventListener('shown.bs.modal', () => {
                 (success.querySelector('[data-copy="token"]') || document.getElementById('Creation_Name')).focus();
             });
@@ -164,6 +191,8 @@
                 form.reset();
                 document.getElementById('Creation_Name').value = '';
                 document.getElementById('TokenValidation').replaceChildren();
+                lifetime.value = '90';
+                updateExpiry();
                 error.hidden = true;
                 submit.disabled = false;
             });
@@ -224,6 +253,18 @@
                     field.value = token;
                     field.focus();
                     field.select();
+                }
+            });
+
+            root.addEventListener('click', async event => {
+                const button = event.target.closest('[data-copy-id]');
+                if (!button) return;
+                const status = document.getElementById('TokenCopyStatus');
+                try {
+                    await navigator.clipboard.writeText(button.dataset.copyId);
+                    status.textContent = 'Token ID copied.';
+                } catch {
+                    status.textContent = `Token ID: ${button.dataset.copyId}. Select and copy it manually.`;
                 }
             });
 
