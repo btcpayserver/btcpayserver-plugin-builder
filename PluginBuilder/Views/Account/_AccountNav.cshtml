@@ -1,0 +1,16 @@
+@{
+    var isDetails = ViewContext.RouteData.Values["action"]?.ToString() == "AccountDetails";
+}
+
+<nav id="SectionNav" class="account-nav mb-4" aria-label="Account settings">
+    <div class="nav nav-pills gap-4">
+        <a asp-controller="Account" asp-action="AccountDetails"
+           class="nav-link @(isDetails ? "active" : null)" aria-current="@(isDetails ? "page" : null)">
+            Account details
+        </a>
+        <a asp-controller="Account" asp-action="TwoFactorAuthentication" id="TwoFactorSettings"
+           class="nav-link @(!isDetails ? "active" : null)" aria-current="@(!isDetails ? "page" : null)">
+            2FA
+        </a>
+    </div>
+</nav>

@@ -128,37 +128,123 @@ public class HomeController(
             return View(model);
         }
 
-        var result = await signInManager.CheckPasswordSignInAsync(user, model.Password, true);
-        if (!result.Succeeded)
-        {
-            ModelState.AddModelError(string.Empty, "Invalid login attempt.");
-            return View(model);
-        }
-
         if (userVerifiedLogic.IsEmailVerificationRequiredForLogin)
         {
             var principal = await signInManager.CreateUserPrincipalAsync(user);
             var isVerified = await userVerifiedLogic.IsUserEmailVerifiedForLogin(principal);
 
-            if (isVerified)
+            if (!isVerified)
             {
-                await signInManager.SignInAsync(user, model.RememberMe);
-                return RedirectToLocal(returnUrl);
-            }
+                // Check the password before sending email, without creating a session or a pending 2FA cookie.
+                var passwordResult = await signInManager.CheckPasswordSignInAsync(user, model.Password, true);
+                if (!passwordResult.Succeeded)
+                {
+                    ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+                    return View(model);
+                }
 
-            var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
-            var link = Url.Action(nameof(ConfirmEmail), "Home",
-                new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
-            var email = user.Email!;
-            var sent = await emailService.SendVerifyEmail(email, link);
-            TempData[TempDataConstant.WarningMessage] = sent
-                ? "Please confirm your email to sign in. We've sent a confirmation link to your account email."
-                : "We couldn't send the verification email. Please try again in a moment, or contact support if the problem persists.";
+                var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+                var link = Url.Action(nameof(ConfirmEmail), "Home",
+                    new { uid = user.Id, token }, Request.Scheme, Request.Host.ToString())!;
+                var email = user.Email!;
+                var sent = await emailService.SendVerifyEmail(email, link);
+                TempData[TempDataConstant.WarningMessage] = sent
+                    ? "Please confirm your email to sign in. We've sent a confirmation link to your account email."
+                    : "We couldn't send the verification email. Please try again in a moment, or contact support if the problem persists.";
+                return View(model);
+            }
+        }
+
+        // Identity checks the password and either signs in or creates its pending two-factor user cookie.
+        var result = await signInManager.PasswordSignInAsync(user, model.Password, model.RememberMe, true);
+        if (result.RequiresTwoFactor)
+            return RedirectToAction(nameof(LoginWith2fa), new { returnUrl, rememberMe = model.RememberMe });
+        if (result.Succeeded)
+            return RedirectToLocal(returnUrl);
+
+        ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+        return View(model);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/login/2fa")]
+    public async Task<IActionResult> LoginWith2fa(bool rememberMe, string? returnUrl = null)
+    {
+        // Reachable only after the password step, which leaves Identity's two-factor user cookie.
+        if (await signInManager.GetTwoFactorAuthenticationUserAsync() is null)
+            return RedirectToAction(nameof(Login), new { returnUrl });
+
+        ViewData["ReturnUrl"] = returnUrl;
+        return View(new LoginWith2faViewModel { RememberMe = rememberMe });
+    }
+
+    [AllowAnonymous]
+    [HttpPost("/login/2fa")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
+    public async Task<IActionResult> LoginWith2fa(LoginWith2faViewModel model, string? returnUrl = null)
+    {
+        ViewData["ReturnUrl"] = returnUrl;
+        if (await signInManager.GetTwoFactorAuthenticationUserAsync() is null)
+            return RedirectToAction(nameof(Login), new { returnUrl });
+        if (!ModelState.IsValid)
+            return View(model);
+
+        // A wrong code counts towards the same lockout as a wrong password (Identity's AccessFailed).
+        var result = await signInManager.TwoFactorAuthenticatorSignInAsync(
+            TwoFactorSetup.NormalizeCode(model.TwoFactorCode), model.RememberMe, model.RememberMachine);
+        if (result.Succeeded)
+            return RedirectToLocal(returnUrl);
+
+        ModelState.AddModelError(string.Empty, result.IsLockedOut
+            ? "Too many failed attempts. Try again in a few minutes."
+            : "Invalid authenticator code.");
+        return View(model);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/login/recovery-code")]
+    public async Task<IActionResult> LoginWithRecoveryCode(string? returnUrl = null)
+    {
+        if (await signInManager.GetTwoFactorAuthenticationUserAsync() is null)
+            return RedirectToAction(nameof(Login), new { returnUrl });
+
+        ViewData["ReturnUrl"] = returnUrl;
+        return View(new LoginWithRecoveryCodeViewModel());
+    }
+
+    [AllowAnonymous]
+    [HttpPost("/login/recovery-code")]
+    [EnableRateLimiting(Policies.PublicApiRateLimit)]
+    public async Task<IActionResult> LoginWithRecoveryCode(LoginWithRecoveryCodeViewModel model, string? returnUrl = null)
+    {
+        ViewData["ReturnUrl"] = returnUrl;
+        var user = await signInManager.GetTwoFactorAuthenticationUserAsync();
+        if (user is null)
+            return RedirectToAction(nameof(Login), new { returnUrl });
+        if (!ModelState.IsValid)
+            return View(model);
+
+        // Identity's recovery-code sign-in does not perform the eligibility check used by authenticator sign-in.
+        if (!await signInManager.CanSignInAsync(user))
+        {
+            ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+            return View(model);
+        }
+        if (userManager.SupportsUserLockout && await userManager.IsLockedOutAsync(user))
+        {
+            ModelState.AddModelError(string.Empty, "Too many failed attempts. Try again in a few minutes.");
             return View(model);
         }
 
-        await signInManager.SignInAsync(user, model.RememberMe);
-        return RedirectToLocal(returnUrl);
+        // Each recovery code works once: Identity removes it when it is redeemed.
+        var result = await signInManager.TwoFactorRecoveryCodeSignInAsync(TwoFactorSetup.NormalizeRecoveryCode(model.RecoveryCode));
+        if (result.Succeeded)
+            return RedirectToLocal(returnUrl);
+
+        ModelState.AddModelError(string.Empty, result.IsLockedOut
+            ? "Too many failed attempts. Try again in a few minutes."
+            : "Invalid recovery code.");
+        return View(model);
     }
 
     [AllowAnonymous]
