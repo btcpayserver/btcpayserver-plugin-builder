@@ -608,7 +608,7 @@ public class PluginController(
         var logLines = await conn.QueryAsync<string>(
             "SELECT logs FROM builds_logs " +
             "WHERE plugin_slug=@pluginSlug AND build_id=@buildId " +
-            "ORDER BY created_at;",
+            "ORDER BY id;",
             new { pluginSlug = pluginSlug.ToString(), buildId });
         var logs = string.Join("\r\n", logLines);
         var pluginSetting = await conn.GetSettings(pluginSlug);
