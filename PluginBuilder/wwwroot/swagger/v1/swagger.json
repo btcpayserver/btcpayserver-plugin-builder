@@ -3013,7 +3013,7 @@
       "PublisherToken": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Personal API token created in Account Settings > API tokens. Format: `Authorization: Bearer pb_pub_...`. Can be scoped to one plugin or to all plugins the account owns now and in the future. Current ownership is checked on every request, so losing ownership ends access to that plugin. Works for accounts with two-factor authentication, which cannot use Basic auth. It stops working when revoked, when it expires, or when the account's password changes."
+        "description": "Personal API token created in Account Settings > API tokens. Format: `Authorization: Bearer pb_pub_...`. Can be scoped to one plugin or to all plugins the account owns now and in the future. Current ownership is checked on every request, so losing ownership ends access to that plugin. Works for accounts with two-factor authentication, which cannot use Basic auth. It stops working when revoked, when it expires, or when the account's security stamp changes (for example, after a password change or enabling or disabling two-factor authentication)."
       },
       "Basic": {
         "type": "http",
