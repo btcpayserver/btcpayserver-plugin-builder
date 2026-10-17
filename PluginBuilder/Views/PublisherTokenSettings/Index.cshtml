@@ -21,16 +21,19 @@
     }
 
     <div id="TokenList">
-        <nav class="section-nav" aria-label="Token status">
-            <div class="nav nav-pills gap-4" role="tablist">
-                <button id="ActiveTokensTab" class="nav-link active" data-bs-toggle="tab" data-bs-target="#ActiveTokens" type="button" role="tab" aria-controls="ActiveTokens" aria-selected="true">Active (@active.Length)</button>
-                <button id="InactiveTokensTab" class="nav-link" data-bs-toggle="tab" data-bs-target="#InactiveTokens" type="button" role="tab" aria-controls="InactiveTokens" aria-selected="false">Inactive (@inactive.Length)</button>
+        <div class="d-flex justify-content-end mb-3">
+            <div class="dropdown">
+                <button id="TokenStatusFilter" class="btn btn-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Status: Active</button>
+                <div class="dropdown-menu dropdown-menu-end" aria-labelledby="TokenStatusFilter">
+                    <button type="button" class="dropdown-item active" data-token-filter="ActiveTokens" aria-pressed="true">Active</button>
+                    <button type="button" class="dropdown-item" data-token-filter="InactiveTokens" aria-pressed="false">Inactive</button>
+                </div>
             </div>
-        </nav>
-        <div class="tab-content">
+        </div>
+        <div>
             @foreach (var group in new[] { (Id: "ActiveTokens", Tokens: active), (Id: "InactiveTokens", Tokens: inactive) })
             {
-                <div id="@group.Id" class="tab-pane @(group.Id == "ActiveTokens" ? "show active" : null)" role="tabpanel" aria-labelledby="@(group.Id)Tab">
+                <section id="@group.Id" data-token-group hidden="@(group.Id != "ActiveTokens")" aria-label="@(group.Id == "ActiveTokens" ? "Active tokens" : "Inactive tokens")">
                     @if (group.Tokens.Length == 0)
                     {
                         <p class="text-muted py-4">@(group.Id == "ActiveTokens" ? "No active tokens. Create a token to connect your automation." : "Expired, revoked and invalidated tokens will appear here.")</p>
@@ -67,7 +70,7 @@
                             </table>
                         </div>
                     }
-                </div>
+                </section>
             }
         </div>
     </div>
@@ -257,6 +260,19 @@
             });
 
             root.addEventListener('click', async event => {
+                const filter = event.target.closest('[data-token-filter]');
+                if (filter) {
+                    root.querySelectorAll('[data-token-filter]').forEach(item => {
+                        const selected = item === filter;
+                        item.classList.toggle('active', selected);
+                        item.setAttribute('aria-pressed', selected);
+                    });
+                    root.querySelectorAll('[data-token-group]').forEach(group => {
+                        group.hidden = group.id !== filter.dataset.tokenFilter;
+                    });
+                    document.getElementById('TokenStatusFilter').textContent = `Status: ${filter.textContent.trim()}`;
+                    return;
+                }
                 const button = event.target.closest('[data-copy-id]');
                 if (!button) return;
                 const status = document.getElementById('TokenCopyStatus');

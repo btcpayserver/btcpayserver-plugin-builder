@@ -310,17 +310,17 @@
 }
 
 /* Section Navigation / Subnav */
-:is(#SectionNav, .section-nav) {
+#SectionNav {
     --border-size: 2px;
     margin-bottom: var(--btcpay-space-l);
     border-bottom: var(--border-size) solid var(--btcpay-body-border-light);
 }
 
-:is(#SectionNav, .section-nav) .nav {
+#SectionNav .nav {
     margin-bottom: calc(var(--border-size) * -1);
 }
 
-:is(#SectionNav, .section-nav) .nav-link {
+#SectionNav .nav-link {
     color: var(--btcpay-nav-link);
     border-bottom: var(--border-size) solid transparent;
     padding: var(--btcpay-space-m) 0;
@@ -328,15 +328,15 @@
     white-space: nowrap;
 }
 
-:is(#SectionNav, .section-nav) .nav-link:last-child {
+#SectionNav .nav-link:last-child {
     margin-right: 0;
 }
 
-:is(#SectionNav, .section-nav) .nav-link:hover {
+#SectionNav .nav-link:hover {
     color: var(--btcpay-nav-link-accent);
 }
 
-:is(#SectionNav, .section-nav) .nav-link.active {
+#SectionNav .nav-link.active {
     color: var(--btcpay-nav-link-active);
     border-bottom-color: var(--btcpay-nav-border-active);
     background: var(--btcpay-nav-bg-active);
@@ -368,7 +368,7 @@
     padding: var(--content-padding-top) var(--content-padding-horizontal) var(--btcpay-space-l);
 }
 
-.sticky-header :is(#SectionNav, .section-nav) {
+.sticky-header #SectionNav {
     margin-bottom: calc(var(--btcpay-space-l) * -1);
 }
 
@@ -513,12 +513,12 @@
         transform: translate(-50%, -50%) rotate(-45deg);
     }
 
-    :is(#SectionNav, .section-nav) {
+    #SectionNav {
         --scroll-indicator-spacing: var(--btcpay-space-m);
         position: relative;
     }
 
-    :is(#SectionNav, .section-nav) .nav {
+    #SectionNav .nav {
         --btcpay-scrollbar-width: none;
         --btcpay-scrollbar-color: transparent;
 
@@ -530,13 +530,13 @@
         padding: 0 var(--scroll-indicator-spacing);
     }
 
-    :is(#SectionNav, .section-nav) .nav::-webkit-scrollbar {
+    #SectionNav .nav::-webkit-scrollbar {
         display: none;
     }
 
     /* Horizontal scroll indicators */
-    :is(#SectionNav, .section-nav):before,
-    :is(#SectionNav, .section-nav):after {
+    #SectionNav:before,
+    #SectionNav:after {
         content: '';
         position: absolute;
         top: 0;
@@ -544,17 +544,17 @@
         width: var(--btcpay-space-m);
     }
 
-    :is(#SectionNav, .section-nav):before {
+    #SectionNav:before {
         background-image: linear-gradient(to right, var(--btcpay-body-bg), rgba(var(--btcpay-body-bg-rgb), 0));
         left: calc(var(--scroll-indicator-spacing) * -1);
     }
 
-    :is(#SectionNav, .section-nav):after {
+    #SectionNav:after {
         background-image: linear-gradient(to left, var(--btcpay-body-bg), rgba(var(--btcpay-body-bg-rgb), 0));
         right: calc(var(--scroll-indicator-spacing) * -1);
     }
 
-    :is(#SectionNav, .section-nav) .nav-link {
+    #SectionNav .nav-link {
         margin-right: 1.5rem;
         border-bottom-color: var(--btcpay-body-border-light);
     }
