@@ -36,6 +36,7 @@ public class PublisherTokenSettingsUITests(ITestOutputHelper output) : UnitTestB
         await page.Locator("#Nav-ManageAccount").ClickAsync();
         await page.GetByRole(AriaRole.Link, new() { Name = "API tokens", Exact = true }).ClickAsync();
         await Expect(page.Locator("#SectionNav [aria-current='page']")).ToHaveTextAsync("API tokens");
+        await Expect(page.GetByRole(AriaRole.Link, new() { Name = "Admin tokens", Exact = true })).ToHaveCountAsync(0);
         await page.Locator("#TokenStatusFilter").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Inactive", Exact = true }).ClickAsync();
         await Expect(page.Locator("#TokenStatusFilter")).ToHaveTextAsync("Status: Inactive");

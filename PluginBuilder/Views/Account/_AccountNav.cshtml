@@ -1,7 +1,8 @@
 @{
     var isDetails = ViewContext.RouteData.Values["action"]?.ToString() == "AccountDetails";
     var isTokens = ViewContext.RouteData.Values["controller"]?.ToString() == "PublisherTokenSettings";
-    var isTwoFactor = !isDetails && !isTokens;
+    var isAdminTokens = ViewContext.RouteData.Values["controller"]?.ToString() == "AdminTokenSettings";
+    var isTwoFactor = !isDetails && !isTokens && !isAdminTokens;
 }
 
 <nav id="SectionNav" class="account-nav mb-4" aria-label="Account settings">
@@ -18,5 +19,12 @@
            class="nav-link @(isTokens ? "active" : null)" aria-current="@(isTokens ? "page" : null)">
             API tokens
         </a>
+        @if (User.IsInRole(PluginBuilder.Util.Roles.ServerAdmin))
+        {
+            <a asp-controller="AdminTokenSettings" asp-action="Index" id="ManageAdminAccessTokens"
+               class="nav-link @(isAdminTokens ? "active" : null)" aria-current="@(isAdminTokens ? "page" : null)">
+                Admin tokens
+            </a>
+        }
     </div>
 </nav>
