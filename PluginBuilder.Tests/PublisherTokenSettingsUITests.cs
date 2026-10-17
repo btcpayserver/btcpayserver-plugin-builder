@@ -191,6 +191,71 @@ public class PublisherTokenSettingsUITests(ITestOutputHelper output) : UnitTestB
         Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM publisher_access_tokens"));
     }
 
+    [Fact]
+    public async Task LostCreationResponseStaysBlockedWhenTheModalIsReopened()
+    {
+        await using var tester = CreateTester();
+        await tester.StartAsync();
+        const string email = "publisher@example.invalid";
+        var userId = await tester.CreateConfirmedUser(email);
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(new PluginSlug("ui-lost-response"), userId);
+        await tester.LogIn(email);
+        const string tokenPath = "/account/api-tokens";
+        await tester.GoToUrl(tokenPath);
+        var page = tester.Page!;
+        var creationRequests = 0;
+        await page.RouteAsync("**" + tokenPath, async route =>
+        {
+            if (route.Request.Method != "POST")
+            {
+                await route.ContinueAsync();
+                return;
+            }
+
+            Interlocked.Increment(ref creationRequests);
+            var response = await route.FetchAsync();
+            Assert.Equal(200, response.Status);
+            await route.FulfillAsync(new()
+            {
+                Status = 503,
+                ContentType = "text/plain",
+                Body = "Gateway failure after token creation."
+            });
+        });
+
+        await page.Locator("#CreateToken").ClickAsync();
+        var modal = page.Locator("#CreateTokenModal");
+        var form = modal.Locator("#CreateTokenForm");
+        var create = form.Locator("button[type='submit']");
+        var warning = modal.Locator("#TokenCreationError");
+        await modal.Locator("#Creation_Name").FillAsync("Lost response");
+        await create.ClickAsync();
+        await Expect(warning).ToContainTextAsync("Reload this page and check the token list.");
+        await Expect(warning).ToBeVisibleAsync();
+        await Expect(create).ToBeDisabledAsync();
+        var id = await conn.QuerySingleAsync<Guid>("SELECT id FROM publisher_access_tokens WHERE name = 'Lost response'");
+        await Expect(modal.Locator("#TokenSuccess")).ToBeHiddenAsync();
+        await form.GetByRole(AriaRole.Button, new() { Name = "Cancel", Exact = true }).ClickAsync();
+        await Expect(modal).ToBeHiddenAsync();
+
+        await page.Locator("#CreateToken").ClickAsync();
+        await Expect(warning).ToBeVisibleAsync();
+        await Expect(create).ToBeDisabledAsync();
+        await modal.Locator("#Creation_Name").FillAsync("Retry without checking");
+        await form.EvaluateAsync("element => element.requestSubmit()");
+        Assert.Equal(1, creationRequests);
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM publisher_access_tokens"));
+
+        var reload = await page.ReloadAsync();
+        Assert.Equal("GET", reload!.Request.Method);
+        await Expect(page.Locator($"#ActiveTokens tr[data-token-id='{id}']")).ToContainTextAsync("Lost response");
+        await page.Locator("#CreateToken").ClickAsync();
+        await Expect(warning).ToBeHiddenAsync();
+        await Expect(create).ToBeEnabledAsync();
+        Assert.Equal(1, creationRequests);
+    }
+
     private PlaywrightTester CreateTester()
     {
         var tester = new PlaywrightTester(Log, Create());
