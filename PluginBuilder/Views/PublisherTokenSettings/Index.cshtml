@@ -67,7 +67,7 @@
                                         </td>
                                         <td class="text-nowrap" title="@token.LastUsedAt?.ToString("u")">@(token.LastUsedAt is { } used ? (now - used).ToTimeAgo() : "Never")</td>
                                         <td class="text-nowrap" title="@token.ExpiresAt?.ToString("u")">@(token.ExpiresAt?.ToString("yyyy-MM-dd") ?? "Never")</td>
-                                        <td><span data-token-status class="badge @(status == "Active" ? "bg-success" : status == "Expired" ? "bg-warning" : "bg-secondary")">@status</span></td>
+                                        <td><span data-token-status class="badge @(status == "Active" ? "bg-success" : status == "Expired" ? "bg-warning" : "bg-danger")">@status</span></td>
                                         <td class="text-end">
                                             @if (token.RevokedAt is null)
                                             {
