@@ -1,4 +1,5 @@
 @using PluginBuilder.DataModels
+@using PluginBuilder.Authentication
 @model PluginBuilder.Controllers.PublisherTokenSettingsController.TokenPage
 @{
     Layout = "_Layout";
@@ -11,13 +12,13 @@
 <div id="PublisherTokens">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
         <h1 class="mb-0">@ViewData["Title"]</h1>
-        <button id="CreateToken" type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#CreateTokenModal" disabled="@(Model.Plugins.Count == 0)">Create token</button>
+        <button id="CreateToken" type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#CreateTokenModal">Create token</button>
     </div>
     <partial name="~/Views/Account/_AccountNav.cshtml" />
-    <p class="text-muted mb-4">Connect CI or an automation to the plugin API. Each token can manage builds and versions for one plugin.</p>
+    <p class="text-muted mb-4">Connect CI or an automation to manage builds and versions for one plugin or all your plugins.</p>
     @if (Model.Plugins.Count == 0)
     {
-        <p id="NoPlugins" class="text-muted">Create a plugin before creating an API token.</p>
+        <p id="NoPlugins" class="text-muted">You don't have any plugins yet. Choose All my plugins to cover plugins you create later.</p>
     }
 
     <div id="TokenList">
@@ -54,7 +55,16 @@
                                             <div><button type="button" class="btn btn-link btn-sm p-0" data-copy-id="@token.Id" title="Copy token ID: @token.Id" aria-label="Copy token ID for @token.Name"><code>@(token.Id.ToString()[..8])…</code></button></div>
                                             <div class="small text-muted" title="@token.CreatedAt.ToString("u")">Created @token.CreatedAt.ToString("yyyy-MM-dd")</div>
                                         </td>
-                                        <td><code>@token.PluginSlug</code></td>
+                                        <td>
+                                            @if (token.PluginSlug is { } pluginSlug)
+                                            {
+                                                <code>@pluginSlug</code>
+                                            }
+                                            else
+                                            {
+                                                <span title="All plugins you own now and in the future">All my plugins</span>
+                                            }
+                                        </td>
                                         <td class="text-nowrap" title="@token.LastUsedAt?.ToString("u")">@(token.LastUsedAt is { } used ? (now - used).ToTimeAgo() : "Never")</td>
                                         <td class="text-nowrap" title="@token.ExpiresAt?.ToString("u")">@(token.ExpiresAt?.ToString("yyyy-MM-dd") ?? "Never")</td>
                                         <td><span data-token-status class="badge @(status == "Active" ? "bg-success" : status == "Expired" ? "bg-warning" : "bg-secondary")">@status</span></td>
@@ -86,7 +96,7 @@
             </div>
             <form id="CreateTokenForm" asp-action="Create" method="post" hidden="@(Model.Issued is not null)">
                 <div class="modal-body">
-                    <p class="text-muted">This token can manage builds and versions for the plugin you choose. It works with two-factor authentication.</p>
+                    <p class="text-muted">This token can manage builds and versions for the plugin access you choose. It works with two-factor authentication.</p>
                     <div id="TokenValidation" asp-validation-summary="All" class="text-danger" role="alert"></div>
                     <div id="TokenCreationError" class="alert alert-danger" role="alert" hidden></div>
                     <div class="mb-3">
@@ -96,12 +106,18 @@
                     </div>
                     <div class="mb-3">
                         <label asp-for="Creation.PluginSlug" class="form-label">Plugin</label>
-                        <select asp-for="Creation.PluginSlug" class="form-select" required>
+                        <select asp-for="Creation.PluginSlug" class="form-select" required aria-describedby="TokenScopeHelp">
+                            @if (Model.Plugins.Count == 0)
+                            {
+                                <option value="" disabled>Choose plugin access</option>
+                            }
                             @foreach (var plugin in Model.Plugins)
                             {
                                 <option value="@plugin">@plugin</option>
                             }
+                            <option value="@PluginBuilderAuthenticationSchemes.AllPublisherPlugins">All my plugins</option>
                         </select>
+                        <div id="TokenScopeHelp" class="form-text" hidden="@(Model.Creation.PluginSlug != PluginBuilderAuthenticationSchemes.AllPublisherPlugins)">Includes all plugins you own now and in the future. Access ends if you stop being an owner.</div>
                     </div>
                     <div class="mb-3">
                         <label for="TokenLifetime" class="form-label">Expires in</label>
@@ -129,7 +145,7 @@
                 {
                     <div class="modal-body">
                         <div class="alert alert-success">Token created. Save it now: it will not be shown again.</div>
-                        <p><strong>@Model.Creation.Name</strong><br /><span class="text-muted">@issued.PluginSlug · @(issued.ExpiresAt is { } expiry ? $"Expires {expiry:u}" : "Never expires")</span></p>
+                        <p><strong>@Model.Creation.Name</strong><br /><span class="text-muted">@(issued.PluginSlug ?? "All my plugins (current and future)") · @(issued.ExpiresAt is { } expiry ? $"Expires {expiry:u}" : "Never expires")</span></p>
                         <label for="IssuedToken" class="form-label">Your token</label>
                         <div class="input-group">
                             <input id="IssuedToken" class="form-control font-monospace" value="@issued.Token" readonly autocomplete="off" spellcheck="false" />
@@ -159,10 +175,15 @@
             const success = document.getElementById('TokenSuccess');
             const title = document.getElementById('CreateTokenTitle');
             const lifetime = document.getElementById('TokenLifetime');
+            const plugin = document.getElementById('Creation_PluginSlug');
             const days = document.getElementById('Creation_ExpiresInDays');
             const submit = form.querySelector('[type="submit"]');
             const error = document.getElementById('TokenCreationError');
             let pending = false;
+
+            function updateScopeHelp() {
+                document.getElementById('TokenScopeHelp').hidden = plugin.value !== '@PluginBuilderAuthenticationSchemes.AllPublisherPlugins';
+            }
 
             function updateExpiry() {
                 const never = lifetime.value === '0';
@@ -177,6 +198,8 @@
             }
 
             lifetime.value = ['7', '30', '90', '0'].includes(days.value) ? days.value : 'custom';
+            updateScopeHelp();
+            plugin.addEventListener('change', updateScopeHelp);
             updateExpiry();
             lifetime.addEventListener('change', updateExpiry);
             days.addEventListener('input', updateExpiry);
@@ -192,6 +215,7 @@
                 form.hidden = false;
                 title.textContent = 'Create token';
                 form.reset();
+                updateScopeHelp();
                 document.getElementById('Creation_Name').value = '';
                 document.getElementById('TokenValidation').replaceChildren();
                 lifetime.value = '90';

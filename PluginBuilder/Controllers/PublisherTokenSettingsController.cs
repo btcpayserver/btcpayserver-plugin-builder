@@ -10,7 +10,7 @@ using PluginBuilder.Util;
 namespace PluginBuilder.Controllers;
 
 // Personal API tokens for publishers. One page in account settings lists every token across the user's plugins, so all
-// API credentials can be seen and revoked in one place; each token is still scoped to the one plugin chosen here.
+// API credentials can be seen and revoked in one place. Tokens cover a chosen plugin or all currently owned plugins.
 [Authorize]
 [AutoValidateAntiforgeryToken]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]

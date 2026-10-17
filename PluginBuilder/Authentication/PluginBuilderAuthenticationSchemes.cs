@@ -9,6 +9,7 @@ public class PluginBuilderAuthenticationSchemes
     public const string PublisherApi = BasicAuth + "," + PublisherToken;
     public const string TokenIdClaim = "plugin-builder:admin-token-id";
     public const string PublisherTokenIdClaim = "plugin-builder:publisher-token-id";
-    // The one plugin a publisher token may act on; the OwnPlugin requirement refuses every other slug.
+    // A specific plugin slug, or AllPublisherPlugins. OwnPlugin always checks current ownership too.
     public const string PublisherTokenPluginClaim = "plugin-builder:publisher-token-plugin";
+    public const string AllPublisherPlugins = "*";
 }

@@ -44,9 +44,9 @@ public class PluginBuilderAuthorizationHandler : AuthorizationHandler<OwnPluginR
             return;
         }
 
-        // A publisher token reaches the one plugin it was created for, even when its user owns others.
+        // A single-plugin token stays within that scope; all-plugin tokens still require current ownership below.
         var tokenPlugin = context.User.FindFirst(PluginBuilderAuthenticationSchemes.PublisherTokenPluginClaim)?.Value;
-        if (tokenPlugin is not null && tokenPlugin != slug.ToString())
+        if (tokenPlugin is not null && tokenPlugin != PluginBuilderAuthenticationSchemes.AllPublisherPlugins && tokenPlugin != slug.ToString())
         {
             context.Fail();
             return;

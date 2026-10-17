@@ -9,7 +9,7 @@ using PluginBuilder.Services;
 namespace PluginBuilder.Authentication;
 
 // A publisher's personal API token: `Authorization: Bearer pb_pub_...`. It authenticates as its user, scoped to one
-// plugin (PublisherTokenPluginClaim, enforced by the OwnPlugin requirement). It carries no roles, so even an admin's
+// plugin or all owned plugins (PublisherTokenPluginClaim, enforced by OwnPlugin). It carries no roles, so even an admin's
 // token is only a publisher credential. It works for accounts with two-factor authentication, which Basic auth refuses.
 public class PublisherTokenAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger,
     UrlEncoder encoder, DBConnectionFactory connections, UserVerifiedLogic userVerifiedLogic)
@@ -44,7 +44,8 @@ public class PublisherTokenAuthenticationHandler(IOptionsMonitor<AuthenticationS
         {
             new(ClaimTypes.NameIdentifier, identity.UserId),
             new(PluginBuilderAuthenticationSchemes.PublisherTokenIdClaim, identity.TokenId.ToString()),
-            new(PluginBuilderAuthenticationSchemes.PublisherTokenPluginClaim, identity.PluginSlug)
+            new(PluginBuilderAuthenticationSchemes.PublisherTokenPluginClaim,
+                identity.PluginSlug ?? PluginBuilderAuthenticationSchemes.AllPublisherPlugins)
         };
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name));
         if (userVerifiedLogic.IsEmailVerificationRequiredForLogin &&
@@ -57,6 +58,6 @@ public class PublisherTokenAuthenticationHandler(IOptionsMonitor<AuthenticationS
     {
         public Guid TokenId { get; set; }
         public string UserId { get; set; } = "";
-        public string PluginSlug { get; set; } = "";
+        public string? PluginSlug { get; set; }
     }
 }

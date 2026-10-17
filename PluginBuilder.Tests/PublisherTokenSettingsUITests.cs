@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using Dapper;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Playwright;
+using PluginBuilder.Authentication;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
 using PluginBuilder.Util.Extensions;
@@ -92,6 +93,52 @@ public class PublisherTokenSettingsUITests(ITestOutputHelper output) : UnitTestB
         Assert.Equal(HttpStatusCode.Unauthorized, (await agent.GetAsync("/api/v1/plugins/ui-mine/builds")).StatusCode);
         await page.GetByRole(AriaRole.Link, new() { Name = "2FA", Exact = true }).ClickAsync();
         await Expect(page.Locator("#SectionNav [aria-current='page']")).ToHaveTextAsync("2FA");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AllPluginsIsAnExplicitChoiceThatAlsoCoversFuturePlugins(bool alreadyOwnsPlugin)
+    {
+        await using var tester = CreateTester();
+        await tester.StartAsync();
+        const string email = "publisher@example.invalid";
+        var userId = await tester.CreateConfirmedUser(email);
+        var otherId = await tester.CreateConfirmedUser("other@example.invalid");
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(new PluginSlug("ui-foreign"), otherId);
+        if (alreadyOwnsPlugin)
+            await conn.NewPlugin(new PluginSlug("ui-existing"), userId);
+        await tester.LogIn(email);
+        await tester.GoToUrl("/account/api-tokens");
+        var page = tester.Page!;
+        await page.Locator("#CreateToken").ClickAsync();
+        var modal = page.Locator("#CreateTokenModal");
+        await Expect(modal.Locator("#Creation_PluginSlug")).ToHaveValueAsync(alreadyOwnsPlugin ? "ui-existing" : "");
+        await Expect(modal.Locator("#TokenScopeHelp")).ToBeHiddenAsync();
+        await modal.Locator("#Creation_PluginSlug").SelectOptionAsync(PluginBuilderAuthenticationSchemes.AllPublisherPlugins);
+        await Expect(modal.Locator("#TokenScopeHelp")).ToBeVisibleAsync();
+        await Expect(modal.Locator("#TokenScopeHelp")).ToContainTextAsync("now and in the future");
+        await modal.Locator("#Creation_Name").FillAsync("All plugins CI");
+        await modal.Locator("button[type='submit']").ClickAsync();
+        await Expect(modal.Locator("#TokenSuccess")).ToBeVisibleAsync();
+        await Expect(modal.Locator("#TokenSuccess")).ToContainTextAsync("All my plugins (current and future)");
+        var token = await modal.Locator("#IssuedToken").InputValueAsync();
+        await modal.GetByRole(AriaRole.Button, new() { Name = "Done", Exact = true }).ClickAsync();
+        await page.ReloadAsync();
+        await Expect(page.Locator("#ActiveTokens tbody tr")).ToContainTextAsync("All my plugins");
+        Assert.DoesNotContain(token, await page.ContentAsync());
+        var storedScope = await conn.QuerySingleAsync<string?>("SELECT plugin_slug FROM publisher_access_tokens WHERE name = 'All plugins CI'");
+        Assert.Null(storedScope);
+        using var api = tester.Server.CreateHttpClient();
+        api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (alreadyOwnsPlugin)
+            Assert.Equal(HttpStatusCode.OK, (await api.GetAsync("/api/v1/plugins/ui-existing/builds")).StatusCode);
+        await conn.NewPlugin(new PluginSlug("ui-future"), userId);
+        Assert.Equal(HttpStatusCode.OK, (await api.GetAsync("/api/v1/plugins/ui-future/builds")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await api.GetAsync("/api/v1/plugins/ui-foreign/builds")).StatusCode);
+        await conn.RemovePluginOwner(new PluginSlug("ui-future"), userId);
+        Assert.Equal(HttpStatusCode.Forbidden, (await api.GetAsync("/api/v1/plugins/ui-future/builds")).StatusCode);
     }
 
     [Fact]
