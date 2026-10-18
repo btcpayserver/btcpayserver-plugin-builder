@@ -241,6 +241,9 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Assert.Equal(HttpStatusCode.Redirect, disabled.StatusCode);
         Assert.False(await TwoFactorEnabled(tester, email));
 
+        // Disabling rotates the stamp; the refreshed session must immediately pass setup's validation.
+        Assert.NotEmpty(SharedKey(await Page(client, "/account/2fa/enable")));
+
         await LogOut(client);
         var afterDisable = await PasswordStep(client, email, Password);
         Assert.DoesNotContain("/login/2fa", afterDisable);
