@@ -57,7 +57,7 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
             return Conflict(new { message = "Server admin accounts cannot be locked through the API." });
 
         // The new security stamp ends the account's sessions at their next validation and invalidates any token bound to it.
-        // Identity's lockout refuses sign-in and tokens; the admin lock row is what suspends the account's builds,
+        // Identity's lockout refuses sign-in. The admin lock row suspends builds and publisher tokens,
         // since failed logins set Identity's lockout too.
         await conn.ExecuteAsync(new CommandDefinition("""
             UPDATE "AspNetUsers" SET "LockoutEnabled" = TRUE, "LockoutEnd" = @end,

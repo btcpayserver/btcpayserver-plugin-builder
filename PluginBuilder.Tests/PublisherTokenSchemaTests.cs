@@ -5,13 +5,13 @@ using Xunit.Abstractions;
 
 namespace PluginBuilder.Tests;
 
-public class PublisherTokenScopeMigrationTests(ITestOutputHelper logs) : UnitTestBase(logs)
+public class PublisherTokenSchemaTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     [Fact]
-    public async Task ExistingTokensKeepTheirScopeAndOnlyAllPluginTokensSurvivePluginDeletion()
+    public async Task BothTokenScopesKeepForeignKeysAndOnlyAllPluginTokensSurvivePluginDeletion()
     {
-        await using var tester = CreateMigrationTester("PublisherTokenScopes");
-        await tester.RunScriptsUntil("30.PublisherTokenScopes");
+        await using var tester = CreateMigrationTester("PublisherTokenSchema");
+        await tester.RunScriptsUntil("29.PublisherAccessTokens");
         await using var conn = await tester.Open();
         var scopedId = Guid.NewGuid();
         var allId = Guid.NewGuid();
@@ -20,11 +20,14 @@ public class PublisherTokenScopeMigrationTests(ITestOutputHelper logs) : UnitTes
                 ("Id", "EmailConfirmed", "PhoneNumberConfirmed", "TwoFactorEnabled", "LockoutEnabled", "AccessFailedCount")
             VALUES ('publisher', TRUE, FALSE, FALSE, FALSE, 0);
             INSERT INTO plugins (slug) VALUES ('scope-migration');
-            INSERT INTO publisher_access_tokens (id, user_id, plugin_slug, name, token_hash, security_stamp)
-            VALUES (@scopedId, 'publisher', 'scope-migration', 'Existing CI', 'original-hash', 'original-stamp');
-            """, new { scopedId });
+            """);
 
         await tester.RunRemainingScripts();
+
+        await conn.ExecuteAsync("""
+            INSERT INTO publisher_access_tokens (id, user_id, plugin_slug, name, token_hash, security_stamp)
+            VALUES (@scopedId, 'publisher', 'scope-migration', 'Plugin CI', 'original-hash', 'original-stamp');
+            """, new { scopedId });
 
         var existing = await conn.QuerySingleAsync<(string Plugin, string Hash, string Stamp)>("""
             SELECT plugin_slug AS Plugin, token_hash AS Hash, security_stamp AS Stamp

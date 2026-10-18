@@ -19,6 +19,7 @@ public class AccountController(
     UserManager<IdentityUser> userManager,
     SignInManager<IdentityUser> signInManager,
     IdentityDbContext<IdentityUser> identityDbContext,
+    IUserStore<IdentityUser> userStore,
     ExternalAccountVerificationService externalAccountVerificationService,
     EmailService emailService,
     NostrService nostrService,
@@ -220,10 +221,11 @@ public class AccountController(
         var key = await userManager.GetAuthenticatorKeyAsync(user);
         if (string.IsNullOrEmpty(key))
         {
-            if (!(await userManager.ResetAuthenticatorKeyAsync(user)).Succeeded)
+            // Preparing an inactive authenticator must not invalidate sessions or API tokens.
+            key = userManager.GenerateNewAuthenticatorKey();
+            await ((IUserAuthenticatorKeyStore<IdentityUser>)userStore).SetAuthenticatorKeyAsync(user, key, HttpContext.RequestAborted);
+            if (!(await userManager.UpdateAsync(user)).Succeeded)
                 return TwoFactorSaveFailed();
-            await signInManager.RefreshSignInAsync(user);
-            key = await userManager.GetAuthenticatorKeyAsync(user);
         }
 
         // The page carries the authenticator secret, so the browser must not keep a copy of it.

@@ -6,7 +6,7 @@ namespace PluginBuilder.Services;
 
 // Personal API tokens for publishers, scoped to one plugin or all plugins the user owns. Only the hash is stored; the token is
 // returned once, at creation.
-public class PublisherAccessTokenService(DBConnectionFactory connections)
+public class PublisherAccessTokenService(DBConnectionFactory connections, ILogger<PublisherAccessTokenService> logger)
 {
     public async Task<IReadOnlyList<TokenInfo>> List(string userId, CancellationToken cancellationToken = default)
     {
@@ -52,22 +52,33 @@ public class PublisherAccessTokenService(DBConnectionFactory connections)
             SELECT @id, u."Id", @scopePlugin, @name, @hash, @securityStamp, @expiresAt
             FROM "AspNetUsers" u
             WHERE u."Id" = @userId AND u."SecurityStamp" = @securityStamp
+              AND NOT EXISTS (SELECT 1 FROM admin_account_locks l
+                              WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP)
               AND (CAST(@scopePlugin AS text) IS NULL OR EXISTS (
                   SELECT 1 FROM users_plugins up WHERE up.user_id = u."Id" AND up.plugin_slug = @scopePlugin))
             """, new { id, userId, scopePlugin, name = name.Trim(), hash = AdminTokenAuthenticationHandler.Hash(token), securityStamp, expiresAt },
             cancellationToken: cancellationToken));
         if (count != 1)
-            throw new ArgumentException("You can only create a token for a plugin you own with a current session. Sign in again and try again.");
+            throw new ArgumentException("You can only create a token for a plugin you own with a current session. Your account must not be suspended. Sign in again and try again.");
+        logger.LogInformation("Publisher token created: user={UserId} token={TokenId} scope={PluginScope}",
+            userId, id, scopePlugin ?? PluginBuilderAuthenticationSchemes.AllPublisherPlugins);
         return new IssuedToken(id, token, scopePlugin, expiresAt);
     }
 
     public async Task<bool> Revoke(string userId, Guid id, CancellationToken cancellationToken = default)
     {
         await using var conn = await connections.Open(cancellationToken);
-        await conn.ExecuteAsync(new CommandDefinition("""
+        var revoked = await conn.QuerySingleOrDefaultAsync<TokenInfo>(new CommandDefinition("""
             UPDATE publisher_access_tokens SET revoked_at = CURRENT_TIMESTAMP
             WHERE id = @id AND user_id = @userId AND revoked_at IS NULL
+            RETURNING id, plugin_slug AS PluginSlug
             """, new { id, userId }, cancellationToken: cancellationToken));
+        if (revoked is not null)
+        {
+            logger.LogInformation("Publisher token revoked: user={UserId} token={TokenId} scope={PluginScope}",
+                userId, id, revoked.PluginSlug ?? PluginBuilderAuthenticationSchemes.AllPublisherPlugins);
+            return true;
+        }
         return await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
             "SELECT EXISTS(SELECT 1 FROM publisher_access_tokens WHERE id = @id AND user_id = @userId)", new { id, userId },
             cancellationToken: cancellationToken));

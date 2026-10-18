@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using PluginBuilder.Authentication;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
@@ -117,7 +120,7 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [Theory]
     [InlineData("refusals")]
     [InlineData(PluginBuilderAuthenticationSchemes.AllPublisherPlugins)]
-    public async Task RevokedExpiredLockedAndPasswordChangedTokensAreRefused(string pluginScope)
+    public async Task RevokedExpiredAndPasswordChangedTokensAreRefused(string pluginScope)
     {
         await using var tester = await StartServer();
         using var scope = tester.WebApp.Services.CreateScope();
@@ -149,14 +152,184 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var forever = await tokens.Create(owner.Id, pluginScope, "No expiry", null, owner.SecurityStamp!);
         Assert.Null(forever.ExpiresAt);
         Assert.Equal(HttpStatusCode.OK, await Call(forever.Token));
-        await users.SetLockoutEndDateAsync(owner, DateTimeOffset.UtcNow.AddHours(1));
-        Assert.Equal(HttpStatusCode.Unauthorized, await Call(forever.Token));
-        await users.SetLockoutEndDateAsync(owner, null);
-        Assert.Equal(HttpStatusCode.OK, await Call(forever.Token));
-
         // A password change rotates the security stamp, which ends every token created before it.
         Assert.True((await users.ChangePasswordAsync(owner, Password, Password + "-new")).Succeeded);
         Assert.Equal(HttpStatusCode.Unauthorized, await Call(forever.Token));
+    }
+
+    [Theory]
+    [InlineData("password-lockout", false)]
+    [InlineData("password-lockout", true)]
+    [InlineData(PluginBuilderAuthenticationSchemes.AllPublisherPlugins, false)]
+    [InlineData(PluginBuilderAuthenticationSchemes.AllPublisherPlugins, true)]
+    public async Task FailedPasswordAttemptsDoNotInterruptPublisherTokens(string pluginScope, bool basicAuth)
+    {
+        await using var tester = await StartServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var owner = await AddUser(users, "owner@example.com");
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(new PluginSlug("password-lockout"), owner.Id);
+        var issued = await scope.ServiceProvider.GetRequiredService<PublisherAccessTokenService>()
+            .Create(owner.Id, pluginScope, "CI", 30, owner.SecurityStamp!);
+        using var api = tester.CreateHttpClient();
+        api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
+        const string route = "/api/v1/plugins/password-lockout/builds";
+        Assert.Equal(HttpStatusCode.OK, (await api.GetAsync(route)).StatusCode);
+
+        using var attacker = HttpTestHelpers.CreateBrowser(tester);
+        if (basicAuth)
+        {
+            attacker.SetBasicAuth(owner.Email!, "wrong-password");
+            for (var i = 0; i < 5; i++)
+                Assert.Equal(HttpStatusCode.Unauthorized, (await attacker.GetAsync(route)).StatusCode);
+        }
+        else
+        {
+            var login = await attacker.GetStringAsync("/login");
+            for (var i = 0; i < 5; i++)
+            {
+                using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["Email"] = owner.Email!, ["Password"] = "wrong-password",
+                    ["__RequestVerificationToken"] = HttpTestHelpers.AntiforgeryToken(login)
+                });
+                using var response = await attacker.PostAsync("/login", form);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                Assert.Contains("Invalid login attempt.", await response.Content.ReadAsStringAsync());
+            }
+        }
+
+        Assert.True(await conn.ExecuteScalarAsync<bool>(
+            "SELECT \"LockoutEnd\" > CURRENT_TIMESTAMP FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = owner.Id }));
+        Assert.Equal(owner.SecurityStamp, await conn.ExecuteScalarAsync<string>(
+            "SELECT \"SecurityStamp\" FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = owner.Id }));
+        Assert.Equal(HttpStatusCode.OK, (await api.GetAsync(route)).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("admin-suspension")]
+    [InlineData(PluginBuilderAuthenticationSchemes.AllPublisherPlugins)]
+    public async Task AdministrativeSuspensionRefusesTokensAndNewIssuance(string pluginScope)
+    {
+        await using var tester = await StartServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+        var owner = await AddUser(users, "owner@example.com");
+        var admin = await AddUser(users, "admin@example.com");
+        if (!await roles.RoleExistsAsync(PluginBuilder.Util.Roles.ServerAdmin))
+            Assert.True((await roles.CreateAsync(new IdentityRole(PluginBuilder.Util.Roles.ServerAdmin))).Succeeded);
+        Assert.True((await users.AddToRoleAsync(admin, PluginBuilder.Util.Roles.ServerAdmin)).Succeeded);
+        var tokens = scope.ServiceProvider.GetRequiredService<PublisherAccessTokenService>();
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(new PluginSlug("admin-suspension"), owner.Id);
+        var original = await tokens.Create(owner.Id, pluginScope, "Before suspension", 30, owner.SecurityStamp!);
+        var currentStamp = await tokens.Create(owner.Id, pluginScope, "Current stamp fixture", 30, owner.SecurityStamp!);
+        using var api = tester.CreateHttpClient();
+        async Task<HttpStatusCode> Call(string token)
+        {
+            api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return (await api.GetAsync("/api/v1/plugins/admin-suspension/builds")).StatusCode;
+        }
+        Assert.Equal(HttpStatusCode.OK, await Call(original.Token));
+        using var moderation = tester.CreateHttpClient().SetBasicAuth(admin.Email!, Password);
+        using var locked = await moderation.PostAsJsonAsync($"/api/v1/admin/users/{owner.Id}/lock",
+            new { reason = "Suspension fixture" });
+        Assert.Equal(HttpStatusCode.OK, locked.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, await Call(original.Token));
+
+        var stamp = await conn.ExecuteScalarAsync<string>(
+            "SELECT \"SecurityStamp\" FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = owner.Id });
+        Assert.NotEqual(owner.SecurityStamp, stamp);
+        // Isolate the explicit suspension check from stamp invalidation.
+        await conn.ExecuteAsync("UPDATE publisher_access_tokens SET security_stamp = @stamp WHERE id = @id",
+            new { stamp, id = currentStamp.Id });
+        Assert.Equal(HttpStatusCode.Unauthorized, await Call(currentStamp.Token));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            tokens.Create(owner.Id, pluginScope, "While suspended", 30, stamp!));
+        Assert.Equal(2, (await tokens.List(owner.Id)).Count);
+
+        using var unlocked = await moderation.PostAsJsonAsync($"/api/v1/admin/users/{owner.Id}/unlock",
+            new { reason = "End suspension fixture" });
+        Assert.Equal(HttpStatusCode.OK, unlocked.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, await Call(original.Token));
+        Assert.Equal(HttpStatusCode.OK, await Call(currentStamp.Token));
+        var renewed = await tokens.Create(owner.Id, pluginScope, "After suspension", 30, stamp!);
+        Assert.Equal(HttpStatusCode.OK, await Call(renewed.Token));
+    }
+
+    [Theory]
+    [InlineData("setup-only")]
+    [InlineData(PluginBuilderAuthenticationSchemes.AllPublisherPlugins)]
+    public async Task OpeningAuthenticatorSetupPreservesTokensAndOtherSessions(string pluginScope)
+    {
+        await using var tester = await StartServer();
+        tester.GetService<IOptions<SecurityStampValidatorOptions>>().Value.ValidationInterval = TimeSpan.Zero;
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var owner = await AddUser(users, "owner@example.com");
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(new PluginSlug("setup-only"), owner.Id);
+        var issued = await scope.ServiceProvider.GetRequiredService<PublisherAccessTokenService>()
+            .Create(owner.Id, pluginScope, "Before setup", 30, owner.SecurityStamp!);
+        Assert.Null(await users.GetAuthenticatorKeyAsync(owner));
+        using var browser = HttpTestHelpers.CreateBrowser(tester);
+        using var otherBrowser = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(browser, owner.Email!, Password);
+        await HttpTestHelpers.LogIn(otherBrowser, owner.Email!, Password);
+        await Page(browser, "/account/2fa/enable");
+
+        Assert.Equal(owner.SecurityStamp, await conn.ExecuteScalarAsync<string>(
+            "SELECT \"SecurityStamp\" FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = owner.Id }));
+        Assert.False(await conn.ExecuteScalarAsync<bool>(
+            "SELECT \"TwoFactorEnabled\" FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = owner.Id }));
+        await Page(otherBrowser, "/account/details"); // Force cookie stamp validation on the second session.
+        using var api = tester.CreateHttpClient();
+        api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
+        Assert.Equal(HttpStatusCode.OK, (await api.GetAsync("/api/v1/plugins/setup-only/builds")).StatusCode);
+    }
+
+    [Fact]
+    public async Task TokenLifecycleLogsIdentifySuccessfulChangesWithoutSecretsOrDuplicateRevocations()
+    {
+        await using var tester = await StartServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var owner = await AddUser(users, "owner@example.com");
+        var other = await AddUser(users, "other@example.com");
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(new PluginSlug("lifecycle-logs"), owner.Id);
+        var logger = new LifecycleLogger();
+        var tokens = new PublisherAccessTokenService(tester.GetService<DBConnectionFactory>(), logger);
+        var specific = await tokens.Create(owner.Id, "lifecycle-logs", "Specific", 30, owner.SecurityStamp!);
+        var all = await tokens.Create(owner.Id, PluginBuilderAuthenticationSchemes.AllPublisherPlugins, "All", null, owner.SecurityStamp!);
+        await Assert.ThrowsAsync<ArgumentException>(() => tokens.Create(other.Id, "lifecycle-logs", "Not mine", 30, other.SecurityStamp!));
+        Assert.False(await tokens.Revoke(other.Id, specific.Id));
+        Assert.True(await tokens.Revoke(owner.Id, specific.Id));
+        Assert.True(await tokens.Revoke(owner.Id, specific.Id));
+        Assert.True(await tokens.Revoke(owner.Id, all.Id));
+
+        Assert.Equal(4, logger.Entries.Count);
+        Assert.All(logger.Entries, entry =>
+        {
+            Assert.Equal(LogLevel.Information, entry.Level);
+            Assert.Contains(owner.Id, entry.Message);
+            Assert.DoesNotContain(specific.Token, entry.Message);
+            Assert.DoesNotContain(all.Token, entry.Message);
+            Assert.DoesNotContain(owner.SecurityStamp!, entry.Message);
+        });
+        Assert.Equal(2, logger.Entries.Count(e => e.Message.Contains(specific.Id.ToString()) && e.Message.Contains("scope=lifecycle-logs")));
+        Assert.Equal(2, logger.Entries.Count(e => e.Message.Contains(all.Id.ToString()) && e.Message.Contains("scope=*")));
+    }
+
+    private sealed class LifecycleLogger : ILogger<PublisherAccessTokenService>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel level) => true;
+        public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Entries.Add((level, formatter(state, exception)));
     }
 
     [Theory]

@@ -29,13 +29,15 @@ public class PublisherTokenAuthenticationHandler(IOptionsMonitor<AuthenticationS
         if (token.Length != Prefix.Length + 64)
             return AuthenticateResult.Fail("Invalid publisher access token.");
         await using var conn = await connections.Open(Context.RequestAborted);
-        // Recheck revocation, expiry, security stamp and lockout on every request (the same rules as admin tokens).
+        // Recheck revocation, expiry, stamp and administrative suspension on every request.
+        // Failed-password lockouts must not let someone who knows the email interrupt a publisher's automation.
         var identity = await conn.QuerySingleOrDefaultAsync<TokenIdentity>(new CommandDefinition("""
             UPDATE publisher_access_tokens t SET last_used_at = CURRENT_TIMESTAMP FROM "AspNetUsers" u
             WHERE t.user_id = u."Id" AND t.token_hash = @hash AND t.revoked_at IS NULL
               AND (t.expires_at IS NULL OR t.expires_at > CURRENT_TIMESTAMP)
               AND t.security_stamp IS NOT DISTINCT FROM u."SecurityStamp"
-              AND (NOT u."LockoutEnabled" OR u."LockoutEnd" IS NULL OR u."LockoutEnd" <= CURRENT_TIMESTAMP)
+              AND NOT EXISTS (SELECT 1 FROM admin_account_locks l
+                              WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP)
             RETURNING t.id AS TokenId, t.user_id AS UserId, t.plugin_slug AS PluginSlug
             """, new { hash = AdminTokenAuthenticationHandler.Hash(token) }, cancellationToken: Context.RequestAborted));
         if (identity is null)
