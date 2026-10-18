@@ -453,6 +453,58 @@ public class PublisherTokenTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StaleSessionsCannotRevokeNewTokensAfterCredentialChanges(bool enableTwoFactor)
+    {
+        await using var tester = await StartServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var tokens = scope.ServiceProvider.GetRequiredService<PublisherAccessTokenService>();
+        var owner = await AddUser(users, "owner@example.com");
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.NewPlugin(new PluginSlug("stale-revoke"), owner.Id);
+        using var browser = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(browser, owner.Email!, Password);
+        var oldStamp = owner.SecurityStamp;
+
+        if (enableTwoFactor)
+        {
+            Assert.True((await users.ResetAuthenticatorKeyAsync(owner)).Succeeded);
+            Assert.True((await users.SetTwoFactorEnabledAsync(owner, true)).Succeeded);
+        }
+        else
+        {
+            var reset = await users.GeneratePasswordResetTokenAsync(owner);
+            Assert.True((await users.ResetPasswordAsync(owner, reset, Password + "-new")).Succeeded);
+        }
+        Assert.NotEqual(oldStamp, owner.SecurityStamp);
+
+        // Issue with the current stamp: this token is still usable after the credential change.
+        var issued = await tokens.Create(owner.Id, "stale-revoke", "Replacement token", 30, owner.SecurityStamp!);
+        using var api = tester.CreateHttpClient();
+        api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
+        Assert.Equal(HttpStatusCode.OK, (await api.GetAsync("/api/v1/plugins/stale-revoke/builds")).StatusCode);
+        // The old cookie can still read the list during periodic validation and learn the new token ID.
+        var page = await Page(browser, "/account/api-tokens");
+        Assert.Contains(issued.Id.ToString(), page);
+        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = HttpTestHelpers.AntiforgeryToken(page)
+        });
+        using var refused = await browser.PostAsync($"/account/api-tokens/{issued.Id}/revoke", form);
+
+        Assert.False(await conn.ExecuteScalarAsync<bool>(
+            "SELECT revoked_at IS NOT NULL FROM publisher_access_tokens WHERE id = @id", new { id = issued.Id }));
+        Assert.Equal(HttpStatusCode.OK, (await api.GetAsync("/api/v1/plugins/stale-revoke/builds")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.Equal("/login", new Uri(browser.BaseAddress!, refused.Headers.Location!).AbsolutePath);
+        using var signedOut = await browser.GetAsync("/account/details");
+        Assert.Equal(HttpStatusCode.Redirect, signedOut.StatusCode);
+        Assert.Equal("/login", new Uri(browser.BaseAddress!, signedOut.Headers.Location!).AbsolutePath);
+    }
+
+    [Theory]
     [InlineData("stamp-race")]
     [InlineData(PluginBuilderAuthenticationSchemes.AllPublisherPlugins)]
     public async Task TokenCreationRefusesAStampRotatedAfterSessionValidation(string pluginScope)

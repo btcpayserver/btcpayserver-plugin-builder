@@ -51,6 +51,12 @@ public class PublisherTokenSettingsController(PublisherAccessTokenService tokens
     [HttpPost("{id:guid}/revoke")]
     public async Task<IActionResult> Revoke(Guid id)
     {
+        if (await signInManager.ValidateSecurityStampAsync(User) is null)
+        {
+            await signInManager.SignOutAsync();
+            return Challenge();
+        }
+
         if (!await tokens.Revoke(UserId, id))
             return NotFound();
         TempData[TempDataConstant.SuccessMessage] = "Token revoked. It can no longer make requests.";
