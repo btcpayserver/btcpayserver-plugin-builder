@@ -134,7 +134,10 @@ public class AccountController(
     [HttpGet("2fa/enable")]
     public async Task<IActionResult> EnableAuthenticator()
     {
-        var user = await CurrentUser();
+        var user = await CurrentUserWithValidSecurityStamp();
+        if (user is null)
+            return Challenge();
+
         if (await userManager.GetTwoFactorEnabledAsync(user))
             return RedirectToAction(nameof(TwoFactorAuthentication));
 
@@ -144,7 +147,10 @@ public class AccountController(
     [HttpPost("2fa/enable")]
     public async Task<IActionResult> EnableAuthenticator(EnableAuthenticatorViewModel model)
     {
-        var user = await CurrentUser();
+        var user = await CurrentUserWithValidSecurityStamp();
+        if (user is null)
+            return Challenge();
+
         if (await userManager.GetTwoFactorEnabledAsync(user))
             return RedirectToAction(nameof(TwoFactorAuthentication));
         if (!ModelState.IsValid)
@@ -175,7 +181,10 @@ public class AccountController(
     [HttpPost("2fa/disable")]
     public async Task<IActionResult> DisableTwoFactor(ConfirmPasswordViewModel model)
     {
-        var user = await CurrentUser();
+        var user = await CurrentUserWithValidSecurityStamp();
+        if (user is null)
+            return Challenge();
+
         if (!await userManager.GetTwoFactorEnabledAsync(user))
             return RedirectToAction(nameof(TwoFactorAuthentication));
         if (!await PasswordConfirmed(user, model))
@@ -199,7 +208,10 @@ public class AccountController(
     [HttpPost("2fa/recovery-codes")]
     public async Task<IActionResult> GenerateRecoveryCodes(ConfirmPasswordViewModel model)
     {
-        var user = await CurrentUser();
+        var user = await CurrentUserWithValidSecurityStamp();
+        if (user is null)
+            return Challenge();
+
         if (!await userManager.GetTwoFactorEnabledAsync(user))
             return RedirectToAction(nameof(TwoFactorAuthentication));
         if (!await PasswordConfirmed(user, model))
@@ -215,6 +227,15 @@ public class AccountController(
 
     private async Task<IdentityUser> CurrentUser() =>
         await userManager.GetUserAsync(User) ?? throw new InvalidOperationException("User not found");
+
+    private async Task<IdentityUser?> CurrentUserWithValidSecurityStamp()
+    {
+        // Cookie stamp validation is periodic; exposing the authenticator key or changing 2FA needs a fresh session.
+        var user = await signInManager.ValidateSecurityStampAsync(User);
+        if (user is null)
+            await signInManager.SignOutAsync();
+        return user;
+    }
 
     private async Task<IActionResult> AuthenticatorSetup(IdentityUser user, EnableAuthenticatorViewModel model)
     {
