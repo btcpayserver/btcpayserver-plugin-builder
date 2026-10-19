@@ -33,7 +33,13 @@ public class AdminTokenSettingsUITests(ITestOutputHelper output) : UnitTestBase(
         const string tokenPath = "/account/admin-access-tokens";
         const string name = "UI agent <review>";
 
-        await tester.GoToUrl(tokenPath);
+        await tester.GoToUrl("/account/details");
+        await page.GetByRole(AriaRole.Link, new() { Name = "Admin tokens", Exact = true }).ClickAsync();
+        await Expect(page.Locator("#SectionNav [aria-current='page']")).ToHaveTextAsync("Admin tokens");
+        await page.Locator("#TokenStatusFilter").ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Inactive", Exact = true }).ClickAsync();
+        await Expect(page.Locator("#TokenStatusFilter")).ToHaveTextAsync("Status: Inactive");
+        await Expect(page.Locator("#InactiveTokens")).ToContainTextAsync("No inactive tokens.");
         await page.Locator("#CreateToken").ClickAsync();
         var modal = page.Locator("#CreateTokenModal");
         await Expect(modal).ToBeVisibleAsync();
@@ -63,8 +69,8 @@ public class AdminTokenSettingsUITests(ITestOutputHelper output) : UnitTestBase(
         Assert.InRange((expires - DateTime.UtcNow).TotalDays, 6.9, 7.1);
         var row = page.Locator($"tr[data-token-id='{id}']");
         await Expect(row).ToBeVisibleAsync();
-        await Expect(page.Locator("#ActiveTokensTab")).ToHaveTextAsync("Active (1)");
-        await Expect(page.Locator("#InactiveTokensTab")).ToHaveTextAsync("Inactive (0)");
+        await Expect(page.Locator("#TokenStatusFilter")).ToHaveTextAsync("Status: Active");
+        await Expect(page.Locator("#ActiveTokens tbody tr")).ToHaveCountAsync(1);
 
         await modal.GetByRole(AriaRole.Button, new() { Name = "Copy token", Exact = true }).ClickAsync();
         Assert.True(string.Equals(token, await page.EvaluateAsync<string>("() => navigator.clipboard.readText()"), StringComparison.Ordinal),
@@ -97,7 +103,7 @@ public class AdminTokenSettingsUITests(ITestOutputHelper output) : UnitTestBase(
         await modal.Locator("#Creation_ExpiresInDays").FillAsync("12");
         await modal.Locator("#CreateTokenForm").GetByRole(AriaRole.Button, new() { Name = "Create token", Exact = true }).ClickAsync();
         await Expect(modal.Locator("#TokenSuccess")).ToBeVisibleAsync();
-        await Expect(page.Locator("#ActiveTokensTab")).ToHaveTextAsync("Active (2)");
+        await Expect(page.Locator("#ActiveTokens tbody tr")).ToHaveCountAsync(2);
         var expiredId = await conn.ExecuteScalarAsync<Guid>("SELECT id FROM admin_access_tokens WHERE name = 'Expired UI agent'");
         var customExpiry = await conn.ExecuteScalarAsync<DateTime>("SELECT expires_at FROM admin_access_tokens WHERE id = @expiredId", new { expiredId });
         Assert.InRange((customExpiry - DateTime.UtcNow).TotalDays, 11.9, 12.1);
@@ -109,11 +115,15 @@ public class AdminTokenSettingsUITests(ITestOutputHelper output) : UnitTestBase(
         var expiredRow = page.Locator($"tr[data-token-id='{expiredId}']");
         await Expect(row).ToBeVisibleAsync();
         await Expect(expiredRow).ToBeHiddenAsync();
-        await page.Locator("#InactiveTokensTab").ClickAsync();
+        await page.Locator("#TokenStatusFilter").ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Inactive", Exact = true }).ClickAsync();
+        await Expect(page.Locator("#TokenStatusFilter")).ToHaveTextAsync("Status: Inactive");
         await Expect(row).ToBeHiddenAsync();
         await Expect(expiredRow).ToBeVisibleAsync();
         await Expect(expiredRow.Locator("[data-token-status]")).ToHaveTextAsync("Expired");
-        await page.Locator("#ActiveTokensTab").ClickAsync();
+        await page.Locator("#TokenStatusFilter").ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Active", Exact = true }).ClickAsync();
+        await Expect(page.Locator("#TokenStatusFilter")).ToHaveTextAsync("Status: Active");
 
         await row.GetByRole(AriaRole.Button, new() { Name = "Revoke", Exact = true }).ClickAsync();
         await Expect(page.Locator("#ConfirmModal")).ToBeVisibleAsync();
@@ -127,13 +137,18 @@ public class AdminTokenSettingsUITests(ITestOutputHelper output) : UnitTestBase(
         await row.GetByRole(AriaRole.Button, new() { Name = "Revoke", Exact = true }).ClickAsync();
         await page.Locator("#ConfirmContinue").ClickAsync();
         await Expect(page.Locator("#ConfirmModal")).ToBeHiddenAsync();
-        await page.Locator("#InactiveTokensTab").ClickAsync();
+        await page.Locator("#TokenStatusFilter").ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Inactive", Exact = true }).ClickAsync();
         await Expect(row).ToBeVisibleAsync();
         await Expect(row.Locator("[data-token-status]")).ToHaveTextAsync("Revoked");
         await Expect(expiredRow.Locator("[data-token-status]")).ToHaveTextAsync("Expired");
         using (var response = await agent.GetAsync("/api/v1/admin/me"))
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Equal(2, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_access_tokens"));
+        await page.GetByRole(AriaRole.Link, new() { Name = "API tokens", Exact = true }).ClickAsync();
+        await Expect(page.Locator("#SectionNav [aria-current='page']")).ToHaveTextAsync("API tokens");
+        await page.GetByRole(AriaRole.Link, new() { Name = "Admin tokens", Exact = true }).ClickAsync();
+        await Expect(page.Locator("#SectionNav [aria-current='page']")).ToHaveTextAsync("Admin tokens");
     }
 
     [Fact]

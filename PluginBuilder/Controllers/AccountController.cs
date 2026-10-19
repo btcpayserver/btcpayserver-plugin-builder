@@ -19,6 +19,7 @@ public class AccountController(
     UserManager<IdentityUser> userManager,
     SignInManager<IdentityUser> signInManager,
     IdentityDbContext<IdentityUser> identityDbContext,
+    IUserStore<IdentityUser> userStore,
     ExternalAccountVerificationService externalAccountVerificationService,
     EmailService emailService,
     NostrService nostrService,
@@ -133,7 +134,10 @@ public class AccountController(
     [HttpGet("2fa/enable")]
     public async Task<IActionResult> EnableAuthenticator()
     {
-        var user = await CurrentUser();
+        var user = await CurrentUserWithValidSecurityStamp();
+        if (user is null)
+            return Challenge();
+
         if (await userManager.GetTwoFactorEnabledAsync(user))
             return RedirectToAction(nameof(TwoFactorAuthentication));
 
@@ -143,7 +147,10 @@ public class AccountController(
     [HttpPost("2fa/enable")]
     public async Task<IActionResult> EnableAuthenticator(EnableAuthenticatorViewModel model)
     {
-        var user = await CurrentUser();
+        var user = await CurrentUserWithValidSecurityStamp();
+        if (user is null)
+            return Challenge();
+
         if (await userManager.GetTwoFactorEnabledAsync(user))
             return RedirectToAction(nameof(TwoFactorAuthentication));
         if (!ModelState.IsValid)
@@ -174,7 +181,10 @@ public class AccountController(
     [HttpPost("2fa/disable")]
     public async Task<IActionResult> DisableTwoFactor(ConfirmPasswordViewModel model)
     {
-        var user = await CurrentUser();
+        var user = await CurrentUserWithValidSecurityStamp();
+        if (user is null)
+            return Challenge();
+
         if (!await userManager.GetTwoFactorEnabledAsync(user))
             return RedirectToAction(nameof(TwoFactorAuthentication));
         if (!await PasswordConfirmed(user, model))
@@ -198,7 +208,10 @@ public class AccountController(
     [HttpPost("2fa/recovery-codes")]
     public async Task<IActionResult> GenerateRecoveryCodes(ConfirmPasswordViewModel model)
     {
-        var user = await CurrentUser();
+        var user = await CurrentUserWithValidSecurityStamp();
+        if (user is null)
+            return Challenge();
+
         if (!await userManager.GetTwoFactorEnabledAsync(user))
             return RedirectToAction(nameof(TwoFactorAuthentication));
         if (!await PasswordConfirmed(user, model))
@@ -215,15 +228,25 @@ public class AccountController(
     private async Task<IdentityUser> CurrentUser() =>
         await userManager.GetUserAsync(User) ?? throw new InvalidOperationException("User not found");
 
+    private async Task<IdentityUser?> CurrentUserWithValidSecurityStamp()
+    {
+        // Cookie stamp validation is periodic; exposing the authenticator key or changing 2FA needs a fresh session.
+        var user = await signInManager.ValidateSecurityStampAsync(User);
+        if (user is null)
+            await signInManager.SignOutAsync();
+        return user;
+    }
+
     private async Task<IActionResult> AuthenticatorSetup(IdentityUser user, EnableAuthenticatorViewModel model)
     {
         var key = await userManager.GetAuthenticatorKeyAsync(user);
         if (string.IsNullOrEmpty(key))
         {
-            if (!(await userManager.ResetAuthenticatorKeyAsync(user)).Succeeded)
+            // Preparing an inactive authenticator must not invalidate sessions or API tokens.
+            key = userManager.GenerateNewAuthenticatorKey();
+            await ((IUserAuthenticatorKeyStore<IdentityUser>)userStore).SetAuthenticatorKeyAsync(user, key, HttpContext.RequestAborted);
+            if (!(await userManager.UpdateAsync(user)).Succeeded)
                 return TwoFactorSaveFailed();
-            await signInManager.RefreshSignInAsync(user);
-            key = await userManager.GetAuthenticatorKeyAsync(user);
         }
 
         // The page carries the authenticator secret, so the browser must not keep a copy of it.

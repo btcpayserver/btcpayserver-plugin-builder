@@ -7,7 +7,7 @@ server. The operator decides what the external agent may do.
 
 ## Create and revoke access
 
-Sign in as an admin and open **Account Settings → Manage admin access tokens**
+Sign in as an admin and open **Account → Manage Account → Admin tokens**
 (`/account/admin-access-tokens`). Give the token a recognizable name and expiry
 (1–365 days; default 90). Save the generated token immediately: it is shown only
 once. The page lists token IDs, last use, expiry and revocation status and offers a

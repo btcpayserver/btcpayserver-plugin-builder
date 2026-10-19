@@ -1,7 +1,7 @@
 @using PluginBuilder.DataModels
 @model PluginBuilder.Controllers.AdminTokenSettingsController.TokenPage
 @{
-    ViewData["Title"] = "Admin access tokens";
+    ViewData.SetActivePage("Account Settings", title: "Admin access tokens");
     var now = DateTimeOffset.UtcNow;
     var active = Model.Tokens.Where(token => token.RevokedAt is null && token.ExpiresAt > now).ToArray();
     var inactive = Model.Tokens.Except(active).ToArray();
@@ -12,18 +12,22 @@
         <h1 class="mb-0">@ViewData["Title"]</h1>
         <button id="CreateToken" type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#CreateTokenModal">Create token</button>
     </div>
+    <partial name="~/Views/Account/_AccountNav.cshtml" />
     <p class="text-muted mb-4">Connect an automation or AI agent to the admin API. Tokens belong to your account and use your admin access. API calls are audited.</p>
     <div id="TokenList">
-        <nav id="SectionNav" aria-label="Token status">
-            <div class="nav nav-pills gap-4" role="tablist">
-                <button id="ActiveTokensTab" class="nav-link active" data-bs-toggle="tab" data-bs-target="#ActiveTokens" type="button" role="tab" aria-controls="ActiveTokens" aria-selected="true">Active (@active.Length)</button>
-                <button id="InactiveTokensTab" class="nav-link" data-bs-toggle="tab" data-bs-target="#InactiveTokens" type="button" role="tab" aria-controls="InactiveTokens" aria-selected="false">Inactive (@inactive.Length)</button>
+        <div class="d-flex justify-content-end mb-3">
+            <div class="dropdown">
+                <button id="TokenStatusFilter" class="btn btn-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Status: Active</button>
+                <div class="dropdown-menu dropdown-menu-end" aria-labelledby="TokenStatusFilter">
+                    <button type="button" class="dropdown-item active" data-token-filter="ActiveTokens" aria-pressed="true">Active</button>
+                    <button type="button" class="dropdown-item" data-token-filter="InactiveTokens" aria-pressed="false">Inactive</button>
+                </div>
             </div>
-        </nav>
-        <div class="tab-content">
+        </div>
+        <div>
             @foreach (var group in new[] { (Id: "ActiveTokens", Tokens: active), (Id: "InactiveTokens", Tokens: inactive) })
             {
-                <div id="@group.Id" class="tab-pane @(group.Id == "ActiveTokens" ? "show active" : null)" role="tabpanel" aria-labelledby="@(group.Id)Tab">
+                <section id="@group.Id" data-token-group hidden="@(group.Id != "ActiveTokens")" aria-label="@(group.Id == "ActiveTokens" ? "Active tokens" : "Inactive tokens")">
                     @if (group.Tokens.Length == 0)
                     {
                         <p class="text-muted py-4">@(group.Id == "ActiveTokens" ? "No active tokens. Create a token to connect your agent." : "No inactive tokens. Expired and revoked tokens will appear here.")</p>
@@ -44,7 +48,7 @@
                                         </td>
                                         <td class="text-nowrap" title="@token.LastUsedAt?.ToString("u")">@(token.LastUsedAt is { } used ? (now - used).ToTimeAgo() : "Never")</td>
                                         <td class="text-nowrap" title="@token.ExpiresAt.ToString("u")">@token.ExpiresAt.ToString("yyyy-MM-dd")</td>
-                                        <td><span data-token-status class="badge @(status == "Active" ? "bg-success" : status == "Expired" ? "bg-warning" : "bg-secondary")">@status</span></td>
+                                        <td><span data-token-status class="badge @(status == "Active" ? "bg-success" : status == "Expired" ? "bg-warning" : "bg-danger")">@status</span></td>
                                         <td class="text-end">
                                             @if (token.RevokedAt is null)
                                             {
@@ -57,7 +61,7 @@
                             </table>
                         </div>
                     }
-                </div>
+                </section>
             }
         </div>
     </div>
@@ -240,6 +244,19 @@
             });
 
             root.addEventListener('click', async event => {
+                const filter = event.target.closest('[data-token-filter]');
+                if (filter) {
+                    root.querySelectorAll('[data-token-filter]').forEach(item => {
+                        const selected = item === filter;
+                        item.classList.toggle('active', selected);
+                        item.setAttribute('aria-pressed', selected);
+                    });
+                    root.querySelectorAll('[data-token-group]').forEach(group => {
+                        group.hidden = group.id !== filter.dataset.tokenFilter;
+                    });
+                    document.getElementById('TokenStatusFilter').textContent = `Status: ${filter.textContent.trim()}`;
+                    return;
+                }
                 const button = event.target.closest('[data-copy-id]');
                 if (!button) return;
                 const status = document.getElementById('TokenCopyStatus');

@@ -51,6 +51,93 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     private const string Password = "123456";
 
+    [Theory]
+    [InlineData("GET", "enable", false)]
+    [InlineData("GET", "enable", true)]
+    [InlineData("POST", "enable", false)]
+    [InlineData("POST", "enable", true)]
+    [InlineData("POST", "disable", true)]
+    [InlineData("POST", "recovery-codes", true)]
+    public async Task StaleSessionsCannotAccessTwoFactorSetupOrChangeSettingsAfterAPasswordReset(string method, string action, bool prepareKey)
+    {
+        await using var tester = await StartServer("TwoFactorStaleSession");
+        var email = $"2fa-stale-{Guid.NewGuid():N}@example.com";
+        var userId = await tester.CreateFakeUserAsync(email, Password);
+        var initiallyEnabled = action != "enable";
+        string? key = null;
+        string resetToken;
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = (await users.FindByIdAsync(userId))!;
+            if (prepareKey)
+            {
+                Assert.True((await users.ResetAuthenticatorKeyAsync(user)).Succeeded);
+                key = await users.GetAuthenticatorKeyAsync(user);
+            }
+            if (initiallyEnabled)
+            {
+                Assert.True((await users.SetTwoFactorEnabledAsync(user, true)).Succeeded);
+                Assert.NotNull(await users.GenerateNewTwoFactorRecoveryCodesAsync(user, TwoFactorSetup.RecoveryCodeCount));
+            }
+            resetToken = await users.GeneratePasswordResetTokenAsync(user);
+        }
+
+        using var current = HttpTestHelpers.CreateBrowser(tester);
+        using var stale = HttpTestHelpers.CreateBrowser(tester);
+        foreach (var browser in new[] { current, stale })
+        {
+            var next = await PasswordStep(browser, email, Password);
+            if (initiallyEnabled)
+            {
+                var secondStep = await Page(browser, next);
+                using var signedIn = await Post(browser, "/login/2fa", secondStep, ("TwoFactorCode", Totp(key!)));
+                Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
+            }
+            await AssertSignedIn(browser);
+        }
+        var form = await Page(stale, action == "enable" && prepareKey ? "/account/2fa/enable" : "/account/2fa");
+        var beforeReset = await ReadState();
+        const string newPassword = Password + "-new";
+        var resetPage = await Page(current, "/passwordreset?email=" + Uri.EscapeDataString(email) + "&code=" + Uri.EscapeDataString(resetToken));
+        using (var reset = await Post(current, "/passwordreset", resetPage, ("Email", email),
+                   ("PasswordResetToken", resetToken), ("Password", newPassword), ("ConfirmPassword", newPassword)))
+        {
+            Assert.Equal(HttpStatusCode.Redirect, reset.StatusCode);
+            Assert.Equal("/login", new Uri(current.BaseAddress!, reset.Headers.Location!).AbsolutePath);
+        }
+        var beforeRequest = await ReadState();
+        Assert.NotEqual(beforeReset.Stamp, beforeRequest.Stamp);
+        // The cookie is still accepted within Identity's periodic validation interval.
+        await AssertSignedIn(stale);
+
+        // Use a valid current code/password so refusal depends on the stale session.
+        // Without a key, an invalid enable POST must not create one while rebuilding the form.
+        using var refused = method == "GET"
+            ? await stale.GetAsync("/account/2fa/enable")
+            : await Post(stale, "/account/2fa/" + action, form,
+                action == "enable" ? ("Code", key is null ? "" : Totp(key)) : ("Password", newPassword));
+        Assert.Equal(beforeRequest, await ReadState());
+        Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.Equal("/login", new Uri(stale.BaseAddress!, refused.Headers.Location!).AbsolutePath);
+        var body = await refused.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("id=\"AuthenticatorKey\"", body);
+        Assert.DoesNotContain("otpauth://", body);
+        Assert.Empty(RecoveryCodes(body));
+        await AssertSignedOut(stale);
+
+        async Task<(string? Stamp, string? ConcurrencyStamp, bool Enabled, string Tokens)> ReadState()
+        {
+            using var scope = tester.WebApp.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext<IdentityUser>>();
+            var user = await db.Users.AsNoTracking().SingleAsync(u => u.Id == userId);
+            var tokens = await db.Set<IdentityUserToken<string>>().AsNoTracking().Where(t => t.UserId == userId)
+                .OrderBy(t => t.LoginProvider).ThenBy(t => t.Name)
+                .Select(t => t.LoginProvider + ":" + t.Name + ":" + t.Value).ToArrayAsync();
+            return (user.SecurityStamp, user.ConcurrencyStamp, user.TwoFactorEnabled, string.Join("|", tokens));
+        }
+    }
+
     [Fact]
     public async Task EnablingNeedsAValidCodeAndSigningInThenNeedsTheSecondStep()
     {
@@ -153,6 +240,9 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         using (var disabled = await Post(client, "/account/2fa/disable", status, ("Password", Password)))
             Assert.Equal(HttpStatusCode.Redirect, disabled.StatusCode);
         Assert.False(await TwoFactorEnabled(tester, email));
+
+        // Disabling rotates the stamp; the refreshed session must immediately pass setup's validation.
+        Assert.NotEmpty(SharedKey(await Page(client, "/account/2fa/enable")));
 
         await LogOut(client);
         var afterDisable = await PasswordStep(client, email, Password);

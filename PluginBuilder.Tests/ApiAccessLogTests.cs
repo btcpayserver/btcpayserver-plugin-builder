@@ -49,6 +49,31 @@ public class ApiAccessLogTests
         Assert.Equal(0, http.Request.Body.Position);
     }
 
+    [Fact]
+    public async Task PublisherTokenDenialNamesTheTokenIdNeverTheToken()
+    {
+        var log = new CaptureLogger();
+        var http = NewContext();
+        http.Request.Headers.Authorization = "Bearer pb_pub_secretsecretsecret";
+        http.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, "account-123"),
+            new Claim(PluginBuilder.Authentication.PluginBuilderAuthenticationSchemes.PublisherTokenIdClaim, "token-456")
+        ], "test"));
+        var middleware = new ApiAccessLogMiddleware(context =>
+        {
+            context.Response.StatusCode = 403;
+            return Task.CompletedTask;
+        }, log);
+
+        await middleware.InvokeAsync(http);
+
+        var entry = Assert.Single(log.Entries);
+        Assert.Equal("publisher-token", entry.Fields["CredentialType"]);
+        Assert.Equal("token-456", entry.Fields["TokenId"]);
+        Assert.DoesNotContain("secret", entry.Message);
+    }
+
     [Theory]
     [InlineData("/api/v1/admin/events", 200)]
     [InlineData("/api/v1/admin/events", 404)]

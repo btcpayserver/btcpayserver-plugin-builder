@@ -43,7 +43,24 @@ Full interactive API documentation is available at [`/docs`](https://plugin-buil
 
 The OpenAPI specification is available at [`/swagger/v1/swagger.json`](https://plugin-builder.btcpayserver.org/swagger/v1/swagger.json).
 
-Some endpoints require HTTP Basic Auth using your login email and password:
+Publisher endpoints accept a personal API token or HTTP Basic authentication. Create a token in
+**Account → Manage Account → API tokens** (`/account/api-tokens`). Choose one plugin or **All my plugins**,
+which includes plugins you own now and in the future. Ownership is checked on every request.
+Tokens default to 90 days, with 7-day, 30-day, custom (1–365 days), and no-expiry options.
+
+Save the token when it is shown and put it in your CI secret, for example `PUBLISHER_API_TOKEN`:
+
+```bash
+curl --header "Authorization: Bearer $PUBLISHER_API_TOKEN" \
+  https://plugin-builder.btcpayserver.org/api/v1/plugins/{pluginSlug}/builds/{buildId}
+```
+
+Accounts with two-factor authentication must use a token. Changing the password or enabling/disabling
+2FA invalidates existing tokens; simply opening the authenticator setup page does not. Failed-password
+lockouts do not interrupt publisher tokens, but an administrative account suspension blocks them.
+Tokens can be revoked from the same account page, and cannot access the admin API.
+
+Accounts without 2FA can also use their login email and password:
 
 ```bash
 curl --user "email:password" https://plugin-builder.btcpayserver.org/api/v1/plugins/{pluginSlug}/builds/{buildId}

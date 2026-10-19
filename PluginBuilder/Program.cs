@@ -85,6 +85,7 @@ public class Program
             // ApiAccessLogMiddleware emits one contextual denial instead of a line per scheme.
             builder.Logging.AddFilter(typeof(BasicAuthenticationHandler).FullName, LogLevel.Warning);
             builder.Logging.AddFilter(typeof(AdminTokenAuthenticationHandler).FullName, LogLevel.Warning);
+            builder.Logging.AddFilter(typeof(PublisherTokenAuthenticationHandler).FullName, LogLevel.Warning);
         }
 
         builder.Services.AddHealthChecks().AddCheck<HealthService>("Dependencies");
@@ -200,6 +201,7 @@ public class Program
         services.AddSingleton<AdminEventSubscriptionService>();
         services.AddScoped<ListingReviewService>();
         services.AddScoped<AdminAccessTokenService>();
+        services.AddScoped<PublisherAccessTokenService>();
         services.AddSingleton<AdminWebhookSender>();
         services.AddHostedService<AdminEventDeliveryHostedService>();
         services.AddSingleton<AdminHistoryRetention>();
@@ -370,7 +372,8 @@ public class Program
         });
         services.AddAuthentication()
             .AddScheme<PluginBuilderAuthenticationOptions, BasicAuthenticationHandler>(PluginBuilderAuthenticationSchemes.BasicAuth, o => { })
-            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AdminTokenAuthenticationHandler>(PluginBuilderAuthenticationSchemes.AdminToken, o => { });
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AdminTokenAuthenticationHandler>(PluginBuilderAuthenticationSchemes.AdminToken, o => { })
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, PublisherTokenAuthenticationHandler>(PluginBuilderAuthenticationSchemes.PublisherToken, o => { });
         services.AddAuthorization(o =>
         {
             o.AddPolicy(Policies.OwnPlugin, o => o.AddRequirements(new OwnPluginRequirement()));
