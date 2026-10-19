@@ -63,6 +63,9 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
             UPDATE "AspNetUsers" SET "LockoutEnabled" = TRUE, "LockoutEnd" = @end,
               "SecurityStamp" = @stamp, "ConcurrencyStamp" = @concurrency
             WHERE "Id" = @userId;
+            DELETE FROM "AspNetUserTokens" t USING "AspNetUsers" u
+            WHERE t."UserId" = u."Id" AND u."Id" = @userId AND NOT u."TwoFactorEnabled"
+              AND t."LoginProvider" = '[AspNetUserStore]' AND t."Name" = 'AuthenticatorKey';
             INSERT INTO admin_account_locks (user_id, locked_until, reason, locked_by) VALUES (@userId, @end, @reason, @by)
             ON CONFLICT (user_id) DO UPDATE SET locked_until = EXCLUDED.locked_until, reason = EXCLUDED.reason,
               locked_by = EXCLUDED.locked_by, locked_at = CURRENT_TIMESTAMP
