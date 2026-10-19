@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
+using System.Security.Claims;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
@@ -369,6 +371,28 @@ public class Program
             opt.LoginPath = "/login";
             opt.AccessDeniedPath = "/errors/403";
             opt.LogoutPath = "/logout";
+        });
+        services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.TwoFactorUserIdScheme, opt =>
+        {
+            opt.Events.OnSigningIn = async context =>
+            {
+                var signInManager = context.HttpContext.RequestServices.GetRequiredService<SignInManager<IdentityUser>>();
+                // Identity retains the user from the password check in this request; do not load a newer stamp.
+                var user = await signInManager.GetTwoFactorAuthenticationUserAsync()
+                    ?? throw new InvalidOperationException("Missing pending two-factor user.");
+                var stamp = await signInManager.UserManager.GetSecurityStampAsync(user);
+                ((ClaimsIdentity)context.Principal!.Identity!).AddClaim(
+                    new Claim(signInManager.Options.ClaimsIdentity.SecurityStampClaimType, stamp));
+            };
+            opt.Events.OnValidatePrincipal = async context =>
+            {
+                var signInManager = context.HttpContext.RequestServices.GetRequiredService<SignInManager<IdentityUser>>();
+                if (await signInManager.ValidateTwoFactorSecurityStampAsync(context.Principal) is not null)
+                    return;
+
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
+            };
         });
         services.AddAuthentication()
             .AddScheme<PluginBuilderAuthenticationOptions, BasicAuthenticationHandler>(PluginBuilderAuthenticationSchemes.BasicAuth, o => { })
