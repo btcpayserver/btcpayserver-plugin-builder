@@ -369,8 +369,8 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var admin = await AddUser(users, "admin@example.com", true);
         var other = await AddUser(users, "other-admin@example.com", true);
         var tokens = tester.GetService<AdminAccessTokenService>();
-        var issued = await tokens.Create(admin.Id, "Suspended account", 30);
-        var otherIssued = await tokens.Create(other.Id, "Unaffected account", 30);
+        var issued = (await tokens.Create(admin.Id, "Suspended account", 30, admin.SecurityStamp))!;
+        var otherIssued = (await tokens.Create(other.Id, "Unaffected account", 30, other.SecurityStamp))!;
         using var agent = tester.CreateHttpClient();
         agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
         using var otherAgent = tester.CreateHttpClient();
@@ -497,6 +497,120 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var revoke = await browser.PostAsync($"{path}/{id}/revoke", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = Csrf(html) }));
         Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
         Assert.True(await conn.ExecuteScalarAsync<bool>("SELECT revoked_at IS NOT NULL FROM admin_access_tokens WHERE id = @id", new { id }));
+    }
+
+    [Fact]
+    public async Task StaleBrowserSessionsCannotCreateOrRevokeTokensAfterACredentialChange()
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "admin@example.com", true);
+        const string path = "/account/admin-access-tokens";
+        using var creator = HttpTestHelpers.CreateBrowser(tester);
+        using var revoker = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(creator, admin.Email!, "test-password:with-colons:123");
+        await HttpTestHelpers.LogIn(revoker, admin.Email!, "test-password:with-colons:123");
+        var creatorPage = await creator.GetStringAsync(path);
+
+        var reset = await users.GeneratePasswordResetTokenAsync(admin);
+        Assert.True((await users.ResetPasswordAsync(admin, reset, "new-password:123")).Succeeded);
+        // Issue with the current stamp: this token is still usable after the credential change.
+        var issued = (await tester.GetService<AdminAccessTokenService>().Create(admin.Id, "Current credentials", 30, admin.SecurityStamp))!;
+        using var agent = tester.CreateHttpClient();
+        agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
+        // The old cookie can still read the list during periodic validation and learn the new token ID.
+        var revokerPage = await revoker.GetStringAsync(path);
+        Assert.Contains(issued.Id.ToString(), revokerPage);
+
+        using var create = await creator.PostAsync(path, new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Creation.Name"] = "Stale session", ["Creation.ExpiresInDays"] = "7",
+            ["__RequestVerificationToken"] = HttpTestHelpers.AntiforgeryToken(creatorPage)
+        }));
+        using var revoke = await revoker.PostAsync($"{path}/{issued.Id}/revoke", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = HttpTestHelpers.AntiforgeryToken(revokerPage)
+        }));
+
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_access_tokens"));
+        Assert.False(await conn.ExecuteScalarAsync<bool>("SELECT revoked_at IS NOT NULL FROM admin_access_tokens WHERE id = @id", new { id = issued.Id }));
+        Assert.Equal(HttpStatusCode.OK, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
+        foreach (var (browser, response) in new[] { (creator, create), (revoker, revoke) })
+        {
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.Equal("/login", new Uri(browser.BaseAddress!, response.Headers.Location!).AbsolutePath);
+            using var signedOut = await browser.GetAsync("/account/details");
+            Assert.Equal(HttpStatusCode.Redirect, signedOut.StatusCode);
+            Assert.Equal("/login", new Uri(browser.BaseAddress!, signedOut.Headers.Location!).AbsolutePath);
+        }
+    }
+
+    [Fact]
+    public async Task BasicTokenChangesWaitForAConcurrentCredentialChangeAndThenRefuse()
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "admin@example.com", true);
+        using var issuer = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        var existing = await IssueToken(issuer);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await using var observer = await tester.GetService<DBConnectionFactory>().Open();
+        // Hold a stamp change uncommitted, as Identity's update is while a password reset commits.
+        await using var change = await conn.BeginTransactionAsync();
+        await conn.ExecuteAsync("""UPDATE "AspNetUsers" SET "SecurityStamp" = 'ROTATED' WHERE "Id" = @id""", new { id = admin.Id }, change);
+        var pending = new[]
+        {
+            issuer.PostAsJsonAsync("/api/v1/admin/access-tokens", new { name = "During the change", expiresInDays = 30 }),
+            issuer.DeleteAsync($"/api/v1/admin/access-tokens/{existing["id"]}")
+        };
+        try
+        {
+            using var waitTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            // Both requests authenticated with the old stamp. A second waiter can block behind the first,
+            // rather than directly behind our transaction.
+            while (await observer.ExecuteScalarAsync<int>(new CommandDefinition("""
+                       WITH RECURSIVE blocked(pid) AS (
+                           SELECT @blockingPid
+                           UNION
+                           SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid))
+                           WHERE a.datname = current_database()
+                       )
+                       SELECT count(*) FROM blocked WHERE pid <> @blockingPid
+                       """, new { blockingPid = conn.ProcessID }, cancellationToken: waitTimeout.Token)) < 2)
+            {
+                Assert.All(pending, request => Assert.False(request.IsCompleted,
+                    "Token creation and revocation must wait for the credential change."));
+                await Task.Delay(10, waitTimeout.Token);
+            }
+            await change.CommitAsync(waitTimeout.Token);
+
+            var responses = await Task.WhenAll(pending).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.All(responses, response => Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode));
+        }
+        finally
+        {
+            await change.DisposeAsync();
+            try
+            {
+                await Task.WhenAll(pending).WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch
+            {
+                // Preserve the original failure while releasing both blocked requests.
+            }
+        }
+
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_access_tokens"));
+        Assert.False(await conn.ExecuteScalarAsync<bool>("SELECT revoked_at IS NOT NULL FROM admin_access_tokens"));
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type = 'admin.token_revoked'"));
+        // The password did not change, so a new request authenticates with the new stamp.
+        var retried = await IssueToken(issuer, "After the change");
+        using var agent = tester.CreateHttpClient();
+        agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", retried["token"]!.Value<string>());
+        Assert.Equal(HttpStatusCode.OK, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
     }
 
     [Fact]

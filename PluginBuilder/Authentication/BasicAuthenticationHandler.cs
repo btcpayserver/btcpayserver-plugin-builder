@@ -49,7 +49,12 @@ public class BasicAuthenticationHandler : AuthenticationHandler<PluginBuilderAut
         if (!result.Succeeded || await _userManager.GetTwoFactorEnabledAsync(user))
             return AuthenticateResult.Fail("Invalid Basic credentials.");
 
-        List<Claim> claims = new() { new Claim(_identityOptions.CurrentValue.ClaimsIdentity.UserIdClaimType, user.Id) };
+        // Like a sign-in cookie, carry the stamp checked here so admin token changes can refuse a concurrent credential change.
+        List<Claim> claims = new()
+        {
+            new Claim(_identityOptions.CurrentValue.ClaimsIdentity.UserIdClaimType, user.Id),
+            new Claim(_identityOptions.CurrentValue.ClaimsIdentity.SecurityStampClaimType, await _userManager.GetSecurityStampAsync(user))
+        };
         claims.AddRange((await _userManager.GetRolesAsync(user)).Select(s => new Claim(_identityOptions.CurrentValue.ClaimsIdentity.RoleClaimType, s)));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, PluginBuilderAuthenticationSchemes.BasicAuth));
 

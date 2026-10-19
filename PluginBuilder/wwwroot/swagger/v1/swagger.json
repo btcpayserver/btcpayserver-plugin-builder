@@ -1542,7 +1542,7 @@
             "description": "Invalid name/lifetime."
           },
           "401": {
-            "description": "Basic authentication required."
+            "description": "Basic authentication required, or the credentials changed while the request was running."
           },
           "403": {
             "description": "Admin role required."
@@ -1604,7 +1604,7 @@
             "description": "Revoked."
           },
           "401": {
-            "description": "Basic authentication required."
+            "description": "Basic authentication required, or the credentials changed while the request was running."
           },
           "403": {
             "description": "Admin role required."
