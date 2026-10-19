@@ -301,6 +301,96 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(HttpStatusCode.Unauthorized, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedPasswordLockoutsDoNotInterruptAdminTokens(bool browserLogin)
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "admin@example.com", true);
+        using var issuer = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        var issued = await IssueToken(issuer);
+        using var agent = tester.CreateHttpClient();
+        agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued["token"]!.Value<string>());
+        Assert.Equal(HttpStatusCode.OK, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
+
+        using var browser = HttpTestHelpers.CreateBrowser(tester);
+        using var attacker = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "wrong-password");
+        for (var i = 0; i < 5; i++)
+        {
+            if (browserLogin)
+            {
+                var page = await browser.GetStringAsync("/login");
+                using var response = await browser.PostAsync("/login", new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["Email"] = admin.Email!, ["Password"] = "wrong-password",
+                    ["__RequestVerificationToken"] = HttpTestHelpers.AntiforgeryToken(page)
+                }));
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            }
+            else
+                Assert.Equal(HttpStatusCode.Unauthorized, (await attacker.GetAsync("/api/v1/admin/me")).StatusCode);
+        }
+
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        Assert.True(await conn.ExecuteScalarAsync<bool>(
+            "SELECT \"LockoutEnabled\" AND \"LockoutEnd\" > CURRENT_TIMESTAMP FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = admin.Id }));
+        Assert.Equal(admin.SecurityStamp, await conn.ExecuteScalarAsync<string>(
+            "SELECT \"SecurityStamp\" FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = admin.Id }));
+        Assert.False(await conn.ExecuteScalarAsync<bool>(
+            "SELECT EXISTS(SELECT 1 FROM admin_account_locks WHERE user_id = @id)", new { id = admin.Id }));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await issuer.GetAsync("/api/v1/admin/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await issuer.GetAsync("/api/v1/admin/access-tokens")).StatusCode);
+        // The correct password stays locked in the browser too; only the independent token keeps working.
+        var login = await browser.GetStringAsync("/login");
+        using var deniedLogin = await browser.PostAsync("/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Email"] = admin.Email!, ["Password"] = "test-password:with-colons:123",
+            ["__RequestVerificationToken"] = HttpTestHelpers.AntiforgeryToken(login)
+        }));
+        Assert.Equal(HttpStatusCode.OK, deniedLogin.StatusCode);
+        using var account = await browser.GetAsync("/account/details");
+        Assert.Equal(HttpStatusCode.Redirect, account.StatusCode);
+        Assert.Contains("/login", account.Headers.Location!.OriginalString);
+        using var meResponse = await agent.GetAsync("/api/v1/admin/me");
+        Assert.Equal(HttpStatusCode.OK, meResponse.StatusCode);
+        var me = JObject.Parse(await meResponse.Content.ReadAsStringAsync());
+        Assert.Equal(admin.Id, me.Value<string>("id"));
+    }
+
+    [Fact]
+    public async Task ActiveAdministrativeSuspensionBlocksOnlyThatAccountsAdminTokens()
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "admin@example.com", true);
+        var other = await AddUser(users, "other-admin@example.com", true);
+        var tokens = tester.GetService<AdminAccessTokenService>();
+        var issued = await tokens.Create(admin.Id, "Suspended account", 30);
+        var otherIssued = await tokens.Create(other.Id, "Unaffected account", 30);
+        using var agent = tester.CreateHttpClient();
+        agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
+        using var otherAgent = tester.CreateHttpClient();
+        otherAgent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", otherIssued.Token);
+        Assert.Equal(HttpStatusCode.OK, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        // Admins cannot be locked through the API, but an already suspended account may later be given the role.
+        // Keep the stamp unchanged to verify suspension independently of credential invalidation.
+        await conn.ExecuteAsync("""
+            INSERT INTO admin_account_locks(user_id, locked_until, reason, locked_by)
+            VALUES (@id, CURRENT_TIMESTAMP + INTERVAL '5 minutes', 'Suspension fixture', @by)
+            """, new { id = admin.Id, by = other.Id });
+        Assert.Equal(HttpStatusCode.Unauthorized, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await otherAgent.GetAsync("/api/v1/admin/me")).StatusCode);
+        await conn.ExecuteAsync("""
+            UPDATE admin_account_locks SET locked_until = CURRENT_TIMESTAMP - INTERVAL '1 second' WHERE user_id = @id
+            """, new { id = admin.Id });
+        Assert.Equal(HttpStatusCode.OK, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
+    }
+
     [Fact]
     public async Task BasicAuthRejectsMalformedHeadersAndDoesNotCreateBrowserSessions()
     {
