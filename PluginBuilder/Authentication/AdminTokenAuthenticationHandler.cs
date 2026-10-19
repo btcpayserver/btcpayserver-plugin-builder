@@ -25,12 +25,14 @@ public class AdminTokenAuthenticationHandler(IOptionsMonitor<AuthenticationSchem
         if (!token.StartsWith(Prefix, StringComparison.Ordinal) || token.Length != Prefix.Length + 64)
             return AuthenticateResult.Fail("Invalid admin access token.");
         await using var conn = await connections.Open(Context.RequestAborted);
-        // Recheck revocation, expiry, security stamp, lockout and roles on every request.
+        // Recheck revocation, expiry, security stamp, administrative suspension and roles on every request.
+        // Failed-password lockouts must not let someone who knows the email interrupt an admin's automation.
         var identity = await conn.QuerySingleOrDefaultAsync<TokenIdentity>(new CommandDefinition("""
             UPDATE admin_access_tokens t SET last_used_at = CURRENT_TIMESTAMP FROM "AspNetUsers" u
             WHERE t.user_id = u."Id" AND t.token_hash = @hash AND t.revoked_at IS NULL AND t.expires_at > CURRENT_TIMESTAMP
               AND t.security_stamp IS NOT DISTINCT FROM u."SecurityStamp"
-              AND (NOT u."LockoutEnabled" OR u."LockoutEnd" IS NULL OR u."LockoutEnd" <= CURRENT_TIMESTAMP)
+              AND NOT EXISTS (SELECT 1 FROM admin_account_locks l
+                              WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP)
             RETURNING t.id AS TokenId, t.user_id AS UserId,
               EXISTS(SELECT 1 FROM "AspNetUserRoles" ur JOIN "AspNetRoles" r ON r."Id" = ur."RoleId"
                      WHERE ur."UserId" = t.user_id AND r."Name" = 'ServerAdmin') AS IsAdmin

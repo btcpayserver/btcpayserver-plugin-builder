@@ -3008,7 +3008,7 @@
       "AdminToken": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Revocable admin access token issued in Account Settings. Admin API only; token management requires Basic auth."
+        "description": "Revocable admin access token issued in Account Settings. Admin API only; token management requires Basic auth. Failed-password lockouts do not interrupt admin tokens; an administrative account suspension blocks them. Revocation, expiration, security-stamp changes and removal of the admin role still end access."
       },
       "PublisherToken": {
         "type": "http",

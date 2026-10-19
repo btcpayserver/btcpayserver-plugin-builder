@@ -17,10 +17,12 @@ Tokens grant the account's admin API access, including private/unlisted plugin a
 user inspection and listing decisions. They have no granular scopes. Tokens cannot
 create new tokens or revoke other tokens, and do not create browser sessions.
 Issue them only to agents you trust with server-admin inspection and review access.
-Each request rechecks revocation, expiration, account lockout, current admin role,
-and the account's Identity security stamp. Password resets/security-stamp changes
-invalidate existing tokens. Removing the admin role immediately denies access;
-restoring the role restores otherwise valid tokens. Revoke tokens permanently when
+Each request rechecks revocation, expiration, administrative suspension, current admin
+role, and the account's Identity security stamp. Failed-password lockouts still block
+browser login and Basic authentication, but do not interrupt otherwise valid admin
+tokens. Password resets/security-stamp changes invalidate existing tokens. Removing
+the admin role immediately denies access; restoring the role restores otherwise
+valid tokens. Revoke tokens permanently when
 retiring an agent. An already running request may finish after revocation.
 
 The database stores only a SHA-256 hash of each random 256-bit token. Preserve its
