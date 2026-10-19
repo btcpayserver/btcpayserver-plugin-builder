@@ -413,6 +413,50 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Theory]
+    [InlineData(null, 0)]
+    [InlineData(null, 1)]
+    [InlineData("", 0)]
+    [InlineData("", 1)]
+    public async Task BasicAuthRefusesMissingSecurityStampsWithoutChangingTokens(string? securityStamp, int failedAttempts)
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "missing-stamp@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.UserName!, "test-password:with-colons:123");
+        var issued = await IssueToken(client);
+        var tokenId = issued["id"]!.ToObject<Guid>();
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        var slug = new PluginSlug("missing-stamp");
+        Assert.True(await conn.NewPlugin(slug, admin.Id));
+        using (var current = await client.GetAsync($"/api/v1/plugins/{slug}/builds"))
+            Assert.Equal(HttpStatusCode.OK, current.StatusCode);
+
+        // Identity normally supplies a stamp; exercise inconsistent stored data without fixing it on sign-in.
+        await conn.ExecuteAsync("""
+            UPDATE "AspNetUsers" SET "SecurityStamp" = @securityStamp, "AccessFailedCount" = @failedAttempts WHERE "Id" = @id
+            """, new { securityStamp, failedAttempts, id = admin.Id });
+
+        using var adminRead = await client.GetAsync("/api/v1/admin/me");
+        using var publisherRead = await client.GetAsync($"/api/v1/plugins/{slug}/builds");
+        using var create = await client.PostAsJsonAsync("/api/v1/admin/access-tokens", new { name = "Missing stamp" });
+        using var revoke = await client.DeleteAsync($"/api/v1/admin/access-tokens/{tokenId}");
+        foreach (var response in new[] { adminRead, publisherRead, create, revoke })
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.False(response.Headers.Contains("Set-Cookie"));
+        }
+
+        Assert.Equal(securityStamp, await conn.ExecuteScalarAsync<string?>(
+            """SELECT "SecurityStamp" FROM "AspNetUsers" WHERE "Id" = @id""", new { id = admin.Id }));
+        Assert.Equal(failedAttempts, await conn.ExecuteScalarAsync<int>(
+            """SELECT "AccessFailedCount" FROM "AspNetUsers" WHERE "Id" = @id""", new { id = admin.Id }));
+        Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_access_tokens"));
+        Assert.False(await conn.ExecuteScalarAsync<bool>("SELECT revoked_at IS NOT NULL FROM admin_access_tokens WHERE id = @tokenId", new { tokenId }));
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type = 'admin.token_revoked'"));
+    }
+
+    [Theory]
     [InlineData(true, true, false, HttpStatusCode.Unauthorized)]
     [InlineData(true, true, true, HttpStatusCode.OK)]
     [InlineData(false, true, false, HttpStatusCode.OK)]

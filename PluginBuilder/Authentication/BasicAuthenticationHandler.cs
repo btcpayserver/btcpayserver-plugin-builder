@@ -41,7 +41,7 @@ public class BasicAuthenticationHandler : AuthenticationHandler<PluginBuilderAut
             return AuthenticateResult.Fail("Invalid Basic credentials.");
 
         var user = await _userManager.FindByNameAsync(username);
-        if (user is null)
+        if (user is null || string.IsNullOrEmpty(user.SecurityStamp))
             return AuthenticateResult.Fail("Invalid Basic credentials.");
         // Validate each API request without issuing a persistent browser cookie.
         // CheckPasswordSignInAsync retains Identity lockout checks.
@@ -53,7 +53,7 @@ public class BasicAuthenticationHandler : AuthenticationHandler<PluginBuilderAut
         List<Claim> claims = new()
         {
             new Claim(_identityOptions.CurrentValue.ClaimsIdentity.UserIdClaimType, user.Id),
-            new Claim(_identityOptions.CurrentValue.ClaimsIdentity.SecurityStampClaimType, await _userManager.GetSecurityStampAsync(user))
+            new Claim(_identityOptions.CurrentValue.ClaimsIdentity.SecurityStampClaimType, user.SecurityStamp)
         };
         claims.AddRange((await _userManager.GetRolesAsync(user)).Select(s => new Claim(_identityOptions.CurrentValue.ClaimsIdentity.RoleClaimType, s)));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, PluginBuilderAuthenticationSchemes.BasicAuth));
