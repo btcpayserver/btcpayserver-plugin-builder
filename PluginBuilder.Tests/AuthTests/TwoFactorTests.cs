@@ -76,6 +76,12 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Assert.Equal(TwoFactorSetup.RecoveryCodeCount, codes.Length);
         }
 
+        var otherEmail = $"2fa-unaffected-{Guid.NewGuid():N}@example.com";
+        var otherUserId = await tester.CreateFakeUserAsync(otherEmail, Password);
+        using var otherBrowser = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(otherBrowser, otherEmail, Password);
+        var otherKey = SharedKey(await Page(otherBrowser, "/account/2fa/enable"));
+
         string resetToken;
         using (var scope = tester.WebApp.Services.CreateScope())
         {
@@ -127,6 +133,13 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(twoFactorEnabled, after.Enabled);
         Assert.Equal(before.OtherTokens, after.OtherTokens);
         Assert.Equal(twoFactorEnabled ? key : null, after.Key);
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var otherUser = (await users.FindByIdAsync(otherUserId))!;
+            Assert.Equal(otherKey, await users.GetAuthenticatorKeyAsync(otherUser));
+            Assert.False(otherUser.TwoFactorEnabled);
+        }
         using var fresh = HttpTestHelpers.CreateBrowser(tester);
         var next = await PasswordStep(fresh, email, newPassword);
         if (twoFactorEnabled)
