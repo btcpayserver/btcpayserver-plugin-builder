@@ -1,4 +1,6 @@
+using System.Data.Common;
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
@@ -50,6 +52,167 @@ public class TwoFactorSetupTests
 public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     private const string Password = "123456";
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task PasswordResetAndAdministrativeLockDiscardOnlyInactiveAuthenticatorKeys(bool administrativeLock, bool twoFactorEnabled)
+    {
+        await using var tester = await StartServer("TwoFactorPendingKey");
+        var email = $"2fa-pending-{Guid.NewGuid():N}@example.com";
+        var userId = await tester.CreateFakeUserAsync(email, Password);
+        using var browser = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(browser, email, Password);
+        var setup = await Page(browser, "/account/2fa/enable");
+        var key = SharedKey(setup);
+        string[] codes = [];
+        if (twoFactorEnabled)
+        {
+            using var enabled = await Post(browser, "/account/2fa/enable", setup, ("Code", Totp(key)));
+            Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+            codes = RecoveryCodes(await enabled.Content.ReadAsStringAsync());
+            Assert.Equal(TwoFactorSetup.RecoveryCodeCount, codes.Length);
+        }
+
+        string resetToken;
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = (await users.FindByIdAsync(userId))!;
+            // Another provider may use the same name; only Identity's authenticator key is pending setup.
+            Assert.True((await users.SetAuthenticationTokenAsync(user, "other-provider", "AuthenticatorKey", "keep-me")).Succeeded);
+            resetToken = await users.GeneratePasswordResetTokenAsync(user);
+        }
+        var before = await ReadState();
+        Assert.Equal(key, before.Key);
+        var newPassword = administrativeLock ? Password : Password + "-new";
+
+        if (administrativeLock)
+        {
+            var adminEmail = $"admin-{Guid.NewGuid():N}@example.com";
+            var adminId = await tester.CreateFakeUserAsync(adminEmail, Password);
+            using (var scope = tester.WebApp.Services.CreateScope())
+            {
+                var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+                var admin = (await users.FindByIdAsync(adminId))!;
+                Assert.True((await users.AddToRoleAsync(admin, Roles.ServerAdmin)).Succeeded);
+            }
+            using var moderation = tester.CreateHttpClient().SetBasicAuth(adminEmail, Password);
+            using var locked = await moderation.PostAsJsonAsync($"/api/v1/admin/users/{userId}/lock", new { reason = "Pending authenticator fixture" });
+            Assert.Equal(HttpStatusCode.OK, locked.StatusCode);
+            Assert.Equal(twoFactorEnabled ? key : null, (await ReadState()).Key);
+            using var unlocked = await moderation.PostAsJsonAsync($"/api/v1/admin/users/{userId}/unlock", new { reason = "Fixture resolved" });
+            Assert.Equal(HttpStatusCode.OK, unlocked.StatusCode);
+        }
+        else
+        {
+            var resetPage = await Page(browser, "/passwordreset?email=" + Uri.EscapeDataString(email) + "&code=" + Uri.EscapeDataString(resetToken));
+            using (var refused = await Post(browser, "/passwordreset", resetPage, ("Email", email),
+                       ("PasswordResetToken", "invalid-reset-token"), ("Password", newPassword), ("ConfirmPassword", newPassword)))
+            {
+                Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
+                Assert.Contains("Invalid token", await refused.Content.ReadAsStringAsync());
+                Assert.Equal(before, await ReadState());
+            }
+            using var reset = await Post(browser, "/passwordreset", resetPage, ("Email", email),
+                ("PasswordResetToken", resetToken), ("Password", newPassword), ("ConfirmPassword", newPassword));
+            Assert.Equal(HttpStatusCode.Redirect, reset.StatusCode);
+            Assert.Equal("/login", new Uri(browser.BaseAddress!, reset.Headers.Location!).AbsolutePath);
+        }
+
+        var after = await ReadState();
+        Assert.NotEqual(before.Stamp, after.Stamp);
+        Assert.Equal(twoFactorEnabled, after.Enabled);
+        Assert.Equal(before.OtherTokens, after.OtherTokens);
+        Assert.Equal(twoFactorEnabled ? key : null, after.Key);
+        using var fresh = HttpTestHelpers.CreateBrowser(tester);
+        var next = await PasswordStep(fresh, email, newPassword);
+        if (twoFactorEnabled)
+        {
+            await AssertSignedOut(fresh);
+            var codePage = await Page(fresh, next);
+            using var accepted = await Post(fresh, "/login/2fa", codePage, ("TwoFactorCode", Totp(key)));
+            Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
+            await AssertSignedIn(fresh);
+            // Both the existing authenticator and recovery codes must remain usable.
+            using var recovery = HttpTestHelpers.CreateBrowser(tester);
+            await PasswordStep(recovery, email, newPassword);
+            var recoveryPage = await Page(recovery, "/login/recovery-code");
+            using var recovered = await Post(recovery, "/login/recovery-code", recoveryPage, ("RecoveryCode", codes[0]));
+            Assert.Equal(HttpStatusCode.Redirect, recovered.StatusCode);
+            await AssertSignedIn(recovery);
+            Assert.Equal(TwoFactorSetup.RecoveryCodeCount - 1, await RecoveryCodesLeft(tester, email));
+        }
+        else
+        {
+            await AssertSignedIn(fresh);
+            var replacement = SharedKey(await Page(fresh, "/account/2fa/enable"));
+            Assert.NotEqual(key, replacement);
+            Assert.False(await TwoFactorEnabled(tester, email));
+        }
+
+        async Task<(string? Key, bool Enabled, string? Stamp, string OtherTokens)> ReadState()
+        {
+            using var scope = tester.WebApp.Services.CreateScope();
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = (await users.FindByIdAsync(userId))!;
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext<IdentityUser>>();
+            var otherTokens = await db.Set<IdentityUserToken<string>>().AsNoTracking()
+                .Where(t => t.UserId == userId && !(t.LoginProvider == "[AspNetUserStore]" && t.Name == "AuthenticatorKey"))
+                .OrderBy(t => t.LoginProvider).ThenBy(t => t.Name).Select(t => t.LoginProvider + ":" + t.Name + ":" + t.Value).ToArrayAsync();
+            return (await users.GetAuthenticatorKeyAsync(user), user.TwoFactorEnabled, user.SecurityStamp, string.Join("|", otherTokens));
+        }
+    }
+
+    [Fact]
+    public async Task FailedPendingKeyDeletionRollsBackThePasswordChange()
+    {
+        var failure = new PendingKeyDeleteFailure();
+        await using var tester = await StartServer("TwoFactorPendingKeyRollback", failure);
+        var email = $"2fa-pending-rollback-{Guid.NewGuid():N}@example.com";
+        var userId = await tester.CreateFakeUserAsync(email, Password);
+        using var browser = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(browser, email, Password);
+        var key = SharedKey(await Page(browser, "/account/2fa/enable"));
+        string resetToken;
+        string? stamp;
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = (await users.FindByIdAsync(userId))!;
+            stamp = user.SecurityStamp;
+            resetToken = await users.GeneratePasswordResetTokenAsync(user);
+        }
+        var resetPage = await Page(browser, "/passwordreset?email=" + Uri.EscapeDataString(email) + "&code=" + Uri.EscapeDataString(resetToken));
+        const string newPassword = Password + "-new";
+        failure.Enabled = true;
+        using (var failed = await Post(browser, "/passwordreset", resetPage, ("Email", email),
+                   ("PasswordResetToken", resetToken), ("Password", newPassword), ("ConfirmPassword", newPassword)))
+            Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
+        Assert.True(failure.WasTriggered);
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = (await users.FindByIdAsync(userId))!;
+            Assert.Equal(stamp, user.SecurityStamp);
+            Assert.Equal(key, await users.GetAuthenticatorKeyAsync(user));
+            Assert.True(await users.CheckPasswordAsync(user, Password));
+            Assert.False(await users.CheckPasswordAsync(user, newPassword));
+        }
+
+        // A rolled-back reset must leave its original reset link usable for a retry.
+        failure.Enabled = false;
+        using var retried = await Post(browser, "/passwordreset", resetPage, ("Email", email),
+            ("PasswordResetToken", resetToken), ("Password", newPassword), ("ConfirmPassword", newPassword));
+        Assert.Equal(HttpStatusCode.Redirect, retried.StatusCode);
+        using var finalScope = tester.WebApp.Services.CreateScope();
+        var finalUsers = finalScope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var current = (await finalUsers.FindByIdAsync(userId))!;
+        Assert.Null(await finalUsers.GetAuthenticatorKeyAsync(current));
+        Assert.True(await finalUsers.CheckPasswordAsync(current, newPassword));
+    }
 
     [Theory]
     [InlineData("GET", "enable", false)]
@@ -561,16 +724,34 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         }
     }
 
-    private async Task<ServerTester> StartServer(string name, FailedIdentityUpdate? failure = null)
+    private sealed class PendingKeyDeleteFailure : DbCommandInterceptor
+    {
+        public bool Enabled { get; set; }
+        public bool WasTriggered { get; private set; }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command,
+            CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (Enabled && command.CommandText.StartsWith("DELETE", StringComparison.OrdinalIgnoreCase) &&
+                command.CommandText.Contains("\"AspNetUserTokens\""))
+            {
+                WasTriggered = true;
+                throw new InvalidOperationException("Fixture failure while deleting the pending authenticator key.");
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private async Task<ServerTester> StartServer(string name, IInterceptor? interceptor = null)
     {
         var tester = Create(name);
         tester.ReuseDatabase = false;
         tester.ConfigureServices = services =>
         {
             WithoutBackgroundServices(services);
-            if (failure is not null)
+            if (interceptor is not null)
             {
-                services.AddDbContext<IdentityDbContext<IdentityUser>>(options => options.AddInterceptors(failure));
+                services.AddDbContext<IdentityDbContext<IdentityUser>>(options => options.AddInterceptors(interceptor));
             }
         };
         await tester.Start();

@@ -929,6 +929,7 @@ public class HomeController(
             return View(model);
         }
 
+        await using var transaction = await identityDbContext.Database.BeginTransactionAsync(HttpContext.RequestAborted);
         var result = await userManager.ResetPasswordAsync(user, model.PasswordResetToken, model.Password);
         if (!result.Succeeded)
         {
@@ -937,6 +938,13 @@ public class HomeController(
 
             return View(model);
         }
+
+        // A pending key may have been read by the old session. Discard it with the password change, preserving active 2FA.
+        if (!user.TwoFactorEnabled)
+            await identityDbContext.Set<IdentityUserToken<string>>()
+                .Where(t => t.UserId == user.Id && t.LoginProvider == "[AspNetUserStore]" && t.Name == "AuthenticatorKey")
+                .ExecuteDeleteAsync(HttpContext.RequestAborted);
+        await transaction.CommitAsync(HttpContext.RequestAborted);
 
         return RedirectToAction(nameof(Login));
     }
