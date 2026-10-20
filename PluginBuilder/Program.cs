@@ -372,6 +372,9 @@ public class Program
             opt.AccessDeniedPath = "/errors/403";
             opt.LogoutPath = "/logout";
         });
+        // .NET 11 fixes pending 2FA logins surviving credential changes:
+        // https://github.com/dotnet/aspnetcore/pull/68350
+        // Remove this workaround after upgrading to a version containing the fix and verifying the 2FA regression tests.
         services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.TwoFactorUserIdScheme, opt =>
         {
             opt.Events.OnSigningIn = async context =>
