@@ -38,6 +38,11 @@ or conversation output. Token issuance/revocation is also available with Basic a
 Paths in tables are relative to `/api/v1`. A browser session uses antiforgery-protected
 forms; API token management requires Basic authentication. An agent using a token
 cannot obtain replacement credentials if the operator revokes its access.
+Creating or revoking a token also requires the account's security stamp to still be the
+one the request authenticated with. A browser session that predates a password reset or
+another stamp change is signed out without changing any token, even before its periodic
+validation. A stamp change committed while the request runs also refuses it (HTTP 401 for
+Basic auth).
 
 ## Local connection file
 
