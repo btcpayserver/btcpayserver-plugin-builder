@@ -1,8 +1,11 @@
 using System.Data.Common;
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.AspNetCore.WebUtilities;
@@ -52,6 +55,145 @@ public class TwoFactorSetupTests
 public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     private const string Password = "123456";
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task PendingLoginsAreRefusedAfterCredentialChanges(bool recoveryCode, bool resetPassword)
+    {
+        await using var tester = await StartServer("TwoFactorPendingStamp");
+        var email = $"pending-{Guid.NewGuid():N}@example.com";
+        var (id, key, codes) = await CreateTwoFactorAccount(tester, email);
+        using var pending = HttpTestHelpers.CreateBrowser(tester);
+        using var pendingGet = HttpTestHelpers.CreateBrowser(tester);
+        await PasswordStep(pending, email, Password);
+        await PasswordStep(pendingGet, email, Password);
+        var path = recoveryCode ? "/login/recovery-code" : "/login/2fa";
+        var page = await Page(pending, path);
+        var currentPassword = resetPassword ? Password + "-new" : Password;
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = (await users.FindByIdAsync(id))!;
+            if (resetPassword)
+            {
+                var reset = await users.GeneratePasswordResetTokenAsync(user);
+                using var owner = HttpTestHelpers.CreateBrowser(tester);
+                var resetPage = await Page(owner, "/passwordreset?email=" + Uri.EscapeDataString(email) + "&code=" + Uri.EscapeDataString(reset));
+                using var changed = await Post(owner, "/passwordreset", resetPage, ("Email", email),
+                    ("PasswordResetToken", reset), ("Password", currentPassword), ("ConfirmPassword", currentPassword));
+                Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
+            }
+            else
+                Assert.True((await users.UpdateSecurityStampAsync(user)).Succeeded);
+        }
+
+        var field = recoveryCode ? "RecoveryCode" : "TwoFactorCode";
+        using (var refused = await Post(pending, path, page, (field, recoveryCode ? codes[0] : Totp(key)), ("RememberMachine", "true")))
+        {
+            Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+            Assert.Equal("/login", new Uri(pending.BaseAddress!, refused.Headers.Location!).AbsolutePath);
+            var cookieName = tester.GetService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.TwoFactorUserIdScheme).Cookie.Name;
+            Assert.Contains(refused.Headers.GetValues("Set-Cookie"), header => header.StartsWith($"{cookieName}=;", StringComparison.Ordinal));
+        }
+        using (var refused = await pendingGet.GetAsync(path))
+        {
+            Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+            Assert.Equal("/login", new Uri(pendingGet.BaseAddress!, refused.Headers.Location!).AbsolutePath);
+        }
+        await AssertSignedOut(pending);
+        using (var cleared = await pending.GetAsync(path))
+            Assert.Equal("/login", new Uri(pending.BaseAddress!, cleared.Headers.Location!).AbsolutePath);
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount, await RecoveryCodesLeft(tester, email));
+
+        // A fresh password step still accepts the same second factor; stale attempts must not consume a recovery code.
+        using var fresh = HttpTestHelpers.CreateBrowser(tester);
+        Assert.StartsWith("/login/2fa", await PasswordStep(fresh, email, currentPassword));
+        using (var accepted = await Post(fresh, path, await Page(fresh, path), (field, recoveryCode ? codes[0] : Totp(key))))
+            Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
+        await AssertSignedIn(fresh);
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount - (recoveryCode ? 1 : 0), await RecoveryCodesLeft(tester, email));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PendingCookieWithoutAStampRequiresThePasswordAgain(bool recoveryCode)
+    {
+        await using var tester = await StartServer("TwoFactorLegacyPendingCookie");
+        var email = $"legacy-{Guid.NewGuid():N}@example.com";
+        var (id, key, codes) = await CreateTwoFactorAccount(tester, email);
+        using var browser = HttpTestHelpers.CreateBrowser(tester);
+        var form = await Page(browser, "/login");
+        var options = tester.GetService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.TwoFactorUserIdScheme);
+        string Protect(string? stamp)
+        {
+            var identity = new ClaimsIdentity(IdentityConstants.TwoFactorUserIdScheme);
+            identity.AddClaim(new Claim(ClaimTypes.Name, id));
+            if (stamp is not null)
+                identity.AddClaim(new Claim(tester.GetService<IOptions<IdentityOptions>>().Value.ClaimsIdentity.SecurityStampClaimType, stamp));
+            return options.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(identity), new AuthenticationProperties
+            {
+                IssuedUtc = DateTimeOffset.UtcNow,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(5)
+            }, IdentityConstants.TwoFactorUserIdScheme));
+        }
+        string currentStamp;
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            currentStamp = await users.GetSecurityStampAsync((await users.FindByIdAsync(id))!);
+        }
+        // Exercise the same cookie injection with a current stamp before checking the legacy cookie.
+        using (var control = HttpTestHelpers.CreateBrowser(tester))
+        {
+            await Page(control, "/login");
+            control.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={Protect(currentStamp)}");
+            using var accepted = await control.GetAsync(recoveryCode ? "/login/recovery-code" : "/login/2fa");
+            Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        }
+        // The pending cookie issued before this change contained only the user ID.
+        browser.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={Protect(null)}");
+        using var refused = await Post(browser, recoveryCode ? "/login/recovery-code" : "/login/2fa", form,
+            (recoveryCode ? "RecoveryCode" : "TwoFactorCode", recoveryCode ? codes[0] : Totp(key)));
+        Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.Equal("/login", new Uri(browser.BaseAddress!, refused.Headers.Location!).AbsolutePath);
+        await AssertSignedOut(browser);
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount, await RecoveryCodesLeft(tester, email));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PendingCookieKeepsTheStampFromThePasswordStep(bool recoveryCode)
+    {
+        await using var tester = await StartServer("TwoFactorPendingIssuanceRace", configure: services =>
+            services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.TwoFactorUserIdScheme, options =>
+            {
+                var signingIn = options.Events.OnSigningIn;
+                options.Events.OnSigningIn = async context =>
+                {
+                    // Rotate after Identity verified the password but before it writes the pending cookie.
+                    using var scope = context.HttpContext.RequestServices.CreateScope();
+                    var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+                    var user = (await users.FindByIdAsync(context.Principal!.Identity!.Name!))!;
+                    Assert.True((await users.UpdateSecurityStampAsync(user)).Succeeded);
+                    await signingIn(context);
+                };
+            }));
+        var email = $"issuance-{Guid.NewGuid():N}@example.com";
+        var (_, key, codes) = await CreateTwoFactorAccount(tester, email);
+        using var browser = HttpTestHelpers.CreateBrowser(tester);
+        Assert.StartsWith("/login/2fa", await PasswordStep(browser, email, Password));
+        using var refused = await Post(browser, recoveryCode ? "/login/recovery-code" : "/login/2fa", await Page(browser, "/login"),
+            (recoveryCode ? "RecoveryCode" : "TwoFactorCode", recoveryCode ? codes[0] : Totp(key)));
+        Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.Equal("/login", new Uri(browser.BaseAddress!, refused.Headers.Location!).AbsolutePath);
+        await AssertSignedOut(browser);
+        Assert.Equal(TwoFactorSetup.RecoveryCodeCount, await RecoveryCodesLeft(tester, email));
+    }
 
     [Theory]
     [InlineData(false, false)]
@@ -755,7 +897,7 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         }
     }
 
-    private async Task<ServerTester> StartServer(string name, IInterceptor? interceptor = null)
+    private async Task<ServerTester> StartServer(string name, IInterceptor? interceptor = null, Action<IServiceCollection>? configure = null)
     {
         var tester = Create(name);
         tester.ReuseDatabase = false;
@@ -766,6 +908,7 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
             {
                 services.AddDbContext<IdentityDbContext<IdentityUser>>(options => options.AddInterceptors(interceptor));
             }
+            configure?.Invoke(services);
         };
         await tester.Start();
         return tester;
@@ -785,6 +928,18 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var user = (await users.FindByEmailAsync(email))!;
         await users.ResetAuthenticatorKeyAsync(user);
         Assert.True((await users.SetTwoFactorEnabledAsync(user, true)).Succeeded);
+    }
+
+    private static async Task<(string Id, string Key, string[] Codes)> CreateTwoFactorAccount(ServerTester tester, string email)
+    {
+        var id = await tester.CreateFakeUserAsync(email, Password);
+        await TurnOnTwoFactor(tester, email);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var user = (await users.FindByIdAsync(id))!;
+        var codes = await users.GenerateNewTwoFactorRecoveryCodesAsync(user, TwoFactorSetup.RecoveryCodeCount);
+        Assert.NotNull(codes);
+        return (id, (await users.GetAuthenticatorKeyAsync(user))!, codes.ToArray());
     }
 
     private static async Task<bool> TwoFactorEnabled(ServerTester tester, string email)
