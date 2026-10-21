@@ -128,15 +128,34 @@ public class TwoFactorTests(ITestOutputHelper logs) : UnitTestBase(logs)
         using var browser = HttpTestHelpers.CreateBrowser(tester);
         var form = await Page(browser, "/login");
         var options = tester.GetService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.TwoFactorUserIdScheme);
-        var identity = new ClaimsIdentity(IdentityConstants.TwoFactorUserIdScheme);
-        identity.AddClaim(new Claim(ClaimTypes.Name, id));
-        var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), new AuthenticationProperties
+        string Protect(string? stamp)
         {
-            IssuedUtc = DateTimeOffset.UtcNow,
-            ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(5)
-        }, IdentityConstants.TwoFactorUserIdScheme);
+            var identity = new ClaimsIdentity(IdentityConstants.TwoFactorUserIdScheme);
+            identity.AddClaim(new Claim(ClaimTypes.Name, id));
+            if (stamp is not null)
+                identity.AddClaim(new Claim(tester.GetService<IOptions<IdentityOptions>>().Value.ClaimsIdentity.SecurityStampClaimType, stamp));
+            return options.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(identity), new AuthenticationProperties
+            {
+                IssuedUtc = DateTimeOffset.UtcNow,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(5)
+            }, IdentityConstants.TwoFactorUserIdScheme));
+        }
+        string currentStamp;
+        using (var scope = tester.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            currentStamp = await users.GetSecurityStampAsync((await users.FindByIdAsync(id))!);
+        }
+        // Exercise the same cookie injection with a current stamp before checking the legacy cookie.
+        using (var control = HttpTestHelpers.CreateBrowser(tester))
+        {
+            await Page(control, "/login");
+            control.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={Protect(currentStamp)}");
+            using var accepted = await control.GetAsync(recoveryCode ? "/login/recovery-code" : "/login/2fa");
+            Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        }
         // The pending cookie issued before this change contained only the user ID.
-        browser.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={options.TicketDataFormat.Protect(ticket)}");
+        browser.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={Protect(null)}");
         using var refused = await Post(browser, recoveryCode ? "/login/recovery-code" : "/login/2fa", form,
             (recoveryCode ? "RecoveryCode" : "TwoFactorCode", recoveryCode ? codes[0] : Totp(key)));
         Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
