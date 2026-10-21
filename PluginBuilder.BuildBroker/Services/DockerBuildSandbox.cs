@@ -442,11 +442,12 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 CloneContainer,
                 CreateCloneArguments(proxyIp));
 
+            var dockerError = new OutputCapture();
             int code;
             try
             {
                 code = await DockerCli.RunAsync(_owner._processRunner, ["container", "start", "--attach", CloneContainer],
-                    CloneTimeout, _stopToken, preparationOutput, preparationOutput);
+                    CloneTimeout, _stopToken, preparationOutput, dockerError);
             }
             catch (OperationCanceledException)
             {
@@ -466,9 +467,10 @@ public sealed class DockerBuildSandbox : IBuildSandbox
                 return;
 
             _owner._logger.LogWarning(
-                "Repository checkout failed for build {BuildId} with exit code {ExitCode}",
+                "Repository checkout failed for build {BuildId} with exit code {ExitCode}: {DockerError}",
                 _buildId,
-                code);
+                code,
+                dockerError.ToString().Trim());
             throw new PublicBuildException("The repository checkout failed. Check the Git reference, repository access and submodules.");
         }
 

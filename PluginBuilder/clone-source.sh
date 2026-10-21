@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# Publish script diagnostics on stdout; Docker CLI stderr stays private to the broker.
+exec 2>&1
 IFS=$'\n\t'
 umask 022
 
@@ -67,7 +69,7 @@ if [[ -n "$GIT_REF" ]]; then
     clone_args+=(--branch "$GIT_REF")
 fi
 clone_args+=(-- "$GIT_REPO" /source/repository)
-git "${clone_args[@]}" 2>&1
+git "${clone_args[@]}"
 
 git -C /source/repository rev-parse --verify 'HEAD^{commit}' >/dev/null ||
     fail "checkout has no valid commit"

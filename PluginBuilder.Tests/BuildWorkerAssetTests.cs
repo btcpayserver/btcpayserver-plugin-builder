@@ -185,7 +185,8 @@ public class BuildWorkerAssetTests
         var result = await RunCloneHelper(repository);
 
         Assert.Equal(1, result.ExitCode);
-        Assert.Contains("Source checkout rejected:", result.StandardError, StringComparison.Ordinal);
+        Assert.Contains("Source checkout rejected:", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Empty(result.StandardError);
         Assert.False(result.GitWasInvoked);
     }
 
@@ -212,6 +213,17 @@ public class BuildWorkerAssetTests
             "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=protocol.allow", "GIT_CONFIG_VALUE_0=never",
             "GIT_CONFIG_KEY_1=protocol.https.allow", "GIT_CONFIG_VALUE_1=always"
         }, result.GitEnvironment);
+    }
+
+    [UnixFact]
+    public async Task CloneHelperPreservesGitFailureOnStandardOutput()
+    {
+        var result = await RunCloneHelper("https://github.com/example/plugin", fakeGitExitCode: 73);
+
+        Assert.Equal(73, result.ExitCode);
+        Assert.StartsWith("git version 9.8.7", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("fatal: simulated checkout failure", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Empty(result.StandardError);
     }
 
     [LinuxFact]
@@ -309,6 +321,9 @@ public class BuildWorkerAssetTests
                         GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1; do
                         printf '%s=%s\n' "$name" "$(printenv "$name" || printf '<unset>')"
                     done > "${PB_FAKE_GIT_ENVIRONMENT:?}"
+                    if [ "${PB_FAKE_GIT_EXIT_CODE:?}" != 0 ]; then
+                        printf '%s\n' 'fatal: simulated checkout failure' >&2
+                    fi
                 fi
                 exit "${PB_FAKE_GIT_EXIT_CODE:?}"
                 """);
