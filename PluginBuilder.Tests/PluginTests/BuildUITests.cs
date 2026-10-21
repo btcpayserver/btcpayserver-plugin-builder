@@ -20,7 +20,7 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
     [Fact]
     public async Task Owner_Can_Edit_BTCPay_Compatibility_From_Build_Page()
     {
-        var releaseContext = await CreateBuildCompatibilityContext(
+        var releaseContext = await CreatePublishedBuildContext(
             "owner-build-min",
             "build-min-",
             "Owner compatibility build test",
@@ -58,7 +58,7 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
         Assert.Empty(await releaseClient.GetPublishedVersions("1.9.9.9", false));
         Assert.Single(await releaseClient.GetPublishedVersions("2.0.0.0", false));
 
-        var preReleaseContext = await CreateBuildCompatibilityContext(
+        var preReleaseContext = await CreatePublishedBuildContext(
             "owner-build-max-pre",
             "build-max-pre-",
             "Owner compatibility pre-release build test",
@@ -101,7 +101,7 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
     [Fact]
     public async Task Owner_Cannot_Reset_BTCPay_Compatibility_When_Manifest_Condition_Is_Unsupported()
     {
-        var context = await CreateBuildCompatibilityContext(
+        var context = await CreatePublishedBuildContext(
             "owner-build-reset",
             "build-reset-",
             "Owner compatibility reset test",
@@ -164,7 +164,31 @@ public class BuildUITests(ITestOutputHelper output) : PageTest
         Assert.True(savedCompatibility.max_override_enabled);
     }
 
-    private async Task<(PlaywrightTester Tester, System.Data.Common.DbConnection Connection, string OwnerEmail, string PluginSlug, FullBuildId FullBuildId, string ManifestInfoJson)> CreateBuildCompatibilityContext(
+    [Fact]
+    public async Task Build_Page_Displays_Logs_In_Id_Order_Regardless_Of_Timestamps()
+    {
+        var context = await CreatePublishedBuildContext(
+            "owner-log-order",
+            "log-order-",
+            "Build log ordering test",
+            keepPreRelease: false);
+        await using var tester = context.Tester;
+        await using var conn = context.Connection;
+        // Timestamp order conflicts with ID order, and the last two timestamps tie.
+        await conn.ExecuteAsync("""
+            INSERT INTO builds_logs (plugin_slug, build_id, logs, created_at) VALUES
+                (@pluginSlug, @buildId, 'first line', '2020-01-03'),
+                (@pluginSlug, @buildId, 'second line', '2020-01-02'),
+                (@pluginSlug, @buildId, 'third line', '2020-01-02');
+            """, new { pluginSlug = context.PluginSlug, buildId = context.FullBuildId.BuildId });
+
+        await tester.LogIn(context.OwnerEmail);
+        await tester.GoToUrl($"/plugins/{context.PluginSlug}/builds/{context.FullBuildId.BuildId}");
+        var page = Assert.IsAssignableFrom<IPage>(tester.Page);
+        await Expect(page.Locator("#Logs")).ToHaveTextAsync("first line\nsecond line\nthird line");
+    }
+
+    private async Task<(PlaywrightTester Tester, System.Data.Common.DbConnection Connection, string OwnerEmail, string PluginSlug, FullBuildId FullBuildId, string ManifestInfoJson)> CreatePublishedBuildContext(
         string ownerEmailPrefix,
         string pluginSlugPrefix,
         string description,

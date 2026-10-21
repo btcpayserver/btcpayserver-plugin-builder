@@ -185,7 +185,8 @@ public class BuildWorkerAssetTests
         var result = await RunCloneHelper(repository);
 
         Assert.Equal(1, result.ExitCode);
-        Assert.Contains("Source checkout rejected:", result.StandardError, StringComparison.Ordinal);
+        Assert.Contains("Source checkout rejected:", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Empty(result.StandardError);
         Assert.False(result.GitWasInvoked);
     }
 
@@ -197,10 +198,14 @@ public class BuildWorkerAssetTests
         var result = await RunCloneHelper(repository, "release/1.0", fakeGitExitCode: 0);
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Equal("check-ref-format\n--branch\nrelease/1.0\n" +
+        Assert.Equal("check-ref-format\n--branch\nrelease/1.0\n--version\n" +
                      "clone\n--depth\n1\n--recurse-submodules\n--shallow-submodules\n--single-branch\n--branch\nrelease/1.0\n--\n" +
                      repository + "\n/source/repository\n-C\n/source/repository\nrev-parse\n--verify\nHEAD^{commit}\n",
             result.GitArguments);
+        Assert.Equal("git version 9.8.7\n.NET SDK:\n Version: 99.0.123\n" +
+                     "Cloning into '/source/repository'...\nSubmodule path 'submodules/btcpayserver': checked out 'abc123'\n",
+            result.StandardOutput.Replace("\r\n", "\n", StringComparison.Ordinal));
+        Assert.Empty(result.StandardError);
         Assert.Equal(new[]
         {
             "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=/bin/false", "SSH_ASKPASS=/bin/false", "GCM_INTERACTIVE=Never",
@@ -208,6 +213,17 @@ public class BuildWorkerAssetTests
             "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=protocol.allow", "GIT_CONFIG_VALUE_0=never",
             "GIT_CONFIG_KEY_1=protocol.https.allow", "GIT_CONFIG_VALUE_1=always"
         }, result.GitEnvironment);
+    }
+
+    [UnixFact]
+    public async Task CloneHelperPreservesGitFailureOnStandardOutput()
+    {
+        var result = await RunCloneHelper("https://github.com/example/plugin", fakeGitExitCode: 73);
+
+        Assert.Equal(73, result.ExitCode);
+        Assert.StartsWith("git version 9.8.7", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("fatal: simulated checkout failure", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Empty(result.StandardError);
     }
 
     [LinuxFact]
@@ -283,6 +299,7 @@ public class BuildWorkerAssetTests
         var calledPath = Path.Combine(directory, "git-called");
         var environmentPath = Path.Combine(directory, "git-environment");
         var fakeGit = Path.Combine(directory, "git");
+        var fakeDotnet = Path.Combine(directory, "dotnet");
         var fakeId = Path.Combine(directory, "id");
         var source = Directory.CreateDirectory(Path.Combine(directory, "source")).FullName;
         var helper = Path.Combine(directory, "clone-source.sh");
@@ -292,14 +309,28 @@ public class BuildWorkerAssetTests
             await File.WriteAllTextAsync(fakeGit, """
                 #!/bin/sh
                 printf '%s\n' "$@" >> "${PB_FAKE_GIT_CALLED:?}"
+                if [ "${1:-}" = --version ]; then
+                    printf '%s\n' 'git version 9.8.7'
+                    exit 0
+                fi
                 if [ "${1:-}" = clone ]; then
+                    printf '%s\n' "Cloning into '/source/repository'..." \
+                        "Submodule path 'submodules/btcpayserver': checked out 'abc123'" >&2
                     for name in GIT_TERMINAL_PROMPT GIT_ASKPASS SSH_ASKPASS GCM_INTERACTIVE \
                         GIT_CONFIG_NOSYSTEM GIT_CONFIG_GLOBAL SSH_AUTH_SOCK GIT_CONFIG_COUNT \
                         GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1; do
                         printf '%s=%s\n' "$name" "$(printenv "$name" || printf '<unset>')"
                     done > "${PB_FAKE_GIT_ENVIRONMENT:?}"
+                    if [ "${PB_FAKE_GIT_EXIT_CODE:?}" != 0 ]; then
+                        printf '%s\n' 'fatal: simulated checkout failure' >&2
+                    fi
                 fi
                 exit "${PB_FAKE_GIT_EXIT_CODE:?}"
+                """);
+            await File.WriteAllTextAsync(fakeDotnet, """
+                #!/bin/sh
+                [ "$#" = 1 ] && [ "$1" = --info ] || exit 2
+                printf '%s\n' '.NET SDK:' ' Version: 99.0.123'
                 """);
             // Rebase only filesystem locations so the production shell validation and
             // git argument construction can run without writing host /source or /tmp/home.
@@ -317,6 +348,9 @@ public class BuildWorkerAssetTests
             {
                 File.SetUnixFileMode(
                     fakeGit,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                File.SetUnixFileMode(
+                    fakeDotnet,
                     UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
                 File.SetUnixFileMode(
                     fakeId,

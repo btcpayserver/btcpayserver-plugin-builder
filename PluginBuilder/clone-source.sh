@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# Publish script diagnostics on stdout; Docker CLI stderr stays private to the broker.
+exec 2>&1
 IFS=$'\n\t'
 umask 022
 
@@ -55,6 +57,12 @@ export GIT_CONFIG_VALUE_0=never
 export GIT_CONFIG_KEY_1=protocol.https.allow
 export GIT_CONFIG_VALUE_1=always
 unset SSH_AUTH_SOCK
+
+# Both phases use this immutable worker image. Keep the header and Git's
+# checkout messages on one stream so they precede the compiler output.
+git --version
+# The checkout container only has a writable home and temporary space under /tmp.
+DOTNET_CLI_HOME="$HOME" TMPDIR=/tmp dotnet --info
 
 clone_args=(clone --depth 1 --recurse-submodules --shallow-submodules --single-branch)
 if [[ -n "$GIT_REF" ]]; then

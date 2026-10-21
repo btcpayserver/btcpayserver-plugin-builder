@@ -33,7 +33,8 @@ public class DockerBuildSandboxLifecycleTests
         var state = ReadyExecutor();
         var sandbox = CreateSandbox(fakeDocker, state, useRunc: useRunc);
         var runtime = useRunc ? "runc" : "runsc";
-        await using var prepared = await sandbox.PrepareAsync(BuildId(), BuildInfo());
+        var output = new OutputCapture();
+        await using var prepared = await sandbox.PrepareAsync(BuildId(), BuildInfo(), preparationOutput: output);
 
         Assert.StartsWith("pb-worker-", prepared.WorkerContainer, StringComparison.Ordinal);
         Assert.StartsWith("pb-clone-", prepared.CloneContainer, StringComparison.Ordinal);
@@ -190,9 +191,8 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(commands.IndexOf(cloneStart) < commands.IndexOf(cloneRemove));
         Assert.True(commands.IndexOf(cloneRemove) < commands.IndexOf(workerCreate));
 
-        var output = new OutputCapture();
         var staged = await prepared.RunAndStageAsync(output);
-        Assert.Contains("worker log", output.Lines);
+        Assert.Equal(["git version 2.43.0", ".NET SDK:", "Cloning into '/source/repository'...", "worker log"], output.Lines);
         Assert.Equal("Example", staged.AssemblyName);
         Assert.Equal("{}", staged.ManifestJson.Trim());
         Assert.Equal("https://gitlab.com/example/plugin", staged.BuildEnvironment["gitRepository"]?.Value<string>());
@@ -305,16 +305,29 @@ public class DockerBuildSandboxLifecycleTests
         Assert.True(state.Snapshot.IsReady);
     }
 
-    [UnixFact]
-    public async Task CheckoutFailureRemovesCloneAndNeverCreatesWorker()
+    [UnixTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CheckoutFailureRemovesCloneAndNeverCreatesWorker(bool dockerFailure)
     {
-        await using var fakeDocker = await FakeDocker.Create(failCloneStart: true);
+        await using var fakeDocker = await FakeDocker.Create(
+            failCloneStart: true, cloneFailureIsDockerError: dockerFailure);
         var state = ReadyExecutor();
+        var output = new OutputCapture();
 
         var exception = await Assert.ThrowsAsync<PublicBuildException>(() =>
-            CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo()));
+            CreateSandbox(fakeDocker, state).PrepareAsync(BuildId(), BuildInfo(), preparationOutput: output));
 
         Assert.Contains("repository checkout failed", exception.Message, StringComparison.OrdinalIgnoreCase);
+        if (dockerFailure)
+        {
+            Assert.Empty(output.Lines);
+            Assert.DoesNotContain("/private/build-scratch/source", exception.Message, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Contains("simulated checkout failure", output.Lines);
+        }
         var commands = await fakeDocker.ReadCommands();
         Assert.Contains(
             commands,
@@ -813,6 +826,7 @@ public class DockerBuildSandboxLifecycleTests
             bool failWorkerRemoval = false,
             bool failProxyReadiness = false,
             bool failCloneStart = false,
+            bool cloneFailureIsDockerError = false,
             bool ambiguousProxyCreate = false,
             string gitCommit = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             string gitCommitDate = "2026-08-27T12:34:56Z",
@@ -917,9 +931,14 @@ public class DockerBuildSandboxLifecycleTests
                                     while [ ! -f "${commands}.clone-release" ]; do sleep 0.01; done
                                 fi
                                 if [ "${PB_FAKE_FAIL_CLONE_START:-false}" = "true" ]; then
-                                    printf '%s\n' 'simulated checkout failure' >&2
+                                    if [ "${PB_FAKE_CLONE_FAILURE_IS_DOCKER_ERROR:-false}" = "true" ]; then
+                                        printf '%s\n' 'Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /private/build-scratch/source' >&2
+                                    else
+                                        printf '%s\n' 'simulated checkout failure'
+                                    fi
                                     exit 29
                                 fi
+                                printf '%s\n' 'git version 2.43.0' '.NET SDK:' "Cloning into '/source/repository'..."
                                 ;;
                             pb-stager-*)
                                 if [ "${PB_FAKE_FAIL_STAGER_START:-false}" = "true" ]; then
@@ -1022,6 +1041,7 @@ public class DockerBuildSandboxLifecycleTests
                 ["PB_FAKE_FAIL_WORKER_REMOVE"] = failWorkerRemoval ? "true" : "false",
                 ["PB_FAKE_FAIL_PROXY_READINESS"] = failProxyReadiness ? "true" : "false",
                 ["PB_FAKE_FAIL_CLONE_START"] = failCloneStart ? "true" : "false",
+                ["PB_FAKE_CLONE_FAILURE_IS_DOCKER_ERROR"] = cloneFailureIsDockerError ? "true" : "false",
                 ["PB_FAKE_BLOCK_CLONE"] = blockClone ? "true" : "false",
                 ["PB_FAKE_AMBIGUOUS_PROXY_CREATE"] = ambiguousProxyCreate ? "true" : "false",
                 ["PB_FAKE_GIT_COMMIT"] = gitCommit,

@@ -6,7 +6,8 @@ namespace PluginBuilder.Builds.Services;
 public interface IBuildSandbox
 {
     Task<IPreparedBuild> PrepareAsync(
-        FullBuildId buildId, BuildInfo buildInfo, CancellationToken cancellationToken = default);
+        FullBuildId buildId, BuildInfo buildInfo, CancellationToken cancellationToken = default,
+        IOutputCapture? preparationOutput = null);
 }
 
 public interface IPreparedBuild : IAsyncDisposable

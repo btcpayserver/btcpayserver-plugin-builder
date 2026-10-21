@@ -16,6 +16,7 @@ using PluginBuilder.Services;
 using PluginBuilder.Util;
 using PluginBuilder.Util.Extensions;
 using PluginBuilder.Builds.Services;
+using PluginBuilder.Builds;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -281,7 +282,8 @@ public class AdminModerationApiTests(ITestOutputHelper logs) : UnitTestBase(logs
         public Func<Task> OnPrepare { get; set; } = () => Task.CompletedTask;
         public bool Prepared { get; private set; }
 
-        public async Task<IPreparedBuild> PrepareAsync(FullBuildId buildId, BuildInfo buildInfo, CancellationToken cancellationToken = default)
+        public async Task<IPreparedBuild> PrepareAsync(FullBuildId buildId, BuildInfo buildInfo,
+            CancellationToken cancellationToken = default, IOutputCapture? preparationOutput = null)
         {
             await OnPrepare();
             Prepared = true;
