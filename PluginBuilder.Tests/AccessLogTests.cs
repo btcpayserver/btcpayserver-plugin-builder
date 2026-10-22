@@ -97,6 +97,8 @@ public class AccessLogTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [InlineData("<190>Oct 22 16:40:00 pbaccess: {\"time\":\"2026-10-22T16:40:00+00:00\",\"ip\":\"203.0.113.7\",\"status\":\"200\",\"bytes\":0}")]
     [InlineData("<190>Oct 22 16:40:00 pbaccess: {\"time\":\"2026-10-22T16:40:00+00:00\",\"ip\":\"203.0.113.7\",\"status\":200,\"bytes\":-1}")]
     [InlineData("<190>Oct 22 16:40:00 pbaccess: {\"time\":\"2026-10-22T16:40:00+00:00\",\"status\":200,\"bytes\":0}")]
+    // A lone surrogate escape: nginx never writes one, but anything that can reach the port can.
+    [InlineData("<190>Oct 22 16:40:00 pbaccess: {\"time\":\"2026-10-22T16:40:00+00:00\",\"ip\":\"203.0.113.7\",\"status\":200,\"bytes\":0,\"ua\":\"\\ud800\"}")]
     public void RefusesAnythingElse(string datagram) => Assert.False(Parse(datagram, out _));
 
     [Theory]

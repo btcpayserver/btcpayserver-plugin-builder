@@ -51,7 +51,9 @@ public static class AccessLogLine
                 Safe(Text(root, "path"), MaxPath), code, sent, Safe(Text(root, "ua"), MaxUserAgent));
             return true;
         }
-        catch (JsonException)
+        // GetString throws InvalidOperationException on a lone surrogate escape; refuse it like any other bad line, so no
+        // datagram can stop the receiver.
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             return false;
         }
