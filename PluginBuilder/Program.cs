@@ -208,6 +208,8 @@ public class Program
         services.AddHostedService<AdminEventDeliveryHostedService>();
         services.AddSingleton<AdminHistoryRetention>();
         services.AddHostedService<AdminHistoryRetentionHostedService>();
+        services.AddSingleton<AccessLogHostedService>();
+        services.AddHostedService(provider => provider.GetRequiredService<AccessLogHostedService>());
 
         services.AddSingleton<DBConnectionFactory>();
         services.AddScoped<PluginCleanupRunner>();
