@@ -16,6 +16,8 @@ public class ExternalAccountVerificationServiceTests
     [InlineData(Url)]
     [InlineData(Url + "/")]
     [InlineData(Url + "?file=proof.txt#file-proof-txt")]
+    [InlineData(Url + "?note=/../def456#../proof")]
+    [InlineData("HTTPS://GIST.GITHUB.COM:443/proofowner/a1b2c3")]
     public async Task FreshProofReturnsTheApiIdentityAndUsesTheFixedGistEndpoint(string url)
     {
         using var handler = new StubHandler((_, _) => Json(Proof().ToString()));
@@ -125,6 +127,27 @@ public class ExternalAccountVerificationServiceTests
         Assert.Null(await service.VerifyGistToken(url, Token));
         Assert.Null(await service.RecoverGistIdentity(url, Token));
         Assert.Empty(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData(Url + "/../def456")]
+    [InlineData(Url + "/%2e%2e/def456")]
+    [InlineData(Url + "/.%2e/def456")]
+    [InlineData(Url + "/%2E./def456")]
+    [InlineData("https://gist.github.com/proofowner/./a1b2c3")]
+    [InlineData("https://gist.github.com/proofowner/ignored/../a1b2c3")]
+    [InlineData("https://gist.github.com/proofowner/a1b2c3\\..\\def456")]
+    public async Task NeitherModeCanNormalizeTheUrlIntoADifferentGist(string url)
+    {
+        foreach (var recover in new[] { false, true })
+        {
+            var proof = Proof();
+            proof["owner"]!["login"] = recover ? "unrelated-account" : "ProofOwner";
+            using var handler = new StubHandler((_, _) => Json(proof.ToString()));
+
+            Assert.Null(await Verify(Service(handler), recover, url));
+            Assert.Empty(handler.Requests);
+        }
     }
 
     [Theory]

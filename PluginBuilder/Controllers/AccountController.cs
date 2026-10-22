@@ -296,7 +296,9 @@ public class AccountController(
             return RedirectToAction(nameof(AccountDetails));
         }
 
-        return View(new VerifyGitHubViewModel { Token = user!.Id });
+        await using var conn = await connectionFactory.Open(HttpContext.RequestAborted);
+        await conn.ClearUnverifiedGithubHandle(user.Id);
+        return View(new VerifyGitHubViewModel { Token = user.Id });
     }
 
     [HttpPost("VerifyGithubAccount")]

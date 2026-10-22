@@ -7,20 +7,24 @@ public class GithubIdentityService(DBConnectionFactory connectionFactory, Extern
 {
     public async Task<long?> RecoverUserId(string userId, CancellationToken cancellationToken = default)
     {
-        await using var conn = await connectionFactory.Open(cancellationToken);
-        var proof = await conn.QuerySingleOrDefaultAsync<StoredProof>(
-            "SELECT \"GithubUserId\", \"GithubGistUrl\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId", new { userId });
+        StoredProof? proof;
+        await using (var conn = await connectionFactory.Open(cancellationToken))
+        {
+            proof = await conn.QuerySingleOrDefaultAsync<StoredProof>(
+                "SELECT \"GithubUserId\", \"GithubGistUrl\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId", new { userId });
+        }
         if (proof?.GithubUserId is not null)
             return proof.GithubUserId;
         if (string.IsNullOrEmpty(proof?.GithubGistUrl))
             return null;
 
         var identity = await verificationService.RecoverGistIdentity(proof.GithubGistUrl, userId, cancellationToken);
+        await using var updateConnection = await connectionFactory.Open(cancellationToken);
         if (identity is not null)
-            await conn.VerifyGithubAccount(userId, proof.GithubGistUrl, identity, expectedLegacyProof: proof.GithubGistUrl);
+            await updateConnection.VerifyGithubAccount(userId, proof.GithubGistUrl, identity, expectedLegacyProof: proof.GithubGistUrl);
 
         // A new verification may have replaced the stored proof while GitHub was responding.
-        return await conn.GetGithubUserId(userId);
+        return await updateConnection.GetGithubUserId(userId);
     }
 
     private sealed class StoredProof

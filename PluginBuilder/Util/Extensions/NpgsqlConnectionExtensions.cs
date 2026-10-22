@@ -107,6 +107,12 @@ public static class NpgsqlConnectionExtensions
         return await conn.ExecuteScalarAsync<string?>(sql, new { npub });
     }
 
+    public static Task<int> ClearUnverifiedGithubHandle(this NpgsqlConnection connection, string userId) =>
+        connection.ExecuteAsync("""
+            UPDATE "AspNetUsers" SET "AccountDetail" = jsonb_set(COALESCE("AccountDetail", '{}'::jsonb), '{github}', 'null'::jsonb)
+            WHERE "Id" = @userId AND "GithubUserId" IS NULL AND NULLIF("GithubGistUrl", '') IS NULL
+            """, new { userId });
+
     public static Task<int> VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl, VerifiedGithubIdentity identity,
         string? expectedLegacyProof = null)
     {

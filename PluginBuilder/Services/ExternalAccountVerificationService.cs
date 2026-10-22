@@ -19,13 +19,12 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
 
     private async Task<VerifiedGithubIdentity?> VerifyGist(string gistUrl, string token, bool allowRenamedOwner, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(token) ||
-            !Uri.TryCreate(gistUrl, UriKind.Absolute, out var uri) ||
-            uri.Scheme != Uri.UriSchemeHttps || !uri.Host.Equals("gist.github.com", StringComparison.OrdinalIgnoreCase) ||
-            !string.IsNullOrEmpty(uri.UserInfo) || !uri.IsDefaultPort)
+        if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(gistUrl))
             return null;
 
-        var match = Regex.Match(uri.AbsolutePath, @"^/([a-zA-Z0-9-]+)/([a-fA-F0-9]+)/?$");
+        // Match the supplied URL before URI normalization can select a different gist in an old proof.
+        var match = Regex.Match(gistUrl, @"\Ahttps://gist\.github\.com(?::443)?/([a-zA-Z0-9-]+)/([a-fA-F0-9]+)/?(?:[?#][^\r\n]*)?\z",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         if (!match.Success)
             return null;
 

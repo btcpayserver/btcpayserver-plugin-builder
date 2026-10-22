@@ -107,6 +107,31 @@ public class GithubVerificationFlowTests(ITestOutputHelper logs) : UnitTestBase(
     }
 
     [Fact]
+    public async Task OpeningVerificationClearsOnlyTheUnprovenGithubHandle()
+    {
+        var github = new GithubHandler();
+        await using var tester = await StartServer(github);
+        var email = $"github-unproven-{Guid.NewGuid():N}@example.com";
+        var userId = await tester.CreateFakeUserAsync(email, Password, githubVerified: false);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.ExecuteAsync("""
+            UPDATE "AspNetUsers" SET "AccountDetail" = '{"github":"self-declared","twitter":"keep-this"}'::jsonb
+            WHERE "Id" = @userId
+            """, new { userId });
+        using var browser = HttpTestHelpers.CreateBrowser(tester);
+        await HttpTestHelpers.LogIn(browser, email, Password);
+
+        var form = await Page(browser, VerificationPath);
+        Assert.Equal(userId, HttpTestHelpers.InputValue(form, "Token"));
+        var settings = (await conn.GetAccountDetailSettings(userId))!;
+        Assert.Null(settings.Github);
+        Assert.Equal("keep-this", settings.Twitter);
+        Assert.False(await conn.IsGithubAccountVerified(userId));
+        Assert.Null(await conn.GetGithubUserId(userId));
+        Assert.Empty(github.Requests);
+    }
+
+    [Fact]
     public async Task AKnownIdentityDoesNotDependOnTheGistStillBeingAvailable()
     {
         var github = new GithubHandler { Reply = () => throw new InvalidOperationException("Known identities must not call GitHub") };
