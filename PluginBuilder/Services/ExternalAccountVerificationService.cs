@@ -1,44 +1,66 @@
 using System.Text.RegularExpressions;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.DataModels;
 
 namespace PluginBuilder.Services;
 
+public sealed record VerifiedGithubIdentity(long UserId, string Login);
+
 public class ExternalAccountVerificationService(IHttpClientFactory httpClientFactory)
 {
-    public async Task<string?> VerifyGistToken(string gistUrl, string token)
+    public Task<VerifiedGithubIdentity?> VerifyGistToken(string gistUrl, string token, CancellationToken cancellationToken = default) =>
+        VerifyGist(gistUrl, token, allowRenamedOwner: false, cancellationToken);
+
+    // Only for a previously stored proof: the gist ID and account token still bind the owner after a rename.
+    public Task<VerifiedGithubIdentity?> RecoverGistIdentity(string gistUrl, string token, CancellationToken cancellationToken = default) =>
+        VerifyGist(gistUrl, token, allowRenamedOwner: true, cancellationToken);
+
+    private async Task<VerifiedGithubIdentity?> VerifyGist(string gistUrl, string token, bool allowRenamedOwner, CancellationToken cancellationToken)
     {
-        Regex regex = new(@"https://gist\.github\.com/([^/]+)/([^/]+)", RegexOptions.IgnoreCase);
-        var match = regex.Match(gistUrl);
+        if (string.IsNullOrEmpty(token) ||
+            !Uri.TryCreate(gistUrl, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps || !uri.Host.Equals("gist.github.com", StringComparison.OrdinalIgnoreCase) ||
+            !string.IsNullOrEmpty(uri.UserInfo) || !uri.IsDefaultPort)
+            return null;
+
+        var match = Regex.Match(uri.AbsolutePath, @"^/([a-zA-Z0-9-]+)/([a-fA-F0-9]+)/?$");
         if (!match.Success)
             return null;
 
-        var gistUsername = match.Groups[1].Value;
-        var gistId = match.Groups[2].Value;
-
-        var client = httpClientFactory.CreateClient(HttpClientNames.GitHub);
-        var response = await client.GetAsync($"gists/{gistId}");
-
-        if (!response.IsSuccessStatusCode)
-            return null;
-
-        var content = await response.Content.ReadAsStringAsync();
-        var gistData = JObject.Parse(content);
-
-        var owner = gistData["owner"]?["login"]?.ToString();
-        if (owner == null || !owner.Equals(gistUsername, StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        var files = gistData["files"];
-        if (files == null)
-            return null;
-
-        foreach (var file in files)
+        try
         {
-            var fileContent = file.First?["content"]?.ToString();
-            if (fileContent != null && fileContent.Contains(token, StringComparison.Ordinal))
-                return gistUsername;
+            using var client = httpClientFactory.CreateClient(HttpClientNames.GitHub);
+            using var response = await client.GetAsync($"gists/{match.Groups[2].Value}", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var gistData = JObject.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (gistData["owner"] is not JObject owner ||
+                owner["id"]?.Type != JTokenType.Integer ||
+                !long.TryParse(owner["id"]!.ToString(), out var userId) || userId <= 0 ||
+                owner["login"]?.Type != JTokenType.String ||
+                string.IsNullOrWhiteSpace(owner.Value<string>("login")))
+                return null;
+
+            var login = owner.Value<string>("login")!;
+            if (!allowRenamedOwner && !login.Equals(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (gistData["files"] is not JObject files)
+                return null;
+            foreach (var file in files.Properties())
+            {
+                if (file.Value is JObject data && data["content"]?.Type == JTokenType.String &&
+                    data.Value<string>("content")!.Contains(token, StringComparison.Ordinal))
+                    return new VerifiedGithubIdentity(userId, login);
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException ||
+                                   ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return null;
         }
 
         return null;

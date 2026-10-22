@@ -269,6 +269,7 @@ public class Program
         services.AddSingleton<IGitHostingProvider, GitLabHostingProvider>();
         services.AddSingleton<GitHostingProviderFactory>();
         services.AddSingleton<ExternalAccountVerificationService>();
+        services.AddSingleton<GithubIdentityService>();
         services.AddSingleton<EmailService>();
         services.AddSingleton<NostrService>();
 

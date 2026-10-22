@@ -12,5 +12,6 @@ public class AccountDetailsViewModel
     public bool NeedToVerifyEmail { get; set; }
     public AccountSettings Settings { get; set; } = null!;
     public bool GithubAccountVerified { get; set; }
+    public bool GithubIdentityKnown { get; set; }
     public bool IsNostrVerified { get; set; }
 }

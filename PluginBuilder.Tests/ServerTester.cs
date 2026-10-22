@@ -1,3 +1,4 @@
+using Dapper;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
@@ -293,7 +294,9 @@ public class ServerTester : IAsyncDisposable
             return user.Id;
 
         await using var conn = await GetService<DBConnectionFactory>().Open();
-        await conn.VerifyGithubAccount(user.Id, "https://gist.github.com/dummy/123");
+        // A legacy proof, intentionally without a numeric identity.
+        await conn.ExecuteAsync("UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = @gistUrl WHERE \"Id\" = @userId",
+            new { userId = user.Id, gistUrl = "https://gist.github.com/dummy/123" });
 
         return user.Id;
     }

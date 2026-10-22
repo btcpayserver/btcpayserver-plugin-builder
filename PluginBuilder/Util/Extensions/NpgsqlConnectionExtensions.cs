@@ -76,7 +76,11 @@ public static class NpgsqlConnectionExtensions
     public static async Task SetAccountDetailSettings(this NpgsqlConnection connection, AccountSettings accountSettings, string userId)
     {
         await connection.ExecuteAsync(
-            "UPDATE \"AspNetUsers\" SET \"AccountDetail\" = @settings::JSONB WHERE \"Id\" = @userId",
+            """
+            UPDATE "AspNetUsers" SET "AccountDetail" = CASE WHEN "GithubUserId" IS NULL THEN @settings::jsonb
+                ELSE (@settings::jsonb - 'github') || jsonb_build_object('github', "AccountDetail"->'github') END
+            WHERE "Id" = @userId
+            """,
             new { userId, settings = JsonConvert.SerializeObject(accountSettings, CamelCaseSerializerSettings.Instance) }
         );
     }
@@ -103,13 +107,22 @@ public static class NpgsqlConnectionExtensions
         return await conn.ExecuteScalarAsync<string?>(sql, new { npub });
     }
 
-    public static async Task VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl)
+    public static Task<int> VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl, VerifiedGithubIdentity identity,
+        string? expectedLegacyProof = null)
     {
-        await connection.ExecuteAsync(
-            "UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = @gistUrl WHERE \"Id\" = @userId",
-            new { userId, gistUrl }
+        return connection.ExecuteAsync(
+            """
+            UPDATE "AspNetUsers" SET "GithubGistUrl" = @gistUrl, "GithubUserId" = @githubUserId,
+                "AccountDetail" = jsonb_set(COALESCE("AccountDetail", '{}'::jsonb), '{github}', to_jsonb(@login::text))
+            WHERE "Id" = @userId
+                AND (@expectedLegacyProof::text IS NULL OR ("GithubUserId" IS NULL AND "GithubGistUrl" = @expectedLegacyProof))
+            """,
+            new { userId, gistUrl, githubUserId = identity.UserId, login = identity.Login, expectedLegacyProof }
         );
     }
+
+    public static Task<long?> GetGithubUserId(this NpgsqlConnection connection, string userId) =>
+        connection.QuerySingleOrDefaultAsync<long?>("SELECT \"GithubUserId\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId", new { userId });
 
     public static async Task<bool> IsGithubAccountVerified(this NpgsqlConnection connection, string userId)
     {
