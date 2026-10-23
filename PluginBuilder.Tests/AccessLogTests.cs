@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
+using System.Threading.Channels;
 using Dapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
@@ -107,7 +109,10 @@ public class AccessLogTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [InlineData("2001:db8::1/64", "2001:db8::1/64")]
     [InlineData("::ffff:203.0.113.7", "203.0.113.7/32")]
     [InlineData("2001:db8::1", "2001:db8::1/128")]
-    [InlineData("::ffff:203.0.113.0/120", "::ffff:203.0.113.0/120")]
+    [InlineData("::ffff:203.0.113.0/120", "203.0.113.0/24")]
+    [InlineData("::ffff:203.0.113.7/128", "203.0.113.7/32")]
+    [InlineData("::ffff:203.0.113.7/96", "203.0.113.7/0")]
+    [InlineData("::ffff:203.0.113.7/95", "::ffff:203.0.113.7/95")]
     public void ParsesAnAddressOrBlock(string value, string expected)
     {
         Assert.True(AccessLogLine.TryParseNetwork(value, out var network));
@@ -121,102 +126,141 @@ public class AccessLogTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [InlineData("203.0.113.7/-1")]
     [InlineData("203.0.113.7/")]
     [InlineData("2001:db8::1/129")]
+    [InlineData("::ffff:203.0.113.7/129")]
     [InlineData("fe80::1%2")]
     public void RefusesAnInvalidAddressOrBlock(string value) => Assert.False(AccessLogLine.TryParseNetwork(value, out _));
+
+    [Fact]
+    public async Task CountsDroppedEntriesWhenTheQueueIsFull()
+    {
+        using var receiver = new AccessLogHostedService(null!, new ConfigurationBuilder().Build(), NullLogger<AccessLogHostedService>.Instance);
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var queue = (Channel<AccessLogEntry>)typeof(AccessLogHostedService).GetField("_queue", flags)!.GetValue(receiver)!;
+        var dropped = typeof(AccessLogHostedService).GetField("_dropped", flags)!;
+        Assert.True(Parse(Datagram("203.0.113.7"), out var entry));
+        for (var i = 0; i < 50_000; i++)
+            Assert.True(queue.Writer.TryWrite(entry!));
+
+        // Run only the receiver so the writer cannot drain the full queue while this datagram arrives.
+        using var listener = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var receive = (Task)typeof(AccessLogHostedService).GetMethod("ReceiveLoop", flags)!
+            .Invoke(receiver, [listener, cancellation.Token])!;
+        try
+        {
+            using var sender = new UdpClient();
+            var datagram = Encoding.UTF8.GetBytes(Datagram("198.51.100.1"));
+            await sender.SendAsync(datagram, (IPEndPoint)listener.Client.LocalEndPoint!);
+            for (var i = 0; i < 100 && (long)dropped.GetValue(receiver)! == 0; i++)
+                await Task.Delay(20);
+
+            Assert.Equal(1L, (long)dropped.GetValue(receiver)!);
+            Assert.Equal(50_000, queue.Reader.Count);
+            while (queue.Reader.TryRead(out var retained))
+                Assert.Equal(entry, retained);
+        }
+        finally
+        {
+            await cancellation.CancelAsync();
+            await receive.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
 
     [Fact]
     public async Task ReceivesSearchesAndPurgesTheAccessLog()
     {
         var tester = Create();
         tester.ReuseDatabase = false;
+        tester.ConfigureApplication = app =>
+        {
+            app.Configuration["ACCESSLOG_SYSLOG_PORT"] = "0";
+            app.Configuration["ACCESSLOG_RETENTION_DAYS"] = "7";
+        };
         tester.ConfigureServices = services =>
         {
-            foreach (var service in services.Where(s => s.ServiceType == typeof(IHostedService) && s.ImplementationType != typeof(DatabaseStartupHostedService)).ToArray())
+            // Keep the factory registration for AccessLogHostedService so the real host starts and stops it.
+            foreach (var service in services.Where(s => s.ServiceType == typeof(IHostedService) &&
+                         s.ImplementationType != typeof(DatabaseStartupHostedService) && s.ImplementationFactory is null).ToArray())
                 services.Remove(service);
         };
         await using var _ = tester;
         await tester.Start();
+        var receiver = tester.GetService<AccessLogHostedService>();
+        Assert.Same(receiver, Assert.Single(tester.WebApp.Services.GetServices<IHostedService>().OfType<AccessLogHostedService>()));
+        var port = await receiver.Bound.WaitAsync(TimeSpan.FromSeconds(10));
         using (var scope = tester.WebApp.Services.CreateScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-            foreach (var (email, admin) in new[] { ("admin@access-log.test", true), ("user@access-log.test", false) })
+            foreach (var (email, isAdmin) in new[] { ("admin@access-log.test", true), ("user@access-log.test", false) })
             {
-                var user = new IdentityUser { UserName = email, Email = email, EmailConfirmed = true };
-                Assert.True((await users.CreateAsync(user, Password)).Succeeded);
-                if (admin)
-                    Assert.True((await users.AddToRoleAsync(user, Roles.ServerAdmin)).Succeeded);
+                var account = new IdentityUser { UserName = email, Email = email, EmailConfirmed = true };
+                Assert.True((await users.CreateAsync(account, Password)).Succeeded);
+                if (isAdmin)
+                    Assert.True((await users.AddToRoleAsync(account, Roles.ServerAdmin)).Succeeded);
             }
         }
 
-        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ACCESSLOG_SYSLOG_PORT"] = "0" }).Build();
-        var receiver = new AccessLogHostedService(tester.GetService<DBConnectionFactory>(), config, NullLogger<AccessLogHostedService>.Instance);
-        await receiver.StartAsync(CancellationToken.None);
-        try
+        using var udp = new UdpClient();
+        var now = DateTimeOffset.UtcNow;
+        string At(int minutesAgo) => now.AddMinutes(-minutesAgo).ToString("yyyy-MM-ddTHH:mm:sszzz");
+        foreach (var datagram in new[]
+                 {
+                     Datagram("2001:db8:1:2::10", time: At(30)), Datagram("2001:db8:1:2::20", "/plugins/x", time: At(20)),
+                     "garbage", Datagram("::ffff:203.0.113.7", "/register", 400, time: At(10))
+                 })
         {
-            var port = await receiver.Bound.WaitAsync(TimeSpan.FromSeconds(10));
-            using var udp = new UdpClient();
-            var now = DateTimeOffset.UtcNow;
-            string At(int minutesAgo) => now.AddMinutes(-minutesAgo).ToString("yyyy-MM-ddTHH:mm:sszzz");
-            foreach (var datagram in new[]
-                     {
-                         Datagram("2001:db8:1:2::10", time: At(30)), Datagram("2001:db8:1:2::20", "/plugins/x", time: At(20)),
-                         "garbage", Datagram("203.0.113.7", "/register", 400, time: At(10))
-                     })
-            {
-                var bytes = Encoding.UTF8.GetBytes(datagram);
-                await udp.SendAsync(bytes, bytes.Length, new IPEndPoint(IPAddress.Loopback, port));
-            }
-
-            using var admin = tester.CreateHttpClient().SetBasicAuth("admin@access-log.test", Password);
-            JObject page = new();
-            for (var i = 0; i < 100; i++)
-            {
-                page = JObject.Parse(await admin.GetStringAsync("/api/v1/admin/access-log"));
-                if (((JArray)page["items"]!).Count == 3)
-                    break;
-                await Task.Delay(100);
-            }
-            var items = (JArray)page["items"]!;
-            Assert.Equal(new[] { "203.0.113.7", "2001:db8:1:2::20", "2001:db8:1:2::10" }, items.Select(i => i.Value<string>("ip")));
-            Assert.Equal(400, items[0].Value<int>("status"));
-            Assert.Equal("/register", items[0].Value<string>("path"));
-            Assert.Equal("curl/8.5.0", items[0].Value<string>("userAgent"));
-            Assert.False(page.Value<bool>("hasMore"));
-
-            async Task<string[]> Ips(string query) =>
-                ((JArray)JObject.Parse(await admin.GetStringAsync("/api/v1/admin/access-log?" + query))["items"]!)
-                .Select(i => i.Value<string>("ip")!).ToArray();
-            Assert.Equal(new[] { "203.0.113.7" }, await Ips("ip=203.0.113.7"));
-            Assert.Equal(new[] { "2001:db8:1:2::20", "2001:db8:1:2::10" }, await Ips("ip=" + Uri.EscapeDataString("2001:db8:1:2::99/64")));
-            Assert.Empty(await Ips("ip=" + Uri.EscapeDataString("2001:db8:1:3::/64")));
-            Assert.Equal(new[] { "2001:db8:1:2::20" }, await Ips("path=/plugins"));
-            Assert.Equal(new[] { "2001:db8:1:2::20" },
-                await Ips($"since={Uri.EscapeDataString(At(25))}&until={Uri.EscapeDataString(At(15))}"));
-
-            var first = JObject.Parse(await admin.GetStringAsync("/api/v1/admin/access-log?limit=1"));
-            Assert.True(first.Value<bool>("hasMore"));
-            var next = first.Value<string>("nextCursor");
-            Assert.Equal(new[] { "2001:db8:1:2::20", "2001:db8:1:2::10" }, await Ips("before=" + next));
-
-            Assert.Equal(HttpStatusCode.BadRequest, (await admin.GetAsync("/api/v1/admin/access-log?ip=not-an-ip")).StatusCode);
-            Assert.Equal(HttpStatusCode.BadRequest, (await admin.GetAsync("/api/v1/admin/access-log?ip=203.0.113.7/33")).StatusCode);
-            using var user = tester.CreateHttpClient().SetBasicAuth("user@access-log.test", Password);
-            Assert.Equal(HttpStatusCode.Forbidden, (await user.GetAsync("/api/v1/admin/access-log")).StatusCode);
-            Assert.Equal(HttpStatusCode.Unauthorized, (await tester.CreateHttpClient().GetAsync("/api/v1/admin/access-log")).StatusCode);
-
-            // Retention follows nginx's time: a row older than the window goes, the recent ones stay.
-            await using var conn = await tester.GetService<DBConnectionFactory>().Open();
-            await conn.ExecuteAsync("""
-                INSERT INTO nginx_access_log (logged_at, ip, host, method, path, status, bytes, user_agent)
-                VALUES (now() - interval '8 days', '192.0.2.1', 'h', 'GET', '/', 200, 0, '')
-                """);
-            Assert.Equal(1, await receiver.Purge(CancellationToken.None));
-            Assert.Equal(3, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM nginx_access_log"));
+            var bytes = Encoding.UTF8.GetBytes(datagram);
+            await udp.SendAsync(bytes, bytes.Length, new IPEndPoint(IPAddress.Loopback, port));
         }
-        finally
+
+        using var admin = tester.CreateHttpClient().SetBasicAuth("admin@access-log.test", Password);
+        JObject page = new();
+        for (var i = 0; i < 100; i++)
         {
-            await receiver.StopAsync(CancellationToken.None);
+            page = JObject.Parse(await admin.GetStringAsync("/api/v1/admin/access-log"));
+            if (((JArray)page["items"]!).Count == 3)
+                break;
+            await Task.Delay(100);
         }
+        var items = (JArray)page["items"]!;
+        Assert.Equal(new[] { "203.0.113.7", "2001:db8:1:2::20", "2001:db8:1:2::10" }, items.Select(i => i.Value<string>("ip")));
+        Assert.Equal(400, items[0].Value<int>("status"));
+        Assert.Equal("/register", items[0].Value<string>("path"));
+        Assert.Equal("curl/8.5.0", items[0].Value<string>("userAgent"));
+        Assert.False(page.Value<bool>("hasMore"));
+
+        async Task<string[]> Ips(string query) =>
+            ((JArray)JObject.Parse(await admin.GetStringAsync("/api/v1/admin/access-log?" + query))["items"]!)
+            .Select(i => i.Value<string>("ip")!).ToArray();
+        Assert.Equal(new[] { "203.0.113.7" }, await Ips("ip=203.0.113.7"));
+        foreach (var network in new[] { "::ffff:203.0.113.7", "::ffff:203.0.113.7/128", "::ffff:203.0.113.0/120", "::ffff:0.0.0.0/96" })
+            Assert.Equal(new[] { "203.0.113.7" }, await Ips("ip=" + Uri.EscapeDataString(network)));
+        Assert.Empty(await Ips("ip=" + Uri.EscapeDataString("::ffff:198.51.100.0/120")));
+        Assert.Equal(new[] { "2001:db8:1:2::20", "2001:db8:1:2::10" }, await Ips("ip=" + Uri.EscapeDataString("2001:db8:1:2::99/64")));
+        Assert.Empty(await Ips("ip=" + Uri.EscapeDataString("2001:db8:1:3::/64")));
+        Assert.Equal(new[] { "2001:db8:1:2::20" }, await Ips("path=/plugins"));
+        Assert.Equal(new[] { "2001:db8:1:2::20" },
+            await Ips($"since={Uri.EscapeDataString(At(25))}&until={Uri.EscapeDataString(At(15))}"));
+
+        var first = JObject.Parse(await admin.GetStringAsync("/api/v1/admin/access-log?limit=1"));
+        Assert.True(first.Value<bool>("hasMore"));
+        var next = first.Value<string>("nextCursor");
+        Assert.Equal(new[] { "2001:db8:1:2::20", "2001:db8:1:2::10" }, await Ips("before=" + next));
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.GetAsync("/api/v1/admin/access-log?ip=not-an-ip")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.GetAsync("/api/v1/admin/access-log?ip=203.0.113.7/33")).StatusCode);
+        using var user = tester.CreateHttpClient().SetBasicAuth("user@access-log.test", Password);
+        Assert.Equal(HttpStatusCode.Forbidden, (await user.GetAsync("/api/v1/admin/access-log")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await tester.CreateHttpClient().GetAsync("/api/v1/admin/access-log")).StatusCode);
+
+        // Retention follows nginx's time: a row older than the window goes, the recent ones stay.
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.ExecuteAsync("""
+            INSERT INTO nginx_access_log (logged_at, ip, host, method, path, status, bytes, user_agent)
+            VALUES (now() - interval '8 days', '192.0.2.1', 'h', 'GET', '/', 200, 0, '')
+            """);
+        Assert.Equal(1, await receiver.Purge(CancellationToken.None));
+        Assert.Equal(3, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM nginx_access_log"));
     }
 
     [Fact]

@@ -19,8 +19,9 @@ public class AccessLogHostedService : BackgroundService
     private readonly DBConnectionFactory _connections;
     private readonly ILogger<AccessLogHostedService> _logger;
     private readonly int? _port;
+    // TryWrite must return false when full so ReceiveLoop can count the discarded entry.
     private readonly Channel<AccessLogEntry> _queue = Channel.CreateBounded<AccessLogEntry>(
-        new BoundedChannelOptions(50_000) { FullMode = BoundedChannelFullMode.DropWrite, SingleReader = true, SingleWriter = true });
+        new BoundedChannelOptions(50_000) { FullMode = BoundedChannelFullMode.Wait, SingleReader = true, SingleWriter = true });
     private long _refused, _dropped;
     private readonly TaskCompletionSource<int> _bound = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

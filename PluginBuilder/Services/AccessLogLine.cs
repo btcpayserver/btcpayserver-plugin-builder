@@ -67,12 +67,16 @@ public static class AccessLogLine
         if (!IPAddress.TryParse(slash < 0 ? value : value[..slash], out var address) ||
             address.AddressFamily == AddressFamily.InterNetworkV6 && address.ScopeId != 0)
             return false;
-        if (address.IsIPv4MappedToIPv6 && slash < 0)
-            address = address.MapToIPv4();
         var max = address.AddressFamily == AddressFamily.InterNetwork ? 32 : 128;
         var prefix = max;
         if (slash >= 0 && (!int.TryParse(value[(slash + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out prefix) || prefix > max))
             return false;
+        // Shorter prefixes also cover native IPv6 addresses, so keep those as IPv6 blocks.
+        if (address.IsIPv4MappedToIPv6 && prefix >= 96)
+        {
+            address = address.MapToIPv4();
+            prefix -= 96;
+        }
         network = $"{address}/{prefix}";
         return true;
     }
