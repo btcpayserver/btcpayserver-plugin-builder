@@ -40,10 +40,10 @@
                 }
                 <div class="input-group">
                     <input asp-for="Settings.Github" class="form-control" placeholder="https://github.com/satoshi" readonly="readonly" />
-                    @if (!Model.GithubIdentityKnown)
+                    @if (!Model.GithubAccountVerified)
                     {
                         <div class="input-group-append">
-                            <a asp-controller="Account" asp-action="VerifyGithubAccount" class="btn btn-outline-success ms-2">@(Model.GithubAccountVerified ? "Refresh GitHub verification" : "Verify GitHub")</a>
+                            <a asp-controller="Account" asp-action="VerifyGithubAccount" class="btn btn-outline-success ms-2">Verify GitHub</a>
                         </div>
                     }
                 </div>

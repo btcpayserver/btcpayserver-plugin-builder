@@ -48,7 +48,8 @@ public class GithubVerificationFlowTests(ITestOutputHelper logs) : UnitTestBase(
             page = await refused.Content.ReadAsStringAsync();
             Assert.Contains($"<span id=\"token\" class=\"fs-3\">{userId}</span>", page);
         }
-        Assert.Null(await conn.GetGithubUserId(userId));
+        Assert.Null(await conn.ExecuteScalarAsync<long?>(
+            "SELECT \"GithubUserId\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId", new { userId }));
         Assert.False(await conn.IsGithubAccountVerified(userId));
 
         // Casing and the numeric ID must come from GitHub, not from the submitted URL or token.
@@ -63,15 +64,15 @@ public class GithubVerificationFlowTests(ITestOutputHelper logs) : UnitTestBase(
         Assert.All(github.Requests, uri => Assert.Equal("https://api.github.com/gists/abcdef123456", uri.AbsoluteUri));
 
         var details = await Page(browser, "/account/details");
-        Assert.DoesNotContain("Refresh GitHub verification", details);
+        Assert.DoesNotContain($"href=\"{VerificationPath}\"", details);
         Assert.Contains("OLD-LOGIN", details);
         Assert.Equal(2, github.Requests.Count);
     }
 
     [Fact]
-    public async Task ALegacyProofSurvivesFailureAndRecoversTheRenamedIdentityOnlyOnce()
+    public async Task ALegacyProofRemainsVerifiedWithoutContactingGithub()
     {
-        var github = new GithubHandler();
+        var github = new GithubHandler { Reply = () => throw new InvalidOperationException("Legacy proofs must not call GitHub") };
         await using var tester = await StartServer(github);
         var email = $"github-legacy-{Guid.NewGuid():N}@example.com";
         var userId = await tester.CreateFakeUserAsync(email, Password);
@@ -84,31 +85,18 @@ public class GithubVerificationFlowTests(ITestOutputHelper logs) : UnitTestBase(
         await HttpTestHelpers.LogIn(browser, email, Password);
 
         var details = await Page(browser, "/account/details");
-        Assert.Contains("Refresh GitHub verification", details);
-        Assert.Empty(github.Requests);
-
-        var form = await Page(browser, VerificationPath);
-        Assert.Equal(userId, HttpTestHelpers.InputValue(form, "Token"));
-        Assert.Contains("name=\"GistUrl\"", form);
-        Assert.Null(await conn.GetGithubUserId(userId));
+        Assert.DoesNotContain($"href=\"{VerificationPath}\"", details);
+        Assert.Equal("old-login", HttpTestHelpers.InputValue(details, "Settings.Github"));
+        using var verification = await browser.GetAsync(VerificationPath);
+        Assert.Equal(HttpStatusCode.Redirect, verification.StatusCode);
+        Assert.Equal("/account/details", new Uri(browser.BaseAddress!, verification.Headers.Location!).AbsolutePath);
+        Assert.Null(await conn.ExecuteScalarAsync<long?>(
+            "SELECT \"GithubUserId\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId", new { userId }));
         Assert.True(await conn.IsGithubAccountVerified(userId));
         Assert.Equal(GistUrl, await conn.ExecuteScalarAsync<string>(
             "SELECT \"GithubGistUrl\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId", new { userId }));
         Assert.Equal("old-login", (await conn.GetAccountDetailSettings(userId))!.Github);
-        Assert.Single(github.Requests);
-
-        github.Reply = () => Proof("renamed-owner", 7654321, userId);
-        using (var refreshed = await browser.GetAsync(VerificationPath))
-            Assert.Equal(HttpStatusCode.Redirect, refreshed.StatusCode);
-        await AssertStoredIdentity(tester, userId, 7654321, "renamed-owner", GistUrl);
-        Assert.Equal(2, github.Requests.Count);
-
-        github.Reply = () => throw new InvalidOperationException("Known identities must not call GitHub");
-        using (var refreshed = await browser.GetAsync(VerificationPath))
-            Assert.Equal(HttpStatusCode.Redirect, refreshed.StatusCode);
-        Assert.DoesNotContain("Refresh GitHub verification", await Page(browser, "/account/details"));
-        await AssertStoredIdentity(tester, userId, 7654321, "renamed-owner", GistUrl);
-        Assert.Equal(2, github.Requests.Count);
+        Assert.Empty(github.Requests);
     }
 
     private async Task<ServerTester> StartServer(GithubHandler github)
@@ -129,7 +117,8 @@ public class GithubVerificationFlowTests(ITestOutputHelper logs) : UnitTestBase(
     private static async Task AssertStoredIdentity(ServerTester tester, string userId, long githubUserId, string login, string proof)
     {
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
-        Assert.Equal(githubUserId, await conn.GetGithubUserId(userId));
+        Assert.Equal(githubUserId, await conn.ExecuteScalarAsync<long?>(
+            "SELECT \"GithubUserId\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId", new { userId }));
         Assert.True(await conn.IsGithubAccountVerified(userId));
         Assert.Equal(login, (await conn.GetAccountDetailSettings(userId))!.Github);
         Assert.Equal(proof, await conn.ExecuteScalarAsync<string>(

@@ -18,7 +18,7 @@ public class ExternalAccountVerificationServiceTests
     [InlineData(Url + "?file=proof.txt#file-proof-txt")]
     [InlineData(Url + "?note=/../def456#../proof")]
     [InlineData("HTTPS://GIST.GITHUB.COM:443/proofowner/a1b2c3")]
-    public async Task FreshProofReturnsTheApiIdentityAndUsesTheFixedGistEndpoint(string url)
+    public async Task ProofReturnsTheApiIdentityAndUsesTheFixedGistEndpoint(string url)
     {
         using var handler = new StubHandler((_, _) => Json(Proof().ToString()));
         var service = Service(handler);
@@ -33,12 +33,11 @@ public class ExternalAccountVerificationServiceTests
 
     [Theory]
     [MemberData(nameof(UnverifiableProofs))]
-    public async Task NeitherModeAcceptsAnUnverifiableResponse(string scenario, string body)
+    public async Task UnverifiableResponsesAreRejected(string scenario, string body)
     {
         using var handler = new StubHandler((_, _) => Json(body));
         var service = Service(handler);
         Assert.True(await service.VerifyGistToken(Url, Token) is null, scenario);
-        Assert.True(await service.RecoverGistIdentity(Url, Token) is null, scenario);
     }
 
     public static IEnumerable<object[]> UnverifiableProofs()
@@ -66,21 +65,16 @@ public class ExternalAccountVerificationServiceTests
         }
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task OnlyRecoveryAcceptsARenamedGistOwner(bool recover)
+    [Fact]
+    public async Task ProofIsRejectedWhenTheApiOwnerDoesNotMatchTheUrl()
     {
         using var handler = new StubHandler((_, _) => Json(Proof().ToString()));
         var service = Service(handler);
-        const string oldUrl = "https://gist.github.com/former-login/a1b2c3";
+        const string url = "https://gist.github.com/another-owner/a1b2c3";
 
-        var result = await Verify(service, recover, oldUrl);
+        var result = await service.VerifyGistToken(url, Token);
 
-        if (recover)
-            Assert.Equal(new VerifiedGithubIdentity(OwnerId, "ProofOwner"), result);
-        else
-            Assert.Null(result);
+        Assert.Null(result);
         Assert.Equal(new Uri("https://api.github.com/gists/a1b2c3"), Assert.Single(handler.Requests).Uri);
     }
 
@@ -124,7 +118,7 @@ public class ExternalAccountVerificationServiceTests
     [Theory]
     [InlineData(HttpStatusCode.NotFound)]
     [InlineData(HttpStatusCode.InternalServerError)]
-    public async Task FailedHttpResponsesDoNotVerifyEitherIdentity(HttpStatusCode status)
+    public async Task FailedHttpResponsesDoNotVerifyTheIdentity(HttpStatusCode status)
     {
         using var handler = new StubHandler((_, _) => new HttpResponseMessage(status));
         await AssertRejected(handler);
@@ -133,7 +127,7 @@ public class ExternalAccountVerificationServiceTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task NetworkFailureAndHttpClientTimeoutDoNotVerifyEitherIdentity(bool timeout)
+    public async Task NetworkFailureAndHttpClientTimeoutDoNotVerifyTheIdentity(bool timeout)
     {
         using var handler = new StubHandler((_, _) => throw (timeout
             ? new TaskCanceledException("HTTP client timeout")
@@ -141,10 +135,8 @@ public class ExternalAccountVerificationServiceTests
         await AssertRejected(handler);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task CallerCancellationDuringTheRequestIsPropagated(bool recover)
+    [Fact]
+    public async Task CallerCancellationDuringTheRequestIsPropagated()
     {
         using var cancellation = new CancellationTokenSource();
         using var handler = new StubHandler((_, requestCancellation) =>
@@ -155,20 +147,14 @@ public class ExternalAccountVerificationServiceTests
         });
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => Verify(Service(handler), recover, Url, cancellation.Token));
+            () => Service(handler).VerifyGistToken(Url, Token, cancellation.Token));
         Assert.Single(handler.Requests);
     }
-
-    private static Task<VerifiedGithubIdentity?> Verify(ExternalAccountVerificationService service, bool recover,
-        string url, CancellationToken cancellationToken = default) => recover
-        ? service.RecoverGistIdentity(url, Token, cancellationToken)
-        : service.VerifyGistToken(url, Token, cancellationToken);
 
     private static async Task AssertRejected(StubHandler handler, string url = Url, string token = Token)
     {
         var service = Service(handler);
         Assert.Null(await service.VerifyGistToken(url, token));
-        Assert.Null(await service.RecoverGistIdentity(url, token));
     }
 
     private static JObject Proof() => JObject.Parse("""

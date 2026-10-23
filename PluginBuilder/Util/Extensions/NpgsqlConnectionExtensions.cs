@@ -113,22 +113,17 @@ public static class NpgsqlConnectionExtensions
             WHERE "Id" = @userId AND "GithubUserId" IS NULL AND NULLIF("GithubGistUrl", '') IS NULL
             """, new { userId });
 
-    public static Task<int> VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl, VerifiedGithubIdentity identity,
-        string? expectedLegacyProof = null)
+    public static Task<int> VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl, VerifiedGithubIdentity identity)
     {
         return connection.ExecuteAsync(
             """
             UPDATE "AspNetUsers" SET "GithubGistUrl" = @gistUrl, "GithubUserId" = @githubUserId,
                 "AccountDetail" = jsonb_set(COALESCE("AccountDetail", '{}'::jsonb), '{github}', to_jsonb(@login::text))
             WHERE "Id" = @userId
-                AND (@expectedLegacyProof::text IS NULL OR ("GithubUserId" IS NULL AND "GithubGistUrl" = @expectedLegacyProof))
             """,
-            new { userId, gistUrl, githubUserId = identity.UserId, login = identity.Login, expectedLegacyProof }
+            new { userId, gistUrl, githubUserId = identity.UserId, login = identity.Login }
         );
     }
-
-    public static Task<long?> GetGithubUserId(this NpgsqlConnection connection, string userId) =>
-        connection.QuerySingleOrDefaultAsync<long?>("SELECT \"GithubUserId\" FROM \"AspNetUsers\" WHERE \"Id\" = @userId", new { userId });
 
     public static async Task<bool> IsGithubAccountVerified(this NpgsqlConnection connection, string userId)
     {

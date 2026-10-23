@@ -10,19 +10,12 @@ public sealed record VerifiedGithubIdentity(long UserId, string Login);
 
 public class ExternalAccountVerificationService(IHttpClientFactory httpClientFactory)
 {
-    public Task<VerifiedGithubIdentity?> VerifyGistToken(string gistUrl, string token, CancellationToken cancellationToken = default) =>
-        VerifyGist(gistUrl, token, allowRenamedOwner: false, cancellationToken);
-
-    // Only for a previously stored proof: the gist ID and account token still bind the owner after a rename.
-    public Task<VerifiedGithubIdentity?> RecoverGistIdentity(string gistUrl, string token, CancellationToken cancellationToken = default) =>
-        VerifyGist(gistUrl, token, allowRenamedOwner: true, cancellationToken);
-
-    private async Task<VerifiedGithubIdentity?> VerifyGist(string gistUrl, string token, bool allowRenamedOwner, CancellationToken cancellationToken)
+    public async Task<VerifiedGithubIdentity?> VerifyGistToken(string gistUrl, string token, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(gistUrl))
             return null;
 
-        // Match the supplied URL before URI normalization can select a different gist in an old proof.
+        // Match the supplied URL before URI normalization can select a different gist.
         var match = Regex.Match(gistUrl, @"\Ahttps://gist\.github\.com(?::443)?/([a-zA-Z0-9-]+)/([a-fA-F0-9]+)/?(?:[?#][^\r\n]*)?\z",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         if (!match.Success)
@@ -44,7 +37,7 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
                 return null;
 
             var login = owner.Value<string>("login")!;
-            if (!allowRenamedOwner && !login.Equals(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase))
+            if (!login.Equals(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase))
                 return null;
 
             if (gistData["files"] is not JObject files)

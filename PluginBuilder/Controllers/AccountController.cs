@@ -21,7 +21,6 @@ public class AccountController(
     IdentityDbContext<IdentityUser> identityDbContext,
     IUserStore<IdentityUser> userStore,
     ExternalAccountVerificationService externalAccountVerificationService,
-    GithubIdentityService githubIdentityService,
     EmailService emailService,
     NostrService nostrService,
     ILogger<AccountController> logger)
@@ -80,7 +79,6 @@ public class AccountController(
             AccountEmailConfirmed = user.EmailConfirmed,
             NeedToVerifyEmail = needToVerifyEmail,
             GithubAccountVerified = isGithubVerified,
-            GithubIdentityKnown = await conn.GetGithubUserId(user.Id) is not null,
             Settings = settings,
             IsNostrVerified = isNostrVerified
         };
@@ -290,13 +288,13 @@ public class AccountController(
     public async Task<IActionResult> VerifyGithubAccount()
     {
         var user = await userManager.GetUserAsync(User);
-        if (await githubIdentityService.RecoverUserId(user!.Id, HttpContext.RequestAborted) is not null)
+        await using var conn = await connectionFactory.Open(HttpContext.RequestAborted);
+        if (await conn.IsGithubAccountVerified(user!.Id))
         {
             TempData[TempDataConstant.SuccessMessage] = "GitHub account already verified";
             return RedirectToAction(nameof(AccountDetails));
         }
 
-        await using var conn = await connectionFactory.Open(HttpContext.RequestAborted);
         await conn.ClearUnverifiedGithubHandle(user.Id);
         return View(new VerifyGitHubViewModel { Token = user.Id });
     }
