@@ -137,9 +137,10 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task RecoveryCannotOverwriteAProofOrIdentityReplacedWhileGithubResponds(bool newIdentityKnown)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RecoveryCannotOverwriteAProofOrIdentityReplacedWhileGithubResponds(bool newIdentityKnown, bool sameProof)
     {
         await using var tester = CreateMigrationTester();
         await tester.RunScriptsUntil("30.GithubIdentity");
@@ -160,16 +161,18 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
         try
         {
             await requested.Task.WaitAsync(timeout.Token);
-            const string newProof = "https://gist.github.com/other-owner/def123";
+            var newProof = sameProof ? ProofUrl : "https://gist.github.com/other-owner/def123";
+            // A rename keeps the gist and numeric owner; the newer login must still survive the pending response.
+            var newerIdentity = new VerifiedGithubIdentity(sameProof ? 1234 : 5678, sameProof ? "CurrentOwner" : "other-owner");
             if (newIdentityKnown)
-                await conn.VerifyGithubAccount(UserId, newProof, new VerifiedGithubIdentity(5678, "other-owner"));
+                await conn.VerifyGithubAccount(UserId, newProof, newerIdentity);
             else
                 await conn.ExecuteAsync("UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = @newProof WHERE \"Id\" = @UserId", new { newProof, UserId });
             response.SetResult(Proof(1234, "RenamedOwner"));
 
-            Assert.Equal(newIdentityKnown ? 5678L : (long?)null, await recovering);
+            Assert.Equal(newIdentityKnown ? newerIdentity.UserId : (long?)null, await recovering);
             Assert.Equal(newProof, await StoredProof(conn));
-            Assert.Equal(newIdentityKnown ? "other-owner" : "old-login", (await conn.GetAccountDetailSettings(UserId))!.Github);
+            Assert.Equal(newIdentityKnown ? newerIdentity.Login : "old-login", (await conn.GetAccountDetailSettings(UserId))!.Github);
         }
         finally
         {
