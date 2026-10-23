@@ -33,7 +33,7 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [Fact]
     public async Task VerificationAndAStaleProfileEditKeepIdentityProofAndOtherFieldsTogether()
     {
-        await using var tester = CreateMigrationTester();
+        await using var tester = CreateMigrationTester("GithubStaleProfile");
         await tester.RunScriptsUntil("30.GithubIdentity");
         await tester.RunRemainingScripts();
         await using var conn = await tester.Open();
@@ -67,7 +67,7 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [InlineData(true)]
     public async Task UnverifiedHandleCleanupPreservesAVerificationSavedAfterTheInitialRead(bool identityKnown)
     {
-        await using var tester = CreateMigrationTester();
+        await using var tester = CreateMigrationTester("GithubCleanupRace");
         await tester.RunScriptsUntil("30.GithubIdentity");
         await tester.RunRemainingScripts();
         await using var conn = await tester.Open();
