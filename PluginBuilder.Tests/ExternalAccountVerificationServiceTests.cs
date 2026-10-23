@@ -32,44 +32,22 @@ public class ExternalAccountVerificationServiceTests
     }
 
     [Theory]
-    [InlineData(null)]
-    [InlineData("null")]
-    [InlineData("0")]
-    [InlineData("-1")]
-    [InlineData("\"5000000001\"")]
-    [InlineData("1.5")]
-    [InlineData("true")]
-    [InlineData("{}")]
-    [InlineData("9223372036854775808")]
-    public async Task NeitherModeAcceptsAnInvalidOwnerId(string? idJson)
-    {
-        var proof = Proof();
-        var owner = (JObject)proof["owner"]!;
-        if (idJson is null)
-            owner.Remove("id");
-        else
-            owner["id"] = JToken.Parse(idJson);
-
-        using var handler = new StubHandler((_, _) => Json(proof.ToString()));
-        var service = Service(handler);
-
-        Assert.Null(await service.VerifyGistToken(Url, Token));
-        Assert.Null(await service.RecoverGistIdentity(Url, Token));
-    }
-
-    [Theory]
     [MemberData(nameof(UnverifiableProofs))]
-    public async Task NeitherModeAcceptsAnOwnerOrProofThatCannotBeVerified(string scenario, string body)
+    public async Task NeitherModeAcceptsAnUnverifiableResponse(string scenario, string body)
     {
         using var handler = new StubHandler((_, _) => Json(body));
         var service = Service(handler);
-
         Assert.True(await service.VerifyGistToken(Url, Token) is null, scenario);
         Assert.True(await service.RecoverGistIdentity(Url, Token) is null, scenario);
     }
 
     public static IEnumerable<object[]> UnverifiableProofs()
     {
+        foreach (var body in new[] { "not json", "[", "[]", "null" })
+            yield return [$"invalid JSON object: {body}", body];
+        yield return Case("missing id", proof => ((JObject)proof["owner"]!).Remove("id"));
+        foreach (var id in new[] { "null", "0", "-1", "\"5000000001\"", "1.5", "true", "{}", "9223372036854775808" })
+            yield return Case($"invalid id: {id}", proof => proof["owner"]!["id"] = JToken.Parse(id));
         yield return Case("missing owner", proof => proof.Remove("owner"));
         yield return Case("null owner", proof => proof["owner"] = null);
         yield return Case("missing login", proof => ((JObject)proof["owner"]!).Remove("login"));
@@ -119,17 +97,6 @@ public class ExternalAccountVerificationServiceTests
     [InlineData("https://gist.github.com//a1b2c3")]
     [InlineData("https://gist.github.com/proofowner/not-hex")]
     [InlineData("https://gist.github.com/proofowner/a1b2c3/extra")]
-    public async Task InvalidProofUrlsAreRejectedWithoutAnHttpRequest(string url)
-    {
-        using var handler = new StubHandler((_, _) => Json(Proof().ToString()));
-        var service = Service(handler);
-
-        Assert.Null(await service.VerifyGistToken(url, Token));
-        Assert.Null(await service.RecoverGistIdentity(url, Token));
-        Assert.Empty(handler.Requests);
-    }
-
-    [Theory]
     [InlineData(Url + "/../def456")]
     [InlineData(Url + "/%2e%2e/def456")]
     [InlineData(Url + "/.%2e/def456")]
@@ -137,17 +104,11 @@ public class ExternalAccountVerificationServiceTests
     [InlineData("https://gist.github.com/proofowner/./a1b2c3")]
     [InlineData("https://gist.github.com/proofowner/ignored/../a1b2c3")]
     [InlineData("https://gist.github.com/proofowner/a1b2c3\\..\\def456")]
-    public async Task NeitherModeCanNormalizeTheUrlIntoADifferentGist(string url)
+    public async Task InvalidOrNormalizedProofUrlsAreRejectedWithoutAnHttpRequest(string url)
     {
-        foreach (var recover in new[] { false, true })
-        {
-            var proof = Proof();
-            proof["owner"]!["login"] = recover ? "unrelated-account" : "ProofOwner";
-            using var handler = new StubHandler((_, _) => Json(proof.ToString()));
-
-            Assert.Null(await Verify(Service(handler), recover, url));
-            Assert.Empty(handler.Requests);
-        }
+        using var handler = new StubHandler((_, _) => Json(Proof().ToString()));
+        await AssertRejected(handler, url);
+        Assert.Empty(handler.Requests);
     }
 
     [Theory]
@@ -156,10 +117,7 @@ public class ExternalAccountVerificationServiceTests
     public async Task MissingBindingTokensAreRejectedWithoutAnHttpRequest(string? token)
     {
         using var handler = new StubHandler((_, _) => Json(Proof().ToString()));
-        var service = Service(handler);
-
-        Assert.Null(await service.VerifyGistToken(Url, token!));
-        Assert.Null(await service.RecoverGistIdentity(Url, token!));
+        await AssertRejected(handler, token: token!);
         Assert.Empty(handler.Requests);
     }
 
@@ -169,24 +127,7 @@ public class ExternalAccountVerificationServiceTests
     public async Task FailedHttpResponsesDoNotVerifyEitherIdentity(HttpStatusCode status)
     {
         using var handler = new StubHandler((_, _) => new HttpResponseMessage(status));
-        var service = Service(handler);
-
-        Assert.Null(await service.VerifyGistToken(Url, Token));
-        Assert.Null(await service.RecoverGistIdentity(Url, Token));
-    }
-
-    [Theory]
-    [InlineData("not json")]
-    [InlineData("[")]
-    [InlineData("[]")]
-    [InlineData("null")]
-    public async Task MalformedOrNonObjectResponsesDoNotVerifyEitherIdentity(string body)
-    {
-        using var handler = new StubHandler((_, _) => Json(body));
-        var service = Service(handler);
-
-        Assert.Null(await service.VerifyGistToken(Url, Token));
-        Assert.Null(await service.RecoverGistIdentity(Url, Token));
+        await AssertRejected(handler);
     }
 
     [Theory]
@@ -197,10 +138,7 @@ public class ExternalAccountVerificationServiceTests
         using var handler = new StubHandler((_, _) => throw (timeout
             ? new TaskCanceledException("HTTP client timeout")
             : new HttpRequestException("GitHub unavailable")));
-        var service = Service(handler);
-
-        Assert.Null(await service.VerifyGistToken(Url, Token));
-        Assert.Null(await service.RecoverGistIdentity(Url, Token));
+        await AssertRejected(handler);
     }
 
     [Theory]
@@ -225,6 +163,13 @@ public class ExternalAccountVerificationServiceTests
         string url, CancellationToken cancellationToken = default) => recover
         ? service.RecoverGistIdentity(url, Token, cancellationToken)
         : service.VerifyGistToken(url, Token, cancellationToken);
+
+    private static async Task AssertRejected(StubHandler handler, string url = Url, string token = Token)
+    {
+        var service = Service(handler);
+        Assert.Null(await service.VerifyGistToken(url, token));
+        Assert.Null(await service.RecoverGistIdentity(url, token));
+    }
 
     private static JObject Proof() => JObject.Parse("""
         {

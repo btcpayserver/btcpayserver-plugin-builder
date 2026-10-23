@@ -65,45 +65,6 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(1, await conn.VerifyGithubAccount("another-user", newProof, new VerifiedGithubIdentity(5_000_000_001, "CurrentLogin")));
     }
 
-    [Fact]
-    public async Task RecoveryUsesTheStoredGistAndCurrentOwnerAfterARename()
-    {
-        await using var tester = CreateMigrationTester();
-        await tester.RunScriptsUntil("30.GithubIdentity");
-        await tester.RunRemainingScripts();
-        await using var conn = await tester.Open();
-        await SeedUser(conn);
-        using var handler = new ProofHandler(_ => Task.FromResult(Proof(1234, "RenamedOwner")));
-        await using var factory = ConnectionFactory(conn);
-        var service = new GithubIdentityService(factory, new ExternalAccountVerificationService(new StubFactory(handler)));
-
-        Assert.Equal(1234, await service.RecoverUserId(UserId));
-        Assert.Equal("RenamedOwner", (await conn.GetAccountDetailSettings(UserId))!.Github);
-        Assert.Equal(ProofUrl, await StoredProof(conn));
-        Assert.Equal(new Uri("https://api.github.com/gists/a1b2c3"), Assert.Single(handler.Requests));
-        // A known ID survives a deleted proof and does not depend on another GitHub round-trip.
-        Assert.Equal(1234, await service.RecoverUserId(UserId));
-        Assert.Single(handler.Requests);
-    }
-
-    [Fact]
-    public async Task ADeletedProofPreservesLegacyVerification()
-    {
-        await using var tester = CreateMigrationTester();
-        await tester.RunScriptsUntil("30.GithubIdentity");
-        await tester.RunRemainingScripts();
-        await using var conn = await tester.Open();
-        await SeedUser(conn);
-        using var handler = new ProofHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)));
-        await using var factory = ConnectionFactory(conn);
-        var service = new GithubIdentityService(factory, new ExternalAccountVerificationService(new StubFactory(handler)));
-
-        Assert.Null(await service.RecoverUserId(UserId));
-        Assert.True(await conn.IsGithubAccountVerified(UserId));
-        Assert.Equal("old-login", (await conn.GetAccountDetailSettings(UserId))!.Github);
-        Assert.Equal(ProofUrl, await StoredProof(conn));
-    }
-
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -164,53 +125,19 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
             var newProof = sameProof ? ProofUrl : "https://gist.github.com/other-owner/def123";
             // A rename keeps the gist and numeric owner; the newer login must still survive the pending response.
             var newerIdentity = new VerifiedGithubIdentity(sameProof ? 1234 : 5678, sameProof ? "CurrentOwner" : "other-owner");
-            if (newIdentityKnown)
-                await conn.VerifyGithubAccount(UserId, newProof, newerIdentity);
-            else
-                await conn.ExecuteAsync("UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = @newProof WHERE \"Id\" = @UserId", new { newProof, UserId });
+            // The only pooled connection must be available while GitHub is still waiting.
+            await using (var writer = await factory.Open(timeout.Token))
+            {
+                if (newIdentityKnown)
+                    await writer.VerifyGithubAccount(UserId, newProof, newerIdentity);
+                else
+                    await writer.ExecuteAsync("UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = @newProof WHERE \"Id\" = @UserId", new { newProof, UserId });
+            }
             response.SetResult(Proof(1234, "RenamedOwner"));
 
             Assert.Equal(newIdentityKnown ? newerIdentity.UserId : (long?)null, await recovering);
             Assert.Equal(newProof, await StoredProof(conn));
             Assert.Equal(newIdentityKnown ? newerIdentity.Login : "old-login", (await conn.GetAccountDetailSettings(UserId))!.Github);
-        }
-        finally
-        {
-            await timeout.CancelAsync();
-            try { await recovering; }
-            catch (OperationCanceledException) { }
-        }
-    }
-
-    [Fact]
-    public async Task RecoveryReleasesTheDatabaseConnectionWhileWaitingForGithub()
-    {
-        await using var tester = CreateMigrationTester();
-        await tester.RunScriptsUntil("30.GithubIdentity");
-        await tester.RunRemainingScripts();
-        await using var conn = await tester.Open();
-        await SeedUser(conn);
-        var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var response = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var handler = new ProofHandler(async cancellationToken =>
-        {
-            requested.SetResult();
-            return await response.Task.WaitAsync(cancellationToken);
-        });
-        await using var factory = ConnectionFactory(conn, maxPoolSize: 1);
-        var service = new GithubIdentityService(factory, new ExternalAccountVerificationService(new StubFactory(handler)));
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var recovering = service.RecoverUserId(UserId, timeout.Token);
-        try
-        {
-            await requested.Task.WaitAsync(timeout.Token);
-            // With GitHub still pending, another operation can use the only connection in this pool.
-            await using (var available = await factory.Open(timeout.Token))
-                Assert.Equal(1, await available.ExecuteScalarAsync<int>("SELECT 1"));
-            Assert.False(recovering.IsCompleted);
-
-            response.SetResult(Proof(1234, "RenamedOwner"));
-            Assert.Equal(1234, await recovering);
         }
         finally
         {
@@ -228,11 +155,9 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
     private static Task<string> StoredProof(NpgsqlConnection conn) =>
         conn.QuerySingleAsync<string>("SELECT \"GithubGistUrl\" FROM \"AspNetUsers\" WHERE \"Id\" = @UserId", new { UserId });
 
-    private static DBConnectionFactory ConnectionFactory(NpgsqlConnection conn, int? maxPoolSize = null)
+    private static DBConnectionFactory ConnectionFactory(NpgsqlConnection conn)
     {
-        var connectionString = new NpgsqlConnectionStringBuilder(conn.ConnectionString);
-        if (maxPoolSize is not null)
-            connectionString.MaxPoolSize = maxPoolSize.Value;
+        var connectionString = new NpgsqlConnectionStringBuilder(conn.ConnectionString) { MaxPoolSize = 1 };
         return new DBConnectionFactory(new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["POSTGRES"] = connectionString.ToString() }).Build());
     }
@@ -248,12 +173,8 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
     private sealed class ProofHandler(Func<CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler
     {
-        public List<Uri?> Requests { get; } = [];
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            Requests.Add(request.RequestUri);
-            return respond(cancellationToken);
-        }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            respond(cancellationToken);
     }
 
     private sealed class StubFactory(HttpMessageHandler handler) : IHttpClientFactory
