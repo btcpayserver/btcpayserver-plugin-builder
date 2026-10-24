@@ -119,6 +119,7 @@ agent to approve listings: put the review policy in its local instructions.
 | `PUT /admin/plugins/{pluginSlug}/visibility` | `{"visibility":"hidden","reason":"Malware report"}`; `hidden`, `unlisted` or `listed`. HTTP 409 if it already has that visibility. |
 | `POST /admin/plugins/{pluginSlug}/versions/{version}/revoke` | `{"reason":"Ships an unexplained binary"}`. Stops serving that version. HTTP 404 if it is not published. |
 | `GET /admin/audit?tokenId={id}&before=&limit=50` | Inspect API activity for a token, or omit tokenId to inspect all admin API activity. |
+| `GET /admin/access-log?ip=&since=&until=&path=&before=&limit=50` | The front proxy's access log, newest first: an address or block (`2001:db8::/64`), a time range and a path prefix. See [Access log](#access-log). |
 
 Lists return `{items,nextCursor,hasMore}` with a decimal/string cursor. `limit` is
 1–100. Users/plugins/listings use exclusive `after`; builds/logs/audit use exclusive
@@ -210,6 +211,20 @@ Polling agents must keep up within this window. Expired events cannot be replaye
 an old cursor resumes at the next retained event. IDs are never reset or reused.
 Operators must apply the same retention limit to backups, exports, and webhook/email
 receiver storage; deleting local history cannot erase copies held by recipients.
+
+## Access log
+
+The front proxy can send a trimmed copy of its access log, so abuse can be matched to
+accounts and builds by address. Set `PB_ACCESSLOG_SYSLOG_PORT` to a UDP port and point
+nginx at it with the `pbaccess` log format (the infra repository does both). Each row
+holds nginx's time, client address, host, method, path, status, bytes sent and user
+agent. Query strings are never sent or stored, since they can carry credentials.
+Malformed datagrams are refused and counted in the hourly warning.
+
+Syslog has no authentication: the port must be reachable only from the proxy's
+network, never published on the host. Without the port nothing is received.
+`PB_ACCESSLOG_RETENTION_DAYS` (default 7, allowed 1-90) is measured from nginx's
+time; the hourly cleanup runs whether or not the port is set.
 
 ## Deployment and verification
 
