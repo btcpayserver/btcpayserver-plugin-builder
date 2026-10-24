@@ -76,7 +76,11 @@ public static class NpgsqlConnectionExtensions
     public static async Task SetAccountDetailSettings(this NpgsqlConnection connection, AccountSettings accountSettings, string userId)
     {
         await connection.ExecuteAsync(
-            "UPDATE \"AspNetUsers\" SET \"AccountDetail\" = @settings::JSONB WHERE \"Id\" = @userId",
+            """
+            UPDATE "AspNetUsers" SET "AccountDetail" = CASE WHEN "GithubUserId" IS NULL THEN @settings::jsonb
+                ELSE (@settings::jsonb - 'github') || jsonb_build_object('github', "AccountDetail"->'github') END
+            WHERE "Id" = @userId
+            """,
             new { userId, settings = JsonConvert.SerializeObject(accountSettings, CamelCaseSerializerSettings.Instance) }
         );
     }
@@ -103,11 +107,21 @@ public static class NpgsqlConnectionExtensions
         return await conn.ExecuteScalarAsync<string?>(sql, new { npub });
     }
 
-    public static async Task VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl)
+    public static Task<int> ClearUnverifiedGithubHandle(this NpgsqlConnection connection, string userId) =>
+        connection.ExecuteAsync("""
+            UPDATE "AspNetUsers" SET "AccountDetail" = jsonb_set(COALESCE("AccountDetail", '{}'::jsonb), '{github}', 'null'::jsonb)
+            WHERE "Id" = @userId AND "GithubUserId" IS NULL AND NULLIF("GithubGistUrl", '') IS NULL
+            """, new { userId });
+
+    public static Task<int> VerifyGithubAccount(this NpgsqlConnection connection, string userId, string gistUrl, VerifiedGithubIdentity identity)
     {
-        await connection.ExecuteAsync(
-            "UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = @gistUrl WHERE \"Id\" = @userId",
-            new { userId, gistUrl }
+        return connection.ExecuteAsync(
+            """
+            UPDATE "AspNetUsers" SET "GithubGistUrl" = @gistUrl, "GithubUserId" = @githubUserId,
+                "AccountDetail" = jsonb_set(COALESCE("AccountDetail", '{}'::jsonb), '{github}', to_jsonb(@login::text))
+            WHERE "Id" = @userId
+            """,
+            new { userId, gistUrl, githubUserId = identity.UserId, login = identity.Login }
         );
     }
 

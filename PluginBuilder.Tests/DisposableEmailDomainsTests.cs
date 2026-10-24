@@ -22,6 +22,9 @@ public class DisposableEmailDomainsTests
     [InlineData("someone@mailinator.com.")]
     [InlineData("someone@yopmail.fr")]
     [InlineData("someone@sharklasers.com")]
+    // Catch-all services that hand out made-up subdomains, as in a scripted sign-up burst.
+    [InlineData("someone@2uh.kashre.com")]
+    [InlineData("someone@c2.lucktaro.com")]
     // Mail software converts these to mailinator.com (IDNA), so they reach the same inbox.
     [InlineData("someone@mailinator\u3002com")]
     [InlineData("someone@mailinator\uFF0Ecom")]
