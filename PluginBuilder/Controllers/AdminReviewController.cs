@@ -194,6 +194,29 @@ public class AdminReviewController(DBConnectionFactory connections, ListingRevie
         return Page(rows, limit, "id", before?.ToString());
     }
 
+    /// <summary>The front proxy's trimmed access log (no query strings), newest first; kept ACCESSLOG_RETENTION_DAYS.</summary>
+    [HttpGet("access-log")]
+    public async Task<IActionResult> AccessLog([FromQuery, MaxLength(64)] string? ip = null, [FromQuery] DateTimeOffset? since = null,
+        [FromQuery] DateTimeOffset? until = null, [FromQuery, MaxLength(AccessLogLine.MaxPath)] string? path = null,
+        [FromQuery, Range(1, long.MaxValue)] long? before = null, [FromQuery, Range(1, 100)] int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        string? network = null;
+        if (ip is not null && !AccessLogLine.TryParseNetwork(ip, out network))
+            return BadRequest(new { message = "ip must be an address or a block, for example 203.0.113.7 or 2001:db8::/64." });
+        var rows = await ReadJson("""
+            SELECT jsonb_build_object('id', id::text, 'loggedAt', logged_at, 'ip', host(ip), 'host', host, 'method', method, 'path', path,
+                'status', status, 'bytes', bytes, 'userAgent', user_agent)::text
+            FROM nginx_access_log
+            WHERE (@network::inet IS NULL OR ip <<= @network::inet) AND (@since::timestamptz IS NULL OR logged_at >= @since::timestamptz)
+              AND (@until::timestamptz IS NULL OR logged_at < @until::timestamptz) AND (@path::text IS NULL OR starts_with(path, @path::text))
+              AND (@before::bigint IS NULL OR id < @before::bigint)
+            ORDER BY id DESC LIMIT @take
+            """, new { network, since = since?.ToUniversalTime(), until = until?.ToUniversalTime(), path, before, take = limit + 1 },
+            cancellationToken);
+        return Page(rows, limit, "id", before?.ToString());
+    }
+
     private async Task<List<JObject>> ReadJson(string sql, object args, CancellationToken cancellationToken)
     {
         await using var conn = await connections.Open(cancellationToken);

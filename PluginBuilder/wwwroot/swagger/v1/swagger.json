@@ -1462,6 +1462,153 @@
         }
       }
     },
+    "/admin/access-log": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Search the front proxy's access log",
+        "description": "Requires a current ServerAdmin account. Requests nginx sent over syslog, newest first, kept ACCESSLOG_RETENTION_DAYS (default 7). Query strings are never stored. See docs/admin-agent-access.md.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "An address, or a block such as 2001:db8::/64."
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Inclusive."
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Exclusive."
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 2048,
+              "description": "Path prefix, for example /register."
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "loggedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "ip": {
+                            "type": "string"
+                          },
+                          "host": {
+                            "type": "string"
+                          },
+                          "method": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "integer"
+                          },
+                          "bytes": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "userAgent": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          }
+        }
+      }
+    },
     "/admin/access-tokens": {
       "get": {
         "tags": [
