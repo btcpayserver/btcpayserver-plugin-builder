@@ -63,12 +63,16 @@ public static class AccessLogLine
         }
     }
 
-    /// <summary>Parses an address ("203.0.113.7") or a block ("2001:db8::/64") into the form Postgres reads as inet.</summary>
+    /// <summary>Parses an address ("203.0.113.7") or a block ("2001:db8::/64") into the form Postgres reads as inet.
+    /// IPv4 must use four decimal octets without leading zeros.</summary>
     public static bool TryParseNetwork(string value, out string network)
     {
         network = "";
         var slash = value.IndexOf('/');
-        if (!IPAddress.TryParse(slash < 0 ? value : value[..slash], out var address) ||
+        var text = slash < 0 ? value : value[..slash];
+        if (!IPAddress.TryParse(text, out var address) ||
+            // .NET accepts abbreviated, octal and hexadecimal IPv4 text, which can mean a different address in Postgres.
+            address.AddressFamily == AddressFamily.InterNetwork && address.ToString() != text ||
             address.AddressFamily == AddressFamily.InterNetworkV6 && address.ScopeId != 0)
             return false;
         var max = address.AddressFamily == AddressFamily.InterNetwork ? 32 : 128;

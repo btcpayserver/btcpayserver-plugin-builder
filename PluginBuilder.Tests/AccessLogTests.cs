@@ -134,6 +134,12 @@ public class AccessLogTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [InlineData("2001:db8::1/129")]
     [InlineData("::ffff:203.0.113.7/129")]
     [InlineData("fe80::1%2")]
+    [InlineData("10/8")]
+    [InlineData("172.16/12")]
+    [InlineData("192.168/16")]
+    [InlineData("192.168.010.001")]
+    [InlineData("0x0a.1.2.3")]
+    [InlineData("3232238081")]
     public void RefusesAnInvalidAddressOrBlock(string value) => Assert.False(AccessLogLine.TryParseNetwork(value, out _));
 
     [Fact]
@@ -255,6 +261,8 @@ public class AccessLogTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
         Assert.Equal(HttpStatusCode.BadRequest, (await admin.GetAsync("/api/v1/admin/access-log?ip=not-an-ip")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await admin.GetAsync("/api/v1/admin/access-log?ip=203.0.113.7/33")).StatusCode);
+        foreach (var ip in new[] { "10/8", "172.16/12", "192.168/16", "192.168.010.001" })
+            Assert.Equal(HttpStatusCode.BadRequest, (await admin.GetAsync("/api/v1/admin/access-log?ip=" + Uri.EscapeDataString(ip))).StatusCode);
         using var user = tester.CreateHttpClient().SetBasicAuth("user@access-log.test", Password);
         Assert.Equal(HttpStatusCode.Forbidden, (await user.GetAsync("/api/v1/admin/access-log")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await tester.CreateHttpClient().GetAsync("/api/v1/admin/access-log")).StatusCode);
@@ -267,6 +275,48 @@ public class AccessLogTests(ITestOutputHelper logs) : UnitTestBase(logs)
             """);
         Assert.Equal(1, await receiver.Purge(CancellationToken.None));
         Assert.Equal(3, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM nginx_access_log"));
+    }
+
+    [Fact]
+    public async Task PurgesAutomaticallyWithoutAListener()
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        tester.ConfigureApplication = app =>
+        {
+            app.Configuration["ACCESSLOG_SYSLOG_PORT"] = null;
+            app.Configuration["ACCESSLOG_RETENTION_DAYS"] = "3";
+        };
+        tester.ConfigureServices = services =>
+        {
+            // Start only the database so rows can be seeded before the receiver's first retention pass.
+            foreach (var service in services.Where(s => s.ServiceType == typeof(IHostedService) &&
+                         s.ImplementationType != typeof(DatabaseStartupHostedService)).ToArray())
+                services.Remove(service);
+        };
+        await tester.Start();
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.ExecuteAsync("""
+            INSERT INTO nginx_access_log (logged_at, ip, host, method, path, status, bytes, user_agent)
+            VALUES (now() - interval '4 days', '192.0.2.1', 'h', 'GET', '/expired', 200, 0, ''),
+                   (now() - interval '2 days', '192.0.2.2', 'h', 'GET', '/recent', 200, 0, '')
+            """);
+
+        var receiver = tester.GetService<AccessLogHostedService>();
+        await receiver.StartAsync(CancellationToken.None);
+        try
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => receiver.Bound.WaitAsync(TimeSpan.FromSeconds(10)));
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM nginx_access_log WHERE path = '/expired'") != 0)
+                await Task.Delay(25, deadline.Token);
+
+            Assert.Equal(new[] { "/recent" }, await conn.QueryAsync<string>("SELECT path FROM nginx_access_log"));
+        }
+        finally
+        {
+            await receiver.StopAsync(CancellationToken.None);
+        }
     }
 
     [Fact]
