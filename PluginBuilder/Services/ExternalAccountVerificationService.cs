@@ -11,14 +11,6 @@ public sealed record VerifiedGithubIdentity(long UserId, string Login);
 public class ExternalAccountVerificationService(IHttpClientFactory httpClientFactory)
 {
     public async Task<VerifiedGithubIdentity?> VerifyGistToken(string gistUrl, string token, CancellationToken cancellationToken = default)
-        => await ReadGistIdentity(gistUrl, token, true, cancellationToken);
-
-    // Only for a proof already stored for this builder account; GitHub logins may have changed since verification.
-    public Task<VerifiedGithubIdentity?> RecoverGistIdentity(string gistUrl, string token, CancellationToken cancellationToken = default)
-        => ReadGistIdentity(gistUrl, token, false, cancellationToken);
-
-    private async Task<VerifiedGithubIdentity?> ReadGistIdentity(string gistUrl, string token, bool requireUrlOwner,
-        CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(gistUrl))
             return null;
@@ -45,7 +37,7 @@ public class ExternalAccountVerificationService(IHttpClientFactory httpClientFac
                 return null;
 
             var login = owner.Value<string>("login")!;
-            if (requireUrlOwner && !login.Equals(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase))
+            if (!login.Equals(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase))
                 return null;
 
             if (gistData["files"] is not JObject files)

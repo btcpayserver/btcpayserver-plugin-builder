@@ -250,7 +250,7 @@ public class BuildService
 
         Logger.LogWarning("Skipping build {BuildId} because its account cannot build", fullBuildId);
         await UpdateBuild(fullBuildId, BuildStates.Failed,
-            new JObject { ["error"] = "This account is suspended or requires a new GitHub proof before building." });
+            new JObject { ["error"] = "This account is suspended or requires GitHub verification before building." });
         return true;
     }
 

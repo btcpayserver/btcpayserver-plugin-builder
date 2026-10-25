@@ -5,8 +5,7 @@ using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Services;
 
-public class GithubIdentityService(DBConnectionFactory connections, ExternalAccountVerificationService proofs,
-    AccountModerationService moderation)
+public class GithubIdentityService(DBConnectionFactory connections, AccountModerationService moderation)
 {
     private const string BanReason = "Verified GitHub identity is banned by a server admin.";
 
@@ -16,97 +15,61 @@ public class GithubIdentityService(DBConnectionFactory connections, ExternalAcco
 
     private static Task<Account?> ReadAccount(NpgsqlConnection conn, string userId, CancellationToken ct) =>
         conn.QuerySingleOrDefaultAsync<Account>(new CommandDefinition("""
-            SELECT "Id" AS Id, "GithubUserId" AS GithubUserId, "GithubGistUrl" AS GistUrl,
-              "AccountDetail"->>'github' AS Login,
+            SELECT "GithubUserId" AS GithubUserId, "GithubGistUrl" AS GistUrl,
+              CASE WHEN "GithubUserId" IS NOT NULL OR NULLIF("GithubGistUrl", '') IS NOT NULL
+                   THEN NULLIF("AccountDetail"->>'github', '') END AS Login,
               EXISTS(SELECT 1 FROM admin_account_locks WHERE user_id = @userId AND locked_until > CURRENT_TIMESTAMP) AS AdminLocked
             FROM "AspNetUsers" WHERE "Id" = @userId
             """, new { userId }, cancellationToken: ct));
 
-    public async Task<long?> Recover(string userId, CancellationToken ct = default)
-    {
-        Account? account;
-        await using (var conn = await connections.Open(ct))
-            account = await ReadAccount(conn, userId, ct);
-        if (account is null || account.GithubUserId is not null || string.IsNullOrEmpty(account.GistUrl))
-            return account?.GithubUserId;
-
-        // Never hold a database connection while waiting for GitHub. A missing/deleted gist leaves the old proof intact.
-        var identity = await proofs.RecoverGistIdentity(account.GistUrl, userId, ct);
-        if (identity is null)
-            return null;
-
-        await using var connection = await connections.Open(ct);
-        await using var tx = await connection.BeginTransactionAsync(ct);
-        await Serialize(connection, tx, ct);
-        await connection.ExecuteAsync(new CommandDefinition("""
-            UPDATE "AspNetUsers" SET "GithubUserId" = @id,
-              "AccountDetail" = jsonb_set(COALESCE("AccountDetail", '{}'::jsonb), '{github}', to_jsonb(@login::text))
-            WHERE "Id" = @userId AND "GithubUserId" IS NULL AND "GithubGistUrl" = @expectedProof
-            """, new { userId, id = identity.UserId, login = identity.Login, expectedProof = account.GistUrl }, tx, cancellationToken: ct));
-        var current = await ReadAccount(connection, userId, ct);
-        await tx.CommitAsync(ct);
-        return current?.GithubUserId;
-    }
-
     public async Task<bool> CanBuild(string userId, bool requireVerification, CancellationToken ct = default)
     {
-        Account? account;
-        await using (var connection = await connections.Open(ct))
-            account = await ReadAccount(connection, userId, ct);
-        if (account is null || account.AdminLocked)
-            return false;
-        if (account.GithubUserId is null && !string.IsNullOrEmpty(account.GistUrl))
-            await Recover(userId, ct);
         await using var conn = await connections.Open(ct);
-        account = await ReadAccount(conn, userId, ct);
+        var account = await ReadAccount(conn, userId, ct);
         if (account is null || account.AdminLocked)
             return false;
-        if (account.GithubUserId is { } id && await IsBanned(conn, id, ct))
+        if (await FindBan(conn, account.GithubUserId, account.Login, ct) is not null)
         {
             await using var tx = await conn.BeginTransactionAsync(ct);
             await Serialize(conn, tx, ct);
             var cancelled = new List<AccountModerationService.BuildRow>();
-            if (await IsBanned(conn, id, ct))
-                await LockRelated(conn, tx, userId, id, BanReason, null, null, cancelled, ct);
+            if (await FindBan(conn, account.GithubUserId, account.Login, ct) is { } ban)
+                await LockRelated(conn, tx, userId, ban, BanReason, null, null, cancelled, ct);
             await tx.CommitAsync(ct);
             moderation.Stop(cancelled, AccountModerationService.CancelledByLock);
             return false;
         }
-        return account.GithubUserId is not null || (!requireVerification && string.IsNullOrEmpty(account.GistUrl));
+        return !requireVerification || account.GithubUserId is not null || !string.IsNullOrEmpty(account.GistUrl);
     }
 
     public async Task<bool> SaveProof(string userId, string gistUrl, VerifiedGithubIdentity identity, CancellationToken ct = default)
     {
-        // The proof was already validated; optional URL suffixes are not part of the stored gist identity.
         gistUrl = new Uri(gistUrl.Split(['?', '#'], 2)[0]).AbsoluteUri;
-        await Recover(userId, ct);
         await using var conn = await connections.Open(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
         await Serialize(conn, tx, ct);
         var account = await ReadAccount(conn, userId, ct);
         if (account is null)
             return false;
-        var githubUserId = identity.UserId;
-        if (account.GithubUserId is { } previousId && previousId != githubUserId && await IsBanned(conn, previousId, ct))
-            githubUserId = previousId;
-        var banned = await IsBanned(conn, githubUserId, ct);
+        var storedBan = await FindBan(conn, account.GithubUserId, account.Login, ct);
+        var ban = storedBan ?? await FindBan(conn, identity.UserId, identity.Login, ct);
         var cancelled = new List<AccountModerationService.BuildRow>();
         // Lock related users before writing a proof: that write can emit an event and lock the event counter.
-        if (banned)
-            await LockRelated(conn, tx, userId, githubUserId, BanReason, null, null, cancelled, ct);
-        if (account.GithubUserId is null || account.GithubUserId == identity.UserId)
+        if (ban is not null)
+            await LockRelated(conn, tx, userId, ban, BanReason, null, null, cancelled, ct);
+        // Keep a banned legacy link intact instead of replacing it with another GitHub identity.
+        if (account.GithubUserId == identity.UserId || (account.GithubUserId is null && storedBan is null))
             await conn.VerifyGithubAccount(userId, gistUrl, identity);
-        else if (!banned)
+        else if (ban is null)
             throw new InvalidOperationException("This account is already linked to a different GitHub identity.");
 
         await tx.CommitAsync(ct);
         moderation.Stop(cancelled, AccountModerationService.CancelledByLock);
-        return !banned;
+        return ban is null;
     }
 
     public async Task<BurnResult?> Burn(string userId, string reason, string? actor, string? tokenId, CancellationToken ct = default)
     {
-        await Recover(userId, ct);
         await using var conn = await connections.Open(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
         await Serialize(conn, tx, ct);
@@ -118,68 +81,77 @@ public class GithubIdentityService(DBConnectionFactory connections, ExternalAcco
               WHERE ur."UserId" = @userId AND r."Name" = 'ServerAdmin')
             """, new { userId }, tx, cancellationToken: ct));
         if (isAdmin)
-            return new BurnResult(null, [], [userId], ["Server admin accounts cannot be burned through the API."]);
+            return new BurnResult(null, null, [], [userId], ["Server admin accounts cannot be burned through the API."]);
 
+        var ban = new Ban(account.GithubUserId, account.Login);
         var created = 0;
-        if (account.GithubUserId is { } id)
+        if (ban.GithubUserId is not null || ban.Login is not null)
             created = await conn.ExecuteAsync(new CommandDefinition("""
                 INSERT INTO github_bans (github_user_id, github_login, reason, banned_by)
-                VALUES (@id, @login, @reason, @actor)
-                ON CONFLICT (github_user_id) DO NOTHING
-                """, new { id, login = account.Login ?? "", reason, actor }, tx, cancellationToken: ct));
+                VALUES (@GithubUserId, @login, @reason, @actor) ON CONFLICT DO NOTHING
+                """, new { ban.GithubUserId, login = ban.Login ?? "", reason, actor }, tx, cancellationToken: ct));
         var cancelled = new List<AccountModerationService.BuildRow>();
-        var (locked, skipped) = await LockRelated(conn, tx, userId, account.GithubUserId, reason, actor, tokenId, cancelled, ct);
+        var (locked, skipped) = await LockRelated(conn, tx, userId, ban, reason, actor, tokenId, cancelled, ct);
         if (skipped.Contains(userId))
-            return new BurnResult(null, [], [userId], ["Server admin accounts cannot be burned through the API."]);
+            return new BurnResult(null, null, [], [userId], ["Server admin accounts cannot be burned through the API."]);
         var warnings = new List<string>();
-        if (account.GithubUserId is null)
-            warnings.Add("GitHub identity could not be recovered. The account was locked, but no GitHub ban was created.");
+        if (ban.GithubUserId is null && ban.Login is null)
+            warnings.Add("No verified GitHub identity is available. The account was locked, but no GitHub ban was created.");
         if (skipped.Length > 0)
             warnings.Add("Related server admin accounts were not locked.");
         if (created > 0)
             await moderation.Emit(conn, tx, "github.banned", new JObject
             {
-                ["githubUserId"] = account.GithubUserId, ["githubLogin"] = account.Login, ["reason"] = reason
+                ["githubUserId"] = ban.GithubUserId, ["githubLogin"] = ban.Login, ["reason"] = reason
             }, actor, tokenId, ct);
         await moderation.Emit(conn, tx, "user.burned", new JObject
         {
-            ["userId"] = userId, ["githubUserId"] = account.GithubUserId, ["reason"] = reason,
+            ["userId"] = userId, ["githubUserId"] = ban.GithubUserId, ["githubLogin"] = ban.Login, ["reason"] = reason,
             ["lockedUserIds"] = new JArray(locked), ["skippedAdminUserIds"] = new JArray(skipped), ["warnings"] = new JArray(warnings)
         }, actor, tokenId, ct);
         await tx.CommitAsync(ct);
         moderation.Stop(cancelled, AccountModerationService.CancelledByLock);
-        return new BurnResult(account.GithubUserId, locked, skipped, warnings.ToArray());
+        return new BurnResult(ban.GithubUserId, ban.Login, locked, skipped, warnings.ToArray());
     }
 
-    public async Task<bool> Revoke(long githubUserId, string reason, string? actor, string? tokenId, CancellationToken ct = default)
+    public async Task<bool> Revoke(long banId, string reason, string? actor, string? tokenId, CancellationToken ct = default)
     {
         await using var conn = await connections.Open(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
         await Serialize(conn, tx, ct);
-        var removed = await conn.ExecuteAsync(new CommandDefinition("DELETE FROM github_bans WHERE github_user_id = @githubUserId",
-            new { githubUserId }, tx, cancellationToken: ct));
-        if (removed == 0)
+        var ban = await conn.QuerySingleOrDefaultAsync<Ban>(new CommandDefinition("""
+            DELETE FROM github_bans WHERE id = @banId RETURNING github_user_id AS GithubUserId, github_login AS Login
+            """, new { banId }, tx, cancellationToken: ct));
+        if (ban is null)
             return false;
-        await moderation.Emit(conn, tx, "github.ban_revoked", new JObject { ["githubUserId"] = githubUserId, ["reason"] = reason }, actor, tokenId, ct);
+        await moderation.Emit(conn, tx, "github.ban_revoked", new JObject
+        {
+            ["banId"] = banId, ["githubUserId"] = ban.GithubUserId, ["githubLogin"] = ban.Login, ["reason"] = reason
+        }, actor, tokenId, ct);
         await tx.CommitAsync(ct);
         return true;
     }
 
-    private static Task<bool> IsBanned(NpgsqlConnection conn, long id, CancellationToken ct) =>
-        conn.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT EXISTS(SELECT 1 FROM github_bans WHERE github_user_id = @id)",
-            new { id }, cancellationToken: ct));
+    private static Task<Ban?> FindBan(NpgsqlConnection conn, long? id, string? login, CancellationToken ct) =>
+        conn.QueryFirstOrDefaultAsync<Ban>(new CommandDefinition("""
+            SELECT github_user_id AS GithubUserId, github_login AS Login FROM github_bans
+            WHERE github_user_id = @id OR (github_user_id IS NULL AND lower(github_login) = lower(@login))
+            ORDER BY github_user_id NULLS LAST LIMIT 1
+            """, new { id, login }, cancellationToken: ct));
 
     private async Task<(string[] Locked, string[] Skipped)> LockRelated(NpgsqlConnection conn, NpgsqlTransaction tx,
-        string userId, long? githubUserId, string reason, string? actor, string? tokenId,
+        string userId, Ban ban, string reason, string? actor, string? tokenId,
         List<AccountModerationService.BuildRow> cancelled, CancellationToken ct)
     {
         var users = (await conn.QueryAsync<RelatedAccount>(new CommandDefinition("""
             SELECT u."Id" AS Id,
               EXISTS(SELECT 1 FROM "AspNetUserRoles" ur JOIN "AspNetRoles" r ON r."Id" = ur."RoleId"
                 WHERE ur."UserId" = u."Id" AND r."Name" = 'ServerAdmin') AS IsAdmin
-            FROM "AspNetUsers" u WHERE u."Id" = @userId OR u."GithubUserId" = @githubUserId
+            FROM "AspNetUsers" u WHERE u."Id" = @userId OR u."GithubUserId" = @GithubUserId
+              OR (@GithubUserId IS NULL AND lower(u."AccountDetail"->>'github') = lower(@login)
+                  AND (u."GithubUserId" IS NOT NULL OR NULLIF(u."GithubGistUrl", '') IS NOT NULL))
             ORDER BY u."Id" FOR UPDATE OF u
-            """, new { userId, githubUserId }, tx, cancellationToken: ct))).ToArray();
+            """, new { userId, ban.GithubUserId, login = ban.Login }, tx, cancellationToken: ct))).ToArray();
         // Lock all affected builds before the first event locks the event counter. Publishers lock builds before emitting too.
         await conn.ExecuteAsync(new CommandDefinition("""
             SELECT 1 FROM builds WHERE triggered_by = ANY(@userIds) AND state <> ALL(@terminal)
@@ -187,21 +159,28 @@ public class GithubIdentityService(DBConnectionFactory connections, ExternalAcco
             """, new { userIds = users.Where(u => !u.IsAdmin).Select(u => u.Id).ToArray(),
                 terminal = BuildStatesExtensions.TerminalEventNames }, tx, cancellationToken: ct));
         foreach (var user in users.Where(u => !u.IsAdmin))
+        {
+            // Automatic reapplication keeps the metadata of an existing indefinite lock.
+            if (actor is null && await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
+                    "SELECT EXISTS(SELECT 1 FROM admin_account_locks WHERE user_id = @id AND locked_until = 'infinity')",
+                    new { id = user.Id }, tx, cancellationToken: ct)))
+                continue;
             cancelled.AddRange(await moderation.LockAccount(conn, tx, user.Id, null, reason, actor, tokenId, ct));
-        if (actor is null && githubUserId is not null)
+        }
+        if (actor is null && (ban.GithubUserId is not null || ban.Login is not null))
             await moderation.Emit(conn, tx, "github.ban_applied", new JObject
             {
-                ["userId"] = userId, ["githubUserId"] = githubUserId,
+                ["userId"] = userId, ["githubUserId"] = ban.GithubUserId, ["githubLogin"] = ban.Login,
                 ["lockedUserIds"] = new JArray(users.Where(u => !u.IsAdmin).Select(u => u.Id)),
                 ["skippedAdminUserIds"] = new JArray(users.Where(u => u.IsAdmin).Select(u => u.Id))
             }, null, null, ct);
         return (users.Where(u => !u.IsAdmin).Select(u => u.Id).ToArray(), users.Where(u => u.IsAdmin).Select(u => u.Id).ToArray());
     }
 
-    public sealed record BurnResult(long? GithubUserId, string[] LockedUserIds, string[] SkippedAdminUserIds, string[] Warnings);
+    public sealed record BurnResult(long? GithubUserId, string? GithubLogin, string[] LockedUserIds, string[] SkippedAdminUserIds, string[] Warnings);
+    private sealed record Ban(long? GithubUserId, string? Login);
     private sealed class Account
     {
-        public string Id { get; set; } = "";
         public long? GithubUserId { get; set; }
         public string? GistUrl { get; set; }
         public string? Login { get; set; }

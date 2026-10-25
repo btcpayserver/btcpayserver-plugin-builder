@@ -77,7 +77,8 @@ public static class NpgsqlConnectionExtensions
     {
         await connection.ExecuteAsync(
             """
-            UPDATE "AspNetUsers" SET "AccountDetail" = CASE WHEN "GithubUserId" IS NULL THEN @settings::jsonb
+            UPDATE "AspNetUsers" SET "AccountDetail" = CASE
+                WHEN "GithubUserId" IS NULL AND NULLIF("GithubGistUrl", '') IS NULL THEN @settings::jsonb
                 ELSE (@settings::jsonb - 'github') || jsonb_build_object('github', "AccountDetail"->'github') END
             WHERE "Id" = @userId
             """,
@@ -409,13 +410,15 @@ public static class NpgsqlConnectionExtensions
         var allowed = await connection.ExecuteScalarAsync<bool>("""
             SELECT NOT EXISTS(SELECT 1 FROM admin_account_locks l
                               WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP)
-              AND NOT EXISTS(SELECT 1 FROM github_bans b WHERE b.github_user_id = u."GithubUserId")
-              AND (u."GithubUserId" IS NOT NULL OR
-                   (NOT @requireGithubVerification AND NULLIF(u."GithubGistUrl", '') IS NULL))
+              AND NOT EXISTS(SELECT 1 FROM github_bans b WHERE b.github_user_id = u."GithubUserId"
+                OR (b.github_user_id IS NULL AND (u."GithubUserId" IS NOT NULL OR NULLIF(u."GithubGistUrl", '') IS NOT NULL)
+                    AND lower(b.github_login) = lower(u."AccountDetail"->>'github')))
+              AND (NOT @requireGithubVerification OR u."GithubUserId" IS NOT NULL
+                   OR NULLIF(u."GithubGistUrl", '') IS NOT NULL)
             FROM "AspNetUsers" u WHERE u."Id" = @userId
             """, new { userId, requireGithubVerification }, tx);
         if (!allowed)
-            throw new BuildServiceException("This account is suspended or requires a new GitHub proof before building.");
+            throw new BuildServiceException("This account is suspended or requires GitHub verification before building.");
 
         var unfinished = await connection.ExecuteScalarAsync<int>(
             "SELECT count(*) FROM builds WHERE triggered_by = @userId AND state = ANY(@states)",

@@ -65,7 +65,7 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task UnverifiedHandleCleanupPreservesAVerificationSavedAfterTheInitialRead(bool identityKnown)
+    public async Task UnverifiedProfileEditsPreserveAVerificationSavedAfterTheInitialRead(bool identityKnown)
     {
         await using var tester = CreateMigrationTester("GithubCleanupRace");
         await tester.RunScriptsUntil("30.GithubIdentity");
@@ -74,6 +74,7 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await SeedUser(conn);
         await conn.ExecuteAsync("UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = NULL WHERE \"Id\" = @UserId", new { UserId });
         Assert.False(await conn.IsGithubAccountVerified(UserId));
+        var staleSettings = (await conn.GetAccountDetailSettings(UserId))!;
 
         // Another request completes verification after the initial decision to show the proof form.
         await using (var verifier = await tester.Open())
@@ -89,6 +90,8 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
         }
 
         Assert.Equal(0, await conn.ClearUnverifiedGithubHandle(UserId));
+        staleSettings.Github = "untrusted-profile-value";
+        await conn.SetAccountDetailSettings(staleSettings, UserId);
         Assert.True(await conn.IsGithubAccountVerified(UserId));
         Assert.Equal("VerifiedOwner", (await conn.GetAccountDetailSettings(UserId))!.Github);
         Assert.Equal(identityKnown ? 1234L : (long?)null,

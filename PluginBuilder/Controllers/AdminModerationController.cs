@@ -54,20 +54,20 @@ public class AdminModerationController(DBConnectionFactory connections, AccountM
     {
         await using var conn = await connections.Open(cancellationToken);
         var rows = await conn.QueryAsync<string>(new CommandDefinition("""
-            SELECT jsonb_build_object('githubUserId', github_user_id, 'githubLogin', github_login, 'reason', reason,
-              'bannedBy', banned_by, 'bannedAt', banned_at)::text FROM github_bans ORDER BY github_user_id
+            SELECT jsonb_build_object('id', id, 'githubUserId', github_user_id, 'githubLogin', github_login, 'reason', reason,
+              'bannedBy', banned_by, 'bannedAt', banned_at)::text FROM github_bans ORDER BY id
             """, cancellationToken: cancellationToken));
         return Ok(new JArray(rows.Select(JObject.Parse)));
     }
 
-    [HttpPost("github-bans/{githubUserId:long}/revoke")]
-    public async Task<IActionResult> RevokeGithubBan(long githubUserId, ReasonRequest request, CancellationToken cancellationToken)
+    [HttpPost("github-bans/{banId:long}/revoke")]
+    public async Task<IActionResult> RevokeGithubBan(long banId, ReasonRequest request, CancellationToken cancellationToken)
     {
-        if (githubUserId <= 0)
-            return BadRequest(new { message = "githubUserId must be positive." });
-        return await githubIdentities.Revoke(githubUserId, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier),
+        if (banId <= 0)
+            return BadRequest(new { message = "banId must be positive." });
+        return await githubIdentities.Revoke(banId, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier),
             User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken)
-            ? Ok(new { githubUserId, revoked = true }) : NotFound();
+            ? Ok(new { banId, revoked = true }) : NotFound();
     }
 
     [HttpPost("users/{userId}/lock")]

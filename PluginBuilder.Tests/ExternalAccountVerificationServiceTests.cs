@@ -38,7 +38,6 @@ public class ExternalAccountVerificationServiceTests
         using var handler = new StubHandler((_, _) => Json(body));
         var service = Service(handler);
         Assert.True(await service.VerifyGistToken(Url, Token) is null, scenario);
-        Assert.True(await service.RecoverGistIdentity(Url, Token) is null, scenario);
     }
 
     public static IEnumerable<object[]> UnverifiableProofs()
@@ -103,7 +102,6 @@ public class ExternalAccountVerificationServiceTests
     {
         using var handler = new StubHandler((_, _) => Json(Proof().ToString()));
         await AssertRejected(handler, url);
-        Assert.Null(await Service(handler).RecoverGistIdentity(url, Token));
         Assert.Empty(handler.Requests);
     }
 
@@ -114,7 +112,6 @@ public class ExternalAccountVerificationServiceTests
     {
         using var handler = new StubHandler((_, _) => Json(Proof().ToString()));
         await AssertRejected(handler, token: token!);
-        Assert.Null(await Service(handler).RecoverGistIdentity(Url, token!));
         Assert.Empty(handler.Requests);
     }
 
