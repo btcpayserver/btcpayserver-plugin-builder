@@ -287,20 +287,16 @@ public class AccountController(
     [HttpGet("VerifyGithubAccount")]
     public async Task<IActionResult> VerifyGithubAccount()
     {
-        await using var conn = await connectionFactory.Open();
         var user = await userManager.GetUserAsync(User);
-        var isGithubVerified = await conn.IsGithubAccountVerified(user!.Id);
-        if (isGithubVerified)
+        await using var conn = await connectionFactory.Open(HttpContext.RequestAborted);
+        if (await conn.IsGithubAccountVerified(user!.Id))
         {
             TempData[TempDataConstant.SuccessMessage] = "GitHub account already verified";
             return RedirectToAction(nameof(AccountDetails));
         }
 
-        var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
-        accountSettings.Github = null;
-        await conn.SetAccountDetailSettings(accountSettings, user!.Id);
-
-        return View(new VerifyGitHubViewModel { Token = user!.Id });
+        await conn.ClearUnverifiedGithubHandle(user.Id);
+        return View(new VerifyGitHubViewModel { Token = user.Id });
     }
 
     [HttpPost("VerifyGithubAccount")]
@@ -309,19 +305,16 @@ public class AccountController(
         try
         {
             var user = await userManager.GetUserAsync(User);
-            var githubUsername = await externalAccountVerificationService.VerifyGistToken(model.GistUrl, user!.Id);
-            if (string.IsNullOrEmpty(githubUsername))
+            model.Token = user!.Id;
+            var identity = await externalAccountVerificationService.VerifyGistToken(model.GistUrl, user.Id, HttpContext.RequestAborted);
+            if (identity is null)
             {
                 TempData[TempDataConstant.WarningMessage] = "Unable to verify Github profile. Kindly ensure all data is correct and try again";
                 return View(model);
             }
 
             await using var conn = await connectionFactory.Open();
-            var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
-            accountSettings.Github = githubUsername;
-            await conn.SetAccountDetailSettings(accountSettings, user!.Id);
-
-            await conn.VerifyGithubAccount(user!.Id, model.GistUrl);
+            await conn.VerifyGithubAccount(user.Id, model.GistUrl, identity);
             TempData[TempDataConstant.SuccessMessage] = "Github account verified successfully";
             return RedirectToAction(nameof(AccountDetails));
         }

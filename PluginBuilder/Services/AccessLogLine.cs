@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace PluginBuilder.Services;
 
@@ -19,21 +20,24 @@ public static class AccessLogLine
 {
     public const string Tag = "pbaccess";
     public const int MaxHost = 255, MaxMethod = 16, MaxPath = 2048, MaxUserAgent = 512;
-    private static readonly byte[] Marker = Encoding.ASCII.GetBytes(" " + Tag + ": ");
+    // nginx's RFC 3164 header with nohostname, anchored at the start: "<PRI>Mmm dd hh:mm:ss pbaccess: " (the day is
+    // space-padded). Searching the whole datagram for the tag would accept another program's line that merely contains it.
+    private static readonly Regex Header = new(@"\A<[0-9]{1,3}>[A-Z][a-z]{2} [ 0-9][0-9] [0-9]{2}:[0-9]{2}:[0-9]{2} " + Tag + ": ",
+        RegexOptions.CultureInvariant);
 
     public static bool TryParse(ReadOnlySpan<byte> datagram, out AccessLogEntry? entry)
     {
         entry = null;
         if (datagram.IsEmpty || datagram[0] != (byte)'<')
             return false;
-        var start = datagram.IndexOf(Marker);
-        if (start < 0)
+        var header = Header.Match(Encoding.ASCII.GetString(datagram[..Math.Min(datagram.Length, 64)]));
+        if (!header.Success)
             return false;
         try
         {
             // nginx copies request bytes as they arrived, so a client can send invalid UTF-8 (say in its user agent). Decode
             // it leniently, as U+FFFD, rather than refuse the line: a refused line would hide that client's requests.
-            using var json = JsonDocument.Parse(Encoding.UTF8.GetString(datagram[(start + Marker.Length)..]));
+            using var json = JsonDocument.Parse(Encoding.UTF8.GetString(datagram[header.Length..]));
             var root = json.RootElement;
             if (root.ValueKind != JsonValueKind.Object ||
                 !DateTimeOffset.TryParse(Text(root, "time"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var loggedAt) ||

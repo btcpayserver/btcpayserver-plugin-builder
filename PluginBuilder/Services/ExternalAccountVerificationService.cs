@@ -1,44 +1,58 @@
 using System.Text.RegularExpressions;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.APIModels;
 using PluginBuilder.DataModels;
 
 namespace PluginBuilder.Services;
 
+public sealed record VerifiedGithubIdentity(long UserId, string Login);
+
 public class ExternalAccountVerificationService(IHttpClientFactory httpClientFactory)
 {
-    public async Task<string?> VerifyGistToken(string gistUrl, string token)
+    public async Task<VerifiedGithubIdentity?> VerifyGistToken(string gistUrl, string token, CancellationToken cancellationToken = default)
     {
-        Regex regex = new(@"https://gist\.github\.com/([^/]+)/([^/]+)", RegexOptions.IgnoreCase);
-        var match = regex.Match(gistUrl);
+        if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(gistUrl))
+            return null;
+
+        // Match the supplied URL before URI normalization can select a different gist.
+        var match = Regex.Match(gistUrl, @"\Ahttps://gist\.github\.com(?::443)?/([a-zA-Z0-9-]+)/([a-fA-F0-9]+)/?(?:[?#][^\r\n]*)?\z",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         if (!match.Success)
             return null;
 
-        var gistUsername = match.Groups[1].Value;
-        var gistId = match.Groups[2].Value;
-
-        var client = httpClientFactory.CreateClient(HttpClientNames.GitHub);
-        var response = await client.GetAsync($"gists/{gistId}");
-
-        if (!response.IsSuccessStatusCode)
-            return null;
-
-        var content = await response.Content.ReadAsStringAsync();
-        var gistData = JObject.Parse(content);
-
-        var owner = gistData["owner"]?["login"]?.ToString();
-        if (owner == null || !owner.Equals(gistUsername, StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        var files = gistData["files"];
-        if (files == null)
-            return null;
-
-        foreach (var file in files)
+        try
         {
-            var fileContent = file.First?["content"]?.ToString();
-            if (fileContent != null && fileContent.Contains(token, StringComparison.Ordinal))
-                return gistUsername;
+            using var client = httpClientFactory.CreateClient(HttpClientNames.GitHub);
+            using var response = await client.GetAsync($"gists/{match.Groups[2].Value}", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var gistData = JObject.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (gistData["owner"] is not JObject owner ||
+                owner["id"]?.Type != JTokenType.Integer ||
+                !long.TryParse(owner["id"]!.ToString(), out var userId) || userId <= 0 ||
+                owner["login"]?.Type != JTokenType.String ||
+                string.IsNullOrWhiteSpace(owner.Value<string>("login")))
+                return null;
+
+            var login = owner.Value<string>("login")!;
+            if (!login.Equals(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (gistData["files"] is not JObject files)
+                return null;
+            foreach (var file in files.Properties())
+            {
+                if (file.Value is JObject data && data["content"]?.Type == JTokenType.String &&
+                    data.Value<string>("content")!.Contains(token, StringComparison.Ordinal))
+                    return new VerifiedGithubIdentity(userId, login);
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException ||
+                                   ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return null;
         }
 
         return null;
