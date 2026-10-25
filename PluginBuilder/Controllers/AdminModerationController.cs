@@ -25,7 +25,7 @@ namespace PluginBuilder.Controllers;
 [Route("api/v1/admin")]
 [Authorize(Roles = Roles.ServerAdmin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.AdminApi)]
 public class AdminModerationController(DBConnectionFactory connections, AccountModerationService moderation, EventAggregator events,
-    IOutputCacheStore outputCache)
+    IOutputCacheStore outputCache, GithubIdentityService githubIdentities)
     : ControllerBase
 {
     public const string CancelledByAdmin = AccountModerationService.CancelledByAdmin;
@@ -36,6 +36,39 @@ public class AdminModerationController(DBConnectionFactory connections, AccountM
         (SELECT jsonb_build_object('until', l.locked_until, 'reason', l.reason, 'lockedBy', l.locked_by, 'lockedAt', l.locked_at)
          FROM admin_account_locks l WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP)
         """;
+
+    [HttpPost("users/{userId}/burn")]
+    public async Task<IActionResult> Burn(string userId, ReasonRequest request, CancellationToken cancellationToken)
+    {
+        var result = await githubIdentities.Burn(userId, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier),
+            User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken);
+        if (result is null)
+            return NotFound();
+        if (result.SkippedAdminUserIds.Contains(userId))
+            return Conflict(new { message = "Server admin accounts cannot be burned through the API." });
+        return Ok(result);
+    }
+
+    [HttpGet("github-bans")]
+    public async Task<IActionResult> GithubBans(CancellationToken cancellationToken)
+    {
+        await using var conn = await connections.Open(cancellationToken);
+        var rows = await conn.QueryAsync<string>(new CommandDefinition("""
+            SELECT jsonb_build_object('githubUserId', github_user_id, 'githubLogin', github_login, 'reason', reason,
+              'bannedBy', banned_by, 'bannedAt', banned_at)::text FROM github_bans ORDER BY github_user_id
+            """, cancellationToken: cancellationToken));
+        return Ok(new JArray(rows.Select(JObject.Parse)));
+    }
+
+    [HttpPost("github-bans/{githubUserId:long}/revoke")]
+    public async Task<IActionResult> RevokeGithubBan(long githubUserId, ReasonRequest request, CancellationToken cancellationToken)
+    {
+        if (githubUserId <= 0)
+            return BadRequest(new { message = "githubUserId must be positive." });
+        return await githubIdentities.Revoke(githubUserId, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier),
+            User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken)
+            ? Ok(new { githubUserId, revoked = true }) : NotFound();
+    }
 
     [HttpPost("users/{userId}/lock")]
     public async Task<IActionResult> Lock(string userId, LockRequest request, CancellationToken cancellationToken)

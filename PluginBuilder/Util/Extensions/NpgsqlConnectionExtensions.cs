@@ -400,11 +400,23 @@ public static class NpgsqlConnectionExtensions
 
     /// <returns>The new build id, or null when the user already has the maximum number of unfinished builds.</returns>
     public static async Task<long?> NewBuildWithinUserLimit(this NpgsqlConnection connection, PluginSlug pluginSlug,
-        PluginBuildParameters buildParameters, string userId)
+        PluginBuildParameters buildParameters, string userId, bool requireGithubVerification = false)
     {
         await using var tx = await connection.BeginTransactionAsync();
         // Lock the user's row so one user's concurrent requests cannot both pass the count.
         await connection.ExecuteAsync("""SELECT 1 FROM "AspNetUsers" WHERE "Id" = @userId FOR UPDATE""", new { userId }, tx);
+        // Recheck after repository lookup and serialize with an admin lock or burn before accepting the build.
+        var allowed = await connection.ExecuteScalarAsync<bool>("""
+            SELECT NOT EXISTS(SELECT 1 FROM admin_account_locks l
+                              WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP)
+              AND NOT EXISTS(SELECT 1 FROM github_bans b WHERE b.github_user_id = u."GithubUserId")
+              AND (u."GithubUserId" IS NOT NULL OR
+                   (NOT @requireGithubVerification AND NULLIF(u."GithubGistUrl", '') IS NULL))
+            FROM "AspNetUsers" u WHERE u."Id" = @userId
+            """, new { userId, requireGithubVerification }, tx);
+        if (!allowed)
+            throw new BuildServiceException("This account is suspended or requires a new GitHub proof before building.");
+
         var unfinished = await connection.ExecuteScalarAsync<int>(
             "SELECT count(*) FROM builds WHERE triggered_by = @userId AND state = ANY(@states)",
             new { userId, states = BuildStatesExtensions.UnfinishedEventNames }, tx);

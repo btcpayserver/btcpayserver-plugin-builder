@@ -247,8 +247,14 @@ public class PluginController(
         if (!await buildAccessLogic.CanCreateBuild(User))
             return BuildsUnavailable();
 
+        if (!await userVerifiedLogic.IsUserGithubAllowedToBuild(User, HttpContext.RequestAborted))
+        {
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub account before creating a build.";
+            return RedirectToAction("VerifyGithubAccount", "Account");
+        }
+
         await using var conn = await connectionFactory.Open();
-        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User) || !await userVerifiedLogic.IsUserGithubVerified(User, conn))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] = "You need to verify your email address and github account in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
@@ -291,8 +297,15 @@ public class PluginController(
 
         if (!ModelState.IsValid)
             return View(model);
+
+        if (!await userVerifiedLogic.IsUserGithubAllowedToBuild(User, HttpContext.RequestAborted))
+        {
+            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub account before creating a build.";
+            return RedirectToAction("VerifyGithubAccount", "Account");
+        }
+
         await using var conn = await connectionFactory.Open();
-        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User) || !await userVerifiedLogic.IsUserGithubVerified(User, conn))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
         {
             TempData[TempDataConstant.WarningMessage] = "You need to verify your email address and github account in order to create and publish plugins";
             return RedirectToAction("AccountDetails", "Account");
@@ -319,7 +332,18 @@ public class PluginController(
         if (!adminSettingsCache.NewBuildsEnabled && !isWhitelisted)
             return BuildsUnavailable();
 
-        if (await conn.NewBuildWithinUserLimit(pluginSlug, model.ToBuildParameter(), userManager.GetUserId(User)!) is not { } buildId)
+        long? acceptedBuildId;
+        try
+        {
+            acceptedBuildId = await conn.NewBuildWithinUserLimit(pluginSlug, model.ToBuildParameter(),
+                userManager.GetUserId(User)!, adminSettingsCache.IsGithubVerificationRequired);
+        }
+        catch (BuildServiceException ex)
+        {
+            TempData[TempDataConstant.WarningMessage] = ex.Message;
+            return RedirectToAction("VerifyGithubAccount", "Account");
+        }
+        if (acceptedBuildId is not { } buildId)
         {
             TempData[TempDataConstant.WarningMessage] =
                 $"You already have {BuildPolicy.MaxActiveBuildsPerUser} builds in progress. Wait for one to finish before starting another.";

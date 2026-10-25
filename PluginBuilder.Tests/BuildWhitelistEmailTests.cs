@@ -314,6 +314,9 @@ public class BuildWhitelistEmailTests(ITestOutputHelper logs) : UnitTestBase(log
         var token = await userManager.GenerateChangeEmailTokenAsync(user, newEmail);
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.ExecuteAsync("""
+            UPDATE "AspNetUsers" SET "AccountDetail" = jsonb_build_object('github', 'preserved-profile') WHERE "Id" = @userId
+            """, new { userId });
         await conn.SetAccountDetailSettings(new AccountSettings
         {
             Github = "preserved-profile",

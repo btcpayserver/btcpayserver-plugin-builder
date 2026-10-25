@@ -248,6 +248,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
                     Proof = "proof123"
                 }
             }, ownerId);
+            await conn.VerifyGithubAccount(ownerId, "https://gist.github.com/rockstardev/123",
+                new VerifiedGithubIdentity(123, "rockstardev"));
         }
 
         await tester.Server.CreateFakeUserAsync("reviewer@x.com", confirmEmail: true, githubVerified: true);

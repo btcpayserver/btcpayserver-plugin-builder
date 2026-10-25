@@ -23,6 +23,7 @@ public class BuildService
     private readonly BuildExecutorState _executorState;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly BuildCancellationRegistry _cancellations;
+    private readonly GithubIdentityService _githubIdentity;
 
     public BuildService(
         ILogger<BuildService> logger,
@@ -35,7 +36,8 @@ public class BuildService
         IBuildSandbox buildSandbox,
         BuildExecutorState executorState,
         IHostApplicationLifetime lifetime,
-        BuildCancellationRegistry cancellations)
+        BuildCancellationRegistry cancellations,
+        GithubIdentityService githubIdentity)
     {
         Logger = logger;
         _options = options;
@@ -48,6 +50,7 @@ public class BuildService
         _executorState = executorState;
         _lifetime = lifetime;
         _cancellations = cancellations;
+        _githubIdentity = githubIdentity;
     }
 
     public ILogger<BuildService> Logger { get; }
@@ -83,7 +86,7 @@ public class BuildService
         var token = cancellation.Token;
         // Keep the whitelist exception approved when this build was accepted, even if it is later revoked.
         if (await AlreadyFinished(fullBuildId) || await RejectBuildIfDisabled(fullBuildId, isWhitelisted) ||
-            await RejectBuildIfAccountLocked(fullBuildId))
+            await RejectBuildIfAccountLocked(fullBuildId) || await RejectBuildIfGithubRestricted(fullBuildId, token))
             return;
 
         await EnsureExecutorAvailable(fullBuildId);
@@ -93,7 +96,7 @@ public class BuildService
         {
             // A build may have been waiting for an execution slot when the setting changed or its account was locked.
             if (await AlreadyFinished(fullBuildId) || await RejectBuildIfDisabled(fullBuildId, isWhitelisted) ||
-                await RejectBuildIfAccountLocked(fullBuildId))
+                await RejectBuildIfAccountLocked(fullBuildId) || await RejectBuildIfGithubRestricted(fullBuildId, token))
                 return;
             token.ThrowIfCancellationRequested();
 
@@ -228,6 +231,26 @@ public class BuildService
         Logger.LogWarning("Skipping build {BuildId} because its account is locked", fullBuildId);
         await UpdateBuild(fullBuildId, BuildStates.Failed,
             new JObject { ["error"] = "Builds by this account are suspended by a server admin." });
+        return true;
+    }
+
+    private async Task<bool> RejectBuildIfGithubRestricted(FullBuildId fullBuildId, CancellationToken cancellationToken)
+    {
+        string? userId;
+        await using (var connection = await ConnectionFactory.Open(cancellationToken))
+        {
+            userId = await connection.ExecuteScalarAsync<string?>(new CommandDefinition(
+                "SELECT triggered_by FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
+                new { pluginSlug = fullBuildId.PluginSlug.ToString(), buildId = fullBuildId.BuildId },
+                cancellationToken: cancellationToken));
+        }
+
+        if (userId is null || await _githubIdentity.CanBuild(userId, _adminSettingsCache.IsGithubVerificationRequired, cancellationToken))
+            return false;
+
+        Logger.LogWarning("Skipping build {BuildId} because its account cannot build", fullBuildId);
+        await UpdateBuild(fullBuildId, BuildStates.Failed,
+            new JObject { ["error"] = "This account is suspended or requires a new GitHub proof before building." });
         return true;
     }
 

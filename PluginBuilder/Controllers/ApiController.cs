@@ -368,9 +368,12 @@ public class ApiController(
         if (!await buildAccessLogic.CanCreateBuild(User))
             return BuildsUnavailable();
 
+        if (!await userVerifiedLogic.IsUserGithubAllowedToBuild(User, HttpContext.RequestAborted))
+            return Forbid();
+
         await using var conn = await connectionFactory.Open();
 
-        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User) || !await userVerifiedLogic.IsUserGithubVerified(User, conn))
+        if (!await userVerifiedLogic.IsUserEmailVerifiedForPublish(User))
             return Forbid();
 
         var settings = await conn.GetSettings(pluginSlug);
@@ -415,7 +418,17 @@ public class ApiController(
         if (!adminSettingsCache.NewBuildsEnabled && !isWhitelisted)
             return BuildsUnavailable();
 
-        if (await conn.NewBuildWithinUserLimit(pluginSlug, model.ToBuildParameter(), userManager.GetUserId(User)!) is not { } buildId)
+        long? acceptedBuildId;
+        try
+        {
+            acceptedBuildId = await conn.NewBuildWithinUserLimit(pluginSlug, model.ToBuildParameter(),
+                userManager.GetUserId(User)!, adminSettingsCache.IsGithubVerificationRequired);
+        }
+        catch (BuildServiceException)
+        {
+            return Forbid();
+        }
+        if (acceptedBuildId is not { } buildId)
             return StatusCode(StatusCodes.Status429TooManyRequests, new
             {
                 error = "too-many-active-builds",

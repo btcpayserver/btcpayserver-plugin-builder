@@ -294,9 +294,8 @@ public class ServerTester : IAsyncDisposable
             return user.Id;
 
         await using var conn = await GetService<DBConnectionFactory>().Open();
-        // A legacy proof, intentionally without a numeric identity.
-        await conn.ExecuteAsync("UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = @gistUrl WHERE \"Id\" = @userId",
-            new { userId = user.Id, gistUrl = "https://gist.github.com/dummy/123" });
+        await conn.VerifyGithubAccount(user.Id, "https://gist.github.com/dummy/123",
+            new VerifiedGithubIdentity(Random.Shared.NextInt64(1, long.MaxValue), "dummy"));
 
         return user.Id;
     }

@@ -115,6 +115,9 @@ agent to approve listings: put the review policy in its local instructions.
 | `POST /admin/listing-requests/{id}/review` | `{"decision":"approve","note":"Review findings…"}` or `reject`; nonempty note up to 10,000 characters. |
 | `POST /admin/users/{userId}/lock` | `{"reason":"Spam burst"}` for an indefinite lock; optionally set `until` to a future ISO-8601 timestamp. See [Moderation](#moderation). |
 | `POST /admin/users/{userId}/unlock` | `{"reason":"False positive"}`. HTTP 409 if the account is not locked. |
+| `POST /admin/users/{userId}/burn` | `{"reason":"Confirmed abuse"}`. Locks the account, bans its verified numeric GitHub ID and locks linked accounts. Returns applied locks, skipped admins and warnings. |
+| `GET /admin/github-bans` | Active GitHub bans, with numeric ID, display login, reason, actor and creation time. |
+| `POST /admin/github-bans/{githubUserId}/revoke` | `{"reason":"False positive"}`. Removes the ban; accounts stay locked. HTTP 404 if there is no ban. |
 | `POST /admin/plugins/{pluginSlug}/builds/{buildId}/cancel` | `{"reason":"Exec in csproj"}`. HTTP 409 if the build has already finished. |
 | `PUT /admin/plugins/{pluginSlug}/visibility` | `{"visibility":"hidden","reason":"Malware report"}`; `hidden`, `unlisted` or `listed`. HTTP 409 if it already has that visibility. |
 | `POST /admin/plugins/{pluginSlug}/versions/{version}/revoke` | `{"reason":"Ships an unexplained binary"}`. Stops serving that version. HTTP 404 if it is not published. |
@@ -165,6 +168,23 @@ shows every action an agent took and why.
   move a finished build, so a cancellation that races the final publish wins or is refused
   with HTTP 409. The broker job itself is not killed; its lease deadline reclaims it. An
   artifact uploaded just before a losing publish is left unreferenced in storage.
+- **Burn** is separate from Lock. A ban uses the GitHub numeric owner ID, so a login
+  rename does not evade it; a self-declared profile login cannot create a ban. Bans
+  remain until explicitly revoked. Burn locks the target and already identified
+  accounts sharing that ID and cancels their unfinished builds through the same
+  cancellation path. Related server admins are skipped and reported; targeting a
+  server admin returns HTTP 409. Published versions are unaffected.
+  For an older account without a numeric ID, the server first tries its stored gist
+  proof, checking the builder account's token while allowing a renamed GitHub login.
+  If recovery fails, Burn still locks the target and reports that no GitHub ban was
+  created. Before its next build, an unresolved legacy account must provide a new
+  gist. Its historical verification remains recorded. GitHub requests run outside
+  database transactions, and delayed recovery cannot replace a newer proof.
+  A valid new gist proving a banned identity locks the submitting account and linked
+  accounts. Build admission and execution recheck restrictions, including when GitHub
+  verification is disabled or the account is on the build whitelist. A known numeric
+  identity cannot be replaced with a different GitHub account through the proof POST.
+  Revoking a ban does not unlock accounts; use Unlock separately after review.
 - **Visibility** makes the same change as the admin edit page. Hidden and unlisted plugins
   leave the public listing, and hidden ones leave update checks, but a plugin's identifier,
   version and download endpoints do not check visibility: a client that already knows a
