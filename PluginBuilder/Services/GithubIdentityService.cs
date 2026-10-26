@@ -7,6 +7,8 @@ namespace PluginBuilder.Services;
 
 public class GithubIdentityService(DBConnectionFactory connections, AccountModerationService moderation)
 {
+    public const string SuspendedMessage = "This account is suspended from creating builds.";
+    public const string VerificationRequiredMessage = "Verify your GitHub account before creating a build.";
     private const string BanReason = "Verified GitHub identity is banned by a server admin.";
 
     // These short transactions serialize proof writes, burn and revocation, including identities with no ban row yet.
@@ -22,12 +24,12 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
             FROM "AspNetUsers" WHERE "Id" = @userId
             """, new { userId }, cancellationToken: ct));
 
-    public async Task<bool> CanBuild(string userId, bool requireVerification, CancellationToken ct = default)
+    public async Task<string?> GetBuildRestriction(string userId, bool requireVerification, CancellationToken ct = default)
     {
         await using var conn = await connections.Open(ct);
         var account = await ReadAccount(conn, userId, ct);
         if (account is null || account.AdminLocked)
-            return false;
+            return SuspendedMessage;
         if (await FindBan(conn, account.GithubUserId, account.Login, ct) is not null)
         {
             await using var tx = await conn.BeginTransactionAsync(ct);
@@ -37,9 +39,10 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
                 await LockRelated(conn, tx, userId, ban, BanReason, null, null, cancelled, ct);
             await tx.CommitAsync(ct);
             moderation.Stop(cancelled, AccountModerationService.CancelledByLock);
-            return false;
+            return SuspendedMessage;
         }
-        return !requireVerification || account.GithubUserId is not null || !string.IsNullOrEmpty(account.GistUrl);
+        return !requireVerification || account.GithubUserId is not null || !string.IsNullOrEmpty(account.GistUrl)
+            ? null : VerificationRequiredMessage;
     }
 
     public async Task<bool> SaveProof(string userId, string gistUrl, VerifiedGithubIdentity identity, CancellationToken ct = default)
@@ -167,7 +170,7 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
                 continue;
             cancelled.AddRange(await moderation.LockAccount(conn, tx, user.Id, null, reason, actor, tokenId, ct));
         }
-        if (actor is null && (ban.GithubUserId is not null || ban.Login is not null))
+        if (actor is null)
             await moderation.Emit(conn, tx, "github.ban_applied", new JObject
             {
                 ["userId"] = userId, ["githubUserId"] = ban.GithubUserId, ["githubLogin"] = ban.Login,

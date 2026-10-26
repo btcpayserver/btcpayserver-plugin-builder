@@ -1,6 +1,3 @@
-CREATE INDEX aspnetusers_github_user_id_idx ON "AspNetUsers" ("GithubUserId")
-    WHERE "GithubUserId" IS NOT NULL;
-
 -- ID bans survive renames; username bans are a fallback for verified legacy accounts.
 CREATE TABLE github_bans (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

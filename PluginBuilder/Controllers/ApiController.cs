@@ -368,7 +368,7 @@ public class ApiController(
         if (!await buildAccessLogic.CanCreateBuild(User))
             return BuildsUnavailable();
 
-        if (!await userVerifiedLogic.IsUserGithubAllowedToBuild(User, HttpContext.RequestAborted))
+        if (await userVerifiedLogic.GetGithubBuildRestriction(User, HttpContext.RequestAborted) is not null)
             return Forbid();
 
         await using var conn = await connectionFactory.Open();

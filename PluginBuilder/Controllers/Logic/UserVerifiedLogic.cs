@@ -46,8 +46,8 @@ public class UserVerifiedLogic(
         return await conn.IsGithubAccountVerified(user!.Id);
     }
 
-    public Task<bool> IsUserGithubAllowedToBuild(ClaimsPrincipal principal, CancellationToken cancellationToken = default) =>
-        githubIdentityService.CanBuild(userManager.GetUserId(principal)!, adminSettingsCache.IsGithubVerificationRequired, cancellationToken);
+    public Task<string?> GetGithubBuildRestriction(ClaimsPrincipal principal, CancellationToken cancellationToken = default) =>
+        githubIdentityService.GetBuildRestriction(userManager.GetUserId(principal)!, adminSettingsCache.IsGithubVerificationRequired, cancellationToken);
 
     public async Task<bool> IsNostrVerified(ClaimsPrincipal claimsPrincipal, NpgsqlConnection conn)
     {

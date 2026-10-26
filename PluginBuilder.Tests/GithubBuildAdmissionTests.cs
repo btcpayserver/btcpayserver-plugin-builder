@@ -27,6 +27,7 @@ public class GithubBuildAdmissionTests(ITestOutputHelper logs) : UnitTestBase(lo
     [InlineData("lock")]
     [InlineData("id")]
     [InlineData("username")]
+    [InlineData("unverified")]
     public async Task AdmissionRechecksRestrictionsAfterWaitingForTheUser(string restriction)
     {
         await using var tester = CreateMigrationTester("GithubAdmissionRace");
@@ -36,7 +37,7 @@ public class GithubBuildAdmissionTests(ITestOutputHelper logs) : UnitTestBase(lo
         await blocker.ExecuteAsync("""
             INSERT INTO "AspNetUsers" ("Id", "EmailConfirmed", "PhoneNumberConfirmed", "TwoFactorEnabled", "LockoutEnabled", "AccessFailedCount", "GithubUserId", "GithubGistUrl", "AccountDetail")
             VALUES ('owner', TRUE, FALSE, FALSE, FALSE, 0, @githubUserId, @Proof, '{"github":"Owner"}'::jsonb);
-            """, new { githubUserId = restriction == "username" ? (long?)null : 123, Proof });
+            """, new { githubUserId = restriction is "username" or "lock" ? (long?)null : 123, Proof = restriction == "lock" ? null : Proof });
         var slug = new PluginSlug("github-admission");
         await blocker.NewPlugin(slug, "owner");
         await using var submitter = await tester.Open();
@@ -53,22 +54,33 @@ public class GithubBuildAdmissionTests(ITestOutputHelper logs) : UnitTestBase(lo
         {
             "id" => "INSERT INTO github_bans (github_user_id, github_login, reason) VALUES (123, 'another-login', 'incident')",
             "username" => "INSERT INTO github_bans (github_login, reason) VALUES ('OWNER', 'incident')",
+            "unverified" => """UPDATE "AspNetUsers" SET "GithubUserId" = NULL, "GithubGistUrl" = NULL WHERE "Id" = 'owner'""",
             _ => "INSERT INTO admin_account_locks (user_id, locked_until, reason) VALUES ('owner', 'infinity', 'incident')"
         }, transaction: tx);
         await tx.CommitAsync();
 
-        await Assert.ThrowsAsync<BuildServiceException>(() => pending.WaitAsync(TimeSpan.FromSeconds(10)));
+        var error = await Assert.ThrowsAsync<BuildServiceException>(() => pending.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(restriction == "unverified" ? "Verify your GitHub account before creating a build." : "This account is suspended from creating builds.", error.Message);
         Assert.Equal(0, await blocker.ExecuteScalarAsync<int>("SELECT count(*) FROM builds"));
         Assert.Equal(0, await blocker.ExecuteScalarAsync<int>("SELECT count(*) FROM builds_ids"));
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public async Task VerifiedLegacyCanBuildThroughUiAndApiUnlessItsUsernameIsBanned(bool api, bool banned)
+    [InlineData(false, "none")]
+    [InlineData(true, "none")]
+    [InlineData(false, "username")]
+    [InlineData(true, "username")]
+    [InlineData(false, "id")]
+    [InlineData(false, "lock")]
+    [InlineData(false, "late-lock")]
+    [InlineData(false, "unverified")]
+    [InlineData(false, "late-unverified")]
+    public async Task BuildAdmissionThroughUiAndApiRespectsAccountRestrictions(bool api, string restriction)
     {
+        var denied = restriction != "none";
+        var expectedWarning = restriction is "unverified" or "late-unverified"
+            ? "Verify your GitHub account before creating a build."
+            : "This account is suspended from creating builds.";
         var github = new AdmissionGithub();
         var sandbox = new AdmissionTestSandbox();
         await using var tester = await StartServer(github, sandbox);
@@ -77,10 +89,12 @@ public class GithubBuildAdmissionTests(ITestOutputHelper logs) : UnitTestBase(lo
         var slug = new PluginSlug("legacy-admission");
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(slug, userId);
-        await conn.ExecuteAsync("""UPDATE "AspNetUsers" SET "GithubGistUrl" = @Proof, "AccountDetail" = '{"github":"Owner"}'::jsonb WHERE "Id" = @userId""", new { userId, Proof });
-        if (banned)
-            await conn.ExecuteAsync("INSERT INTO github_bans (github_login, reason) VALUES ('OWNER', 'incident')");
-        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
+        var proof = restriction is "unverified" or "lock" or "late-unverified" ? null : Proof;
+        long? githubId = restriction is "id" or "late-lock" ? 123 : null;
+        await conn.ExecuteAsync("""UPDATE "AspNetUsers" SET "GithubUserId" = @githubId, "GithubGistUrl" = @proof, "AccountDetail" = '{"github":"Owner"}'::jsonb WHERE "Id" = @userId""", new { userId, githubId, proof });
+        if (restriction is "username" or "id")
+            await conn.ExecuteAsync("INSERT INTO github_bans (github_user_id, github_login, reason) VALUES (@githubId, 'OWNER', 'incident')", new { githubId });
+        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, restriction == "late-unverified" ? "false" : "true");
         await conn.SettingsSetAsync(SettingsKeys.NewBuildsEnabled, "true");
         await tester.GetService<AdminSettingsCache>().RefreshAllAdminSettings(conn);
         using var client = HttpTestHelpers.CreateBrowser(tester);
@@ -90,9 +104,29 @@ public class GithubBuildAdmissionTests(ITestOutputHelper logs) : UnitTestBase(lo
         else
         {
             await HttpTestHelpers.LogIn(client, email, Password);
-            using var proofPage = await client.GetAsync(banned ? "/account/details" : $"/plugins/{slug}/create");
-            Assert.Equal(HttpStatusCode.OK, proofPage.StatusCode);
-            token = HttpTestHelpers.AntiforgeryToken(await proofPage.Content.ReadAsStringAsync());
+            token = HttpTestHelpers.AntiforgeryToken(await client.GetStringAsync("/account/details"));
+            if (restriction == "lock")
+                await conn.ExecuteAsync("INSERT INTO admin_account_locks (user_id, locked_until, reason) VALUES (@userId, 'infinity', 'incident')", new { userId });
+            using var createPage = await client.GetAsync($"/plugins/{slug}/create");
+            var deniedOnGet = denied && restriction is not ("late-lock" or "late-unverified");
+            Assert.Equal(deniedOnGet ? HttpStatusCode.Redirect : HttpStatusCode.OK, createPage.StatusCode);
+            if (deniedOnGet)
+            {
+                Assert.Equal("/account/details", new Uri(client.BaseAddress!, createPage.Headers.Location!).AbsolutePath);
+                var details = await client.GetStringAsync(createPage.Headers.Location);
+                Assert.Contains(expectedWarning, details);
+                Assert.DoesNotContain(restriction is "unverified" or "late-unverified"
+                    ? "This account is suspended" : "Verify your GitHub account before creating a build.", details);
+                Assert.DoesNotContain("GitHub account already verified", details);
+            }
+            if (restriction == "late-lock")
+                github.BeforeFetchIdentifier = () => conn.ExecuteAsync("INSERT INTO admin_account_locks (user_id, locked_until, reason) VALUES (@userId, 'infinity', 'incident')", new { userId });
+            if (restriction == "late-unverified")
+                github.BeforeFetchIdentifier = async () =>
+                {
+                    await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "true");
+                    await tester.GetService<AdminSettingsCache>().RefreshIsVerifiedGithubRequired(conn);
+                };
         }
 
         using HttpContent body = api
@@ -102,11 +136,23 @@ public class GithubBuildAdmissionTests(ITestOutputHelper logs) : UnitTestBase(lo
                 ["GitRepository"] = Repository, ["GitRef"] = "main", ["__RequestVerificationToken"] = token
             });
         using var response = await client.PostAsync(api ? $"/api/v1/plugins/{slug}/builds" : $"/plugins/{slug}/create", body);
-        Assert.Equal(api ? banned ? HttpStatusCode.Forbidden : HttpStatusCode.Created : HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(api ? denied ? HttpStatusCode.Forbidden : HttpStatusCode.Created : HttpStatusCode.Redirect, response.StatusCode);
         if (!api)
-            Assert.Equal(banned ? "/account/VerifyGithubAccount" : $"/plugins/{slug}/builds/0", new Uri(client.BaseAddress!, response.Headers.Location!).AbsolutePath);
-        Assert.Equal(banned ? Array.Empty<string>() : new[] { userId }, (await conn.QueryAsync<string>("SELECT triggered_by FROM builds")).ToArray());
-        if (!banned)
+        {
+            Assert.Equal(denied ? "/account/details" : $"/plugins/{slug}/builds/0", new Uri(client.BaseAddress!, response.Headers.Location!).AbsolutePath);
+            if (denied)
+            {
+                var details = await client.GetStringAsync(response.Headers.Location);
+                Assert.Contains(expectedWarning, details);
+                Assert.DoesNotContain(restriction is "unverified" or "late-unverified"
+                    ? "This account is suspended" : "Verify your GitHub account before creating a build.", details);
+                Assert.DoesNotContain("GitHub account already verified", details);
+                if (restriction is "unverified" or "late-unverified")
+                    Assert.Contains("href=\"/account/VerifyGithubAccount\"", details);
+            }
+        }
+        Assert.Equal(denied ? Array.Empty<string>() : new[] { userId }, (await conn.QueryAsync<string>("SELECT triggered_by FROM builds")).ToArray());
+        if (!denied)
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             while (await conn.ExecuteScalarAsync<string>("SELECT state FROM builds") != "failed")
@@ -114,9 +160,9 @@ public class GithubBuildAdmissionTests(ITestOutputHelper logs) : UnitTestBase(lo
             Assert.Single(sandbox.StartedPreparations);
         }
         Assert.Equal(0, github.Requests);
-        Assert.Equal(banned, await conn.ExecuteScalarAsync<bool>("SELECT EXISTS(SELECT 1 FROM admin_account_locks WHERE user_id = @userId AND locked_until > CURRENT_TIMESTAMP)", new { userId }));
-        Assert.Null(await conn.ExecuteScalarAsync<long?>("""SELECT "GithubUserId" FROM "AspNetUsers" WHERE "Id" = @userId""", new { userId }));
-        Assert.Equal(Proof, await conn.ExecuteScalarAsync<string>("""SELECT "GithubGistUrl" FROM "AspNetUsers" WHERE "Id" = @userId""", new { userId }));
+        Assert.Equal(restriction is "username" or "id" or "lock" or "late-lock", await conn.ExecuteScalarAsync<bool>("SELECT EXISTS(SELECT 1 FROM admin_account_locks WHERE user_id = @userId AND locked_until > CURRENT_TIMESTAMP)", new { userId }));
+        Assert.Equal(githubId, await conn.ExecuteScalarAsync<long?>("""SELECT "GithubUserId" FROM "AspNetUsers" WHERE "Id" = @userId""", new { userId }));
+        Assert.Equal(proof, await conn.ExecuteScalarAsync<string?>("""SELECT "GithubGistUrl" FROM "AspNetUsers" WHERE "Id" = @userId""", new { userId }));
     }
 
     [Theory]
@@ -199,7 +245,13 @@ public class GithubBuildAdmissionTests(ITestOutputHelper logs) : UnitTestBase(lo
     private sealed class AdmissionGithub : HttpMessageHandler, IGitHostingProvider
     {
         public bool CanHandle(string repoUrl) => repoUrl == Repository;
-        public Task<string> FetchIdentifierFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null) => Task.FromResult("Legacy.TestPlugin");
+        public Func<Task>? BeforeFetchIdentifier { get; set; }
+        public async Task<string> FetchIdentifierFromCsprojAsync(string repoUrl, string gitRef, string? pluginDir = null)
+        {
+            if (BeforeFetchIdentifier is { } beforeFetch)
+                await beforeFetch();
+            return "Legacy.TestPlugin";
+        }
         public Task<List<GitHubContributor>> GetContributorsAsync(string repoUrl, string pluginDir) => Task.FromResult(new List<GitHubContributor>());
         public string? GetSourceUrl(string repoUrl, string? commit, string? pluginDir) => null;
         public (string Owner, string RepoName)? ParseRepository(string repoUrl) => null;

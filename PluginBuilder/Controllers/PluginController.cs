@@ -247,10 +247,10 @@ public class PluginController(
         if (!await buildAccessLogic.CanCreateBuild(User))
             return BuildsUnavailable();
 
-        if (!await userVerifiedLogic.IsUserGithubAllowedToBuild(User, HttpContext.RequestAborted))
+        if (await userVerifiedLogic.GetGithubBuildRestriction(User, HttpContext.RequestAborted) is { } restriction)
         {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub account before creating a build.";
-            return RedirectToAction("VerifyGithubAccount", "Account");
+            TempData[TempDataConstant.WarningMessage] = restriction;
+            return RedirectToAction("AccountDetails", "Account");
         }
 
         await using var conn = await connectionFactory.Open();
@@ -298,10 +298,10 @@ public class PluginController(
         if (!ModelState.IsValid)
             return View(model);
 
-        if (!await userVerifiedLogic.IsUserGithubAllowedToBuild(User, HttpContext.RequestAborted))
+        if (await userVerifiedLogic.GetGithubBuildRestriction(User, HttpContext.RequestAborted) is { } restriction)
         {
-            TempData[TempDataConstant.WarningMessage] = "You need to verify your GitHub account before creating a build.";
-            return RedirectToAction("VerifyGithubAccount", "Account");
+            TempData[TempDataConstant.WarningMessage] = restriction;
+            return RedirectToAction("AccountDetails", "Account");
         }
 
         await using var conn = await connectionFactory.Open();
@@ -341,7 +341,7 @@ public class PluginController(
         catch (BuildServiceException ex)
         {
             TempData[TempDataConstant.WarningMessage] = ex.Message;
-            return RedirectToAction("VerifyGithubAccount", "Account");
+            return RedirectToAction("AccountDetails", "Account");
         }
         if (acceptedBuildId is not { } buildId)
         {

@@ -416,29 +416,40 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.True(await IsPreRelease(conn, pluginSlug, version));
     }
 
-    [Fact]
-    public async Task NewBuildsDisabled_StopsAlreadyQueuedBuildBeforeSandboxPreparation()
+    [Theory]
+    [InlineData(SettingsKeys.NewBuildsEnabled, "false", "Plugin builds are temporarily disabled.")]
+    [InlineData(SettingsKeys.VerifiedGithub, "true", "Verify your GitHub account before creating a build.")]
+    public async Task BuildSettingChange_StopsQueuedBuildBeforeSandboxPreparation(string setting, string value, string expectedError)
     {
         TaskCompletionSource releasePreparation = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var sandbox = new AdmissionTestSandbox { PreparationBlockedUntil = releasePreparation.Task };
         await using var tester = Create("BuildsQueuedFlag");
         tester.ReuseDatabase = false;
-        tester.ConfigureServices = sandbox.Register;
+        tester.ConfigureServices = services =>
+        {
+            sandbox.Register(services);
+            foreach (var service in services.Where(s => s.ServiceType == typeof(IHostedService) &&
+                         s.ImplementationType != typeof(DatabaseStartupHostedService)).ToArray())
+                services.Remove(service);
+        };
         await tester.Start();
         tester.GetService<BuildExecutorState>().MarkReady(
             "sha256:1111111111111111111111111111111111111111111111111111111111111111",
             "sha256:2222222222222222222222222222222222222222222222222222222222222222");
 
-        var ownerId = await tester.CreateFakeUserAsync();
+        var ownerId = await tester.CreateFakeUserAsync(githubVerified: false);
         var pluginSlug = new PluginSlug("queued-disabled-" + Guid.NewGuid().ToString("N")[..8]);
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(pluginSlug, ownerId);
+        await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "false");
+        await tester.GetService<AdminSettingsCache>().RefreshIsVerifiedGithubRequired(conn);
         List<FullBuildId> fullBuildIds = [];
         for (var i = 0; i < BuildPolicy.MaxConcurrentBuilds + 1; i++)
         {
             var buildId = await conn.NewBuild(
                 pluginSlug,
-                new PluginBuildParameters("https://github.com/example/repository"));
+                new PluginBuildParameters("https://github.com/example/repository"),
+                i == BuildPolicy.MaxConcurrentBuilds ? ownerId : null);
             fullBuildIds.Add(new FullBuildId(pluginSlug, buildId));
         }
 
@@ -453,10 +464,25 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
                 .ToArray();
             await sandbox.WaitForPreparationStartsAsync(BuildPolicy.MaxConcurrentBuilds);
 
+            await using var gate = await tester.GetService<DBConnectionFactory>().Open();
+            await using var tx = await gate.BeginTransactionAsync();
+            await gate.ExecuteAsync("""LOCK TABLE "AspNetUsers" IN ACCESS EXCLUSIVE MODE""", transaction: tx);
             queuedTask = buildService.Build(queuedBuild);
-            Assert.False(queuedTask.IsCompleted);
+            // CanBuild has captured the old setting; hold its account read while the slots are occupied.
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (!await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
+                       """
+                       SELECT EXISTS(SELECT 1 FROM pg_locks
+                         WHERE locktype = 'relation' AND relation = '"AspNetUsers"'::regclass
+                           AND mode = 'AccessShareLock' AND NOT granted
+                           AND @pid = ANY(pg_blocking_pids(pid)))
+                       """,
+                       new { pid = gate.ProcessID }, cancellationToken: deadline.Token)))
+                await Task.Delay(10, deadline.Token);
 
-            await DisableFeature(tester, conn, SettingsKeys.NewBuildsEnabled);
+            await conn.SettingsSetAsync(setting, value);
+            await tester.GetService<AdminSettingsCache>().RefreshAllAdminSettings(conn);
+            await tx.CommitAsync();
             releasePreparation.TrySetResult();
             await queuedTask.WaitAsync(TimeSpan.FromSeconds(10));
             // Already accepted builds continue; this sandbox deliberately fails before upload.
@@ -471,7 +497,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
                 "SELECT state, build_info->>'error' AS error FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId",
                 new { pluginSlug = pluginSlug.ToString(), buildId = queuedBuild.BuildId });
             Assert.Equal(BuildStates.Failed.ToEventName(), build.state);
-            Assert.Equal("Plugin builds are temporarily disabled.", build.error);
+            Assert.Equal(expectedError, build.error);
             Assert.DoesNotContain(queuedBuild, sandbox.StartedPreparations.Keys);
             Assert.Equal(BuildPolicy.MaxConcurrentBuilds, sandbox.StartedPreparations.Count);
             Assert.All(sandbox.StartedPreparations.Values, prepared =>

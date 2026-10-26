@@ -90,7 +90,7 @@ public class GithubBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
             // Unlocking an account does not revoke the identity ban: another build attempt enforces it again.
             Assert.Equal(HttpStatusCode.OK, (await adminClient.PostAsJsonAsync($"/api/v1/admin/users/{owner}/unlock", new { reason = "separate action" })).StatusCode);
-            Assert.False(await tester.GetService<GithubIdentityService>().CanBuild(owner, true));
+            Assert.Equal("This account is suspended from creating builds.", await tester.GetService<GithubIdentityService>().GetBuildRestriction(owner, true));
             Assert.Equal(preservedLock, await conn.QuerySingleAsync<string>(linkedLockSnapshot, new { linked }));
             Assert.Equal(locked.Length, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_account_locks"));
 

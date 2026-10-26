@@ -245,12 +245,15 @@ public class BuildService
                 cancellationToken: cancellationToken));
         }
 
-        if (userId is null || await _githubIdentity.CanBuild(userId, _adminSettingsCache.IsGithubVerificationRequired, cancellationToken))
+        if (userId is null)
+            return false;
+        var restriction = await _githubIdentity.GetBuildRestriction(userId, _adminSettingsCache.IsGithubVerificationRequired, cancellationToken);
+        if (restriction is null)
             return false;
 
         Logger.LogWarning("Skipping build {BuildId} because its account cannot build", fullBuildId);
         await UpdateBuild(fullBuildId, BuildStates.Failed,
-            new JObject { ["error"] = "This account is suspended or requires GitHub verification before building." });
+            new JObject { ["error"] = restriction });
         return true;
     }
 
