@@ -232,11 +232,13 @@ public class PlaywrightTester : IAsyncDisposable
             """
             UPDATE "AspNetUsers"
                   SET "EmailConfirmed" = TRUE,
+                      "GithubUserId" = COALESCE("GithubUserId", @GithubUserId),
                       "GithubGistUrl" = 'https://gist.github.com/test-eligibility',
                       "AccountDetail" = @AccountDetail::jsonb
                   WHERE "Email" = @Email;
             """,
-            new { Email = email, AccountDetail = JsonConvert.SerializeObject(settings, CamelCaseSerializerSettings.Instance) });
+            new { Email = email, GithubUserId = Random.Shared.NextInt64(1, long.MaxValue),
+                AccountDetail = JsonConvert.SerializeObject(settings, CamelCaseSerializerSettings.Instance) });
     }
 
     public void CreateTestImage(string path)

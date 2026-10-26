@@ -9,7 +9,8 @@ namespace PluginBuilder.Controllers.Logic;
 public class UserVerifiedLogic(
     UserManager<IdentityUser> userManager,
     EmailService emailService,
-    AdminSettingsCache adminSettingsCache)
+    AdminSettingsCache adminSettingsCache,
+    GithubIdentityService githubIdentityService)
 {
     public bool IsEmailVerificationRequiredForLogin
     {
@@ -44,6 +45,9 @@ public class UserVerifiedLogic(
         var user = await userManager.GetUserAsync(claimsPrincipal);
         return await conn.IsGithubAccountVerified(user!.Id);
     }
+
+    public Task<string?> GetGithubBuildRestriction(ClaimsPrincipal principal, CancellationToken cancellationToken = default) =>
+        githubIdentityService.GetBuildRestriction(userManager.GetUserId(principal)!, adminSettingsCache.IsGithubVerificationRequired, cancellationToken);
 
     public async Task<bool> IsNostrVerified(ClaimsPrincipal claimsPrincipal, NpgsqlConnection conn)
     {

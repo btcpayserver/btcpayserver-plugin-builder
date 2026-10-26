@@ -24,18 +24,51 @@ namespace PluginBuilder.Controllers;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Route("api/v1/admin")]
 [Authorize(Roles = Roles.ServerAdmin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.AdminApi)]
-public class AdminModerationController(DBConnectionFactory connections, BuildCancellationRegistry cancellations, EventAggregator events,
-    IOutputCacheStore outputCache)
+public class AdminModerationController(DBConnectionFactory connections, AccountModerationService moderation, EventAggregator events,
+    IOutputCacheStore outputCache, GithubIdentityService githubIdentities)
     : ControllerBase
 {
-    public const string CancelledByAdmin = "Cancelled by a server admin.";
-    public const string CancelledByLock = "Cancelled: the account that started this build was locked by a server admin.";
+    public const string CancelledByAdmin = AccountModerationService.CancelledByAdmin;
+    public const string CancelledByLock = AccountModerationService.CancelledByLock;
 
     /// <summary>The account's admin lock, or null; failed-login lockouts show only in lockoutEnd.</summary>
     public const string AdminLockJson = """
         (SELECT jsonb_build_object('until', l.locked_until, 'reason', l.reason, 'lockedBy', l.locked_by, 'lockedAt', l.locked_at)
          FROM admin_account_locks l WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP)
         """;
+
+    [HttpPost("users/{userId}/burn")]
+    public async Task<IActionResult> Burn(string userId, ReasonRequest request, CancellationToken cancellationToken)
+    {
+        var result = await githubIdentities.Burn(userId, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier),
+            User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken);
+        if (result is null)
+            return NotFound();
+        if (result.SkippedAdminUserIds.Contains(userId))
+            return Conflict(new { message = "Server admin accounts cannot be burned through the API." });
+        return Ok(result);
+    }
+
+    [HttpGet("github-bans")]
+    public async Task<IActionResult> GithubBans(CancellationToken cancellationToken)
+    {
+        await using var conn = await connections.Open(cancellationToken);
+        var rows = await conn.QueryAsync<string>(new CommandDefinition("""
+            SELECT jsonb_build_object('id', id, 'githubUserId', github_user_id, 'githubLogin', github_login, 'reason', reason,
+              'bannedBy', banned_by, 'bannedAt', banned_at)::text FROM github_bans ORDER BY id
+            """, cancellationToken: cancellationToken));
+        return Ok(new JArray(rows.Select(JObject.Parse)));
+    }
+
+    [HttpPost("github-bans/{banId:long}/revoke")]
+    public async Task<IActionResult> RevokeGithubBan(long banId, ReasonRequest request, CancellationToken cancellationToken)
+    {
+        if (banId <= 0)
+            return BadRequest(new { message = "banId must be positive." });
+        return await githubIdentities.Revoke(banId, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier),
+            User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken)
+            ? Ok(new { banId, revoked = true }) : NotFound();
+    }
 
     [HttpPost("users/{userId}/lock")]
     public async Task<IActionResult> Lock(string userId, LockRequest request, CancellationToken cancellationToken)
@@ -56,38 +89,10 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
         if (target.IsAdmin)
             return Conflict(new { message = "Server admin accounts cannot be locked through the API." });
 
-        // The new security stamp ends the account's sessions at their next validation and invalidates any token bound to it.
-        // Identity's lockout refuses sign-in. The admin lock row suspends builds and publisher tokens,
-        // since failed logins set Identity's lockout too.
-        await conn.ExecuteAsync(new CommandDefinition("""
-            UPDATE "AspNetUsers" SET "LockoutEnabled" = TRUE, "LockoutEnd" = @end,
-              "SecurityStamp" = @stamp, "ConcurrencyStamp" = @concurrency
-            WHERE "Id" = @userId;
-            DELETE FROM "AspNetUserTokens" t USING "AspNetUsers" u
-            WHERE t."UserId" = u."Id" AND u."Id" = @userId AND NOT u."TwoFactorEnabled"
-              AND t."LoginProvider" = '[AspNetUserStore]' AND t."Name" = 'AuthenticatorKey';
-            INSERT INTO admin_account_locks (user_id, locked_until, reason, locked_by) VALUES (@userId, @end, @reason, @by)
-            ON CONFLICT (user_id) DO UPDATE SET locked_until = EXCLUDED.locked_until, reason = EXCLUDED.reason,
-              locked_by = EXCLUDED.locked_by, locked_at = CURRENT_TIMESTAMP
-            """, new
-        {
-            userId, end = request.Until?.ToUniversalTime() ?? DateTimeOffset.MaxValue, reason = request.Reason.Trim(),
-            by = User.FindFirstValue(ClaimTypes.NameIdentifier),
-            stamp = Guid.NewGuid().ToString("N").ToUpperInvariant(), concurrency = Guid.NewGuid().ToString()
-        }, tx, cancellationToken: cancellationToken));
-        var unfinished = (await conn.QueryAsync<BuildRow>(new CommandDefinition("""
-            SELECT plugin_slug AS PluginSlug, id AS BuildId, state AS State FROM builds
-            WHERE triggered_by = @userId AND state <> ALL(@terminal) ORDER BY plugin_slug, id FOR UPDATE
-            """, new { userId, terminal = BuildStatesExtensions.TerminalEventNames }, tx, cancellationToken: cancellationToken))).ToList();
-        await Emit(conn, tx, "user.locked", new JObject
-        {
-            ["userId"] = userId, ["reason"] = request.Reason.Trim(), ["until"] = request.Until,
-            ["cancelledBuilds"] = new JArray(unfinished.Select(b => new JObject { ["pluginSlug"] = b.PluginSlug, ["buildId"] = b.BuildId }))
-        }, cancellationToken);
-        await Cancel(conn, tx, unfinished, CancelledByLock, "Account locked: " + request.Reason.Trim(), cancellationToken);
+        var unfinished = await moderation.LockAccount(conn, tx, userId, request.Until, request.Reason,
+            User.FindFirstValue(ClaimTypes.NameIdentifier), User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken);
         await tx.CommitAsync(cancellationToken);
-        var cancelled = unfinished;
-        Stop(cancelled, CancelledByLock);
+        moderation.Stop(unfinished, CancelledByLock);
         return await ReadUser(conn, userId, cancellationToken);
     }
 
@@ -129,10 +134,11 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
         if (BuildStatesExtensions.TerminalEventNames.Contains(state))
             return Conflict(new { message = "This build has already finished." });
 
-        var cancelled = new List<BuildRow> { new() { PluginSlug = pluginSlug, BuildId = buildId, State = state } };
-        await Cancel(conn, tx, cancelled, CancelledByAdmin, request.Reason.Trim(), cancellationToken);
+        var cancelled = new List<AccountModerationService.BuildRow> { new(pluginSlug, buildId, state) };
+        await moderation.Cancel(conn, tx, cancelled, CancelledByAdmin, request.Reason.Trim(),
+            User.FindFirstValue(ClaimTypes.NameIdentifier), User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken);
         await tx.CommitAsync(cancellationToken);
-        Stop(cancelled, CancelledByAdmin);
+        moderation.Stop(cancelled, CancelledByAdmin);
         var rows = await conn.QueryAsync<string>(new CommandDefinition("""
             SELECT jsonb_build_object('buildId', id, 'pluginSlug', plugin_slug, 'state', state, 'buildInfo', build_info)::text
             FROM builds WHERE plugin_slug = @pluginSlug AND id = @buildId
@@ -207,41 +213,9 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
         return Ok(new JObject { ["pluginSlug"] = pluginSlug, ["version"] = version.ToString(), ["buildId"] = buildId.Value, ["revoked"] = true });
     }
 
-    /// <summary>Marks each locked build row failed with <paramref name="error"/>; build.cancelled precedes the trigger's build.failed.</summary>
-    private async Task Cancel(NpgsqlConnection conn, NpgsqlTransaction tx, List<BuildRow> builds, string error, string reason,
-        CancellationToken cancellationToken)
-    {
-        foreach (var build in builds)
-        {
-            await Emit(conn, tx, "build.cancelled", new JObject
-            {
-                ["pluginSlug"] = build.PluginSlug, ["buildId"] = build.BuildId, ["previousState"] = build.State, ["reason"] = reason
-            }, cancellationToken);
-            await conn.ExecuteAsync(new CommandDefinition("""
-                UPDATE builds SET state = 'failed', build_info = COALESCE(build_info, '{}'::jsonb) || jsonb_build_object('error', @error::text)
-                WHERE plugin_slug = @pluginSlug AND id = @buildId
-                """, new { build.PluginSlug, build.BuildId, error }, tx, cancellationToken: cancellationToken));
-        }
-    }
-
-    private void Stop(IEnumerable<BuildRow> builds, string error)
-    {
-        foreach (var build in builds)
-        {
-            var id = new FullBuildId(new PluginSlug(build.PluginSlug), build.BuildId);
-            cancellations.Cancel(id);
-            events.Publish(new BuildChanged(id, BuildStates.Failed) { BuildInfo = new JObject { ["error"] = error }.ToString() });
-        }
-    }
-
-    private Task Emit(NpgsqlConnection conn, NpgsqlTransaction tx, string type, JObject data, CancellationToken cancellationToken)
-    {
-        // The acting account and token, so the stream shows who contained what and through which delegation.
-        data["by"] = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        data["tokenId"] = User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim);
-        return conn.ExecuteAsync(new CommandDefinition("SELECT emit_admin_event(@type, @data::jsonb)",
-            new { type, data = data.ToString(Newtonsoft.Json.Formatting.None) }, tx, cancellationToken: cancellationToken));
-    }
+    private Task Emit(NpgsqlConnection conn, NpgsqlTransaction tx, string type, JObject data, CancellationToken cancellationToken) =>
+        moderation.Emit(conn, tx, type, data, User.FindFirstValue(ClaimTypes.NameIdentifier),
+            User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken);
 
     private async Task<IActionResult> ReadUser(NpgsqlConnection conn, string userId, CancellationToken cancellationToken)
     {
@@ -251,13 +225,6 @@ public class AdminModerationController(DBConnectionFactory connections, BuildCan
             FROM "AspNetUsers" u WHERE u."Id" = @userId
             """, new { userId }, cancellationToken: cancellationToken));
         return Ok(JObject.Parse(json));
-    }
-
-    private sealed class BuildRow
-    {
-        public string PluginSlug { get; set; } = "";
-        public long BuildId { get; set; }
-        public string State { get; set; } = "";
     }
 
     private sealed class UserRow

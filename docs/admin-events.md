@@ -18,7 +18,10 @@ No AI provider or review engine runs inside Plugin Builder.
 | `build.failed` | A build transitions to `failed`. |
 | `listing.requested` | A new listing request is saved. Email reminders do not create another request event. |
 | `listing.approved` / `listing.rejected` | A pending request receives a decision. Includes reviewing account, token ID and note. |
-| `user.locked` / `user.unlocked` | An admin locks or unlocks an account through the API. Includes the acting account and token ID, the reason, `until` (null when indefinite) and, for a lock, the builds it cancelled. |
+| `user.locked` / `user.unlocked` | An account is locked or unlocked through moderation. Includes the acting account and token ID (null for automatic GitHub ban enforcement), the reason, `until` (null when indefinite) and, for a lock, the builds it cancelled. |
+| `user.burned` | Explicit containment of an account and its GitHub identity. Includes the numeric GitHub ID when available, verified login, applied locks, skipped server admins and any unavailable evidence. |
+| `github.banned` / `github.ban_revoked` | A GitHub ID or verified legacy username is banned or its ban is manually revoked. Includes the identity, reason and acting account/token; revocation also includes `banId`. Revocation does not unlock accounts. |
+| `github.ban_applied` | A proven GitHub identity matches an existing ban during verification or a build check. Records the banned ID or legacy username, target account, applied locks and skipped server admins; acting account/token are null. |
 | `build.cancelled` | An admin cancels an unfinished build, directly or by locking the account that started it. Precedes that build's `build.failed`. Includes the acting account and token ID, the reason and the state it was cancelled from. |
 | `plugin.visibility_changed` | An admin changes a plugin's visibility through the API. Includes the acting account and token ID, the reason and the previous and new visibility. |
 | `version.revoked` | An admin revokes a published version through the API. Includes the acting account and token ID, the reason, the version and its build ID. The build's move to `removed` emits no build event. |

@@ -115,6 +115,9 @@ agent to approve listings: put the review policy in its local instructions.
 | `POST /admin/listing-requests/{id}/review` | `{"decision":"approve","note":"Review findings…"}` or `reject`; nonempty note up to 10,000 characters. |
 | `POST /admin/users/{userId}/lock` | `{"reason":"Spam burst"}` for an indefinite lock; optionally set `until` to a future ISO-8601 timestamp. See [Moderation](#moderation). |
 | `POST /admin/users/{userId}/unlock` | `{"reason":"False positive"}`. HTTP 409 if the account is not locked. |
+| `POST /admin/users/{userId}/burn` | `{"reason":"Confirmed abuse"}`. Locks the account and linked accounts; bans its GitHub ID, or the verified legacy username when no ID is stored. Returns applied locks, skipped admins and warnings. |
+| `GET /admin/github-bans` | Active bans with `id` for revocation, nullable `githubUserId`, `githubLogin`, reason, actor and creation time. |
+| `POST /admin/github-bans/{banId}/revoke` | `{"reason":"False positive"}`. Removes the ban; accounts stay locked. HTTP 404 if there is no ban. |
 | `POST /admin/plugins/{pluginSlug}/builds/{buildId}/cancel` | `{"reason":"Exec in csproj"}`. HTTP 409 if the build has already finished. |
 | `PUT /admin/plugins/{pluginSlug}/visibility` | `{"visibility":"hidden","reason":"Malware report"}`; `hidden`, `unlisted` or `listed`. HTTP 409 if it already has that visibility. |
 | `POST /admin/plugins/{pluginSlug}/versions/{version}/revoke` | `{"reason":"Ships an unexplained binary"}`. Stops serving that version. HTTP 404 if it is not published. |
@@ -166,6 +169,23 @@ shows every action an agent took and why.
   move a finished build, so a cancellation that races the final publish wins or is refused
   with HTTP 409. The broker job itself is not killed; its lease deadline reclaims it. An
   artifact uploaded just before a losing publish is left unreferenced in storage.
+- **Burn** is separate from Lock. It bans the numeric GitHub owner ID when stored;
+  the display login does not affect ID bans. For verified legacy accounts without an
+  ID, it instead bans the stored username, ignoring case. Unverified profile names
+  cannot create or match a username ban. Username bans can miss renamed users or
+  affect a later owner of the same name; ID bans survive renames.
+  Burn locks the target and verified accounts matching the ban, cancels their
+  unfinished builds, and leaves published versions intact. Related server admins
+  are skipped and reported; targeting a server admin returns HTTP 409. Without a
+  verified identity, only the target is locked and a warning reports the missing ban.
+  There is no automatic gist recovery. Legacy accounts keep their historical
+  verification and can build without submitting another gist. Accounts without an
+  ID use their verified login for username bans. A banned legacy username is checked
+  before replacing its proof. New proofs check both ID and username bans;
+  known numeric identities cannot be replaced through the proof POST.
+  Admission and execution recheck restrictions even with verification disabled or
+  a build whitelist entry. Bans remain until explicitly revoked using their `id`;
+  revocation does not unlock accounts. Use Unlock separately after review.
 - **Visibility** makes the same change as the admin edit page. Hidden and unlisted plugins
   leave the public listing, and hidden ones leave update checks, but a plugin's identifier,
   version and download endpoints do not check visibility: a client that already knows a

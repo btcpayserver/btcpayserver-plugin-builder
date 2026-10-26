@@ -77,7 +77,8 @@ public static class NpgsqlConnectionExtensions
     {
         await connection.ExecuteAsync(
             """
-            UPDATE "AspNetUsers" SET "AccountDetail" = CASE WHEN "GithubUserId" IS NULL THEN @settings::jsonb
+            UPDATE "AspNetUsers" SET "AccountDetail" = CASE
+                WHEN "GithubUserId" IS NULL AND NULLIF("GithubGistUrl", '') IS NULL THEN @settings::jsonb
                 ELSE (@settings::jsonb - 'github') || jsonb_build_object('github', "AccountDetail"->'github') END
             WHERE "Id" = @userId
             """,
@@ -400,11 +401,31 @@ public static class NpgsqlConnectionExtensions
 
     /// <returns>The new build id, or null when the user already has the maximum number of unfinished builds.</returns>
     public static async Task<long?> NewBuildWithinUserLimit(this NpgsqlConnection connection, PluginSlug pluginSlug,
-        PluginBuildParameters buildParameters, string userId)
+        PluginBuildParameters buildParameters, string userId, bool requireGithubVerification = false)
     {
         await using var tx = await connection.BeginTransactionAsync();
         // Lock the user's row so one user's concurrent requests cannot both pass the count.
-        await connection.ExecuteAsync("""SELECT 1 FROM "AspNetUsers" WHERE "Id" = @userId FOR UPDATE""", new { userId }, tx);
+        if (!await connection.ExecuteScalarAsync<bool>("""SELECT TRUE FROM "AspNetUsers" WHERE "Id" = @userId FOR UPDATE""", new { userId }, tx))
+            throw new BuildServiceException(GithubIdentityService.SuspendedMessage);
+        // Recheck after repository lookup and serialize with an admin lock or burn before accepting the build.
+        var restriction = await connection.ExecuteScalarAsync<string?>("""
+            SELECT CASE
+              WHEN EXISTS(SELECT 1 FROM admin_account_locks l
+                          WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP)
+                OR EXISTS(SELECT 1 FROM github_bans b WHERE b.github_user_id = u."GithubUserId"
+                  OR (b.github_user_id IS NULL AND (u."GithubUserId" IS NOT NULL OR NULLIF(u."GithubGistUrl", '') IS NOT NULL)
+                      AND lower(b.github_login) = lower(u."AccountDetail"->>'github')))
+                THEN @suspended
+              WHEN @requireGithubVerification AND u."GithubUserId" IS NULL AND NULLIF(u."GithubGistUrl", '') IS NULL
+                THEN @verificationRequired
+            END
+            FROM "AspNetUsers" u WHERE u."Id" = @userId
+            """, new { userId, requireGithubVerification,
+                suspended = GithubIdentityService.SuspendedMessage,
+                verificationRequired = GithubIdentityService.VerificationRequiredMessage }, tx);
+        if (restriction is not null)
+            throw new BuildServiceException(restriction);
+
         var unfinished = await connection.ExecuteScalarAsync<int>(
             "SELECT count(*) FROM builds WHERE triggered_by = @userId AND state = ANY(@states)",
             new { userId, states = BuildStatesExtensions.UnfinishedEventNames }, tx);

@@ -1,3 +1,4 @@
+using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -21,6 +22,7 @@ public class AccountController(
     IdentityDbContext<IdentityUser> identityDbContext,
     IUserStore<IdentityUser> userStore,
     ExternalAccountVerificationService externalAccountVerificationService,
+    GithubIdentityService githubIdentityService,
     EmailService emailService,
     NostrService nostrService,
     ILogger<AccountController> logger)
@@ -289,7 +291,7 @@ public class AccountController(
     {
         var user = await userManager.GetUserAsync(User);
         await using var conn = await connectionFactory.Open(HttpContext.RequestAborted);
-        if (await conn.IsGithubAccountVerified(user!.Id))
+        if (await conn.ExecuteScalarAsync<long?>("SELECT \"GithubUserId\" FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = user!.Id }) is not null)
         {
             TempData[TempDataConstant.SuccessMessage] = "GitHub account already verified";
             return RedirectToAction(nameof(AccountDetails));
@@ -313,8 +315,11 @@ public class AccountController(
                 return View(model);
             }
 
-            await using var conn = await connectionFactory.Open();
-            await conn.VerifyGithubAccount(user.Id, model.GistUrl, identity);
+            if (!await githubIdentityService.SaveProof(user.Id, model.GistUrl, identity, HttpContext.RequestAborted))
+            {
+                await signInManager.SignOutAsync();
+                return Forbid();
+            }
             TempData[TempDataConstant.SuccessMessage] = "Github account verified successfully";
             return RedirectToAction(nameof(AccountDetails));
         }

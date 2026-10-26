@@ -20,7 +20,7 @@ public class AdminApiDocumentationTests
             root = root.Parent;
         Assert.NotNull(root);
         var spec = JObject.Parse(File.ReadAllText(Path.Combine(root.FullName, "PluginBuilder/wwwroot/swagger/v1/swagger.json")));
-        foreach (var controller in new[] { typeof(AdminEventsController), typeof(AdminReviewController), typeof(AdminAccessTokensController) })
+        foreach (var controller in new[] { typeof(AdminEventsController), typeof(AdminReviewController), typeof(AdminAccessTokensController), typeof(AdminModerationController) })
         {
             var route = controller.GetCustomAttribute<RouteAttribute>()!.Template;
             var auth = controller.GetCustomAttribute<AuthorizeAttribute>()!;
