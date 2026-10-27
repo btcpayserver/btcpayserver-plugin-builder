@@ -272,6 +272,8 @@ public class HomeController(
         if (!ModelState.IsValid)
             return View(model);
 
+        // Public requests enter through nginx, which appends the connection IP to X-Forwarded-For.
+        // Forwarded-header middleware uses that last entry, ignoring earlier client-supplied values.
         var signupIp = HttpContext.Connection.RemoteIpAddress;
         if (signupIp?.IsIPv4MappedToIPv6 == true)
             signupIp = signupIp.MapToIPv4();
