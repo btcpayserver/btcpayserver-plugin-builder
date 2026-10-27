@@ -138,7 +138,6 @@ public sealed class VersionLifecycleService(
         if (await DenyReleasedVersionChange(conn, pluginSlug, version, userId) is { } denied)
             return denied;
 
-        await using var conn = await connectionFactory.Open();
         var buildId = await conn.QueryFirstOrDefaultAsync<long?>(
             "SELECT build_id FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
             new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts });
