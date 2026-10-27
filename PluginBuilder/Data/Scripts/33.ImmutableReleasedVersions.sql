@@ -1,5 +1,5 @@
 CREATE TABLE released_versions (
-    plugin_slug       TEXT        NOT NULL REFERENCES plugins (slug) ON DELETE CASCADE,
+    plugin_slug       TEXT        NOT NULL,
     ver               INT[]       NOT NULL,
     build_id          BIGINT      NOT NULL,
     first_released_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -28,7 +28,10 @@ CREATE TRIGGER versions_record_release
 CREATE OR REPLACE FUNCTION protect_released_version() RETURNS trigger AS $$
 BEGIN
     IF EXISTS (SELECT 1 FROM released_versions r
-               WHERE r.plugin_slug = NEW.plugin_slug AND r.ver = NEW.ver AND r.build_id <> NEW.build_id) THEN
+               WHERE r.plugin_slug = NEW.plugin_slug AND r.ver = NEW.ver
+                 AND (r.build_id <> NEW.build_id
+                      OR (TG_OP = 'INSERT' AND NOT EXISTS (SELECT 1 FROM versions v
+                                                           WHERE v.plugin_slug = NEW.plugin_slug AND v.ver = NEW.ver)))) THEN
         RAISE EXCEPTION 'Version % of % was already released and cannot point to another build',
             array_to_string(NEW.ver, '.'), NEW.plugin_slug
             USING ERRCODE = 'integrity_constraint_violation';
