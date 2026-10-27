@@ -555,7 +555,7 @@ public class PluginController(
         switch (command)
         {
             case "remove":
-                var removeResult = await versionLifecycleService.RemoveAsync(pluginSlug, version);
+                var removeResult = await versionLifecycleService.RemoveAsync(pluginSlug, version, userManager.GetUserId(User)!);
                 if (!removeResult.Success)
                     return HandleVersionLifecycleFailure(pluginSlug, version, removeResult);
 
@@ -578,7 +578,7 @@ public class PluginController(
                 return RedirectToAction(nameof(Version), new { pluginSlug = pluginSlug.ToString(), version = version.ToString() });
 
             case "unrelease":
-                var unreleaseResult = await versionLifecycleService.UnreleaseAsync(pluginSlug, version);
+                var unreleaseResult = await versionLifecycleService.UnreleaseAsync(pluginSlug, version, userManager.GetUserId(User)!);
                 if (!unreleaseResult.Success)
                     return HandleVersionLifecycleFailure(pluginSlug, version, unreleaseResult);
 

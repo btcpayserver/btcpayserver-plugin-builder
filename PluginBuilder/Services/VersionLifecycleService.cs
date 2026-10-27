@@ -1,6 +1,7 @@
 using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.OutputCaching;
+using Npgsql;
 using PluginBuilder.DataModels;
 using PluginBuilder.Events;
 using PluginBuilder.JsonConverters;
@@ -15,7 +16,8 @@ public enum VersionLifecycleFailureCode
     InvalidBuildState,
     SignatureRequired,
     ManifestUnavailable,
-    SignatureVerificationFailed
+    SignatureVerificationFailed,
+    NotPermitted
 }
 
 public readonly record struct VersionLifecycleResult(
@@ -116,9 +118,12 @@ public sealed class VersionLifecycleService(
         return VersionLifecycleResult.Ok();
     }
 
-    public async Task<VersionLifecycleResult> UnreleaseAsync(PluginSlug pluginSlug, PluginVersion version)
+    public async Task<VersionLifecycleResult> UnreleaseAsync(PluginSlug pluginSlug, PluginVersion version, string userId)
     {
         await using var conn = await connectionFactory.Open();
+        if (await DenyReleasedVersionChange(conn, pluginSlug, version, userId) is { } denied)
+            return denied;
+
         var updated = await conn.UpdateVersionReleaseStatus(pluginSlug, "unrelease", version);
         if (!updated)
             return VersionLifecycleResult.Fail(VersionLifecycleFailureCode.NotFound, "Version not found");
@@ -127,8 +132,12 @@ public sealed class VersionLifecycleService(
         return VersionLifecycleResult.Ok();
     }
 
-    public async Task<VersionLifecycleResult> RemoveAsync(PluginSlug pluginSlug, PluginVersion version)
+    public async Task<VersionLifecycleResult> RemoveAsync(PluginSlug pluginSlug, PluginVersion version, string userId)
     {
+        await using var conn = await connectionFactory.Open();
+        if (await DenyReleasedVersionChange(conn, pluginSlug, version, userId) is { } denied)
+            return denied;
+
         await using var conn = await connectionFactory.Open();
         var buildId = await conn.QueryFirstOrDefaultAsync<long?>(
             "SELECT build_id FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
@@ -150,5 +159,13 @@ public sealed class VersionLifecycleService(
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
 
         return VersionLifecycleResult.Ok(buildId.Value);
+    }
+
+    private static async Task<VersionLifecycleResult?> DenyReleasedVersionChange(NpgsqlConnection conn, PluginSlug pluginSlug, PluginVersion version, string userId)
+    {
+        if (!await conn.IsReleasedVersionLockedFor(pluginSlug, version, userId))
+            return null;
+
+        return VersionLifecycleResult.Fail(VersionLifecycleFailureCode.NotPermitted, "Only the primary owner can unrelease or remove a version that has been released");
     }
 }

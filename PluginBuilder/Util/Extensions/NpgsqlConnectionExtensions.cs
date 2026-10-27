@@ -3,7 +3,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.DataModels;
-using PluginBuilder.JsonConverters;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels;
 using PluginBuilder.ViewModels.Admin;
@@ -477,6 +476,26 @@ public static class NpgsqlConnectionExtensions
             "UPDATE versions SET changelog = @changelog WHERE plugin_slug = @pluginSlug AND ver = @version",
             new { pluginSlug = pluginSlug.ToString(), version = version.VersionParts, changelog });
         return updated == 1;
+    }
+
+    public static Task<bool> WasVersionEverReleased(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginVersion version,
+    NpgsqlTransaction? tx = null)
+    {
+        return connection.ExecuteScalarAsync<bool>(
+            "SELECT EXISTS (SELECT 1 FROM released_versions WHERE plugin_slug = @pluginSlug AND ver = @ver)",
+            new { pluginSlug = pluginSlug.ToString(), ver = version.VersionParts }, tx);
+    }
+
+    public static Task<bool> IsReleasedVersionLockedFor(this NpgsqlConnection connection, PluginSlug pluginSlug, PluginVersion version,
+        string userId)
+    {
+        return connection.ExecuteScalarAsync<bool>(
+            """
+        SELECT EXISTS (SELECT 1 FROM released_versions WHERE plugin_slug = @pluginSlug AND ver = @ver)
+           AND NOT EXISTS (SELECT 1 FROM users_plugins
+                           WHERE plugin_slug = @pluginSlug AND user_id = @userId AND is_primary_owner IS TRUE)
+        """,
+            new { pluginSlug = pluginSlug.ToString(), ver = version.VersionParts, userId });
     }
 
     #endregion

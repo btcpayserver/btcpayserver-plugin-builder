@@ -179,7 +179,7 @@ public class AdminModerationController(DBConnectionFactory connections, AccountM
     }
 
     /// <summary>Stops serving one published version: the owner's Remove, done by an admin with a reason and an event. The
-    /// build is kept and marked removed; the version cannot be restored, only published again from a new build, so lock
+    /// build is kept and marked removed; a released version number stays retired (released_versions), so a fix ships as a new version. Lock
     /// the account as well when the owner is the problem.</summary>
     [HttpPost("plugins/{pluginSlug}/versions/{version}/revoke")]
     public async Task<IActionResult> RevokeVersion(string pluginSlug, [ModelBinder(typeof(PluginVersionModelBinder))] PluginVersion version,
