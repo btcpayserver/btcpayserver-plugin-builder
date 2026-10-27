@@ -231,7 +231,7 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
         await tester.StartAsync();
 
         // plugin + 3 users (owner, reviewer, voter)
-        var ownerId = await tester.Server.CreateFakeUserAsync("owner@x.com", confirmEmail: true, githubVerified: true);
+        var ownerId = await tester.Server.CreateFakeUserAsync("owner@x.com", confirmEmail: true, githubVerified: false);
         var slug = ServerTester.CreatePluginSlug();
         await tester.Server.CreatePublishedPluginAsync(ownerId, slug);
 
@@ -248,8 +248,8 @@ public class PluginDetailsUITests(ITestOutputHelper output) : PageTest
                     Proof = "proof123"
                 }
             }, ownerId);
-            await conn.VerifyGithubAccount(ownerId, "https://gist.github.com/rockstardev/123",
-                new VerifiedGithubIdentity(123, "rockstardev"));
+            Assert.Equal(1, await conn.VerifyGithubAccount(ownerId, "https://gist.github.com/rockstardev/123",
+                new VerifiedGithubIdentity(123, "rockstardev")));
         }
 
         await tester.Server.CreateFakeUserAsync("reviewer@x.com", confirmEmail: true, githubVerified: true);

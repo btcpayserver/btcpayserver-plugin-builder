@@ -25,7 +25,7 @@ namespace PluginBuilder.Controllers;
 [Route("api/v1/admin")]
 [Authorize(Roles = Roles.ServerAdmin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.AdminApi)]
 public class AdminModerationController(DBConnectionFactory connections, AccountModerationService moderation, EventAggregator events,
-    IOutputCacheStore outputCache, GithubIdentityService githubIdentities)
+    IOutputCacheStore outputCache, GithubIdentityService githubIdentities, IpBanService ipBans)
     : ControllerBase
 {
     public const string CancelledByAdmin = AccountModerationService.CancelledByAdmin;
@@ -66,6 +66,38 @@ public class AdminModerationController(DBConnectionFactory connections, AccountM
         if (banId <= 0)
             return BadRequest(new { message = "banId must be positive." });
         return await githubIdentities.Revoke(banId, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier),
+            User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken)
+            ? Ok(new { banId, revoked = true }) : NotFound();
+    }
+
+    [HttpGet("ip-bans")]
+    public async Task<IActionResult> IpBans(CancellationToken cancellationToken)
+    {
+        await using var conn = await connections.Open(cancellationToken);
+        var rows = await conn.QueryAsync<string>(new CommandDefinition("""
+            SELECT jsonb_build_object('id', id, 'network', network::text, 'reason', reason,
+              'bannedBy', banned_by, 'bannedAt', banned_at)::text FROM ip_bans ORDER BY id
+            """, cancellationToken: cancellationToken));
+        return Ok(new JArray(rows.Select(JObject.Parse)));
+    }
+
+    [HttpPost("ip-bans")]
+    public async Task<IActionResult> CreateIpBan(IpBanRequest request, CancellationToken cancellationToken)
+    {
+        var network = IpBanService.NormalizeNetwork(request.Network);
+        if (network is null)
+            return BadRequest(new { message = "Provide an IPv4 address, an IPv6 address, or an explicit IPv6 /64 network." });
+        var id = await ipBans.Create(network, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier),
+            User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken);
+        return Ok(new { id, network });
+    }
+
+    [HttpPost("ip-bans/{banId:long}/revoke")]
+    public async Task<IActionResult> RevokeIpBan(long banId, ReasonRequest request, CancellationToken cancellationToken)
+    {
+        if (banId <= 0)
+            return BadRequest(new { message = "banId must be positive." });
+        return await ipBans.Revoke(banId, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier),
             User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken)
             ? Ok(new { banId, revoked = true }) : NotFound();
     }
@@ -238,6 +270,11 @@ public class AdminModerationController(DBConnectionFactory connections, AccountM
     public class ReasonRequest
     {
         [Required, MaxLength(1000)] public string Reason { get; set; } = "";
+    }
+
+    public sealed class IpBanRequest : ReasonRequest
+    {
+        [Required, MaxLength(100)] public string Network { get; set; } = "";
     }
 
     private static readonly HashSet<string> Visibilities = ["hidden", "unlisted", "listed"];

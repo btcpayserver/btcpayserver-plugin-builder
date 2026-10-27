@@ -5,15 +5,11 @@ using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Services;
 
-public class GithubIdentityService(DBConnectionFactory connections, AccountModerationService moderation)
+public class GithubIdentityService(DBConnectionFactory connections, AccountModerationService moderation, IpBanService ipBans)
 {
     public const string SuspendedMessage = "This account is suspended from creating builds.";
     public const string VerificationRequiredMessage = "Verify your GitHub account before creating a build.";
     private const string BanReason = "Verified GitHub identity is banned by a server admin.";
-
-    // These short transactions serialize proof writes, burn and revocation, including identities with no ban row yet.
-    private static Task Serialize(NpgsqlConnection conn, NpgsqlTransaction tx, CancellationToken ct) =>
-        conn.ExecuteAsync(new CommandDefinition("SELECT pg_advisory_xact_lock(734121, 1)", transaction: tx, cancellationToken: ct));
 
     private static Task<Account?> ReadAccount(NpgsqlConnection conn, string userId, CancellationToken ct) =>
         conn.QuerySingleOrDefaultAsync<Account>(new CommandDefinition("""
@@ -33,7 +29,7 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
         if (await FindBan(conn, account.GithubUserId, account.Login, ct) is not null)
         {
             await using var tx = await conn.BeginTransactionAsync(ct);
-            await Serialize(conn, tx, ct);
+            await AccountModerationService.Serialize(conn, tx, ct);
             var cancelled = new List<AccountModerationService.BuildRow>();
             if (await FindBan(conn, account.GithubUserId, account.Login, ct) is { } ban)
                 await LockRelated(conn, tx, userId, ban, BanReason, null, null, cancelled, ct);
@@ -50,21 +46,31 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
         gistUrl = new Uri(gistUrl.Split(['?', '#'], 2)[0]).AbsoluteUri;
         await using var conn = await connections.Open(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
-        await Serialize(conn, tx, ct);
         var account = await ReadAccount(conn, userId, ct);
         if (account is null)
             return false;
         var storedBan = await FindBan(conn, account.GithubUserId, account.Login, ct);
         var ban = storedBan ?? await FindBan(conn, identity.UserId, identity.Login, ct);
+        if (ban is not null)
+        {
+            await AccountModerationService.Serialize(conn, tx, ct);
+            // A ban or the account's first identity may have changed while waiting for moderation.
+            account = await ReadAccount(conn, userId, ct);
+            if (account is null)
+                return false;
+            storedBan = await FindBan(conn, account.GithubUserId, account.Login, ct);
+            ban = storedBan ?? await FindBan(conn, identity.UserId, identity.Login, ct);
+        }
         var cancelled = new List<AccountModerationService.BuildRow>();
         // Lock related users before writing a proof: that write can emit an event and lock the event counter.
         if (ban is not null)
             await LockRelated(conn, tx, userId, ban, BanReason, null, null, cancelled, ct);
         // Keep a banned legacy link intact instead of replacing it with another GitHub identity.
-        if (account.GithubUserId == identity.UserId || (account.GithubUserId is null && storedBan is null))
-            await conn.VerifyGithubAccount(userId, gistUrl, identity);
-        else if (ban is null)
-            throw new InvalidOperationException("This account is already linked to a different GitHub identity.");
+        if (storedBan is null || account.GithubUserId == identity.UserId)
+        {
+            if (await conn.VerifyGithubAccount(userId, gistUrl, identity) == 0 && ban is null)
+                throw new InvalidOperationException("This account is already linked to a different GitHub identity.");
+        }
 
         await tx.CommitAsync(ct);
         moderation.Stop(cancelled, AccountModerationService.CancelledByLock);
@@ -75,7 +81,7 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
     {
         await using var conn = await connections.Open(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
-        await Serialize(conn, tx, ct);
+        await AccountModerationService.Serialize(conn, tx, ct);
         var account = await ReadAccount(conn, userId, ct);
         if (account is null)
             return null;
@@ -97,11 +103,14 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
         var (locked, skipped) = await LockRelated(conn, tx, userId, ban, reason, actor, tokenId, cancelled, ct);
         if (skipped.Contains(userId))
             return new BurnResult(null, null, [], [userId], ["Server admin accounts cannot be burned through the API."]);
+        var ipNetwork = await ipBans.BanSignupIp(conn, tx, userId, reason, actor, tokenId, ct);
         var warnings = new List<string>();
         if (ban.GithubUserId is null && ban.Login is null)
             warnings.Add("No verified GitHub identity is available. The account was locked, but no GitHub ban was created.");
         if (skipped.Length > 0)
             warnings.Add("Related server admin accounts were not locked.");
+        if (ipNetwork is null)
+            warnings.Add("No signup IP from the last seven days is available. No IP ban was created.");
         if (created > 0)
             await moderation.Emit(conn, tx, "github.banned", new JObject
             {
@@ -114,14 +123,14 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
         }, actor, tokenId, ct);
         await tx.CommitAsync(ct);
         moderation.Stop(cancelled, AccountModerationService.CancelledByLock);
-        return new BurnResult(ban.GithubUserId, ban.Login, locked, skipped, warnings.ToArray());
+        return new BurnResult(ban.GithubUserId, ban.Login, locked, skipped, warnings.ToArray(), ipNetwork);
     }
 
     public async Task<bool> Revoke(long banId, string reason, string? actor, string? tokenId, CancellationToken ct = default)
     {
         await using var conn = await connections.Open(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
-        await Serialize(conn, tx, ct);
+        await AccountModerationService.Serialize(conn, tx, ct);
         var ban = await conn.QuerySingleOrDefaultAsync<Ban>(new CommandDefinition("""
             DELETE FROM github_bans WHERE id = @banId RETURNING github_user_id AS GithubUserId, github_login AS Login
             """, new { banId }, tx, cancellationToken: ct));
@@ -180,7 +189,7 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
         return (users.Where(u => !u.IsAdmin).Select(u => u.Id).ToArray(), users.Where(u => u.IsAdmin).Select(u => u.Id).ToArray());
     }
 
-    public sealed record BurnResult(long? GithubUserId, string? GithubLogin, string[] LockedUserIds, string[] SkippedAdminUserIds, string[] Warnings);
+    public sealed record BurnResult(long? GithubUserId, string? GithubLogin, string[] LockedUserIds, string[] SkippedAdminUserIds, string[] Warnings, string? IpNetwork = null);
     private sealed record Ban(long? GithubUserId, string? Login);
     private sealed class Account
     {

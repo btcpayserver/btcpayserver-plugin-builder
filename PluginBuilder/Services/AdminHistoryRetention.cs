@@ -32,6 +32,10 @@ public class AdminHistoryRetention
                 SELECT id FROM admin_access_tokens WHERE COALESCE(revoked_at, expires_at) < @cutoff LIMIT 1000 FOR UPDATE SKIP LOCKED);
             DELETE FROM admin_event_first_builds WHERE user_id IN (
                 SELECT user_id FROM admin_event_first_builds f WHERE NOT EXISTS (SELECT 1 FROM "AspNetUsers" u WHERE u."Id" = f.user_id) LIMIT 1000);
+            UPDATE "AspNetUsers" SET "SignupIp" = NULL WHERE "Id" IN (
+                SELECT "Id" FROM "AspNetUsers" WHERE "SignupIp" IS NOT NULL
+                  AND "CreatedAt" <= CURRENT_TIMESTAMP - INTERVAL '7 days'
+                ORDER BY "Id" LIMIT 1000 FOR UPDATE SKIP LOCKED);
             """, new { cutoff }, transaction, cancellationToken: cancellationToken));
         await transaction.CommitAsync(cancellationToken);
         return deleted;

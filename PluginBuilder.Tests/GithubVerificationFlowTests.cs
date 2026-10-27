@@ -68,42 +68,51 @@ public class GithubVerificationFlowTests(ITestOutputHelper logs) : UnitTestBase(
         Assert.Equal(2, github.Requests.Count);
     }
 
-    [Fact]
-    public async Task AVerifiedAccountCannotSwitchGithubThroughADirectPost()
+    [Theory]
+    [InlineData(false, "old-login")]
+    [InlineData(true, "old-login")]
+    [InlineData(false, "new-login")]
+    [InlineData(true, "new-login")]
+    public async Task AVerifiedAccountRedirectsADirectPostWithoutContactingGithub(bool legacy, string submittedLogin)
     {
         var github = new GithubHandler();
         await using var tester = await StartServer(github);
         var email = $"github-fixed-{Guid.NewGuid():N}@example.com";
         var userId = await tester.CreateFakeUserAsync(email, Password, githubVerified: false);
         await using (var conn = await tester.GetService<DBConnectionFactory>().Open())
+        {
             await conn.VerifyGithubAccount(userId, GistUrl, new VerifiedGithubIdentity(123, "old-login"));
+            if (legacy)
+                await conn.ExecuteAsync("UPDATE \"AspNetUsers\" SET \"GithubUserId\" = NULL WHERE \"Id\" = @userId", new { userId });
+        }
         using var browser = HttpTestHelpers.CreateBrowser(tester);
         await HttpTestHelpers.LogIn(browser, email, Password);
         var details = await Page(browser, "/account/details");
-        github.Reply = () => Proof("new-login", 456, userId);
+        github.Reply = () => Proof(submittedLogin, submittedLogin == "old-login" ? 123 : 456, userId);
 
         // POST directly, using the account page's CSRF token without visiting the verification page.
-        using var refused = await Submit(browser, details, "https://gist.github.com/new-login/fedcba", userId);
+        using var response = await Submit(browser, details, $"https://gist.github.com/{submittedLogin}/fedcba", userId);
 
-        Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
-        Assert.Contains("This account is already linked to a different GitHub identity.",
-            await refused.Content.ReadAsStringAsync());
-        Assert.Contains(new Uri("https://api.github.com/gists/fedcba"), github.Requests);
-        await AssertStoredIdentity(tester, userId, 123, "old-login", GistUrl);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/details", new Uri(browser.BaseAddress!, response.Headers.Location!).AbsolutePath);
+        Assert.Empty(github.Requests);
+        await AssertStoredIdentity(tester, userId, legacy ? null : 123, "old-login", GistUrl);
     }
 
-    [Fact]
-    public async Task ALegacyProofRemainsVerifiedWithoutContactingGithub()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AVerifiedAccountRedirectsFromVerificationWithoutContactingGithub(bool legacy)
     {
         var github = new GithubHandler();
         await using var tester = await StartServer(github);
         var email = $"github-legacy-{Guid.NewGuid():N}@example.com";
-        var userId = await tester.CreateFakeUserAsync(email, Password);
+        var userId = await tester.CreateFakeUserAsync(email, Password, githubVerified: false);
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.ExecuteAsync("""
-            UPDATE "AspNetUsers" SET "GithubUserId" = NULL, "GithubGistUrl" = @gistUrl,
+            UPDATE "AspNetUsers" SET "GithubUserId" = @githubUserId, "GithubGistUrl" = @gistUrl,
                 "AccountDetail" = '{"github":"old-login"}'::jsonb WHERE "Id" = @userId
-            """, new { userId, gistUrl = GistUrl });
+            """, new { userId, githubUserId = legacy ? (long?)null : 123, gistUrl = GistUrl });
         using var browser = HttpTestHelpers.CreateBrowser(tester);
         await HttpTestHelpers.LogIn(browser, email, Password);
 
@@ -111,9 +120,9 @@ public class GithubVerificationFlowTests(ITestOutputHelper logs) : UnitTestBase(
         Assert.DoesNotContain($"href=\"{VerificationPath}\"", details);
         Assert.Equal("old-login", HttpTestHelpers.InputValue(details, "Settings.Github"));
         using var verification = await browser.GetAsync(VerificationPath);
-        Assert.Equal(HttpStatusCode.OK, verification.StatusCode);
-        Assert.Contains(userId, await verification.Content.ReadAsStringAsync());
-        await AssertStoredIdentity(tester, userId, null, "old-login", GistUrl);
+        Assert.Equal(HttpStatusCode.Redirect, verification.StatusCode);
+        Assert.Equal("/account/details", new Uri(browser.BaseAddress!, verification.Headers.Location!).AbsolutePath);
+        await AssertStoredIdentity(tester, userId, legacy ? null : 123, "old-login", GistUrl);
         Assert.Empty(github.Requests);
     }
 

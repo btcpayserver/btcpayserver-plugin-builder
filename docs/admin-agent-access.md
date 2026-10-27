@@ -118,6 +118,9 @@ agent to approve listings: put the review policy in its local instructions.
 | `POST /admin/users/{userId}/burn` | `{"reason":"Confirmed abuse"}`. Locks the account and linked accounts; bans its GitHub ID, or the verified legacy username when no ID is stored. Returns applied locks, skipped admins and warnings. |
 | `GET /admin/github-bans` | Active bans with `id` for revocation, nullable `githubUserId`, `githubLogin`, reason, actor and creation time. |
 | `POST /admin/github-bans/{banId}/revoke` | `{"reason":"False positive"}`. Removes the ban; accounts stay locked. HTTP 404 if there is no ban. |
+| `POST /admin/ip-bans` | `{"network":"203.0.113.7","reason":"Confirmed abuse"}`. Creates an exact IPv4/IPv6 ban, or accepts an explicit IPv6 `/64`. Duplicates preserve the original ban. |
+| `GET /admin/ip-bans` | Active IP bans with `id`, canonical `network`, reason, actor and creation time. |
+| `POST /admin/ip-bans/{banId}/revoke` | `{"reason":"False positive"}`. Removes only the IP ban; account locks and GitHub bans remain. |
 | `POST /admin/plugins/{pluginSlug}/builds/{buildId}/cancel` | `{"reason":"Exec in csproj"}`. HTTP 409 if the build has already finished. |
 | `PUT /admin/plugins/{pluginSlug}/visibility` | `{"visibility":"hidden","reason":"Malware report"}`; `hidden`, `unlisted` or `listed`. HTTP 409 if it already has that visibility. |
 | `POST /admin/plugins/{pluginSlug}/versions/{version}/revoke` | `{"reason":"Ships an unexplained binary"}`. Stops serving that version. HTTP 404 if it is not published. |
@@ -180,12 +183,33 @@ shows every action an agent took and why.
   verified identity, only the target is locked and a warning reports the missing ban.
   There is no automatic gist recovery. Legacy accounts keep their historical
   verification and can build without submitting another gist. Accounts without an
-  ID use their verified login for username bans. A banned legacy username is checked
-  before replacing its proof. New proofs check both ID and username bans;
-  known numeric identities cannot be replaced through the proof POST.
+  ID use their verified login for username bans. First proofs check both ID and
+  username bans.
+  The verification GET and POST redirect already verified accounts, including legacy
+  accounts, to account details without consulting GitHub or changing the stored ID or proof.
   Admission and execution recheck restrictions even with verification disabled or
-  a build whitelist entry. Bans remain until explicitly revoked using their `id`;
+  a build whitelist entry. A proof completing during Burn can miss its account selection;
+  the ban is enforced on the next build attempt. Already-started builds of an omitted
+  account may continue. Bans remain until explicitly revoked using their `id`;
   revocation does not unlock accounts. Use Unlock separately after review.
+- **IP bans** refuse new registrations with the same generic validation error used for
+  invalid email addresses. They do not lock existing accounts merely sharing an IP.
+  A registration that checked the IP before a ban was committed may still complete.
+  Only the signup IP is recorded; it expires after seven days and is cleared by the
+  existing hourly retention task. Expired evidence is ignored even before cleanup.
+  Burn promotes the target's fresh signup IP to an exact `/32` or `/128` ban and returns
+  it as `ipNetwork`; missing evidence adds a warning while the other blocks still apply.
+  IPv6 `/64` bans require an explicit manual request. Active bans remain until revoked,
+  independently of signup evidence retention. User details expose `signupIp` only while fresh.
+  Behind nginx, configure `PB_CLIENT_IP_TRUSTED_PROXIES` with its socket IPs or CIDR networks
+  before deploying IP bans. The list accepts commas, semicolons or whitespace; keep it
+  limited to controlled ingress proxies. With no entries, only direct socket addresses
+  are trusted. nginx must append its connecting peer to `X-Forwarded-For`, as the infra
+  template already does. Only the rightmost entry from a trusted ingress is accepted.
+  The supported path is visitor to nginx to the builder; other forwarding headers are
+  ignored for signup attribution. Forwarding headers from direct connections are also
+  ignored. Missing or invalid visitor evidence from a configured nginx records no signup
+  IP, avoiding automatic bans of the nginx address.
 - **Visibility** makes the same change as the admin edit page. Hidden and unlisted plugins
   leave the public listing, and hidden ones leave update checks, but a plugin's identifier,
   version and download endpoints do not check visibility: a client that already knows a

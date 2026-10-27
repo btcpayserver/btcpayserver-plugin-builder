@@ -21,6 +21,7 @@ public class AdminReviewController(DBConnectionFactory connections, ListingRevie
         jsonb_build_object('id', u."Id", 'email', u."Email", 'createdAt', u."CreatedAt",
           'emailVerified', u."EmailConfirmed", 'githubVerified', NULLIF(u."GithubGistUrl", '') IS NOT NULL,
           'github', u."AccountDetail"->>'github', 'githubUserId', u."GithubUserId", 'githubProofUrl', u."GithubGistUrl",
+          'signupIp', CASE WHEN u."CreatedAt" > CURRENT_TIMESTAMP - INTERVAL '7 days' THEN host(u."SignupIp") END,
           'nostrNpub', u."AccountDetail"->'nostr'->>'npub', 'nostrProof', u."AccountDetail"->'nostr'->>'proof',
           'lockoutEnabled', u."LockoutEnabled", 'lockoutEnd', u."LockoutEnd", 'twoFactorEnabled', u."TwoFactorEnabled",
           'adminLock', {AdminModerationController.AdminLockJson},

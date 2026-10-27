@@ -968,8 +968,8 @@
         "tags": [
           "Admin Agent"
         ],
-        "summary": "Lock an account and ban its verified GitHub identity",
-        "description": "Requires a current ServerAdmin account. Locks the account and related verified accounts and cancels their unfinished builds. Bans the numeric GitHub ID when available, or the verified legacy username otherwise. Bans last until manual revocation. Related server admins are skipped and reported in warnings. With no verified identity, the account is locked and a warning is returned without creating a GitHub ban. See docs/admin-agent-access.md#moderation.",
+        "summary": "Lock an account and ban its GitHub identity and fresh signup IP",
+        "description": "Requires a current ServerAdmin account. Locks the account and related verified accounts and cancels their unfinished builds. Bans the numeric GitHub ID when available, or the verified legacy username otherwise. Bans last until manual revocation. Related server admins are skipped and reported in warnings. With no verified identity, the account is locked and a warning is returned without creating a GitHub ban. Also bans the target account's signup IP when recorded within seven days, using /32 for IPv4 or /128 for IPv6. Missing IP evidence adds a warning while other blocks still apply. Accounts sharing only the IP are not locked. See docs/admin-agent-access.md#moderation.",
         "security": [
           {
             "Basic": []
@@ -1018,6 +1018,11 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "ipNetwork": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Exact signup-IP network banned, or null when no fresh evidence is available."
                     },
                     "warnings": {
                       "type": "array",
@@ -1211,6 +1216,217 @@
                     "minLength": 1,
                     "maxLength": 1000,
                     "description": "Why; recorded in the admin event."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/ip-bans": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "List active IP bans",
+        "description": "Requires a current ServerAdmin account. Bans remain until explicitly revoked; seven-day signup-IP retention does not expire bans.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active bans ordered by ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "network": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "bannedBy": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "bannedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Ban an IP address or explicit IPv6 /64",
+        "description": "Requires a current ServerAdmin account. A bare address becomes /32 for IPv4 or /128 for IPv6. Only an explicit IPv6 /64 broadens the ban. Blocks new registrations without locking existing accounts sharing the IP. Duplicates return the existing ID and preserve metadata.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Created or existing ban.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "network": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network or missing reason."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "network"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "network": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "description": "An IPv4/IPv6 address for an exact-host ban, or an explicit IPv6 /64. IPv4-mapped IPv6 is normalized to IPv4."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/ip-bans/{banId}/revoke": {
+      "post": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Revoke an IP ban",
+        "description": "Requires a current ServerAdmin account. Removes only the selected IP ban; account locks and GitHub bans remain unchanged.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The IP ban was revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "banId": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "revoked": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing reason or nonpositive banId."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Ban not found."
+          }
+        },
+        "parameters": [
+          {
+            "name": "banId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
                   }
                 }
               }
