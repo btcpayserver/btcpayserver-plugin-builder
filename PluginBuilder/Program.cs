@@ -105,13 +105,6 @@ public class Program
 
     public void Configure(WebApplication app)
     {
-        var clientIps = app.Services.GetRequiredService<ClientIpResolver>();
-        app.Use(async (context, next) =>
-        {
-            clientIps.Capture(context);
-            await next(context);
-        });
-
         // ForwardedHeaders.All + cleared KnownNetworks/KnownProxies is required because proxy IPs are dynamic
         // in Docker (populating KnownProxies would create a circular dependency in docker-compose).
         // This means X-Forwarded-Host is trusted from any source. Host header poisoning is mitigated by:
@@ -280,7 +273,6 @@ public class Program
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<AccountModerationService>();
         services.AddSingleton<IpBanService>();
-        services.AddSingleton<ClientIpResolver>();
         services.AddSingleton<GithubIdentityService>();
         services.AddSingleton<EmailService>();
         services.AddSingleton<NostrService>();

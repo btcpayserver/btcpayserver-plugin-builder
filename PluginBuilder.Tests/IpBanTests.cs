@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Dapper;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json.Linq;
@@ -23,8 +22,8 @@ public class IpBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
     private const string Refusal = "Please provide a valid email address.";
 
     [Theory]
-    [InlineData("::ffff:198.51.100.31", "198.51.100.31", "198.51.100.31/32", "198.51.100.32")]
-    [InlineData("2001:db8:1::31", "2001:db8:1::31", "2001:db8:1::31/128", "2001:db8:1::32")]
+    [InlineData("203.0.113.99, ::ffff:198.51.100.31", "198.51.100.31", "198.51.100.31/32", "198.51.100.32")]
+    [InlineData("203.0.113.99, 2001:db8:1::31", "2001:db8:1::31", "2001:db8:1::31/128", "2001:db8:1::32")]
     public async Task RegistrationCapturesTheSignupHostAndAnExactBanCanBeRevoked(
         string forwardedIp, string storedIp, string network, string otherIp)
     {
@@ -55,21 +54,21 @@ public class IpBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Fact]
-    public async Task DirectSignupIgnoresForgedForwardingHeadersInTheRealPipeline()
+    public async Task SignupWithoutForwardedHeadersUsesTheSocketAddress()
     {
-        await using var tester = await StartServer(trustIngress: false);
+        await using var tester = await StartServer();
         var (admin, _, _) = await AdminClient(tester);
         using var client = admin;
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         var first = Email();
         Assert.Equal(HttpStatusCode.Redirect,
-            (await Register(tester, first, "203.0.113.99")).Status);
+            (await Register(tester, first, null)).Status);
         var socket = await conn.QuerySingleAsync<string>(
             """SELECT host("SignupIp") FROM "AspNetUsers" WHERE "Email" = @first""", new { first });
         Assert.True(IPAddress.IsLoopback(IPAddress.Parse(socket)));
         await Ban(client, socket);
         var refused = Email();
-        var response = await Register(tester, refused, "203.0.113.99");
+        var response = await Register(tester, refused, null);
         Assert.Equal(HttpStatusCode.OK, response.Status);
         Assert.Contains(Refusal, response.Body);
         Assert.False(await UserExists(conn, refused));
@@ -340,7 +339,7 @@ public class IpBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(before, await conn.ExecuteScalarAsync<long>("SELECT count(*) FROM admin_events WHERE type = 'user.registered'"));
     }
 
-    private async Task<ServerTester> StartServer(bool trustIngress = true)
+    private async Task<ServerTester> StartServer()
     {
         var tester = Create(nameof(IpBanTests));
         tester.ReuseDatabase = false;
@@ -349,8 +348,6 @@ public class IpBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
             foreach (var service in services.Where(s => s.ServiceType == typeof(IHostedService) &&
                          s.ImplementationType != typeof(DatabaseStartupHostedService)).ToArray())
                 services.Remove(service);
-            services.AddSingleton(new ClientIpResolver(new ConfigurationBuilder().AddInMemoryCollection(
-                new Dictionary<string, string?> { ["CLIENT_IP_TRUSTED_PROXIES"] = trustIngress ? "127.0.0.1/32,::1/128" : "" }).Build()));
         };
         await tester.Start();
         return tester;
@@ -380,10 +377,11 @@ public class IpBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     private static async Task<(HttpStatusCode Status, string Body)> Register(ServerTester tester, string email,
-        string ip, CancellationToken cancellationToken = default)
+        string? ip, CancellationToken cancellationToken = default)
     {
         using var client = HttpTestHelpers.CreateBrowser(tester);
-        client.DefaultRequestHeaders.Add("X-Forwarded-For", ip);
+        if (ip is not null)
+            client.DefaultRequestHeaders.Add("X-Forwarded-For", ip);
         var page = await client.GetStringAsync("/register", cancellationToken);
         using var response = await client.PostAsync("/register", new FormUrlEncodedContent(new Dictionary<string, string>
         {

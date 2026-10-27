@@ -201,15 +201,10 @@ shows every action an agent took and why.
   it as `ipNetwork`; missing evidence adds a warning while the other blocks still apply.
   IPv6 `/64` bans require an explicit manual request. Active bans remain until revoked,
   independently of signup evidence retention. User details expose `signupIp` only while fresh.
-  Behind nginx, configure `PB_CLIENT_IP_TRUSTED_PROXIES` with its socket IPs or CIDR networks
-  before deploying IP bans. The list accepts commas, semicolons or whitespace; keep it
-  limited to controlled ingress proxies. With no entries, only direct socket addresses
-  are trusted. nginx must append its connecting peer to `X-Forwarded-For`, as the infra
-  template already does. Only the rightmost entry from a trusted ingress is accepted.
-  The supported path is visitor to nginx to the builder; other forwarding headers are
-  ignored for signup attribution. Forwarding headers from direct connections are also
-  ignored. Missing or invalid visitor evidence from a configured nginx records no signup
-  IP, avoiding automatic bans of the nginx address.
+  Signup attribution uses `HttpContext.Connection.RemoteIpAddress` after the existing
+  forwarded-header middleware. The infra nginx appends the visitor IP to
+  `X-Forwarded-For`; keep the application reachable externally only through nginx,
+  as in the infra Compose. No separate proxy-IP configuration is required for IP bans.
 - **Visibility** makes the same change as the admin edit page. Hidden and unlisted plugins
   leave the public listing, and hidden ones leave update checks, but a plugin's identifier,
   version and download endpoints do not check visibility: a client that already knows a

@@ -272,7 +272,9 @@ public class HomeController(
         if (!ModelState.IsValid)
             return View(model);
 
-        var signupIp = ClientIpResolver.Get(HttpContext);
+        var signupIp = HttpContext.Connection.RemoteIpAddress;
+        if (signupIp?.IsIPv4MappedToIPv6 == true)
+            signupIp = signupIp.MapToIPv4();
         if (turnstile.Enabled && !await turnstile.VerifyAsync(Request.Form[TurnstileVerifier.ResponseField].ToString(),
                 signupIp?.ToString(), HttpContext.RequestAborted))
         {
