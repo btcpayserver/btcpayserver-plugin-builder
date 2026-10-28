@@ -1,0 +1,82 @@
+@model AdminModerationViewModel
+@{
+    Layout = "_Layout";
+    ViewData.SetActivePage(AdminNavPages.Moderation, "Moderation");
+}
+
+<div id="AdminModeration">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h2 class="mb-0">@ViewData["Title"]</h2>
+    </div>
+    <section id="Bans" aria-labelledby="BansTitle">
+        <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+            <h3 id="BansTitle" class="h5 mb-0">Bans</h3>
+            <button id="BanIp" type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#UserModerationModal"
+                    data-moderation-action="@Url.Action("BanIp")" data-title="Ban IP" data-network="true" data-submit-label="Ban IP"
+                    data-description="Refuse new registrations from this address or network. Existing accounts are not locked. The ban remains until manually revoked.">Ban IP</button>
+        </div>
+        @if (Model.Bans.Count == 0)
+        {
+            <p class="text-muted">@(Model.Skip > 0 ? "No bans on this page." : "No active bans.")</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead><tr><th scope="col">Type</th><th scope="col">Identity or network</th><th scope="col">Reason</th><th scope="col">Banned by</th><th scope="col">Created</th><th scope="col" class="text-end">Actions</th></tr></thead>
+                    <tbody>
+                    @foreach (var ban in Model.Bans)
+                    {
+                        var isGithub = ban.Kind == "github";
+                        var target = isGithub ? (!string.IsNullOrEmpty(ban.Target) ? $"@{ban.Target}" : $"ID {ban.GithubUserId}") : ban.Target;
+                        var actionTarget = target + (isGithub && !string.IsNullOrEmpty(ban.Target) && ban.GithubUserId is not null ? $" · ID {ban.GithubUserId}" : "");
+                        <tr data-ban-kind="@ban.Kind" data-ban-id="@ban.Id">
+                            <td>@(isGithub ? "GitHub" : "IP")</td>
+                            <td>
+                                @if (isGithub)
+                                {
+                                    @target
+                                    @if (!string.IsNullOrEmpty(ban.Target) && ban.GithubUserId is { } githubId)
+                                    {
+                                        <div class="small text-muted">ID @githubId</div>
+                                    }
+                                    else if (ban.GithubUserId is null)
+                                    {
+                                        <div class="small text-muted">Username ban</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <code class="text-nowrap">@ban.Target</code>
+                                }
+                            </td>
+                            <td class="text-break">@ban.Reason</td>
+                            <td class="text-break">@(ban.BannedBy ?? "Unavailable")</td>
+                            <td class="text-nowrap" title="@ban.BannedAt.UtcDateTime.ToString("u")">@ban.BannedAt.ToString("yyyy-MM-dd")</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#UserModerationModal"
+                                        data-moderation-action="@Url.Action("RevokeBan", new { kind = ban.Kind, banId = ban.Id })"
+                                        data-title="@(isGithub ? "Revoke GitHub ban?" : "Revoke IP ban?")" data-target="@actionTarget"
+                                        data-submit-label="Revoke ban" data-danger="true"
+                                        data-description="@(isGithub
+                                            ? "Remove this GitHub ban. Accounts stay locked until an admin unlocks them separately. IP bans remain active."
+                                            : "Allow new registrations from this network unless another ban covers it. This does not unlock accounts or remove GitHub bans.")">Revoke</button>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (Model.Skip > 0 || Model.Bans.Count >= Model.Count)
+        {
+            <vc:pager view-model="Model" />
+        }
+    </section>
+</div>
+
+<partial name="_ModerationModal" />
+
+@section FooterScripts {
+    <script src="~/js/admin-moderation.js" asp-append-version="true"></script>
+}

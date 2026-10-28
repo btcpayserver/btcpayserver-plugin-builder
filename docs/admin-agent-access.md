@@ -155,6 +155,11 @@ Containment actions need a reason (up to 1,000 characters). Each one commits tog
 with its admin event, which records the acting account and token, so the event stream
 shows every action an agent took and why.
 
+Server admins can also use **Users** (`/admin/users`) to lock, unlock or burn an account,
+and **Moderation** (`/admin/moderation`) to review and revoke GitHub and IP bans in a single list. This page also
+accepts manual IP bans. Each action asks for a reason and confirms its scope; revoking a
+ban never unlocks accounts. Lock and Burn remain separate actions.
+
 - **Lock** sets the account's Identity lockout (indefinite unless `until` is given) and
   rotates its security stamp. Basic authentication and admin tokens are refused at once;
   browser sessions end at their next security stamp validation (by default within 30 minutes),

@@ -6,10 +6,59 @@ using PluginBuilder.Util;
 
 namespace PluginBuilder.Services;
 
-public sealed class AccountModerationService(BuildCancellationRegistry cancellations, EventAggregator events)
+public sealed class AccountModerationService(DBConnectionFactory connections, BuildCancellationRegistry cancellations, EventAggregator events)
 {
     public const string CancelledByAdmin = "Cancelled by a server admin.";
     public const string CancelledByLock = "Cancelled: the account that started this build was locked by a server admin.";
+
+    public enum Outcome { Completed, NotFound, Protected, NotLocked }
+
+    public async Task<Outcome> Lock(string userId, DateTimeOffset? until, string reason, string? actor,
+        string? tokenId, CancellationToken ct = default)
+    {
+        await using var conn = await connections.Open(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var target = await conn.QuerySingleOrDefaultAsync<UserRow>(new CommandDefinition("""
+            SELECT u."Id" AS Id,
+              EXISTS(SELECT 1 FROM "AspNetUserRoles" ur JOIN "AspNetRoles" r ON r."Id" = ur."RoleId"
+                     WHERE ur."UserId" = u."Id" AND r."Name" = 'ServerAdmin') AS IsAdmin
+            FROM "AspNetUsers" u WHERE u."Id" = @userId FOR UPDATE OF u
+            """, new { userId }, tx, cancellationToken: ct));
+        if (target is null)
+            return Outcome.NotFound;
+        if (target.IsAdmin)
+            return Outcome.Protected;
+
+        var unfinished = await LockAccount(conn, tx, userId, until, reason, actor, tokenId, ct);
+        await tx.CommitAsync(ct);
+        Stop(unfinished, CancelledByLock);
+        return Outcome.Completed;
+    }
+
+    public async Task<Outcome> Unlock(string userId, string reason, string? actor, string? tokenId,
+        CancellationToken ct = default)
+    {
+        await using var conn = await connections.Open(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var target = await conn.QuerySingleOrDefaultAsync<UserRow>(new CommandDefinition("""
+            SELECT u."Id" AS Id, COALESCE(u."LockoutEnd" > CURRENT_TIMESTAMP, FALSE) AS LockedOut,
+              EXISTS(SELECT 1 FROM admin_account_locks l WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP) AS AdminLocked
+            FROM "AspNetUsers" u WHERE u."Id" = @userId FOR UPDATE OF u
+            """, new { userId }, tx, cancellationToken: ct));
+        if (target is null)
+            return Outcome.NotFound;
+        // Lifts an admin lock, and also a failed-login lockout an admin wants to end early.
+        if (!target.AdminLocked && !target.LockedOut)
+            return Outcome.NotLocked;
+
+        await conn.ExecuteAsync(new CommandDefinition("""
+            UPDATE "AspNetUsers" SET "LockoutEnd" = NULL, "AccessFailedCount" = 0, "ConcurrencyStamp" = @concurrency WHERE "Id" = @userId;
+            DELETE FROM admin_account_locks WHERE user_id = @userId
+            """, new { userId, concurrency = Guid.NewGuid().ToString() }, tx, cancellationToken: ct));
+        await Emit(conn, tx, "user.unlocked", new JObject { ["userId"] = userId, ["reason"] = reason.Trim() }, actor, tokenId, ct);
+        await tx.CommitAsync(ct);
+        return Outcome.Completed;
+    }
 
     // Serialize ban changes and account containment against each other.
     public static Task Serialize(NpgsqlConnection conn, NpgsqlTransaction tx, CancellationToken ct) =>
@@ -89,4 +138,12 @@ public sealed class AccountModerationService(BuildCancellationRegistry cancellat
     }
 
     public sealed record BuildRow(string PluginSlug, long BuildId, string State);
+
+    private sealed class UserRow
+    {
+        public string Id { get; set; } = "";
+        public bool LockedOut { get; set; }
+        public bool IsAdmin { get; set; }
+        public bool AdminLocked { get; set; }
+    }
 }

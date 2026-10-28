@@ -112,6 +112,13 @@
                                     </a>
                                 </li>
                                 <li class="nav-item">
+                                    <a asp-area="" asp-controller="Admin" asp-action="Moderation"
+                                       class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.Moderation)" id="AdminNav-Moderation">
+                                        <vc:icon symbol="shield" />
+                                        <span text-translate="true">Moderation</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
                                     <a asp-area="" asp-controller="Admin" asp-action="ListPlugins"
                                        class="nav-link js-scroll-trigger @ViewData.IsActivePage(AdminNavPages.Plugins)" id="AdminNav-Plugins">
                                         <vc:icon symbol="plugins" />
