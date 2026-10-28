@@ -1,4 +1,7 @@
 using Dapper;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit;
 using Npgsql;
@@ -14,6 +17,39 @@ namespace PluginBuilder.Tests.AdminTests;
 public class AdminOwnerEmailPaginationUITests(ITestOutputHelper output) : PageTest
 {
     private readonly XUnitLogger _log = new("AdminOwnerEmailPaginationUITests", output);
+
+    [Fact]
+    public async Task EmailPrimaryOwners_Opens_Composer_With_A_Single_Connection_Pool()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        tester.Server.ConfigureServices = services =>
+            services.Replace(ServiceDescriptor.Singleton<DBConnectionFactory>(provider =>
+            {
+                var connectionString = new NpgsqlConnectionStringBuilder(
+                    provider.GetRequiredService<IConfiguration>().GetRequired("POSTGRES"))
+                {
+                    MaxPoolSize = 1,
+                    Timeout = 2
+                };
+                return new DBConnectionFactory(new ConfigurationBuilder()
+                    .AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["POSTGRES"] = connectionString.ToString()
+                    }).Build());
+            }));
+        await tester.StartAsync();
+        await tester.ConfigureMailpitSmtp();
+        const string ownerEmail = "single-pool-owner@example.com";
+        var owner = await tester.CreateConfirmedUser(ownerEmail);
+        await using (var conn = await tester.Server.GetService<DBConnectionFactory>().Open())
+            await AddPlugin(conn, "single-pool-plugin", owner);
+
+        await tester.LogIn(await tester.CreateServerAdminAsync());
+        await tester.GoToUrl("/admin/plugins/email-primary-owners");
+        await tester.AssertNoError();
+        await AssertRecipients(tester.Page!, ownerEmail);
+    }
 
     [Theory]
     [InlineData(0)]

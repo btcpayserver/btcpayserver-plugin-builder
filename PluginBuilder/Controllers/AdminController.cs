@@ -160,10 +160,13 @@ public class AdminController(
     public async Task<IActionResult> EmailPrimaryOwners(string? searchText, string? status)
     {
         var (whereClause, parameters) = GetPluginFilters(searchText, status, emailRecipientsOnly: true);
-        await using var conn = await connectionFactory.Open();
-        var emails = (await conn.QueryAsync<string>($"""
-            SELECT u."Email" {PluginsWithLatestVersion} {whereClause} ORDER BY p.slug;
-            """, parameters)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        string[] emails;
+        await using (var conn = await connectionFactory.Open())
+        {
+            emails = (await conn.QueryAsync<string>($"""
+                SELECT u."Email" {PluginsWithLatestVersion} {whereClause} ORDER BY p.slug;
+                """, parameters)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        }
         if (emails.Length == 0)
         {
             TempData[TempDataConstant.WarningMessage] = "No primary owners with a stable latest release match these filters.";
