@@ -1343,6 +1343,7 @@
                   },
                   "network": {
                     "type": "string",
+                    "minLength": 1,
                     "maxLength": 100,
                     "description": "An IPv4/IPv6 address for an exact-host ban, or an explicit IPv6 /64. IPv4-mapped IPv6 is normalized to IPv4."
                   }
