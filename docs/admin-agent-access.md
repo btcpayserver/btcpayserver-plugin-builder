@@ -198,7 +198,9 @@ shows every action an agent took and why.
   Only the signup IP is recorded; it expires after seven days and is cleared by the
   existing hourly retention task. Expired evidence is ignored even before cleanup.
   Burn promotes the target's fresh signup IP to an exact `/32` or `/128` ban and returns
-  it as `ipNetwork`; missing evidence adds a warning while the other blocks still apply.
+  it as `ipNetwork`. Automatic bans skip loopback, private and link-local addresses;
+  admins can still ban them manually. Missing or ineligible evidence adds a warning
+  while the other blocks still apply.
   IPv6 `/64` bans require an explicit manual request. Active bans remain until revoked,
   independently of signup evidence retention. User details expose `signupIp` only while fresh.
   Signup attribution uses `HttpContext.Connection.RemoteIpAddress` after the existing

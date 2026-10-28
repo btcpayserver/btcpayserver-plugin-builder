@@ -161,10 +161,29 @@ public class IpBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(8)]
-    [InlineData(null)]
-    public async Task BurnUsesOnlyFreshSignupEvidenceAndDoesNotLockOtherAccountsSharingTheIp(int? ageDays)
+    [InlineData(0, "2001:db8:3::1", "2001:db8:3::1/128")]
+    [InlineData(8, "2001:db8:3::1", null)]
+    [InlineData(null, "2001:db8:3::1", null)]
+    [InlineData(0, "198.51.100.31", "198.51.100.31/32")]
+    [InlineData(0, "::ffff:198.51.100.31", "198.51.100.31/32")]
+    [InlineData(0, "172.15.255.255", "172.15.255.255/32")]
+    [InlineData(0, "172.32.0.1", "172.32.0.1/32")]
+    [InlineData(0, "127.0.0.1", null)]
+    [InlineData(0, "::1", null)]
+    [InlineData(0, "10.0.0.1", null)]
+    [InlineData(0, "172.16.0.1", null)]
+    [InlineData(0, "172.31.255.254", null)]
+    [InlineData(0, "192.168.0.1", null)]
+    [InlineData(0, "169.254.10.1", null)]
+    [InlineData(0, "fe80::1", null)]
+    [InlineData(0, "fc00::1", null)]
+    [InlineData(0, "fd00::1", null)]
+    [InlineData(0, "fec0::1", null)]
+    [InlineData(0, "::ffff:10.0.0.1", null)]
+    [InlineData(0, "::ffff:127.0.0.1", null)]
+    [InlineData(0, "::ffff:169.254.10.1", null)]
+    public async Task BurnUsesOnlyFreshSignupEvidenceAndDoesNotLockOtherAccountsSharingTheIp(
+        int? ageDays, string ip, string? expectedNetwork)
     {
         await using var tester = await StartServer();
         var (admin, actor, _) = await AdminClient(tester);
@@ -172,7 +191,6 @@ public class IpBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var target = await tester.CreateFakeUserAsync(password: Password, githubVerified: false);
         var shared = await tester.CreateFakeUserAsync(password: Password, githubVerified: false);
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
-        const string ip = "2001:db8:3::1";
         await conn.ExecuteAsync("""
             UPDATE "AspNetUsers" SET "SignupIp" = CAST(@ip AS inet) WHERE "Id" = @shared;
             UPDATE "AspNetUsers" SET "SignupIp" = CAST(@sample AS inet), "CreatedAt" = @created,
@@ -188,11 +206,11 @@ public class IpBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(target, Assert.Single(result["lockedUserIds"]!.Values<string>()));
         Assert.Equal(new[] { target }, await conn.QueryAsync<string>("SELECT user_id FROM admin_account_locks"));
         Assert.Equal(actor, await conn.QuerySingleAsync<string>("SELECT banned_by FROM github_bans"));
-        if (ageDays == 0)
+        if (expectedNetwork is not null)
         {
-            Assert.Equal(ip + "/128", result.Value<string>("ipNetwork"));
+            Assert.Equal(expectedNetwork, result.Value<string>("ipNetwork"));
             Assert.Empty(result["warnings"]!);
-            Assert.Equal(ip + "/128", await conn.QuerySingleAsync<string>("SELECT network::text FROM ip_bans"));
+            Assert.Equal(expectedNetwork, await conn.QuerySingleAsync<string>("SELECT network::text FROM ip_bans"));
             var refused = await Register(tester, Email(), ip);
             Assert.Equal(HttpStatusCode.OK, refused.Status);
             Assert.Contains(Refusal, refused.Body);
@@ -205,8 +223,20 @@ public class IpBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
         else
         {
             Assert.Null(result.Value<string>("ipNetwork"));
-            Assert.Contains(result["warnings"]!.Values<string>(), warning => warning!.Contains("IP", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains("No eligible signup IP from the last seven days is available. No IP ban was created.",
+                result["warnings"]!.Values<string>());
             Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM ip_bans"));
+            Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type = 'ip.banned'"));
+            if (ageDays == 0)
+            {
+                await Ban(client, ip);
+                Assert.Equal(1, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM ip_bans"));
+                var refused = Email();
+                var response = await Register(tester, refused, ip);
+                Assert.Equal(HttpStatusCode.OK, response.Status);
+                Assert.Contains(Refusal, response.Body);
+                Assert.False(await UserExists(conn, refused));
+            }
         }
     }
 
@@ -251,7 +281,7 @@ public class IpBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             var result = JObject.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
             Assert.Null(result.Value<string>("ipNetwork"));
-            Assert.Contains(result["warnings"]!.Values<string>(), warning => warning!.Contains("No signup IP"));
+            Assert.Contains(result["warnings"]!.Values<string>(), warning => warning!.Contains("No eligible signup IP"));
             Assert.Equal(0, await observer.ExecuteScalarAsync<int>("SELECT count(*) FROM ip_bans"));
             Assert.Equal(0, await observer.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type = 'ip.banned'"));
             Assert.Equal(target, await observer.QuerySingleAsync<string>("SELECT user_id FROM admin_account_locks"));

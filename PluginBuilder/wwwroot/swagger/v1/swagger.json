@@ -969,7 +969,7 @@
           "Admin Agent"
         ],
         "summary": "Lock an account and ban its GitHub identity and fresh signup IP",
-        "description": "Requires a current ServerAdmin account. Locks the account and related verified accounts and cancels their unfinished builds. Bans the numeric GitHub ID when available, or the verified legacy username otherwise. Bans last until manual revocation. Related server admins are skipped and reported in warnings. With no verified identity, the account is locked and a warning is returned without creating a GitHub ban. Also bans the target account's signup IP when recorded within seven days, using /32 for IPv4 or /128 for IPv6. Missing IP evidence adds a warning while other blocks still apply. Accounts sharing only the IP are not locked. See docs/admin-agent-access.md#moderation.",
+        "description": "Requires a current ServerAdmin account. Locks the account and related verified accounts and cancels their unfinished builds. Bans the numeric GitHub ID when available, or the verified legacy username otherwise. Bans last until manual revocation. Related server admins are skipped and reported in warnings. With no verified identity, the account is locked and a warning is returned without creating a GitHub ban. Also bans the target account's signup IP when recorded within seven days, using /32 for IPv4 or /128 for IPv6. Automatic bans skip loopback, private and link-local addresses; admins can still ban them manually. Missing or ineligible IP evidence adds a warning while other blocks still apply. Accounts sharing only the IP are not locked. See docs/admin-agent-access.md#moderation.",
         "security": [
           {
             "Basic": []
@@ -1022,7 +1022,7 @@
                     "ipNetwork": {
                       "type": "string",
                       "nullable": true,
-                      "description": "Exact signup-IP network banned, or null when no fresh evidence is available."
+                      "description": "Exact signup-IP network banned, or null when no fresh eligible evidence is available."
                     },
                     "warnings": {
                       "type": "array",

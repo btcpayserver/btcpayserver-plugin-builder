@@ -97,7 +97,25 @@ public sealed class IpBanService(DBConnectionFactory connections, AccountModerat
             SELECT host("SignupIp") FROM "AspNetUsers"
             WHERE "Id" = @userId AND "CreatedAt" > clock_timestamp() - INTERVAL '7 days'
             """, new { userId }, tx, cancellationToken: ct));
-        var network = address is null ? null : NormalizeNetwork(address);
+        if (address is null)
+            return null;
+        var ip = IPAddress.Parse(address);
+        if (ip.IsIPv4MappedToIPv6)
+            ip = ip.MapToIPv4();
+        // Internal addresses can identify shared infrastructure rather than the visitor.
+        if (IPAddress.IsLoopback(ip))
+            return null;
+        if (ip.AddressFamily == AddressFamily.InterNetworkV6
+            && (ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal))
+            return null;
+        if (ip.AddressFamily == AddressFamily.InterNetwork)
+        {
+            var bytes = ip.GetAddressBytes();
+            if (bytes[0] == 10 || (bytes[0] == 172 && bytes[1] is >= 16 and <= 31)
+                || (bytes[0] == 192 && bytes[1] == 168) || (bytes[0] == 169 && bytes[1] == 254))
+                return null;
+        }
+        var network = NormalizeNetwork(ip.ToString());
         if (network is null)
             return null;
         await Insert(conn, tx, network, reason.Trim(), actor, tokenId, ct);

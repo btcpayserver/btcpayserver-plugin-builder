@@ -110,7 +110,7 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
         if (skipped.Length > 0)
             warnings.Add("Related server admin accounts were not locked.");
         if (ipNetwork is null)
-            warnings.Add("No signup IP from the last seven days is available. No IP ban was created.");
+            warnings.Add("No eligible signup IP from the last seven days is available. No IP ban was created.");
         if (created > 0)
             await moderation.Emit(conn, tx, "github.banned", new JObject
             {
