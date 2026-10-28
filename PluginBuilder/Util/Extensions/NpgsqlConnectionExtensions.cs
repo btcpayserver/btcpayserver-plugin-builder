@@ -120,7 +120,9 @@ public static class NpgsqlConnectionExtensions
             """
             UPDATE "AspNetUsers" SET "GithubGistUrl" = @gistUrl, "GithubUserId" = @githubUserId,
                 "AccountDetail" = jsonb_set(COALESCE("AccountDetail", '{}'::jsonb), '{github}', to_jsonb(@login::text))
-            WHERE "Id" = @userId
+            WHERE "Id" = @userId AND ("GithubUserId" = @githubUserId
+                OR ("GithubUserId" IS NULL AND (NULLIF("GithubGistUrl", '') IS NULL
+                    OR lower("AccountDetail"->>'github') = lower(@login))))
             """,
             new { userId, gistUrl, githubUserId = identity.UserId, login = identity.Login }
         );

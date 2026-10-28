@@ -291,7 +291,10 @@ public class AccountController(
     {
         var user = await userManager.GetUserAsync(User);
         await using var conn = await connectionFactory.Open(HttpContext.RequestAborted);
-        if (await conn.ExecuteScalarAsync<long?>("SELECT \"GithubUserId\" FROM \"AspNetUsers\" WHERE \"Id\" = @id", new { id = user!.Id }) is not null)
+        if (await conn.ExecuteScalarAsync<bool>("""
+            SELECT "GithubUserId" IS NOT NULL OR NULLIF("GithubGistUrl", '') IS NOT NULL
+            FROM "AspNetUsers" WHERE "Id" = @id
+            """, new { id = user!.Id }))
         {
             TempData[TempDataConstant.SuccessMessage] = "GitHub account already verified";
             return RedirectToAction(nameof(AccountDetails));
@@ -308,6 +311,17 @@ public class AccountController(
         {
             var user = await userManager.GetUserAsync(User);
             model.Token = user!.Id;
+            await using (var conn = await connectionFactory.Open(HttpContext.RequestAborted))
+            {
+                if (await conn.ExecuteScalarAsync<bool>("""
+                    SELECT "GithubUserId" IS NOT NULL OR NULLIF("GithubGistUrl", '') IS NOT NULL
+                    FROM "AspNetUsers" WHERE "Id" = @id
+                    """, new { id = user!.Id }))
+                {
+                    TempData[TempDataConstant.SuccessMessage] = "GitHub account already verified";
+                    return RedirectToAction(nameof(AccountDetails));
+                }
+            }
             var identity = await externalAccountVerificationService.VerifyGistToken(model.GistUrl, user.Id, HttpContext.RequestAborted);
             if (identity is null)
             {

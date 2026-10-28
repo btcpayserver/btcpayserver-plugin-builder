@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.APIModels;
@@ -40,7 +41,8 @@ public class HomeController(
     HealthCheckService healthCheckService,
     AdminSettingsCache adminSettingsCache,
     IdentityDbContext<IdentityUser> identityDbContext,
-    ITurnstileVerifier turnstile)
+    ITurnstileVerifier turnstile,
+    IpBanService ipBans)
     : Controller
 {
     [AllowAnonymous]
@@ -270,20 +272,42 @@ public class HomeController(
         if (!ModelState.IsValid)
             return View(model);
 
+        // Public requests enter through nginx, which appends the connection IP to X-Forwarded-For.
+        // Forwarded-header middleware uses that last entry, ignoring earlier client-supplied values.
+        var signupIp = HttpContext.Connection.RemoteIpAddress;
+        if (signupIp?.IsIPv4MappedToIPv6 == true)
+            signupIp = signupIp.MapToIPv4();
         if (turnstile.Enabled && !await turnstile.VerifyAsync(Request.Form[TurnstileVerifier.ResponseField].ToString(),
-                HttpContext.Connection.RemoteIpAddress?.ToString(), HttpContext.RequestAborted))
+                signupIp?.ToString(), HttpContext.RequestAborted))
         {
             ModelState.AddModelError("", "Please complete the human check and try again.");
             return View(model);
         }
 
         IdentityUser user = new() { UserName = model.Email, Email = model.Email };
-        var result = await userManager.CreateAsync(user, model.Password);
-        if (!result.Succeeded)
+        // Keep the account and its signup IP in the same transaction.
+        await using (var registration = await identityDbContext.Database.BeginTransactionAsync(HttpContext.RequestAborted))
         {
-            foreach (var error in result.Errors)
-                ModelState.AddModelError("", error.Description);
-            return View(model);
+            var connection = (NpgsqlConnection)identityDbContext.Database.GetDbConnection();
+            var transaction = (NpgsqlTransaction)registration.GetDbTransaction();
+            if (signupIp is not null && await ipBans.IsBanned(connection, transaction, signupIp, HttpContext.RequestAborted))
+            {
+                ModelState.AddModelError(nameof(model.Email), "Please provide a valid email address.");
+                return View(model);
+            }
+
+            var result = await userManager.CreateAsync(user, model.Password);
+            if (!result.Succeeded)
+            {
+                foreach (var error in result.Errors)
+                    ModelState.AddModelError("", error.Description);
+                return View(model);
+            }
+            if (signupIp is not null)
+                await connection.ExecuteAsync(new CommandDefinition("""
+                    UPDATE "AspNetUsers" SET "SignupIp" = CAST(@ip AS inet) WHERE "Id" = @id
+                    """, new { ip = signupIp.ToString(), id = user.Id }, transaction, cancellationToken: HttpContext.RequestAborted));
+            await registration.CommitAsync(HttpContext.RequestAborted);
         }
 
         await using var conn = await connectionFactory.Open();

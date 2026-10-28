@@ -38,8 +38,10 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await tester.RunRemainingScripts();
         await using var conn = await tester.Open();
         await SeedUser(conn);
-        var staleSettings = (await conn.GetAccountDetailSettings(UserId))!;
         const string newProof = "https://gist.github.com/CurrentLogin/abcdef";
+        Assert.Equal(0, await conn.VerifyGithubAccount(UserId, newProof, new VerifiedGithubIdentity(5_000_000_001, "CurrentLogin")));
+        await conn.ExecuteAsync("UPDATE \"AspNetUsers\" SET \"GithubUserId\" = 5000000001 WHERE \"Id\" = @UserId", new { UserId });
+        var staleSettings = (await conn.GetAccountDetailSettings(UserId))!;
 
         Assert.Equal(1, await conn.VerifyGithubAccount(UserId, newProof, new VerifiedGithubIdentity(5_000_000_001, "CurrentLogin")));
         var verificationEvent = JObject.Parse(await conn.QuerySingleAsync<string>(
@@ -59,6 +61,7 @@ public class GithubIdentityTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
         // Multiple local accounts can prove the same GitHub identity; a later moderation PR handles them together.
         await SeedUser(conn, "another-user");
+        await conn.ExecuteAsync("UPDATE \"AspNetUsers\" SET \"GithubGistUrl\" = NULL WHERE \"Id\" = 'another-user'");
         Assert.Equal(1, await conn.VerifyGithubAccount("another-user", newProof, new VerifiedGithubIdentity(5_000_000_001, "CurrentLogin")));
     }
 

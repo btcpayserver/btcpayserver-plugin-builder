@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using PluginBuilder.Builds.Services;
 using PluginBuilder.DataModels;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
@@ -45,6 +46,7 @@ public class GithubBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await SetIdentity(tester, unverified, null, proof: "");
         var locked = usernameBan ? new[] { owner, linked, legacy } : new[] { owner, linked };
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.ExecuteAsync("""UPDATE "AspNetUsers" SET "SignupIp" = '203.0.113.7'::inet WHERE "Id" = @owner""", new { owner });
         var slug = new PluginSlug("github-burn");
         await conn.NewPlugin(slug, owner);
         await conn.NewBuild(slug, new PluginBuildParameters(ServerTester.RepoUrl), owner);
@@ -184,7 +186,7 @@ public class GithubBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task ANewProofCannotReplaceABannedLegacyLogin(bool banned)
+    public async Task ALegacyProofCanRecordItsIdUnlessItsLoginIsBanned(bool banned)
     {
         await using var tester = await StartServer();
         var legacy = await User(tester);
@@ -194,17 +196,17 @@ public class GithubBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         if (banned)
             await conn.ExecuteAsync("INSERT INTO github_bans (github_login, reason) VALUES ('Old-Login', 'probe')");
-        const string newProof = "https://gist.github.com/clean-owner/fedcba";
+        const string newProof = "https://gist.github.com/old-login/fedcba";
 
         var accepted = await tester.GetService<GithubIdentityService>().SaveProof(legacy, newProof,
-            new VerifiedGithubIdentity(999, "clean-owner"));
+            new VerifiedGithubIdentity(999, "OLD-LOGIN"));
 
         Assert.Equal(!banned, accepted);
         Assert.Equal(banned ? (long?)null : 999, await conn.ExecuteScalarAsync<long?>(
             "SELECT \"GithubUserId\" FROM \"AspNetUsers\" WHERE \"Id\" = @legacy", new { legacy }));
         Assert.Equal(banned ? ProofUrl : newProof, await conn.ExecuteScalarAsync<string>(
             "SELECT \"GithubGistUrl\" FROM \"AspNetUsers\" WHERE \"Id\" = @legacy", new { legacy }));
-        Assert.Equal(banned ? "old-login" : "clean-owner", (await conn.GetAccountDetailSettings(legacy))!.Github);
+        Assert.Equal(banned ? "old-login" : "OLD-LOGIN", (await conn.GetAccountDetailSettings(legacy))!.Github);
         Assert.Equal((banned ? new[] { legacy, linked } : Array.Empty<string>()).Order(),
             (await conn.QueryAsync<string>("SELECT user_id FROM admin_account_locks")).Order());
     }
@@ -212,13 +214,39 @@ public class GithubBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task BurnIncludesAFirstProofAlreadyBeingSaved(bool usernameBan)
+    public async Task NormalProofDoesNotWaitForModerationAndTheNextBuildChecksTheBan(bool usernameBan)
     {
         await using var tester = await StartServer();
-        var (admin, _, _) = await AdminClient(tester);
-        using var client = admin;
-        var owner = await User(tester);
-        await SetIdentity(tester, owner, usernameBan ? null : 444);
+        var target = await User(tester);
+        var connections = tester.GetService<DBConnectionFactory>();
+        await using var blocking = await connections.Open();
+        await using var observer = await connections.Open();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using (var tx = await blocking.BeginTransactionAsync(timeout.Token))
+        {
+            await AccountModerationService.Serialize(blocking, tx, timeout.Token);
+            await blocking.ExecuteAsync(new CommandDefinition("""
+                INSERT INTO github_bans (github_user_id, github_login, reason) VALUES (@id, 'OLD-LOGIN', 'pending ban')
+                """, new { id = usernameBan ? (long?)null : 444 }, tx, cancellationToken: timeout.Token));
+            Assert.True(await tester.GetService<GithubIdentityService>().SaveProof(target, ProofUrl,
+                new VerifiedGithubIdentity(444, "old-login"), timeout.Token).WaitAsync(timeout.Token));
+            Assert.Equal(444, await observer.ExecuteScalarAsync<long?>(
+                "SELECT \"GithubUserId\" FROM \"AspNetUsers\" WHERE \"Id\" = @target", new { target }));
+            await tx.CommitAsync(timeout.Token);
+        }
+
+        var slug = new PluginSlug("github-proof-race");
+        await observer.NewPlugin(slug, target);
+        var rejected = await Assert.ThrowsAsync<BuildServiceException>(() => observer.NewBuildWithinUserLimit(slug,
+            new PluginBuildParameters(ServerTester.RepoUrl), target, true));
+        Assert.Equal(GithubIdentityService.SuspendedMessage, rejected.Message);
+        Assert.Equal(0, await observer.ExecuteScalarAsync<int>("SELECT count(*) FROM builds"));
+    }
+
+    [Fact]
+    public async Task ConcurrentFirstProofsCannotReplaceEachOthersIdentity()
+    {
+        await using var tester = await StartServer();
         var target = await User(tester);
         var connections = tester.GetService<DBConnectionFactory>();
         await using var blocking = await connections.Open();
@@ -226,38 +254,33 @@ public class GithubBanTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await using var tx = await blocking.BeginTransactionAsync();
         await blocking.ExecuteAsync("SELECT 1 FROM \"AspNetUsers\" WHERE \"Id\" = @target FOR UPDATE", new { target }, tx);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var proof = tester.GetService<GithubIdentityService>().SaveProof(target, ProofUrl,
-            new VerifiedGithubIdentity(444, "old-login"), timeout.Token);
-        Task<HttpResponseMessage>? burn = null;
+        var service = tester.GetService<GithubIdentityService>();
+        const string secondProof = "https://gist.github.com/new-owner/fedcba";
+        var first = service.SaveProof(target, ProofUrl, new VerifiedGithubIdentity(444, "old-login"), timeout.Token);
+        var second = service.SaveProof(target, secondProof, new VerifiedGithubIdentity(555, "new-owner"), timeout.Token);
         try
         {
-            int? proofPid;
-            while ((proofPid = await observer.QuerySingleOrDefaultAsync<int?>(new CommandDefinition("""
-                       SELECT pid FROM pg_stat_activity
-                       WHERE datname = current_database() AND @blockingPid = ANY(pg_blocking_pids(pid)) LIMIT 1
-                       """, new { blockingPid = blocking.ProcessID }, cancellationToken: timeout.Token))) is null)
-                timeout.Token.ThrowIfCancellationRequested();
-
-            burn = client.PostAsJsonAsync($"/api/v1/admin/users/{owner}/burn", new { reason = "concurrent proof" }, timeout.Token);
-            // Release the proof only once burn has either finished or is waiting behind that proof.
-            // Without proof serialization, burn finishes before the new identity becomes visible.
-            while (!burn.IsCompleted && !await observer.ExecuteScalarAsync<bool>(new CommandDefinition("""
-                       SELECT EXISTS(SELECT 1 FROM pg_stat_activity
-                         WHERE datname = current_database() AND @proofPid = ANY(pg_blocking_pids(pid)))
-                       """, new { proofPid }, cancellationToken: timeout.Token)))
-                timeout.Token.ThrowIfCancellationRequested();
+            // Both requests must have read the unlinked account before either UPDATE can finish.
+            while (await observer.ExecuteScalarAsync<int>(new CommandDefinition("""
+                       SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()
+                         AND wait_event_type = 'Lock' AND query LIKE 'UPDATE "AspNetUsers" SET "GithubGistUrl"%'
+                       """, cancellationToken: timeout.Token)) < 2)
+            {
+                Assert.False(first.IsCompleted || second.IsCompleted);
+                await Task.Delay(10, timeout.Token);
+            }
         }
         finally { await tx.RollbackAsync(); }
 
-        Assert.True(await proof.WaitAsync(TimeSpan.FromSeconds(10)));
-        using var response = await burn!.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(new[] { owner, target }.Order(),
-            (await observer.QueryAsync<string>("SELECT user_id FROM admin_account_locks")).Order());
-        Assert.Equal(444, await observer.ExecuteScalarAsync<long?>(
+        var firstError = await Record.ExceptionAsync(async () => Assert.True(await first.WaitAsync(timeout.Token)));
+        var secondError = await Record.ExceptionAsync(async () => Assert.True(await second.WaitAsync(timeout.Token)));
+        Assert.Equal(1, new[] { firstError, secondError }.Count(error => error is null));
+        Assert.IsType<InvalidOperationException>(firstError ?? secondError);
+        Assert.Equal(firstError is null ? 444 : 555, await observer.ExecuteScalarAsync<long?>(
             "SELECT \"GithubUserId\" FROM \"AspNetUsers\" WHERE \"Id\" = @target", new { target }));
-        Assert.Equal(usernameBan ? (long?)null : 444,
-            await observer.QuerySingleAsync<long?>("SELECT github_user_id FROM github_bans"));
+        Assert.Equal(firstError is null ? ProofUrl : secondProof, await observer.QuerySingleAsync<string>(
+            "SELECT \"GithubGistUrl\" FROM \"AspNetUsers\" WHERE \"Id\" = @target", new { target }));
+        Assert.Equal(firstError is null ? "old-login" : "new-owner", (await observer.GetAccountDetailSettings(target))!.Github);
     }
 
     private async Task<ServerTester> StartServer(GithubHandler? github = null)

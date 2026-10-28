@@ -11,6 +11,10 @@ public sealed class AccountModerationService(BuildCancellationRegistry cancellat
     public const string CancelledByAdmin = "Cancelled by a server admin.";
     public const string CancelledByLock = "Cancelled: the account that started this build was locked by a server admin.";
 
+    // Serialize ban changes and account containment against each other.
+    public static Task Serialize(NpgsqlConnection conn, NpgsqlTransaction tx, CancellationToken ct) =>
+        conn.ExecuteAsync(new CommandDefinition("SELECT pg_advisory_xact_lock(734121, 1)", transaction: tx, cancellationToken: ct));
+
     // The caller locks the user row and excludes server admins. Changes and events share its transaction.
     public async Task<List<BuildRow>> LockAccount(NpgsqlConnection conn, NpgsqlTransaction tx, string userId,
         DateTimeOffset? until, string reason, string? actor, string? tokenId, CancellationToken cancellationToken)
