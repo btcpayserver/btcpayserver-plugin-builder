@@ -108,48 +108,26 @@ public class AdminModerationController(DBConnectionFactory connections, AccountM
         if (request.Until is { } until && until <= DateTimeOffset.UtcNow)
             return BadRequest(new { message = "until must be in the future; omit it for an indefinite lock." });
 
-        await using var conn = await connections.Open(cancellationToken);
-        await using var tx = await conn.BeginTransactionAsync(cancellationToken);
-        var target = await conn.QuerySingleOrDefaultAsync<UserRow>(new CommandDefinition("""
-            SELECT u."Id" AS Id,
-              EXISTS(SELECT 1 FROM "AspNetUserRoles" ur JOIN "AspNetRoles" r ON r."Id" = ur."RoleId"
-                     WHERE ur."UserId" = u."Id" AND r."Name" = 'ServerAdmin') AS IsAdmin
-            FROM "AspNetUsers" u WHERE u."Id" = @userId FOR UPDATE OF u
-            """, new { userId }, tx, cancellationToken: cancellationToken));
-        if (target is null)
-            return NotFound();
-        if (target.IsAdmin)
-            return Conflict(new { message = "Server admin accounts cannot be locked through the API." });
-
-        var unfinished = await moderation.LockAccount(conn, tx, userId, request.Until, request.Reason,
+        var outcome = await moderation.Lock(userId, request.Until, request.Reason,
             User.FindFirstValue(ClaimTypes.NameIdentifier), User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken);
-        await tx.CommitAsync(cancellationToken);
-        moderation.Stop(unfinished, CancelledByLock);
+        if (outcome == AccountModerationService.Outcome.NotFound)
+            return NotFound();
+        if (outcome == AccountModerationService.Outcome.Protected)
+            return Conflict(new { message = "Server admin accounts cannot be locked through the API." });
+        await using var conn = await connections.Open(cancellationToken);
         return await ReadUser(conn, userId, cancellationToken);
     }
 
     [HttpPost("users/{userId}/unlock")]
     public async Task<IActionResult> Unlock(string userId, ReasonRequest request, CancellationToken cancellationToken)
     {
-        await using var conn = await connections.Open(cancellationToken);
-        await using var tx = await conn.BeginTransactionAsync(cancellationToken);
-        var target = await conn.QuerySingleOrDefaultAsync<UserRow>(new CommandDefinition("""
-            SELECT u."Id" AS Id, COALESCE(u."LockoutEnd" > CURRENT_TIMESTAMP, FALSE) AS LockedOut,
-              EXISTS(SELECT 1 FROM admin_account_locks l WHERE l.user_id = u."Id" AND l.locked_until > CURRENT_TIMESTAMP) AS AdminLocked
-            FROM "AspNetUsers" u WHERE u."Id" = @userId FOR UPDATE OF u
-            """, new { userId }, tx, cancellationToken: cancellationToken));
-        if (target is null)
+        var outcome = await moderation.Unlock(userId, request.Reason,
+            User.FindFirstValue(ClaimTypes.NameIdentifier), User.FindFirstValue(PluginBuilderAuthenticationSchemes.TokenIdClaim), cancellationToken);
+        if (outcome == AccountModerationService.Outcome.NotFound)
             return NotFound();
-        // Lifts an admin lock, and also a failed-login lockout an admin wants to end early.
-        if (!target.AdminLocked && !target.LockedOut)
+        if (outcome == AccountModerationService.Outcome.NotLocked)
             return Conflict(new { message = "This account is not locked." });
-
-        await conn.ExecuteAsync(new CommandDefinition("""
-            UPDATE "AspNetUsers" SET "LockoutEnd" = NULL, "AccessFailedCount" = 0, "ConcurrencyStamp" = @concurrency WHERE "Id" = @userId;
-            DELETE FROM admin_account_locks WHERE user_id = @userId
-            """, new { userId, concurrency = Guid.NewGuid().ToString() }, tx, cancellationToken: cancellationToken));
-        await Emit(conn, tx, "user.unlocked", new JObject { ["userId"] = userId, ["reason"] = request.Reason.Trim() }, cancellationToken);
-        await tx.CommitAsync(cancellationToken);
+        await using var conn = await connections.Open(cancellationToken);
         return await ReadUser(conn, userId, cancellationToken);
     }
 
@@ -257,14 +235,6 @@ public class AdminModerationController(DBConnectionFactory connections, AccountM
             FROM "AspNetUsers" u WHERE u."Id" = @userId
             """, new { userId }, cancellationToken: cancellationToken));
         return Ok(JObject.Parse(json));
-    }
-
-    private sealed class UserRow
-    {
-        public string Id { get; set; } = "";
-        public bool LockedOut { get; set; }
-        public bool IsAdmin { get; set; }
-        public bool AdminLocked { get; set; }
     }
 
     public class ReasonRequest

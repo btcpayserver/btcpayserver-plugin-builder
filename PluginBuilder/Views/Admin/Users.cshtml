@@ -1,72 +1,131 @@
+@using PluginBuilder.Util
 @model AdminUsersListViewModel
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(AdminNavPages.Users, "Users");
 }
 
-@* TODO: Unify page header titles across solution *@
-<div class="d-sm-flex align-items-center justify-content-between mb-4">
-    <h2 class="mb-0">
-        @ViewData["Title"]
-    </h2>
+<div id="AdminUsers">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h2 class="mb-0">@ViewData["Title"]</h2>
+    </div>
+    <form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Users" method="get">
+        <input asp-for="Count" type="hidden" />
+        <input asp-for="SearchText" class="form-control" placeholder="Search…" aria-label="Search users" />
+    </form>
+    @if (Model.Users.Any())
+    {
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead><tr><th scope="col">Email</th><th scope="col">GitHub</th><th scope="col">Status</th><th scope="col" class="text-end"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                @foreach (var user in Model.Users)
+                {
+                    var canUnlock = user.AdminLocked || user.LockedOut;
+                    var isAdmin = user.Roles.Contains(Roles.ServerAdmin);
+                    <tr data-user-id="@user.Id">
+                        <td>
+                            @user.Email
+                            @if (isAdmin)
+                            {
+                                <span class="badge bg-light ms-1">@Roles.ServerAdmin</span>
+                            }
+                            @if (!user.EmailConfirmed)
+                            {
+                                <span class="badge bg-warning text-black ms-1" title="Email not confirmed">Unconfirmed</span>
+                            }
+                            @if (!string.IsNullOrEmpty(user.PendingNewEmail))
+                            {
+                                <span title="Pending email change: @user.PendingNewEmail" aria-label="Pending email change" class="ms-1 btcpay-status btcpay-status--enabled"></span>
+                            }
+                        </td>
+                        <td>
+                            @if (user.GithubVerified)
+                            {
+                                @if (!string.IsNullOrEmpty(user.GithubLogin))
+                                {
+                                    <a href="https://github.com/@Uri.EscapeDataString(user.GithubLogin)" target="_blank" rel="noopener noreferrer"
+                                       title="@(user.GithubUserId is { } githubId ? $"GitHub ID {githubId}" : null)">@@@user.GithubLogin</a>
+                                }
+                                else
+                                {
+                                    <span>Verified</span>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted">Not verified</span>
+                            }
+                        </td>
+                        <td>
+                            @if (user.AdminLocked)
+                            {
+                                <span class="badge bg-danger">Locked</span>
+                            }
+                            else if (user.LockedOut)
+                            {
+                                <span class="badge bg-warning text-black">Sign-in locked out</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">Active</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            <div class="dropdown">
+                                <button type="button" class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for @user.Email">Actions</button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" asp-action="EditRoles" asp-route-userId="@user.Id">Edit Roles</a></li>
+                                    <li><a class="dropdown-item" asp-action="UserPasswordReset" asp-route-userId="@user.Id">Reset Password</a></li>
+                                    <li><a class="dropdown-item" asp-action="UserChangeEmail" asp-route-userId="@user.Id">Change Email</a></li>
+                                    @if (canUnlock || !isAdmin)
+                                    {
+                                        <li><hr class="dropdown-divider" /></li>
+                                    }
+                                    @if (canUnlock)
+                                    {
+                                        <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#UserModerationModal"
+                                                    data-moderation-action="@Url.Action("ModerateUser", new { userId = user.Id, operation = "unlock" })"
+                                                    data-title="Unlock account?" data-target="@user.Email" data-submit-label="Unlock account"
+                                                    data-description="Clear this account's suspension and sign-in lockout. GitHub and IP bans remain active.">Unlock</button></li>
+                                    }
+                                    @if (!user.AdminLocked && !isAdmin)
+                                    {
+                                        <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#UserModerationModal"
+                                                    data-moderation-action="@Url.Action("ModerateUser", new { userId = user.Id, operation = "lock" })"
+                                                    data-title="Lock account?" data-target="@user.Email" data-submit-label="Lock account"
+                                                    data-description="Suspend this account and cancel its unfinished builds. This does not create GitHub or IP bans.">Lock</button></li>
+                                    }
+                                    @if (!isAdmin)
+                                    {
+                                        <li><button type="button" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#UserModerationModal"
+                                                    data-moderation-action="@Url.Action("ModerateUser", new { userId = user.Id, operation = "burn" })"
+                                                    data-title="Burn account?" data-target="@user.Email" data-submit-label="Burn account" data-danger="true"
+                                                    data-signup-ip="@user.SignupIp"
+                                                    data-description="Lock this account and verified accounts sharing its GitHub identity. Cancel their unfinished builds and ban the verified GitHub identity and eligible recent signup IP. Related server admins are skipped. Bans remain until revoked; revoking a ban does not unlock accounts.">Burn…</button></li>
+                                    }
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <p class="text-secondary mt-3">@(Model.Skip > 0 ? "No users on this page." : "There are no users matching your criteria.")</p>
+    }
+    @if (Model.Skip > 0 || Model.Users.Count >= Model.Count)
+    {
+        <vc:pager view-model="Model" />
+    }
 </div>
 
-<form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Users" method="get">
-    <input asp-for="Count" type="hidden" />
-    <input asp-for="SearchText" class="form-control" placeholder="Search…" />
-</form>
+<partial name="_ModerationModal" />
 
-@if (Model.Users.Any())
-{
-    <div class="table-responsive">
-        <table class="table table-hover">
-            <thead>
-            <tr>
-                <th>Email</th>
-                <th>Username</th>
-                <th>Email Confirmed</th>
-                <th>Roles</th>
-                <th></th>
-            </tr>
-            </thead>
-            <tbody>
-            @foreach (var user in Model.Users)
-            {
-                <tr>
-                    <td>@user.Email</td>
-                    <td>@user.UserName</td>
-                    <td>@user.EmailConfirmed</td>
-                    <td>
-                        <a asp-action="EditRoles" asp-route-userId="@user.Id">
-                            @(user.Roles.Any() ? string.Join(", ", user.Roles) : "No Roles")
-                        </a>
-                    </td>
-                    <td>
-                        <a asp-action="UserPasswordReset" asp-route-userId="@user.Id">
-                            Reset Password
-                        </a>
-                        <span class="mx-2">|</span>
-                        <a asp-action="UserChangeEmail" asp-route-userId="@user.Id">
-                            Change Email
-                        </a>
-                        @if (!string.IsNullOrEmpty(user.PendingNewEmail))
-                        {
-                            <span class="cursor-pointer" title="@user.PendingNewEmail">
-                                <span class="ms-2 me-2 btcpay-status btcpay-status--enabled"></span>
-                            </span>
-                        }
-                    </td>
-                </tr>
-            }
-            </tbody>
-        </table>
-
-        <vc:pager view-model="Model" />
-    </div>
+@section FooterScripts {
+    <script src="~/scripts/searchtext.js" asp-append-version="true"></script>
+    <script src="~/js/admin-moderation.js" asp-append-version="true"></script>
 }
-else
-{
-    <p class="text-secondary mt-3">There are no users matching your criteria.</p>
-}
-
-<script src="~/scripts/searchtext.js" asp-append-version="true"></script>

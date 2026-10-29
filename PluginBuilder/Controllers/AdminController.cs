@@ -40,7 +40,10 @@ public class AdminController(
     PluginOwnershipService ownershipService,
     ServerEnvironment serverEnvironment,
     ILogger<AdminController> logger,
-    ListingReviewService listingReviewService)
+    ListingReviewService listingReviewService,
+    AccountModerationService moderation,
+    GithubIdentityService githubIdentities,
+    IpBanService ipBans)
     : Controller
 {
     // settings editor
@@ -662,34 +665,132 @@ public class AdminController(
 
     // list users
     [HttpGet("users")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Users(AdminUsersListViewModel? model = null)
     {
         model ??= new AdminUsersListViewModel();
-        await using var conn = await connectionFactory.Open();
-        var usersQuery = userManager.Users.OrderBy(a => a.Email).AsQueryable();
-
-        if (!string.IsNullOrEmpty(model.SearchText))
-            usersQuery = usersQuery.Where(o =>
-                (o.UserName != null && o.UserName.Contains(model.SearchText)) || (o.Email != null && o.Email.Contains(model.SearchText)));
-        var users = usersQuery.Skip(model.Skip).Take(model.Count).ToList();
-        List<AdminUsersViewModel> usersList = new();
-        foreach (var user in users)
-        {
-            var userRoles = await userManager.GetRolesAsync(user);
-            var accountSettings = await conn.GetAccountDetailSettings(user!.Id) ?? new AccountSettings();
-            usersList.Add(new AdminUsersViewModel
-            {
-                Id = user.Id,
-                Email = user.Email!,
-                UserName = user.UserName!,
-                EmailConfirmed = user.EmailConfirmed,
-                Roles = userRoles,
-                PendingNewEmail = accountSettings?.PendingNewEmail
-            });
-        }
-
-        model.Users = usersList;
+        model.Skip = Math.Max(0, model.Skip);
+        model.Count = Math.Clamp(model.Count, 1, 500);
+        await using var conn = await connectionFactory.Open(HttpContext.RequestAborted);
+        model.Users = (await conn.QueryAsync<AdminUsersViewModel>(new CommandDefinition("""
+                SELECT u."Id" AS Id, u."Email" AS Email,
+                  u."EmailConfirmed" AS EmailConfirmed, COALESCE(u."LockoutEnd" > CURRENT_TIMESTAMP, FALSE) AS LockedOut,
+                  ARRAY(SELECT r."Name" FROM "AspNetUserRoles" ur JOIN "AspNetRoles" r ON r."Id" = ur."RoleId"
+                    WHERE ur."UserId" = u."Id" ORDER BY r."Name") AS Roles,
+                  u."AccountDetail"->>'pendingNewEmail' AS PendingNewEmail, u."GithubUserId" AS GithubUserId,
+                  (u."GithubUserId" IS NOT NULL OR NULLIF(u."GithubGistUrl", '') IS NOT NULL) AS GithubVerified,
+                  CASE WHEN u."GithubUserId" IS NOT NULL OR NULLIF(u."GithubGistUrl", '') IS NOT NULL
+                    THEN NULLIF(u."AccountDetail"->>'github', '') END AS GithubLogin,
+                  CASE WHEN u."CreatedAt" > clock_timestamp() - INTERVAL '7 days' THEN host(u."SignupIp") END AS SignupIp,
+                  EXISTS(SELECT 1 FROM admin_account_locks l WHERE l.user_id = u."Id"
+                    AND l.locked_until > CURRENT_TIMESTAMP) AS AdminLocked
+                FROM "AspNetUsers" u
+                WHERE @search IS NULL OR strpos(u."UserName", @search) > 0 OR strpos(u."Email", @search) > 0
+                ORDER BY u."Email", u."Id" OFFSET @Skip LIMIT @Count
+                """, new { model.Skip, model.Count, search = string.IsNullOrEmpty(model.SearchText) ? null : model.SearchText },
+                cancellationToken: HttpContext.RequestAborted))).ToList();
         return View(model);
+    }
+
+    [HttpGet("moderation")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Moderation(AdminModerationViewModel? model = null)
+    {
+        model ??= new AdminModerationViewModel();
+        model.Skip = Math.Max(0, model.Skip);
+        model.Count = Math.Clamp(model.Count, 1, 500);
+        await using var conn = await connectionFactory.Open(HttpContext.RequestAborted);
+        model.Bans = (await conn.QueryAsync<AdminBanViewModel>(new CommandDefinition("""
+            SELECT b.kind AS Kind, b.id AS Id, b.target AS Target, b.github_user_id AS GithubUserId,
+              b.reason AS Reason, COALESCE(u."Email", b.banned_by) AS BannedBy, b.banned_at AS BannedAt
+            FROM (
+              SELECT 'github' AS kind, id, github_login AS target, github_user_id, reason, banned_by, banned_at FROM github_bans
+              UNION ALL
+              SELECT 'ip', id, network::text, NULL::bigint, reason, banned_by, banned_at FROM ip_bans
+            ) b LEFT JOIN "AspNetUsers" u ON u."Id" = b.banned_by
+            ORDER BY b.banned_at DESC, b.kind, b.id DESC OFFSET @Skip LIMIT @Count
+            """, new { model.Skip, model.Count }, cancellationToken: HttpContext.RequestAborted))).ToList();
+        return View(model);
+    }
+
+    [HttpPost("users/{userId}/{operation}")]
+    public async Task<IActionResult> ModerateUser(string userId, string operation, AdminModerationController.ReasonRequest request,
+        string? returnUrl, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+        var actor = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (operation == "burn")
+        {
+            var result = await githubIdentities.Burn(userId, request.Reason.Trim(), actor, null, cancellationToken);
+            if (result is null)
+                return NotFound(new { message = "This account no longer exists." });
+            if (result.SkippedAdminUserIds.Contains(userId))
+                return Conflict(new { message = "Server admin accounts cannot be burned." });
+            TempData[TempDataConstant.SuccessMessage] = $"Burn applied: {result.LockedUserIds.Length} account(s) locked and their unfinished builds cancelled."
+                + $"\nGitHub ban: {result.GithubUserId?.ToString() ?? result.GithubLogin ?? "not created"}."
+                + $"\nIP ban: {result.IpNetwork ?? "not created"}.";
+            if (result.Warnings.Length > 0)
+                TempData[TempDataConstant.WarningMessage] = string.Join('\n', result.Warnings);
+        }
+        else
+        {
+            var outcome = operation switch
+            {
+                "lock" => await moderation.Lock(userId, null, request.Reason.Trim(), actor, null, cancellationToken),
+                "unlock" => await moderation.Unlock(userId, request.Reason.Trim(), actor, null, cancellationToken),
+                _ => (AccountModerationService.Outcome?)null
+            };
+            if (outcome is null)
+                return NotFound();
+            if (outcome == AccountModerationService.Outcome.NotFound)
+                return NotFound(new { message = "This account no longer exists." });
+            if (outcome == AccountModerationService.Outcome.Protected)
+                return Conflict(new { message = "Server admin accounts cannot be locked." });
+            if (outcome == AccountModerationService.Outcome.NotLocked)
+                return Conflict(new { message = "This account is not locked." });
+            TempData[TempDataConstant.SuccessMessage] = operation == "lock"
+                ? "Account locked and its unfinished builds cancelled. No GitHub or IP ban was created."
+                : "Account unlocked. GitHub and IP bans remain unchanged.";
+        }
+        return Json(new { redirectUrl = Url.IsLocalUrl(returnUrl) ? returnUrl : Url.Action(nameof(Users)) });
+    }
+
+    [HttpPost("moderation/ip-bans")]
+    public async Task<IActionResult> BanIp(AdminModerationController.IpBanRequest request, CancellationToken cancellationToken)
+    {
+        var network = IpBanService.NormalizeNetwork(request.Network);
+        if (network is null)
+            ModelState.AddModelError(nameof(request.Network), "Provide an IPv4 address, an IPv6 address, or an explicit IPv6 /64 network.");
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+        await ipBans.Create(network!, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier), null, cancellationToken);
+        TempData[TempDataConstant.SuccessMessage] = $"IP ban active: {network}. Accounts sharing the IP were not locked.";
+        return Json(new { redirectUrl = Url.Action(nameof(Moderation)) });
+    }
+
+    [HttpPost("moderation/bans/{kind}/{banId:long}/revoke")]
+    public async Task<IActionResult> RevokeBan(string kind, long banId, AdminModerationController.ReasonRequest request,
+        string? returnUrl, CancellationToken cancellationToken)
+    {
+        if (banId <= 0)
+            return BadRequest(new { message = "Invalid ban ID." });
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+        var actor = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var revoked = kind switch
+        {
+            "github" => await githubIdentities.Revoke(banId, request.Reason.Trim(), actor, null, cancellationToken),
+            "ip" => await ipBans.Revoke(banId, request.Reason.Trim(), actor, null, cancellationToken),
+            _ => (bool?)null
+        };
+        if (revoked is null)
+            return NotFound();
+        if (revoked is false)
+            return NotFound(new { message = "This ban is no longer active. Reload the page." });
+        TempData[TempDataConstant.SuccessMessage] = $"{(kind == "github" ? "GitHub" : "IP")} ban revoked. Locked accounts stay locked; use Unlock separately.";
+        return Json(new { redirectUrl = Url.IsLocalUrl(returnUrl) ? returnUrl
+            : Url.Action(nameof(Moderation)) });
     }
 
     private async Task PopulatePluginEditViewModel(NpgsqlConnection conn, string pluginSlug, PluginEditViewModel model)

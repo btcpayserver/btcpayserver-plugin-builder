@@ -353,6 +353,10 @@
         <path d="M47 24a22.5 22.5 0 1 1-45 0 22.5 22.5 0 0 1 45 0Z" stroke="currentColor" stroke-width="3"/>
         <path d="m15.23 24.8 7.1 7.1 12.8-12.8" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
+    <symbol id="shield" viewBox="0 0 24 24">
+        <path d="M12 3 4.5 6v5.5c0 4.6 3.1 7.6 7.5 9.5 4.4-1.9 7.5-4.9 7.5-9.5V6L12 3Z"
+              fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
     <symbol id="users" viewBox="0 0 24 24">
         <circle cx="12" cy="8" r="4" fill="currentColor"/>
         <path d="M4 20c0-4 4-6 8-6s8 2 8 6v2H4v-2Z" fill="currentColor"/>

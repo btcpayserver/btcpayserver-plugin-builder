@@ -1,0 +1,35 @@
+<div class="modal fade" id="UserModerationModal" tabindex="-1" aria-labelledby="ModerationTitle" aria-describedby="ModerationDescription" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="ModerationForm" method="post">
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h4 class="modal-title" id="ModerationTitle"></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"><vc:icon symbol="close" /></button>
+                </div>
+                <div class="modal-body">
+                    <p id="ModerationTarget" class="fw-semibold text-break"></p>
+                    <p id="ModerationDescription"></p>
+                    <div id="ModerationSignupIpField" class="mb-3" hidden>
+                        <div class="form-label">Signup IP (banned only if eligible)</div>
+                        <code id="ModerationSignupIp"></code>
+                    </div>
+                    <div id="ModerationError" class="alert alert-danger" role="alert" tabindex="-1" hidden></div>
+                    <div id="ModerationNetworkField" class="mb-3" hidden>
+                        <label for="ModerationNetwork" class="form-label">IP address or network <span class="text-danger" aria-hidden="true">*</span></label>
+                        <input id="ModerationNetwork" name="Network" class="form-control" required minlength="1" maxlength="100" placeholder="203.0.113.42 or 2001:db8::/64" aria-describedby="ModerationNetworkHelp" disabled />
+                        <div id="ModerationNetworkHelp" class="form-text">Exact IPv4 /32 or IPv6 /128 by default. Enter /64 explicitly to ban an IPv6 subnet.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ModerationReason" class="form-label">Reason <span class="text-danger" aria-hidden="true">*</span></label>
+                        <textarea id="ModerationReason" name="Reason" class="form-control" rows="3" required maxlength="1000"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button id="ModerationSubmit" type="submit" class="btn btn-primary"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
