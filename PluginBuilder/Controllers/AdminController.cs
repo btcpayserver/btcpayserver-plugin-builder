@@ -61,6 +61,46 @@ public class AdminController(
         public string? ManifestInfo { get; init; }
     }
 
+    private const string PluginsWithLatestVersion = """
+        FROM plugins p
+        LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
+        LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
+        LEFT JOIN (
+            SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver,
+                   btcpay_max_ver, pre_release, updated_at
+            FROM versions
+            ORDER BY plugin_slug, updated_at DESC
+        ) v ON p.slug = v.plugin_slug
+        """;
+
+    private static (string WhereClause, DynamicParameters Parameters) GetPluginFilters(
+        string? searchText, string? status, bool emailRecipientsOnly = false)
+    {
+        var whereConditions = new List<string>();
+        var parameters = new DynamicParameters();
+        if (!string.IsNullOrEmpty(searchText))
+        {
+            whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText OR p.settings->>'pluginTitle' ILIKE @searchText)");
+            parameters.Add("searchText", $"%{searchText}%");
+        }
+
+        if (!string.IsNullOrEmpty(status) && Enum.TryParse<PluginVisibilityEnum>(status, true, out var statusEnum))
+        {
+            whereConditions.Add("p.visibility = CAST(@status AS plugin_visibility_enum)");
+            parameters.Add("status", statusEnum.ToString().ToLower());
+        }
+
+        if (emailRecipientsOnly)
+        {
+            // Match the table's latest-release eligibility, not any older stable release.
+            whereConditions.Add("v.pre_release IS FALSE AND cardinality(v.ver) > 0");
+            whereConditions.Add("u.\"Email\" IS NOT NULL AND u.\"Email\" <> ''");
+        }
+
+        var whereClause = whereConditions.Count > 0 ? "WHERE " + string.Join(" AND ", whereConditions) : "";
+        return (whereClause, parameters);
+    }
+
     [HttpGet("plugins")]
     public async Task<IActionResult> ListPlugins(AdminPluginSettingViewModel? model = null)
     {
@@ -68,21 +108,7 @@ public class AdminController(
         var orderBy = model.Sort == "recent"
             ? "v.updated_at DESC NULLS LAST, p.slug"
             : "p.slug";
-        var whereConditions = new List<string>();
-        var parameters = new DynamicParameters();
-        if (!string.IsNullOrEmpty(model.SearchText))
-        {
-            whereConditions.Add("(p.slug ILIKE @searchText OR u.\"Email\" ILIKE @searchText OR p.settings->>'pluginTitle' ILIKE @searchText)");
-            parameters.Add("searchText", $"%{model.SearchText}%");
-        }
-
-        if (!string.IsNullOrEmpty(model.Status) && Enum.TryParse<PluginVisibilityEnum>(model.Status, true, out var statusEnum))
-        {
-            whereConditions.Add("p.visibility = CAST(@status AS plugin_visibility_enum)");
-            parameters.Add("status", statusEnum.ToString().ToLower());
-        }
-
-        var whereClause = whereConditions.Count > 0 ? "WHERE " + string.Join(" AND ", whereConditions) : "";
+        var (whereClause, parameters) = GetPluginFilters(model.SearchText, model.Status);
         parameters.Add("skip", model.Skip);
         parameters.Add("take", model.Count);
 
@@ -93,15 +119,7 @@ public class AdminController(
                                                  v.btcpay_max_ver,
                                                  v.pre_release, v.updated_at, u."Email" as email, p.settings,
                                                  EXISTS(SELECT 1 FROM plugin_listing_requests lr WHERE lr.plugin_slug = p.slug AND lr.status = 'pending') as has_pending_request
-                                          FROM plugins p
-                                          LEFT JOIN users_plugins up ON p.slug = up.plugin_slug AND up.is_primary_owner IS TRUE
-                                          LEFT JOIN "AspNetUsers" u ON up.user_id = u."Id"
-                                          LEFT JOIN (
-                                              SELECT DISTINCT ON (plugin_slug) plugin_slug, ver, build_id, btcpay_min_ver,
-                                                     btcpay_max_ver, pre_release, updated_at
-                                              FROM versions
-                                              ORDER BY plugin_slug, updated_at DESC
-                                          ) v ON p.slug = v.plugin_slug
+                                          {PluginsWithLatestVersion}
                                           {whereClause}
                                           ORDER BY {orderBy}
                                           OFFSET @skip LIMIT @take;
@@ -133,8 +151,32 @@ public class AdminController(
         }
 
         model.Plugins = plugins;
+        var (recipientFilter, recipientParameters) = GetPluginFilters(model.SearchText, model.Status, emailRecipientsOnly: true);
+        model.HasPrimaryOwnerEmails = await conn.ExecuteScalarAsync<bool>($"""
+            SELECT EXISTS(SELECT 1 {PluginsWithLatestVersion} {recipientFilter});
+            """, recipientParameters);
         model.VerifiedEmailForPluginPublish = await conn.GetVerifiedEmailForPluginPublishSetting();
         return View(model);
+    }
+
+    [HttpGet("plugins/email-primary-owners")]
+    public async Task<IActionResult> EmailPrimaryOwners(string? searchText, string? status)
+    {
+        var (whereClause, parameters) = GetPluginFilters(searchText, status, emailRecipientsOnly: true);
+        string[] emails;
+        await using (var conn = await connectionFactory.Open())
+        {
+            emails = (await conn.QueryAsync<string>($"""
+                SELECT u."Email" {PluginsWithLatestVersion} {whereClause} ORDER BY p.slug;
+                """, parameters)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+        if (emails.Length == 0)
+        {
+            TempData[TempDataConstant.WarningMessage] = "No primary owners with a stable latest release match these filters.";
+            return RedirectToAction(nameof(ListPlugins), new { searchText, status });
+        }
+
+        return await ShowEmailSender(string.Join(",", emails), string.Empty, string.Empty);
     }
 
     [HttpPost]
@@ -1103,12 +1145,15 @@ public class AdminController(
     }
 
     [HttpGet("emailsender")]
-    public async Task<IActionResult> EmailSender(string to, string subject, string message)
+    public Task<IActionResult> EmailSender(string to, string subject, string message) =>
+        ShowEmailSender(to, subject, message);
+
+    private async Task<IActionResult> ShowEmailSender(string to, string subject, string message)
     {
         if (!string.IsNullOrEmpty(to) && !emailService.IsValidEmailList(to))
         {
             ModelState.AddModelError("To", "Invalid email format in the 'To' field. Please ensure all emails are valid.");
-            return View(new EmailSenderViewModel());
+            return View(nameof(EmailSender), new EmailSenderViewModel());
         }
 
         var emailSettings = await emailService.GetEmailSettingsFromDb();
@@ -1125,7 +1170,7 @@ public class AdminController(
             Subject = subject,
             Message = message
         };
-        return View(model);
+        return View(nameof(EmailSender), model);
     }
 
     [HttpPost("emailsender")]

@@ -21,6 +21,7 @@ public class AdminPluginSettingViewModel : BasePagingViewModel
 {
     public IEnumerable<AdminPluginViewModel> Plugins { get; set; } = new List<AdminPluginViewModel>();
     public bool VerifiedEmailForPluginPublish { get; set; }
+    public bool HasPrimaryOwnerEmails { get; set; }
     public string SearchText { get; set; } = null!;
     public string? Status { get; set; }
     public string? Sort { get; set; }
