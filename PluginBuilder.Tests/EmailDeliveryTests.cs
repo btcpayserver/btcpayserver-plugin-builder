@@ -1,4 +1,6 @@
 using MailKit.Net.Smtp;
+using Microsoft.Extensions.Logging;
+using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Services;
 using PluginBuilder.ViewModels.Admin;
 using Xunit;
@@ -102,6 +104,59 @@ public class EmailDeliveryTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Fact]
+    public async Task CancellationBetweenRecipientsLogsAcceptedAndNotAttemptedAddresses()
+    {
+        await using var smtp = new ScriptedSmtpServer();
+        await using var tester = Create();
+        await ConfigureEmailService(tester, smtp);
+        using var cancellation = new CancellationTokenSource();
+        var logger = new RecordingEmailLogger();
+        var emails = new CancelAfterAcceptanceEmailService(
+            tester.GetService<DBConnectionFactory>(), tester.GetService<AdminSettingsCache>(), logger, cancellation);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            emails.SendEmail(First + ", \"Second, Owner\" <second@example.com>, " + Third,
+                    "Sensitive subject", "Sensitive message body", cancellation.Token)
+                .WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.Equal(new[] { "first@example.com" }, smtp.AttemptedRecipients);
+        Assert.Equal(new[] { "first@example.com" }, smtp.AcceptedRecipients);
+        AssertCancellationLog(logger, "not_attempted");
+    }
+
+    [Fact]
+    public async Task CancellationDuringSendLogsAcceptedAndUnconfirmedAddresses()
+    {
+        using var cancellation = new CancellationTokenSource();
+        await using var smtp = new ScriptedSmtpServer
+        {
+            BeforeMessageAccepted = async (recipient, stop) =>
+            {
+                if (recipient == Second)
+                {
+                    cancellation.Cancel();
+                    // Do not acknowledge the second message while the client handles cancellation.
+                    await Task.Delay(Timeout.Infinite, stop);
+                }
+            }
+        };
+        await using var tester = Create();
+        await ConfigureEmailService(tester, smtp);
+        var logger = new RecordingEmailLogger();
+        var emails = new EmailService(
+            tester.GetService<DBConnectionFactory>(), tester.GetService<AdminSettingsCache>(), logger);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            emails.SendEmail(First + ", \"Second, Owner\" <second@example.com>, " + Third,
+                    "Sensitive subject", "Sensitive message body", cancellation.Token)
+                .WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.Equal(new[] { "first@example.com", Second }, smtp.AttemptedRecipients);
+        Assert.Equal(new[] { "first@example.com" }, smtp.AcceptedRecipients);
+        AssertCancellationLog(logger, "unconfirmed");
+    }
+
+    [Fact]
     public async Task QuitFailureDoesNotDiscardAcceptedRecipients()
     {
         await using var smtp = new ScriptedSmtpServer { RejectQuit = true };
@@ -126,5 +181,53 @@ public class EmailDeliveryTests(ITestOutputHelper logs) : UnitTestBase(logs)
             From = "sender@example.com"
         });
         return emails;
+    }
+
+    private static void AssertCancellationLog(RecordingEmailLogger logger, string status)
+    {
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Equal(1, entry.Values["AcceptedCount"]);
+        Assert.Equal("first@example.com", entry.Values["AcceptedRecipients"]);
+        Assert.Equal(Second, entry.Values["CurrentRecipient"]);
+        Assert.Equal(status, entry.Values["CurrentStatus"]);
+        Assert.DoesNotContain("First, Owner", entry.Message);
+        Assert.DoesNotContain("Second, Owner", entry.Message);
+        Assert.DoesNotContain("Sensitive subject", entry.Message);
+        Assert.DoesNotContain("Sensitive message body", entry.Message);
+    }
+
+    private sealed class CancelAfterAcceptanceEmailService(
+        DBConnectionFactory connectionFactory,
+        AdminSettingsCache adminSettingsCache,
+        ILogger<EmailService> logger,
+        CancellationTokenSource cancellation)
+        : EmailService(connectionFactory, adminSettingsCache, logger)
+    {
+        public override async Task<SmtpClient> CreateSmtpClient(EmailSettingsViewModel settings,
+            CancellationToken cancellationToken = default)
+        {
+            var client = await base.CreateSmtpClient(settings, cancellationToken);
+            // MailKit raises this after the server confirms acceptance, before SendAsync returns.
+            client.MessageSent += (_, _) => cancellation.Cancel();
+            return client;
+        }
+    }
+
+    private sealed class RecordingEmailLogger : ILogger<EmailService>
+    {
+        public List<(LogLevel Level, string Message, Dictionary<string, object?> Values)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            var values = Assert.IsAssignableFrom<IEnumerable<KeyValuePair<string, object?>>>(state)
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
+            Entries.Add((logLevel, formatter(state, exception), values));
+        }
     }
 }

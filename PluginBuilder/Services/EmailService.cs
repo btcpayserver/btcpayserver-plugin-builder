@@ -69,7 +69,11 @@ BTCPay Server Plugin Builder Team
         message.Body = new TextPart("plain") { Text = messageText };
         for (var i = 0; i < addresses.Length; i++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                LogCanceledEmailBatch(addresses, i, "not_attempted");
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             var email = addresses[i];
             message.To.Clear();
             message.To.Add(email);
@@ -82,6 +86,7 @@ BTCPay Server Plugin Builder Team
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                LogCanceledEmailBatch(addresses, i, "unconfirmed");
                 throw;
             }
             catch (Exception ex)
@@ -102,6 +107,18 @@ BTCPay Server Plugin Builder Team
         disconnectTimeout.CancelAfter(TimeSpan.FromSeconds(10));
         await client.DisconnectAsync(true, disconnectTimeout.Token);
         return recipients;
+    }
+
+    private void LogCanceledEmailBatch(InternetAddress[] addresses, int acceptedCount, string currentStatus)
+    {
+        var accepted = new InternetAddressList(addresses.Take(acceptedCount));
+        var current = new InternetAddressList([addresses[acceptedCount]]);
+        logger.LogWarning(
+            "Email batch canceled by caller. SMTP accepted {AcceptedCount} recipient(s): {AcceptedRecipients}. Current recipient: {CurrentRecipient}; status: {CurrentStatus}.",
+            acceptedCount,
+            string.Join(", ", accepted.Mailboxes.Select(mailbox => mailbox.Address)),
+            string.Join(", ", current.Mailboxes.Select(mailbox => mailbox.Address)),
+            currentStatus);
     }
 
     public bool IsValidEmailList(string? to)
@@ -242,7 +259,7 @@ BTCPay Server Plugin Builder";
         await adminSettingsCache.RefreshAllVerifiedEmailSettings(conn);
     }
 
-    public async Task<SmtpClient> CreateSmtpClient(EmailSettingsViewModel settings, CancellationToken cancellationToken = default)
+    public virtual async Task<SmtpClient> CreateSmtpClient(EmailSettingsViewModel settings, CancellationToken cancellationToken = default)
     {
         SmtpClient client = new();
         using var connectCancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

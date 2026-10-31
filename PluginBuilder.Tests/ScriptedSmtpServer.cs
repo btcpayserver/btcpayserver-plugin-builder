@@ -24,6 +24,7 @@ internal sealed class ScriptedSmtpServer : IAsyncDisposable
     public string? DisconnectAfterDataRecipient { get; set; }
     public bool RejectQuit { get; set; }
     public TimeSpan DeliveryDelay { get; set; }
+    public Func<string, CancellationToken, Task>? BeforeMessageAccepted { get; set; }
     public ConcurrentQueue<string> AttemptedRecipients { get; } = new();
     public ConcurrentQueue<string> AcceptedRecipients { get; } = new();
     public Task FirstMessageReceived => _firstMessageReceived.Task;
@@ -78,6 +79,8 @@ internal sealed class ScriptedSmtpServer : IAsyncDisposable
                         return;
                 } while (line != ".");
                 _firstMessageReceived.TrySetResult();
+                if (BeforeMessageAccepted is not null)
+                    await BeforeMessageAccepted(recipient!, _stop.Token);
                 if (DeliveryDelay > TimeSpan.Zero)
                     await Task.Delay(DeliveryDelay, _stop.Token);
                 AcceptedRecipients.Enqueue(recipient!);
