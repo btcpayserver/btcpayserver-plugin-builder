@@ -50,28 +50,57 @@ BTCPay Server Plugin Builder Team
 
     protected virtual async Task<List<string>> DeliverEmail(IEnumerable<InternetAddress> toList, string subject, string messageText, CancellationToken cancellationToken = default)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        cancellationToken = timeout.Token;
+        var addresses = toList.ToArray();
         List<string> recipients = new();
-        var emailSettings = await GetEmailSettingsFromDb(cancellationToken);
-        if (emailSettings == null)
-            throw new InvalidOperationException("Email settings not configured. Please set up email settings in the admin panel.");
+        EmailSettingsViewModel emailSettings;
+        SmtpClient smtpClient;
+        using (var setupTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            setupTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+            emailSettings = await GetEmailSettingsFromDb(setupTimeout.Token)
+                ?? throw new InvalidOperationException("Email settings not configured. Please set up email settings in the admin panel.");
+            smtpClient = await CreateSmtpClient(emailSettings, setupTimeout.Token);
+        }
 
-        using var smtpClient = await CreateSmtpClient(emailSettings, cancellationToken);
+        using var client = smtpClient;
         using MimeMessage message = new();
         message.From.Add(MailboxAddress.Parse(emailSettings.From));
         message.Subject = subject;
         message.Body = new TextPart("plain") { Text = messageText };
-        foreach (var email in toList)
+        for (var i = 0; i < addresses.Length; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            var email = addresses[i];
             message.To.Clear();
             message.To.Add(email);
-            await smtpClient.SendAsync(message, cancellationToken);
+            // Bound each submission independently so a healthy batch can exceed 30 seconds.
+            using var sendTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            sendTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+            try
+            {
+                await client.SendAsync(message, sendTimeout.Token);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var rejected = ex is SmtpCommandException
+                {
+                    ErrorCode: SmtpErrorCode.SenderNotAccepted or SmtpErrorCode.RecipientNotAccepted or SmtpErrorCode.MessageNotAccepted
+                };
+                // A lost response can mean the server accepted this message. Do not offer it for blind retry.
+                throw new EmailDeliveryException(recipients,
+                    addresses.Skip(i + (rejected ? 0 : 1)).Select(address => address.ToString()).ToArray(),
+                    rejected ? null : email.ToString(), ex);
+            }
             recipients.Add(email.ToString());
         }
 
-        await smtpClient.DisconnectAsync(true, cancellationToken);
+        using var disconnectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        disconnectTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+        await client.DisconnectAsync(true, disconnectTimeout.Token);
         return recipients;
     }
 

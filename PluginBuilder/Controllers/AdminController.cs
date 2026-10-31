@@ -1193,8 +1193,21 @@ public class AdminController(
 
         try
         {
-            var emailsSent = await emailService.SendEmail(model.To, model.Subject, model.Message);
+            var emailsSent = await emailService.SendEmail(model.To, model.Subject, model.Message, HttpContext.RequestAborted);
             TempData[TempDataConstant.SuccessMessage] = $"Emails sent successfully to {emailsSent.Count} recipient(s).";
+        }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (EmailDeliveryException ex)
+        {
+            model.AcceptedRecipients = ex.AcceptedRecipients;
+            model.UncertainRecipient = ex.UncertainRecipient;
+            model.To = string.Join(", ", ex.UnsentRecipients);
+            ModelState.Remove(nameof(model.To));
+            TempData[TempDataConstant.WarningMessage] = $"{ex.Message} {ex.InnerException?.Message} Only rejected or unattempted addresses remain in the recipient field.";
+            return View(model);
         }
         catch (Exception ex)
         {
