@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using Dapper;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Playwright;
 using PluginBuilder.HostedServices;
@@ -17,6 +19,77 @@ namespace PluginBuilder.Tests.AdminTests;
 [Collection("Playwright Tests")]
 public class AdminTokenSettingsUITests(ITestOutputHelper output) : UnitTestBase(output)
 {
+    [Fact]
+    public async Task CredentialChangedTokenIsInactiveAndCanBeRevokedAfterCreatingAReplacement()
+    {
+        await using var tester = CreateTester("AdminTokenInvalidatedUi");
+        await tester.StartAsync();
+        var email = await tester.CreateServerAdminAsync();
+        await tester.LogIn(email);
+        await tester.GoToUrl("/account/admin-access-tokens");
+        var page = tester.Page!;
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+
+        async Task<string> CreateToken(string name)
+        {
+            await page.Locator("#CreateToken").ClickAsync();
+            var modal = page.Locator("#CreateTokenModal");
+            await modal.Locator("#Creation_Name").FillAsync(name);
+            await modal.Locator("#CreateTokenForm").GetByRole(AriaRole.Button, new() { Name = "Create token", Exact = true }).ClickAsync();
+            await Expect(modal.Locator("#TokenSuccess")).ToBeVisibleAsync();
+            var token = await modal.Locator("#IssuedToken").InputValueAsync();
+            await modal.GetByRole(AriaRole.Button, new() { Name = "Done", Exact = true }).ClickAsync();
+            await Expect(modal).ToBeHiddenAsync();
+            return token;
+        }
+
+        var oldToken = await CreateToken("Before credential change");
+        var oldId = await conn.ExecuteScalarAsync<Guid>("SELECT id FROM admin_access_tokens WHERE name = 'Before credential change'");
+        using var oldAgent = tester.Server.CreateHttpClient();
+        oldAgent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", oldToken);
+        using (var response = await oldAgent.GetAsync("/api/v1/admin/me"))
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using (var scope = tester.Server.WebApp.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var owner = (await users.FindByEmailAsync(email))!;
+            Assert.True((await users.ChangePasswordAsync(owner, "123456", "replacement-password-123456")).Succeeded);
+        }
+        await page.Context.ClearCookiesAsync();
+        await tester.LogIn(email, "replacement-password-123456");
+        await tester.GoToUrl("/account/admin-access-tokens");
+        await Expect(page.Locator("#ActiveTokens tbody tr")).ToHaveCountAsync(0);
+        var oldRow = page.Locator($"#InactiveTokens tr[data-token-id='{oldId}']");
+        await page.Locator("#TokenStatusFilter").ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Inactive", Exact = true }).ClickAsync();
+        await Expect(oldRow).ToBeVisibleAsync();
+        await Expect(oldRow.Locator("[data-token-status]")).ToHaveTextAsync("Invalidated");
+        await Expect(oldRow.GetByRole(AriaRole.Button, new() { Name = "Revoke", Exact = true })).ToBeEnabledAsync();
+        Assert.False((await page.ContentAsync()).Contains(oldToken, StringComparison.Ordinal), "A token list must not redisplay the issued credential.");
+        using (var response = await oldAgent.GetAsync("/api/v1/admin/me"))
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+
+        var replacement = await CreateToken("After credential change");
+        await Expect(page.Locator("#ActiveTokens tbody tr")).ToHaveCountAsync(1);
+        await Expect(page.Locator("#ActiveTokens [data-token-status]")).ToHaveTextAsync("Active");
+        using var newAgent = tester.Server.CreateHttpClient();
+        newAgent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", replacement);
+        using (var response = await newAgent.GetAsync("/api/v1/admin/me"))
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await page.Locator("#TokenStatusFilter").ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Inactive", Exact = true }).ClickAsync();
+        await oldRow.GetByRole(AriaRole.Button, new() { Name = "Revoke", Exact = true }).ClickAsync();
+        await page.Locator("#ConfirmContinue").ClickAsync();
+        await Expect(page.Locator("#ConfirmModal")).ToBeHiddenAsync();
+        await page.Locator("#TokenStatusFilter").ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Inactive", Exact = true }).ClickAsync();
+        await Expect(oldRow.Locator("[data-token-status]")).ToHaveTextAsync("Revoked");
+        using (var response = await newAgent.GetAsync("/api/v1/admin/me"))
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
     [Fact]
     public async Task OwnerCanCreateCopyAndRevokeTokenWithoutReloadingTheModalOrResubmitting()
     {

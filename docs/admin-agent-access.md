@@ -44,6 +44,12 @@ another stamp change is signed out without changing any token, even before its p
 validation. A stamp change committed while the request runs also refuses it (HTTP 401 for
 Basic auth).
 
+The token list distinguishes **Invalidated** tokens whose account security settings
+changed (including enabling two-factor authentication or changing the password).
+They appear under **Inactive**, even if their expiration date is still in the future
+and they were not explicitly revoked. Create a new token to reconnect an agent;
+listing tokens never exposes the security stamp or token hash.
+
 ## Local connection file
 
 Gitignore `.agents/` before adding credentials. For a local-only ignore:

@@ -11,8 +11,10 @@ public class AdminAccessTokenService(DBConnectionFactory connections)
     {
         await using var conn = await connections.Open(cancellationToken);
         return (await conn.QueryAsync<TokenInfo>(new CommandDefinition("""
-            SELECT id, name, created_at AS CreatedAt, expires_at AS ExpiresAt, revoked_at AS RevokedAt, last_used_at AS LastUsedAt
-            FROM admin_access_tokens WHERE user_id = @userId ORDER BY created_at DESC
+            SELECT t.id, t.name, t.created_at AS CreatedAt, t.expires_at AS ExpiresAt, t.revoked_at AS RevokedAt,
+                   t.last_used_at AS LastUsedAt, t.security_stamp IS DISTINCT FROM u."SecurityStamp" AS Invalidated
+            FROM admin_access_tokens t JOIN "AspNetUsers" u ON u."Id" = t.user_id
+            WHERE t.user_id = @userId ORDER BY t.created_at DESC
             """, new { userId }, cancellationToken: cancellationToken))).ToList();
     }
 
@@ -82,5 +84,6 @@ public class AdminAccessTokenService(DBConnectionFactory connections)
         public DateTimeOffset ExpiresAt { get; set; }
         public DateTimeOffset? RevokedAt { get; set; }
         public DateTimeOffset? LastUsedAt { get; set; }
+        public bool Invalidated { get; set; }
     }
 }

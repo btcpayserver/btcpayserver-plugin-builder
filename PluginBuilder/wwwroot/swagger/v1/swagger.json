@@ -2088,7 +2088,7 @@
           "Admin Agent"
         ],
         "summary": "List your access tokens",
-        "description": "Requires a current ServerAdmin account. See docs/admin-agent-access.md for schemas, cursor semantics and review/audit behavior.",
+        "description": "Requires a current ServerAdmin account. Token metadata includes invalidated=true when account security settings changed; token secrets, hashes and security stamps are never returned. See docs/admin-agent-access.md for schemas and authentication behavior.",
         "security": [
           {
             "Basic": []
