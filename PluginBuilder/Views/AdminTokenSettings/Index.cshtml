@@ -3,7 +3,7 @@
 @{
     ViewData.SetActivePage("Account Settings", title: "Admin access tokens");
     var now = DateTimeOffset.UtcNow;
-    var active = Model.Tokens.Where(token => token.RevokedAt is null && token.ExpiresAt > now).ToArray();
+    var active = Model.Tokens.Where(token => token.RevokedAt is null && !token.Invalidated && token.ExpiresAt > now).ToArray();
     var inactive = Model.Tokens.Except(active).ToArray();
 }
 
@@ -30,7 +30,7 @@
                 <section id="@group.Id" data-token-group hidden="@(group.Id != "ActiveTokens")" aria-label="@(group.Id == "ActiveTokens" ? "Active tokens" : "Inactive tokens")">
                     @if (group.Tokens.Length == 0)
                     {
-                        <p class="text-muted py-4">@(group.Id == "ActiveTokens" ? "No active tokens. Create a token to connect your agent." : "No inactive tokens. Expired and revoked tokens will appear here.")</p>
+                        <p class="text-muted py-4">@(group.Id == "ActiveTokens" ? "No active tokens. Create a token to connect your agent." : "No inactive tokens. Expired, revoked and invalidated tokens will appear here.")</p>
                     }
                     else
                     {
@@ -40,7 +40,7 @@
                                 <tbody>
                                 @foreach (var token in group.Tokens)
                                 {
-                                    var status = token.RevokedAt is not null ? "Revoked" : token.ExpiresAt <= now ? "Expired" : "Active";
+                                    var status = token.RevokedAt is not null ? "Revoked" : token.Invalidated ? "Invalidated" : token.ExpiresAt <= now ? "Expired" : "Active";
                                     <tr data-token-id="@token.Id">
                                         <td class="text-break">
                                             <span data-token-name>@token.Name</span>
@@ -48,7 +48,13 @@
                                         </td>
                                         <td class="text-nowrap" title="@token.LastUsedAt?.ToString("u")">@(token.LastUsedAt is { } used ? (now - used).ToTimeAgo() : "Never")</td>
                                         <td class="text-nowrap" title="@token.ExpiresAt.ToString("u")">@token.ExpiresAt.ToString("yyyy-MM-dd")</td>
-                                        <td><span data-token-status class="badge @(status == "Active" ? "bg-success" : status == "Expired" ? "bg-warning" : "bg-danger")">@status</span></td>
+                                        <td>
+                                            <span data-token-status class="badge @(status == "Active" ? "bg-success" : status == "Expired" ? "bg-warning" : "bg-danger")">@status</span>
+                                            @if (status == "Invalidated")
+                                            {
+                                                <div class="small text-muted">Account security settings changed. Create a new token to reconnect your agent.</div>
+                                            }
+                                        </td>
                                         <td class="text-end">
                                             @if (token.RevokedAt is null)
                                             {
@@ -119,6 +125,7 @@
                                 <span aria-hidden="true"><vc:icon symbol="copy" /></span>
                             </button>
                         </div>
+                        <p class="form-text mt-3 mb-0">Changing your password or two-factor settings invalidates existing tokens.</p>
                         <p id="SecretCopyStatus" class="small mt-3 mb-0" role="status"></p>
                         <div id="SecretCopyFallback" class="mt-3" hidden>
                             <label for="SecretCopyText" class="form-label">Select and copy this text</label>

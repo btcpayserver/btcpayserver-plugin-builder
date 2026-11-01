@@ -175,6 +175,78 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TokenListMarksCredentialInvalidationAndKeepsFreshTokensUsable(bool enableTwoFactor)
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "status-admin@example.com", true);
+        var other = await AddUser(users, "unaffected-admin@example.com", true);
+        var tokens = scope.ServiceProvider.GetRequiredService<AdminAccessTokenService>();
+        var old = (await tokens.Create(admin.Id, "Existing automation", 30, admin.SecurityStamp))!;
+        var unaffected = (await tokens.Create(other.Id, "Other automation", 30, other.SecurityStamp))!;
+        Assert.False(Assert.Single(await tokens.List(admin.Id)).Invalidated);
+        using var agent = tester.CreateHttpClient();
+        agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", old.Token);
+        Assert.Equal(HttpStatusCode.OK, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
+
+        Assert.True((enableTwoFactor
+            ? await users.SetTwoFactorEnabledAsync(admin, true)
+            : await users.UpdateSecurityStampAsync(admin)).Succeeded);
+        var invalidated = Assert.Single(await tokens.List(admin.Id));
+        Assert.True(invalidated.Invalidated);
+        Assert.Null(invalidated.RevokedAt);
+        Assert.True(invalidated.ExpiresAt > DateTimeOffset.UtcNow);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
+        Assert.False(Assert.Single(await tokens.List(other.Id)).Invalidated);
+        agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", unaffected.Token);
+        Assert.Equal(HttpStatusCode.OK, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
+
+        var fresh = (await tokens.Create(admin.Id, "Reconnected automation", 30, await users.GetSecurityStampAsync(admin)))!;
+        Assert.False((await tokens.List(admin.Id)).Single(token => token.Id == fresh.Id).Invalidated);
+        agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", fresh.Token);
+        Assert.Equal(HttpStatusCode.OK, (await agent.GetAsync("/api/v1/admin/me")).StatusCode);
+        if (!enableTwoFactor)
+        {
+            using var owner = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+            var json = await owner.GetStringAsync("/api/v1/admin/access-tokens");
+            var listed = JArray.Parse(json);
+            Assert.True(listed.Single(token => token["id"]!.ToObject<Guid>() == old.Id).Value<bool>("invalidated"));
+            Assert.False(listed.Single(token => token["id"]!.ToObject<Guid>() == fresh.Id).Value<bool>("invalidated"));
+            Assert.DoesNotContain("securityStamp", json, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("tokenHash", json, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(old.Token, json);
+            Assert.DoesNotContain(fresh.Token, json);
+        }
+    }
+
+    [Theory]
+    [InlineData(null, null, false)]
+    [InlineData(null, "CURRENT", true)]
+    [InlineData("OLD", null, true)]
+    public async Task TokenInvalidationMatchesNullableCredentialComparison(string? tokenStamp, string? accountStamp, bool invalidated)
+    {
+        await using var tester = await StartAdminServer();
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var admin = await AddUser(users, "legacy-status@example.com", true);
+        var tokens = scope.ServiceProvider.GetRequiredService<AdminAccessTokenService>();
+        var issued = (await tokens.Create(admin.Id, "Legacy automation", 30, admin.SecurityStamp))!;
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.ExecuteAsync("""
+            UPDATE admin_access_tokens SET security_stamp = @tokenStamp WHERE id = @id;
+            UPDATE "AspNetUsers" SET "SecurityStamp" = @accountStamp WHERE "Id" = @userId
+            """, new { tokenStamp, accountStamp, id = issued.Id, userId = admin.Id });
+        Assert.Equal(invalidated, Assert.Single(await tokens.List(admin.Id)).Invalidated);
+        using var client = tester.CreateHttpClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Token);
+        Assert.Equal(invalidated ? HttpStatusCode.Unauthorized : HttpStatusCode.OK,
+            (await client.GetAsync("/api/v1/admin/me")).StatusCode);
+    }
+
     private async Task<ServerTester> StartAdminServer()
     {
         var tester = Create();
