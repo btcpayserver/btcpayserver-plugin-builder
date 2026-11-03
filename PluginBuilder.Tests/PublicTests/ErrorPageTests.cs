@@ -39,6 +39,33 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(string.Empty, body);
     }
 
+    [Theory]
+    [InlineData("/errors/404", HttpStatusCode.NotFound, "text/html", "404 - Page not found")]
+    [InlineData("/errors/404", HttpStatusCode.NotFound, "application/json", null)]
+    [InlineData("/this-route-does-not-exist", HttpStatusCode.NotFound, "text/html", "404 - Page not found")]
+    [InlineData("/this-route-does-not-exist", HttpStatusCode.NotFound, "application/json", null)]
+    [InlineData("/forgotpassword", HttpStatusCode.BadRequest, "text/html", "CSRF token validation failed.")]
+    [InlineData("/forgotpassword", HttpStatusCode.BadRequest, "application/json", null)]
+    public async Task MalformedFormKey_PreservesErrorResponse(string path, HttpStatusCode expectedStatus, string accept, string? expectedContent)
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        await tester.Start();
+
+        using var client = tester.CreateHttpClient();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(accept));
+
+        using var content = new StringContent("x%5B=value", Encoding.UTF8, "application/x-www-form-urlencoded");
+        using var response = await client.PostAsync(path, content);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(expectedStatus, response.StatusCode);
+        if (expectedContent is null)
+            Assert.Equal(string.Empty, body);
+        else
+            Assert.Contains(expectedContent, body, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task ExceptionHandler_WithHtmlAccept_ReturnsCustom500Page()
     {
@@ -92,17 +119,20 @@ public class ErrorPageTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Contains("A generic error occurred (HTTP Code: 503)", body, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public async Task ExceptionHandler_PostRequest_WithHtmlAccept_RendersCustom500Page()
+    [Theory]
+    [InlineData("{}", "application/json")]
+    [InlineData("x%5B=value", "application/x-www-form-urlencoded")]
+    public async Task ExceptionHandler_PostRequest_WithHtmlAccept_RendersCustom500Page(string payload, string contentType)
     {
         await using var tester = Create();
+        tester.ReuseDatabase = false;
         tester.ConfigureApplication = app => app.MapPost("/throw/post-500", (HttpContext _) => throw new InvalidOperationException("Test POST 500"));
         await tester.Start();
 
         var client = tester.CreateHttpClient();
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
 
-        using var content = new StringContent("{}", Encoding.UTF8, "application/json");
+        using var content = new StringContent(payload, Encoding.UTF8, contentType);
         var response = await client.PostAsync("/throw/post-500", content);
         var body = await response.Content.ReadAsStringAsync();
 
