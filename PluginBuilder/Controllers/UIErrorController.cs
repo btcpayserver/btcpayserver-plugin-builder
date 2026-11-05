@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,8 +12,11 @@ public class UIErrorController : Controller
     private static readonly HashSet<int> SpecialPages = new() { 403, 404, 406, 417, 429, 500, 502 };
 
     [Route("/errors/{statusCode:int:range(400,599)}")]
-    public IActionResult Handle(int statusCode)
+    public IActionResult Handle()
     {
+        // Avoid model binding: error re-execution can carry a malformed form body.
+        var statusCode = Convert.ToInt32(RouteData.Values["statusCode"], CultureInfo.InvariantCulture);
+
         if (Request.Headers.TryGetValue("Accept", out var acceptValues) &&
             acceptValues.Any(v => !string.IsNullOrEmpty(v) && v.Contains("text/html", StringComparison.OrdinalIgnoreCase)))
         {
