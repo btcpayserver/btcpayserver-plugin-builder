@@ -126,6 +126,70 @@ public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(log
         Assert.Contains(invalidErrors, error => error.Path == nameof(ReleaseVersionRequest.Signature) && error.Message.Contains("base64", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task ReleasedVersionNumberCannotPointToAnotherBuild()
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        await tester.Start();
+
+        var scenario = await CreatePublishedPluginScenarioAsync(tester);
+        var slug = new PluginSlug(scenario.PluginSlug);
+        var version = PluginVersion.Parse(scenario.Version);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+
+        var preReleaseRebuild = new FullBuildId(slug, await conn.NewBuild(slug, new PluginBuildParameters(ServerTester.RepoUrl)));
+        await conn.UpdateBuild(preReleaseRebuild, BuildStates.Uploaded, null);
+        Assert.True(await conn.SetVersionBuild(preReleaseRebuild, version, null, null, true));
+        Assert.False(await conn.WasVersionEverReleased(slug, version));
+
+        Assert.Equal(HttpStatusCode.OK, (await scenario.Client.PostAsync(
+            $"/api/v1/plugins/{scenario.PluginSlug}/versions/{scenario.Version}/release", JsonBody(new { }))).StatusCode);
+        Assert.True(await conn.WasVersionEverReleased(slug, version));
+
+        Assert.Equal(HttpStatusCode.OK, (await scenario.Client.PostAsync(
+            $"/api/v1/plugins/{scenario.PluginSlug}/versions/{scenario.Version}/unrelease", null)).StatusCode);
+        var afterUnrelease = new FullBuildId(slug, await conn.NewBuild(slug, new PluginBuildParameters(ServerTester.RepoUrl)));
+        await Assert.ThrowsAsync<Npgsql.PostgresException>(() => conn.SetVersionBuild(afterUnrelease, version, null, null, true));
+
+        Assert.Equal(HttpStatusCode.OK, (await scenario.Client.DeleteAsync(
+            $"/api/v1/plugins/{scenario.PluginSlug}/versions/{scenario.Version}")).StatusCode);
+        var afterRemove = new FullBuildId(slug, await conn.NewBuild(slug, new PluginBuildParameters(ServerTester.RepoUrl)));
+        await Assert.ThrowsAsync<Npgsql.PostgresException>(() => conn.SetVersionBuild(afterRemove, version, null, null, true));
+        Assert.False(await conn.ExecuteScalarAsync<bool>(
+            "SELECT EXISTS(SELECT 1 FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version)",
+            new { pluginSlug = scenario.PluginSlug, version = version.VersionParts }));
+    }
+
+    [Fact]
+    public async Task OnlyPrimaryOwnerCanUnreleaseOrRemoveReleasedVersion()
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        await tester.Start();
+
+        var scenario = await CreatePublishedPluginScenarioAsync(tester);
+        var coOwnerEmail = $"co-{Guid.NewGuid():N}@example.com";
+        var coOwnerId = await tester.CreateFakeUserAsync(coOwnerEmail, "123456");
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.AddUserPlugin(new PluginSlug(scenario.PluginSlug), coOwnerId);
+        var coOwner = tester.CreateHttpClient().SetBasicAuth(coOwnerEmail, "123456");
+
+        Assert.Equal(HttpStatusCode.OK, (await scenario.Client.PostAsync(
+            $"/api/v1/plugins/{scenario.PluginSlug}/versions/{scenario.Version}/release", JsonBody(new { }))).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await coOwner.PostAsync(
+            $"/api/v1/plugins/{scenario.PluginSlug}/versions/{scenario.Version}/unrelease", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await coOwner.DeleteAsync(
+            $"/api/v1/plugins/{scenario.PluginSlug}/versions/{scenario.Version}")).StatusCode);
+        Assert.False(await conn.ExecuteScalarAsync<bool>(
+            "SELECT pre_release FROM versions WHERE plugin_slug=@pluginSlug AND ver=@version",
+            new { pluginSlug = scenario.PluginSlug, version = PluginVersion.Parse(scenario.Version).VersionParts }));
+
+        Assert.Equal(HttpStatusCode.OK, (await scenario.Client.PostAsync(
+            $"/api/v1/plugins/{scenario.PluginSlug}/versions/{scenario.Version}/unrelease", null)).StatusCode);
+    }
+
     private static StringContent JsonBody(object body)
     {
         return new StringContent(JsonConvert.SerializeObject(body, SerializerSettings), Encoding.UTF8, "application/json");

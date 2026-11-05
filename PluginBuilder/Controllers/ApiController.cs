@@ -575,7 +575,7 @@ public class ApiController(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion version)
     {
-        var result = await versionLifecycleService.UnreleaseAsync(pluginSlug, version);
+        var result = await versionLifecycleService.UnreleaseAsync(pluginSlug, version, userManager.GetUserId(User)!);
         if (!result.Success)
             return VersionLifecycleFailureResult(result);
 
@@ -589,7 +589,7 @@ public class ApiController(
         [ModelBinder(typeof(PluginVersionModelBinder))]
         PluginVersion version)
     {
-        var result = await versionLifecycleService.RemoveAsync(pluginSlug, version);
+        var result = await versionLifecycleService.RemoveAsync(pluginSlug, version, userManager.GetUserId(User)!);
         if (!result.Success)
             return VersionLifecycleFailureResult(result);
 
@@ -673,6 +673,8 @@ public class ApiController(
     {
         if (result.FailureCode == VersionLifecycleFailureCode.NotFound)
             return NotFound();
+        if (result.FailureCode == VersionLifecycleFailureCode.NotPermitted)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "not-primary-owner", message = result.Message });
 
         var errorPath = result.FailureCode == VersionLifecycleFailureCode.SignatureVerificationFailed
             ? signaturePath ?? string.Empty
