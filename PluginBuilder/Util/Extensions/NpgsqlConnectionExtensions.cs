@@ -838,12 +838,33 @@ public static class NpgsqlConnectionExtensions
 
     #region Methods relating to plugin listing requests
 
+    public static async Task<ListingReviewTarget?> GetLatestListingReviewTarget(this NpgsqlConnection connection, PluginSlug pluginSlug)
+    {
+        var target = await connection.QuerySingleOrDefaultAsync<ListingReviewTarget>("""
+            SELECT id AS BuildId, build_info->>'gitRepository' AS Repository,
+                build_info->>'gitCommit' AS GitCommit, build_info->>'pluginDir' AS PluginDirectory
+            FROM builds WHERE plugin_slug = @pluginSlug AND state = 'uploaded' ORDER BY id DESC LIMIT 1
+            """, new { pluginSlug = pluginSlug.ToString() });
+        if (target is null || target.BuildId < 0 || !BuildPolicy.IsGitObjectId(target.GitCommit)) return null;
+        try
+        {
+            target.Repository = BuildPolicy.NormalizeRepositoryUrl(target.Repository);
+            BuildPolicy.ValidateBuildInputs(null, target.PluginDirectory, null);
+            if (string.IsNullOrEmpty(target.PluginDirectory)) target.PluginDirectory = null;
+            return target;
+        }
+        catch (BuildServiceException)
+        {
+            return null;
+        }
+    }
+
     public static async Task<int> CreateListingRequest(this NpgsqlConnection connection, PluginSlug pluginSlug, string releaseNote, string telegramMessage,
-        string userReviews, DateTimeOffset? announcementDate, string? submittedBy = null)
+        string userReviews, DateTimeOffset? announcementDate, string? submittedBy = null, ListingReviewTarget? reviewTarget = null)
     {
         const string sql = """
-                           INSERT INTO plugin_listing_requests (plugin_slug, release_note, telegram_verification_message, user_reviews, announcement_date, status, submitted_at, submitted_by)
-                           VALUES (@pluginSlug, @releaseNote, @telegramMessage, @userReviews, @announcementDate, 'pending', CURRENT_TIMESTAMP, @submittedBy)
+                           INSERT INTO plugin_listing_requests (plugin_slug, release_note, telegram_verification_message, user_reviews, announcement_date, status, submitted_at, submitted_by, review_target)
+                           VALUES (@pluginSlug, @releaseNote, @telegramMessage, @userReviews, @announcementDate, 'pending', CURRENT_TIMESTAMP, @submittedBy, @reviewTarget::jsonb)
                            RETURNING id
                            """;
 
@@ -854,7 +875,8 @@ public static class NpgsqlConnectionExtensions
             telegramMessage,
             userReviews,
             announcementDate,
-            submittedBy
+            submittedBy,
+            reviewTarget = reviewTarget?.ToJson()
         });
     }
 
@@ -872,7 +894,8 @@ public static class NpgsqlConnectionExtensions
                                   last_reminder_at AS "LastReminderAt",
                                   reviewed_at AS "ReviewedAt",
                                   reviewed_by AS "ReviewedBy",
-                                  rejection_reason AS "RejectionReason"
+                                  rejection_reason AS "RejectionReason",
+                                  review_target::text AS "ReviewTargetJson"
                            FROM plugin_listing_requests
                            WHERE id = @requestId
                            """;
@@ -894,7 +917,8 @@ public static class NpgsqlConnectionExtensions
                                   last_reminder_at AS "LastReminderAt",
                                   reviewed_at AS "ReviewedAt",
                                   reviewed_by AS "ReviewedBy",
-                                  rejection_reason AS "RejectionReason"
+                                  rejection_reason AS "RejectionReason",
+                                  review_target::text AS "ReviewTargetJson"
                            FROM plugin_listing_requests
                            WHERE plugin_slug = @pluginSlug AND status = 'pending'
                            ORDER BY submitted_at DESC
@@ -952,7 +976,8 @@ public static class NpgsqlConnectionExtensions
                               last_reminder_at AS "LastReminderAt",
                               reviewed_at AS "ReviewedAt",
                               reviewed_by AS "ReviewedBy",
-                              rejection_reason AS "RejectionReason"
+                              rejection_reason AS "RejectionReason",
+                              review_target::text AS "ReviewTargetJson"
                        FROM plugin_listing_requests
                        WHERE plugin_slug = @pluginSlug
                        ORDER BY submitted_at DESC

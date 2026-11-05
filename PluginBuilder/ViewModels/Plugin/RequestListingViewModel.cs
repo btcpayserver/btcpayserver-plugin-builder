@@ -25,6 +25,7 @@ public class RequestListingViewModel
     public bool CanSendEmailReminder { get; set; }
     public DateTimeOffset? AnnouncementDate { get; set; }
 
+    public bool HasSuccessfulBuild { get; set; }
     public bool HasDescription { get; set; }
     public bool HasGitRepository { get; set; }
     public bool HasDocumentation { get; set; }
@@ -40,7 +41,7 @@ public class RequestListingViewModel
         !string.IsNullOrWhiteSpace(ReleaseNote) &&
         IsValidTelegramVerificationMessage(TelegramVerificationMessage) &&
         !string.IsNullOrWhiteSpace(UserReviews);
-    public bool CanSubmit => !PendingListing && PluginSettingsComplete && OwnerAccountsComplete && ListingFormComplete;
+    public bool CanSubmit => !PendingListing && HasSuccessfulBuild && PluginSettingsComplete && OwnerAccountsComplete && ListingFormComplete;
 
     public static bool IsValidTelegramVerificationMessage(string? value)
     {

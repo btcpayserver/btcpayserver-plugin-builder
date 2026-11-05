@@ -44,7 +44,7 @@ public class AdminReviewController(DBConnectionFactory connections, ListingRevie
         jsonb_build_object('id', lr.id, 'pluginSlug', lr.plugin_slug, 'status', lr.status, 'submittedAt', lr.submitted_at,
           'submittedBy', lr.submitted_by, 'releaseNote', lr.release_note, 'telegramVerificationMessage', lr.telegram_verification_message,
           'userReviews', lr.user_reviews, 'announcementDate', lr.announcement_date, 'reviewedAt', lr.reviewed_at,
-          'reviewedBy', lr.reviewed_by, 'reviewedByToken', lr.reviewed_by_token, 'reviewNote', lr.review_note, 'rejectionReason', lr.rejection_reason)
+          'reviewedBy', lr.reviewed_by, 'reviewedByToken', lr.reviewed_by_token, 'reviewNote', lr.review_note, 'rejectionReason', lr.rejection_reason, 'reviewTarget', lr.review_target)
         """;
 
     [HttpGet("me")]

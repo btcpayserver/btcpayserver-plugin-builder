@@ -76,6 +76,15 @@
                 <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Status</div>
 				<p class="mb-0">@Model.Status</p>
             </div>
+            @if (Model.ReviewTarget is { } target)
+            {
+                <div class="mb-3">
+                    <div class="text-muted fw-semibold small text-uppercase mb-1">Review target</div>
+                    <div>Build @target.BuildId · <code>@target.GitCommit</code></div>
+                    <div class="small text-break">@target.Repository</div>
+                    <div class="small">@(target.PluginDirectory ?? "Repository root")</div>
+                </div>
+            }
             @if (Model.ReviewedAt.HasValue)
             {
                 <div class="mb-3">
