@@ -39,7 +39,7 @@ public class PluginController(
     : Controller
 {
     private static readonly TimeSpan _listingReminderCooldown = TimeSpan.FromDays(7);
-    private const string ListingBuildRequiredMessage = "A successful build with a resolved commit and a valid plugin directory is required before requesting listing.";
+    private const string ListingReviewTargetRequiredMessage = "A stable release with a successful build, a resolved commit and a valid plugin directory is required before requesting listing.";
 
     [HttpGet("settings")]
     public async Task<IActionResult> Settings(
@@ -434,7 +434,7 @@ public class PluginController(
             model.AnnouncementDate = rejectedRequest.AnnouncementDate;
         }
 
-        model.HasSuccessfulBuild = await conn.GetLatestListingReviewTarget(pluginSlug) is not null;
+        model.HasReviewTarget = await conn.GetLatestListingReviewTarget(pluginSlug) is not null;
         PopulateListingRequirements(pluginSettings, pluginOwners, model, currentUserId);
         return View(model);
     }
@@ -462,9 +462,9 @@ public class PluginController(
         PopulateListingRequirements(pluginSettings, owners, model, currentUserId);
 
         var reviewTarget = await conn.GetLatestListingReviewTarget(pluginSlug);
-        model.HasSuccessfulBuild = reviewTarget is not null;
-        if (!model.HasSuccessfulBuild)
-            ModelState.AddModelError(string.Empty, ListingBuildRequiredMessage);
+        model.HasReviewTarget = reviewTarget is not null;
+        if (!model.HasReviewTarget)
+            ModelState.AddModelError(string.Empty, ListingReviewTargetRequiredMessage);
 
         if (!model.PluginSettingsComplete)
             ModelState.AddModelError(string.Empty, "Complete every required field in your plugin settings before submitting.");

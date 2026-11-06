@@ -80,6 +80,10 @@
             {
                 <div class="mb-3">
                     <div class="text-muted fw-semibold small text-uppercase mb-1">Review target</div>
+                    @if (target.Version is { } version)
+                    {
+                        <div>Version @version @(target.PreRelease == true ? "(pre-release)" : target.PreRelease == false ? "(stable)" : "")</div>
+                    }
                     <div>Build @target.BuildId · <code>@target.GitCommit</code></div>
                     <div class="small text-break">@target.Repository</div>
                     <div class="small">@(target.PluginDirectory ?? "Repository root")</div>

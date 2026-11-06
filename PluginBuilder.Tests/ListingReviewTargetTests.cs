@@ -39,22 +39,29 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         await HttpTestHelpers.LogIn(browser, "listing-owner@example.com", "123456");
         var path = $"/plugins/{slug}/request-listing";
         var page = await browser.GetStringAsync(path);
-        Assert.Contains("A successful build", page);
+        Assert.Contains("A stable release", page);
         using var form = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["ReleaseNote"] = "Release", ["UserReviews"] = "Reviewed", ["TelegramVerificationMessage"] = "https://t.me/btcpayserver/123",
-            ["HasSuccessfulBuild"] = "true", ["ReviewTarget.BuildId"] = "999",
+            ["HasReviewTarget"] = "true", ["ReviewTarget.BuildId"] = "999",
             ["ReviewTarget.Repository"] = "https://github.com/forged/repo", ["ReviewTarget.GitCommit"] = new string('f', 40),
             ["ReviewTarget.PluginDirectory"] = "src/Forged",
+            ["ReviewTarget.Version"] = "99.0.0", ["ReviewTarget.PreRelease"] = "true",
             ["__RequestVerificationToken"] = HttpTestHelpers.AntiforgeryToken(page)
         });
         using var missing = await browser.PostAsync(path, form);
         Assert.Equal(HttpStatusCode.OK, missing.StatusCode);
-        Assert.Contains("A successful build", await missing.Content.ReadAsStringAsync());
+        Assert.Contains("A stable release", await missing.Content.ReadAsStringAsync());
         Assert.False(await conn.HasPendingListingRequest(slug));
 
-        var build = await AddBuild(conn, slug, 'a', pluginDirectory);
+        var build = await AddVersionBuild(conn, slug, 'a', pluginDirectory, preRelease: true);
         Assert.Equal(0, build.BuildId);
+        using var prerelease = await browser.PostAsync(path, form);
+        Assert.Equal(HttpStatusCode.OK, prerelease.StatusCode);
+        Assert.Contains("A stable release", await prerelease.Content.ReadAsStringAsync());
+        Assert.False(await conn.HasPendingListingRequest(slug));
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type = 'listing.requested'"));
+        Assert.True((await server.GetService<VersionLifecycleService>().ReleaseAsync(slug, PluginVersion.Parse("1.0.0"), owner, null)).Success);
         var failed = new FullBuildId(slug, await conn.NewBuild(slug, new PluginBuildParameters("https://github.com/example/failed-repo")));
         await conn.UpdateBuild(failed, BuildStates.Failed, null);
         using var accepted = await browser.PostAsync(path, form);
@@ -62,12 +69,14 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         var request = (await conn.GetPendingListingRequestForPlugin(slug))!;
         var target = request.ReviewTarget!;
         Assert.Equal(build.BuildId, target.BuildId);
+        Assert.Equal("1.0.0", target.Version);
+        Assert.Equal(false, target.PreRelease);
         Assert.Equal("https://github.com/example/plugin", target.Repository);
         Assert.Equal(new string('a', 40), target.GitCommit);
         Assert.Equal(pluginDirectory, target.PluginDirectory);
         Assert.Equal(PluginListingRequestStatus.Pending, request.Status);
 
-        await AddBuild(conn, slug, 'b', "src/Other");
+        await AddVersionBuild(conn, slug, 'b', "src/Other");
         await conn.ExecuteAsync("UPDATE plugins SET settings = settings || '{\"gitRepository\":\"https://github.com/example/changed\"}'::jsonb WHERE slug = @slug",
             new { slug = slug.ToString() });
         Assert.Equal(new string('b', 40), (await conn.GetLatestListingReviewTarget(slug))!.GitCommit);
@@ -78,6 +87,8 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         var data = JObject.Parse(await conn.QuerySingleAsync<string>("SELECT data::text FROM admin_events WHERE type = 'listing.requested'"));
         Assert.Equal(request.Id, data["listingRequestId"]!.Value<int>());
         Assert.Equal(target.BuildId, data["buildId"]!.Value<long>());
+        Assert.Equal("1.0.0", data["version"]!.Value<string>());
+        Assert.False(data["preRelease"]!.Value<bool>());
         Assert.Equal(target.Repository, data["repository"]!.Value<string>());
         Assert.Equal(target.GitCommit, data["gitCommit"]!.Value<string>());
         Assert.Equal(pluginDirectory, data["pluginDirectory"]!.Value<string>());
@@ -91,11 +102,16 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         Assert.True(JToken.DeepEquals(detail["reviewTarget"], list["items"]![0]!["reviewTarget"]));
         Assert.Equal(pluginDirectory, detail["reviewTarget"]!["pluginDirectory"]!.Value<string>());
         Assert.Equal(pluginDirectory, list["items"]![0]!["reviewTarget"]!["pluginDirectory"]!.Value<string>());
+        Assert.Equal("1.0.0", detail["reviewTarget"]!["version"]!.Value<string>());
+        Assert.False(detail["reviewTarget"]!["preRelease"]!.Value<bool>());
+        Assert.Equal("1.0.0", list["items"]![0]!["reviewTarget"]!["version"]!.Value<string>());
+        Assert.False(list["items"]![0]!["reviewTarget"]!["preRelease"]!.Value<bool>());
         using var adminBrowser = HttpTestHelpers.CreateBrowser(server);
         await HttpTestHelpers.LogIn(adminBrowser, "listing-admin@example.com", "123456");
         var adminPage = await adminBrowser.GetStringAsync($"/admin/listing-requests/{request.Id}");
         Assert.Contains(target.GitCommit, adminPage);
         Assert.Contains(target.Repository, adminPage);
+        Assert.Contains("Version 1.0.0", adminPage);
         Assert.Contains(pluginDirectory ?? "Repository root", adminPage);
     }
 
@@ -103,7 +119,7 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
     [InlineData("gitCommit", "main")]
     [InlineData("gitRepository", "http://github.com/example/plugin")]
     [InlineData("pluginDir", "../Other")]
-    public async Task InvalidLatestUploadedBuildDoesNotFallBackToOlderSource(string field, string value)
+    public async Task InvalidLatestStableVersionDoesNotFallBackToOlderSource(string field, string value)
     {
         await using var migration = CreateMigrationTester("ListingTargetSelection");
         await migration.RunScriptsUntil("34.ListingReviewTarget");
@@ -111,10 +127,100 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         await using var conn = await migration.Open();
         var slug = new PluginSlug("listing-invalid-source");
         await conn.ExecuteAsync("INSERT INTO plugins(slug) VALUES (@slug)", new { slug = slug.ToString() });
-        await AddBuild(conn, slug, 'a');
-        var latest = await AddBuild(conn, slug, 'b');
+        await AddVersionBuild(conn, slug, 'a');
+        var latest = await AddVersionBuild(conn, slug, 'b');
         await conn.UpdateBuild(latest, BuildStates.Uploaded, new JObject { [field] = value });
         Assert.Null(await conn.GetLatestListingReviewTarget(slug));
+    }
+
+    [Fact]
+    public async Task RebuildOfReleasedVersionKeepsTheRegisteredBuildAsReviewTarget()
+    {
+        await using var migration = CreateMigrationTester("ListingRebuild");
+        await migration.RunScriptsUntil("34.ListingReviewTarget");
+        await migration.RunRemainingScripts();
+        await using var conn = await migration.Open();
+        var slug = new PluginSlug("listing-rebuild");
+        await conn.ExecuteAsync("INSERT INTO plugins(slug) VALUES (@slug)", new { slug = slug.ToString() });
+        var released = await AddVersionBuild(conn, slug, 'a', version: "1.0.0");
+        var (rebuilt, manifest) = await AddUploadedBuild(conn, slug, 'b', version: "1.0.0");
+        Assert.True(await conn.EnsureIdentifierOwnership(slug, manifest.Identifier));
+        Assert.False(await conn.SetVersionBuild(rebuilt, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, true));
+        Assert.Equal(released.BuildId, await conn.ExecuteScalarAsync<long>("SELECT build_id FROM versions WHERE plugin_slug = @slug", new { slug = slug.ToString() }));
+
+        var target = (await conn.GetLatestListingReviewTarget(slug))!;
+        Assert.Equal(released.BuildId, target.BuildId);
+        Assert.NotEqual(rebuilt.BuildId, target.BuildId);
+        Assert.Equal(new string('a', 40), target.GitCommit);
+        Assert.Equal("1.0.0", target.Version);
+        Assert.Equal(false, target.PreRelease);
+        var requestId = await conn.CreateListingRequest(slug, "Release", "Proof", "Reviews", null, reviewTarget: target);
+        Assert.Equal(released.BuildId, (await conn.GetListingRequest(requestId))!.ReviewTarget!.BuildId);
+        Assert.Equal(new string('a', 40), await conn.ExecuteScalarAsync<string>("SELECT data->>'gitCommit' FROM admin_events WHERE type = 'listing.requested'"));
+    }
+
+    [Fact]
+    public async Task UploadedBuildWithForeignIdentifierAndNoVersionIsNotAReviewTarget()
+    {
+        await using var migration = CreateMigrationTester("ListingIdentifier");
+        await migration.RunScriptsUntil("34.ListingReviewTarget");
+        await migration.RunRemainingScripts();
+        await using var conn = await migration.Open();
+        await conn.ExecuteAsync("INSERT INTO plugins(slug) VALUES ('listing-orphan'), ('identifier-owner')");
+        Assert.True(await conn.EnsureIdentifierOwnership("identifier-owner", "Foreign.Plugin"));
+        var (build, manifest) = await AddUploadedBuild(conn, "listing-orphan", 'a', identifier: "Foreign.Plugin");
+        Assert.False(await conn.EnsureIdentifierOwnership("listing-orphan", manifest.Identifier));
+        Assert.Equal("uploaded", await conn.ExecuteScalarAsync<string>("SELECT state FROM builds WHERE plugin_slug = 'listing-orphan' AND id = @id", new { id = build.BuildId }));
+        Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM versions WHERE plugin_slug = 'listing-orphan'"));
+        Assert.Null(await conn.GetLatestListingReviewTarget("listing-orphan"));
+    }
+
+    [Fact]
+    public async Task LatestStableVersionWinsOverAHigherBuildIdOfAnOlderVersion()
+    {
+        await using var migration = CreateMigrationTester("ListingVersionOrder");
+        await migration.RunScriptsUntil("34.ListingReviewTarget");
+        await migration.RunRemainingScripts();
+        await using var conn = await migration.Open();
+        var slug = new PluginSlug("listing-version-order");
+        await conn.ExecuteAsync("INSERT INTO plugins(slug) VALUES (@slug)", new { slug = slug.ToString() });
+        var latestVersion = await AddVersionBuild(conn, slug, 'a', version: "2.0.0");
+        var laterBuild = await AddVersionBuild(conn, slug, 'b', version: "1.0.0");
+        Assert.True(laterBuild.BuildId > latestVersion.BuildId);
+
+        var target = (await conn.GetLatestListingReviewTarget(slug))!;
+        Assert.Equal(latestVersion.BuildId, target.BuildId);
+        Assert.Equal("2.0.0", target.Version);
+        Assert.Equal(new string('a', 40), target.GitCommit);
+        Assert.Equal(false, target.PreRelease);
+    }
+
+    [Fact]
+    public async Task NewerPrereleaseDoesNotReplaceTheLatestStableReviewTarget()
+    {
+        await using var migration = CreateMigrationTester("ListingPrerelease");
+        await migration.RunScriptsUntil("34.ListingReviewTarget");
+        await migration.RunRemainingScripts();
+        await using var conn = await migration.Open();
+        var slug = new PluginSlug("listing-prerelease");
+        await conn.ExecuteAsync("INSERT INTO plugins(slug) VALUES (@slug)", new { slug = slug.ToString() });
+        var stable = await AddVersionBuild(conn, slug, 'a', version: "1.0.0");
+        await AddVersionBuild(conn, slug, 'b', version: "2.0.0", preRelease: true);
+
+        var target = (await conn.GetLatestListingReviewTarget(slug))!;
+        Assert.Equal(stable.BuildId, target.BuildId);
+        Assert.Equal("1.0.0", target.Version);
+        Assert.Equal(false, target.PreRelease);
+    }
+
+    [Fact]
+    public void OldSnapshotsDoNotInventVersionOrPrereleaseMetadata()
+    {
+        var target = ListingReviewTarget.FromJson("""
+            {"buildId":0,"repository":"https://github.com/example/plugin","gitCommit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","pluginDirectory":null}
+            """)!;
+        Assert.Null(target.Version);
+        Assert.Null(target.PreRelease);
     }
 
     [Fact]
@@ -127,6 +233,8 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
             INSERT INTO plugins(slug) VALUES ('listing-legacy');
             INSERT INTO builds(plugin_slug, id, state, build_info)
             VALUES ('listing-legacy', 0, 'uploaded', @source::jsonb);
+            INSERT INTO versions(plugin_slug, ver, build_id, btcpay_min_ver, pre_release)
+            VALUES ('listing-legacy', ARRAY[1,0,0], 0, ARRAY[0,0,0,0], FALSE);
             INSERT INTO plugin_listing_requests(plugin_slug, release_note, telegram_verification_message, user_reviews, status)
             VALUES ('listing-legacy', 'Release', 'Proof', 'Reviews', 'pending'),
                    ('listing-legacy', 'Release', 'Proof', 'Reviews', 'approved'),
@@ -141,10 +249,12 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         Assert.All(requests, r => Assert.Null(r.ReviewTarget));
         Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events WHERE type = 'listing.requested' AND data ? 'gitCommit'"));
 
+        var currentTarget = await conn.GetLatestListingReviewTarget("listing-legacy");
+        Assert.NotNull(currentTarget);
         await using (var transaction = await conn.BeginTransactionAsync())
         {
             await conn.CreateListingRequest("listing-legacy", "Release", "Proof", "Reviews", null,
-                reviewTarget: await conn.GetLatestListingReviewTarget("listing-legacy"));
+                reviewTarget: currentTarget);
             await transaction.RollbackAsync();
         }
         Assert.Equal(before, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM admin_events"));
@@ -160,7 +270,7 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         var slug = new PluginSlug("listing-legacy-review");
         await conn.NewPlugin(slug, admin);
         var requestId = await conn.CreateListingRequest(slug, "Release", "Proof", "Reviews", null, admin);
-        await AddBuild(conn, slug, 'a');
+        await AddVersionBuild(conn, slug, 'a');
         using var api = server.CreateHttpClient();
         api.SetBasicAuth("listing-admin@example.com", "123456");
         var detail = JObject.Parse(await api.GetStringAsync($"/api/v1/admin/listing-requests/{requestId}"));
@@ -199,10 +309,27 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         return id;
     }
 
-    private static async Task<FullBuildId> AddBuild(NpgsqlConnection conn, PluginSlug slug, char commit, string? directory = null)
+    private static async Task<FullBuildId> AddVersionBuild(NpgsqlConnection conn, PluginSlug slug, char commit,
+        string? directory = null, string? version = null, bool preRelease = false)
+    {
+        var (id, manifest) = await AddUploadedBuild(conn, slug, commit, directory, version);
+        Assert.True(await conn.EnsureIdentifierOwnership(slug, manifest.Identifier));
+        Assert.True(await conn.SetVersionBuild(id, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, preRelease));
+        return id;
+    }
+
+    private static async Task<(FullBuildId Id, PluginManifest Manifest)> AddUploadedBuild(NpgsqlConnection conn,
+        PluginSlug slug, char commit, string? directory = null, string? version = null, string? identifier = null)
     {
         var id = new FullBuildId(slug, await conn.NewBuild(slug, new PluginBuildParameters("https://github.com/example/plugin") { PluginDirectory = directory }));
-        await conn.UpdateBuild(id, BuildStates.Uploaded, new JObject { ["gitCommit"] = new string(commit, 40) });
-        return id;
+        var manifest = PluginManifest.Parse(new JObject
+        {
+            ["Identifier"] = identifier ?? "TestPlugin." + slug.ToString().Replace('-', '_'),
+            ["Name"] = "Listing test plugin", ["Description"] = "Version-backed listing fixture",
+            ["Version"] = version ?? $"1.0.{id.BuildId}",
+            ["Dependencies"] = new JArray(new JObject { ["Identifier"] = "BTCPayServer", ["Condition"] = ">=1.4.6.0" })
+        }.ToString());
+        await conn.UpdateBuild(id, BuildStates.Uploaded, new JObject { ["gitCommit"] = new string(commit, 40) }, manifest);
+        return (id, manifest);
     }
 }

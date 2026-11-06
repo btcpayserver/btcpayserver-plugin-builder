@@ -6,7 +6,7 @@
     var settingsComplete = Model.PluginSettingsComplete;
     var ownersComplete = Model.OwnerAccountsComplete;
     var formSubmitted = Model.PendingListing;
-    var prerequisitesComplete = settingsComplete && ownersComplete && Model.HasSuccessfulBuild;
+    var prerequisitesComplete = settingsComplete && ownersComplete && Model.HasReviewTarget;
 
     var listingFormFields = new[]
     {
@@ -34,10 +34,10 @@
     var formExpanded = !formSubmitted && settingsComplete && ownersComplete;
 }
 
-@if (!Model.PendingListing && !Model.HasSuccessfulBuild)
+@if (!Model.PendingListing && !Model.HasReviewTarget)
 {
     <div class="alert alert-warning">
-        A successful build with a resolved commit and a valid plugin directory is required before requesting listing.
+        A stable release with a successful build, a resolved commit and a valid plugin directory is required before requesting listing.
         <a asp-action="Dashboard" asp-route-pluginSlug="@Model.PluginSlug">View builds</a>
     </div>
 }

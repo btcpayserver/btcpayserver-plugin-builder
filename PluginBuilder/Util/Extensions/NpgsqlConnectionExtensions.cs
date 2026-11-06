@@ -841,9 +841,13 @@ public static class NpgsqlConnectionExtensions
     public static async Task<ListingReviewTarget?> GetLatestListingReviewTarget(this NpgsqlConnection connection, PluginSlug pluginSlug)
     {
         var target = await connection.QuerySingleOrDefaultAsync<ListingReviewTarget>("""
-            SELECT id AS BuildId, build_info->>'gitRepository' AS Repository,
-                build_info->>'gitCommit' AS GitCommit, build_info->>'pluginDir' AS PluginDirectory
-            FROM builds WHERE plugin_slug = @pluginSlug AND state = 'uploaded' ORDER BY id DESC LIMIT 1
+            SELECT b.id AS BuildId, array_to_string(v.ver, '.') AS Version, v.pre_release AS PreRelease,
+                b.build_info->>'gitRepository' AS Repository, b.build_info->>'gitCommit' AS GitCommit,
+                b.build_info->>'pluginDir' AS PluginDirectory
+            FROM get_latest_versions(NULL::int[], false) latest
+            JOIN versions v ON v.plugin_slug = latest.plugin_slug AND v.ver = latest.ver
+            JOIN builds b ON b.plugin_slug = v.plugin_slug AND b.id = v.build_id
+            WHERE latest.plugin_slug = @pluginSlug AND b.state = 'uploaded'
             """, new { pluginSlug = pluginSlug.ToString() });
         if (target is null || target.BuildId < 0 || !BuildPolicy.IsGitObjectId(target.GitCommit)) return null;
         try
