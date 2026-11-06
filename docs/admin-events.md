@@ -62,6 +62,9 @@ target; snapshots recorded before version metadata was captured retain unknown
 version/pre-release values. Migrations do not infer historical source or version
 data or backfill fields in old events.
 
+Listing approval applies to the plugin as a whole. The catalog can serve a different
+compatible version or a later release without another listing review.
+
 An external coordinator can consume `listing.requested`, perform its initial review,
 start and follow scans, and submit the final decision through the existing listing
 review API. Automation policy, scan execution, retries and results belong to that
