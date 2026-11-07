@@ -18,10 +18,13 @@ namespace PluginBuilder.Tests;
 public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(output)
 {
     [Theory]
-    [InlineData(null, null)]
-    [InlineData("src/Plugin", "src/Plugin")]
-    [InlineData("src/Plugin #1?", "src/Plugin%20%231%3F")]
-    public async Task OwnerSubmissionPinsBuildSourceInRequestEventAndAdminReads(string? pluginDirectory, string? sourcePath)
+    [InlineData(null, null, "https://github.com/example/plugin.git/")]
+    [InlineData("src/Plugin", "src/Plugin", "https://github.com/example/plugin.git/")]
+    [InlineData("src/Plugin #1?", "src/Plugin%20%231%3F", "https://github.com/example/plugin.git/")]
+    [InlineData(null, null, "https://github.com/Example/Plugin.git/")]
+    [InlineData("src/Plugin", "src/Plugin", "https://github.com:443/example/plugin.git/")]
+    [InlineData("src/Plugin #1?", "src/Plugin%20%231%3F", "https://www.github.com:443/Example/Plugin.git/")]
+    public async Task OwnerSubmissionPinsBuildSourceInRequestEventAndAdminReads(string? pluginDirectory, string? sourcePath, string currentRepository)
     {
         await using var server = await StartServer();
         await using var conn = await server.GetService<DBConnectionFactory>().Open();
@@ -123,11 +126,10 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         Assert.Contains("href=\"https://github.com/example/changed\"", adminPage);
         Assert.Contains("Current settings:", adminPage);
 
-        await conn.ExecuteAsync("UPDATE plugins SET settings = settings || '{\"gitRepository\":\"https://github.com/example/plugin.git/\"}'::jsonb WHERE slug = @slug",
-            new { slug = slug.ToString() });
+        await conn.SetPluginSettings(slug, new PluginSettings { GitRepository = currentRepository });
         var equivalentRepositoryPage = await adminBrowser.GetStringAsync($"/admin/listing-requests/{request.Id}");
         Assert.Contains($"href=\"{pinnedSourceUrl}\"", equivalentRepositoryPage);
-        Assert.DoesNotContain("href=\"https://github.com/example/plugin.git/\"", equivalentRepositoryPage);
+        Assert.DoesNotContain($"href=\"{currentRepository}\"", equivalentRepositoryPage);
         Assert.DoesNotContain("Current settings:", equivalentRepositoryPage);
     }
 
@@ -138,6 +140,9 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
     [InlineData(null, null, "https://www.gitlab.com/example/group/plugin")]
     [InlineData("src/Plugin", "src/Plugin", "https://www.gitlab.com/example/group/plugin.git/")]
     [InlineData("src/Plugin #1?", "src/Plugin%20%231%3F", "https://www.gitlab.com/example/group/plugin")]
+    [InlineData(null, null, "https://gitlab.com:443/example/group/plugin")]
+    [InlineData("src/Plugin", "src/Plugin", "https://www.gitlab.com:443/example/group/plugin.git/")]
+    [InlineData("src/Plugin #1?", "src/Plugin%20%231%3F", "https://www.gitlab.com:443/example/group/plugin")]
     public async Task AdminReviewTargetLinksToGitLabCommitWithoutDependingOnCurrentSettings(string? pluginDirectory, string? sourcePath, string currentRepository)
     {
         await using var server = await StartServer();

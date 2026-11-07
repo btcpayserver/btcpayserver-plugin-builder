@@ -1,5 +1,6 @@
 @using PluginBuilder.DataModels
-@inject PluginBuilder.Services.GitHostingProviderFactory GitHostingProviderFactory
+@using PluginBuilder.Services
+@inject GitHostingProviderFactory GitHostingProviderFactory
 @model ListingRequestDetailViewModel
 @{
     Layout = "_Layout";
@@ -83,10 +84,13 @@
                 var provider = GitHostingProviderFactory.GetProvider(target.Repository);
                 var repositoryName = provider?.ParseRepository(target.Repository) is { } repository ? $"{repository.Owner}/{repository.RepoName}" : target.Repository;
                 var sourceUrl = provider?.GetSourceUrl(target.Repository, target.GitCommit, directory);
-                var currentProvider = GitHostingProviderFactory.GetProvider(Model.GitRepository);
-                var currentRepositoryName = currentProvider?.ParseRepository(Model.GitRepository!) is { } currentRepository ? $"{currentRepository.Owner}/{currentRepository.RepoName}" : Model.GitRepository;
-                var currentSourceUrl = currentProvider?.GetSourceUrl(Model.GitRepository!, target.GitCommit, directory);
-                var repositoryChanged = !string.Equals(sourceUrl ?? target.Repository, currentSourceUrl ?? Model.GitRepository, StringComparison.Ordinal);
+                var currentRepositoryUrl = Uri.TryCreate(Model.GitRepository, UriKind.Absolute, out var currentRepositoryUri) ? currentRepositoryUri.AbsoluteUri : Model.GitRepository;
+                var currentProvider = GitHostingProviderFactory.GetProvider(currentRepositoryUrl);
+                var currentRepositoryName = currentProvider?.ParseRepository(currentRepositoryUrl!) is { } currentRepository ? $"{currentRepository.Owner}/{currentRepository.RepoName}" : Model.GitRepository;
+                var currentSourceUrl = currentProvider?.GetSourceUrl(currentRepositoryUrl!, target.GitCommit, directory);
+                var comparison = provider is GitHubHostingProvider && currentProvider is GitHubHostingProvider
+                    ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                var repositoryChanged = !string.Equals(sourceUrl ?? target.Repository, currentSourceUrl ?? currentRepositoryUrl, comparison);
                 <div class="mb-3">
                     <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Source to review</div>
                     <div class="d-flex flex-wrap align-items-baseline gap-2">
