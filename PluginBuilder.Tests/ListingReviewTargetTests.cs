@@ -132,10 +132,13 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
     }
 
     [Theory]
-    [InlineData(null, null)]
-    [InlineData("src/Plugin", "src/Plugin")]
-    [InlineData("src/Plugin #1?", "src/Plugin%20%231%3F")]
-    public async Task AdminReviewTargetLinksToGitLabCommitWithoutDependingOnCurrentSettings(string? pluginDirectory, string? sourcePath)
+    [InlineData(null, null, "https://gitlab.com/example/group/plugin.git/")]
+    [InlineData("src/Plugin", "src/Plugin", "https://gitlab.com/example/group/plugin.git/")]
+    [InlineData("src/Plugin #1?", "src/Plugin%20%231%3F", "https://gitlab.com/example/group/plugin.git/")]
+    [InlineData(null, null, "https://www.gitlab.com/example/group/plugin")]
+    [InlineData("src/Plugin", "src/Plugin", "https://www.gitlab.com/example/group/plugin.git/")]
+    [InlineData("src/Plugin #1?", "src/Plugin%20%231%3F", "https://www.gitlab.com/example/group/plugin")]
+    public async Task AdminReviewTargetLinksToGitLabCommitWithoutDependingOnCurrentSettings(string? pluginDirectory, string? sourcePath, string currentRepository)
     {
         await using var server = await StartServer();
         await using var conn = await server.GetService<DBConnectionFactory>().Open();
@@ -161,12 +164,19 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         Assert.Contains("Not configured", page);
         Assert.Contains("Current settings:", page);
 
-        await conn.SetPluginSettings(slug, new PluginSettings { GitRepository = "https://gitlab.com/example/group/plugin.git/" });
+        await conn.SetPluginSettings(slug, new PluginSettings { GitRepository = currentRepository });
         var equivalentRepositoryPage = await browser.GetStringAsync(path);
         Assert.Contains($"href=\"{sourceUrl}\"", equivalentRepositoryPage);
         Assert.DoesNotContain("Repository (current settings)", equivalentRepositoryPage);
-        Assert.DoesNotContain("href=\"https://gitlab.com/example/group/plugin.git/\"", equivalentRepositoryPage);
+        Assert.DoesNotContain($"href=\"{currentRepository}\"", equivalentRepositoryPage);
         Assert.DoesNotContain("Current settings:", equivalentRepositoryPage);
+
+        const string changedRepository = "https://www.gitlab.com/example/group/changed";
+        await conn.SetPluginSettings(slug, new PluginSettings { GitRepository = changedRepository });
+        var changedRepositoryPage = await browser.GetStringAsync(path);
+        Assert.Contains($"href=\"{sourceUrl}\"", changedRepositoryPage);
+        Assert.Contains($"href=\"{changedRepository}\"", changedRepositoryPage);
+        Assert.Contains("Current settings:", changedRepositoryPage);
     }
 
     [Theory]
