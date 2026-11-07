@@ -1491,6 +1491,7 @@ public class AdminController(
             ReviewedAt = request.ReviewedAt,
             ReviewedByEmail = reviewedByEmail,
             RejectionReason = request.RejectionReason,
+            ReviewTarget = request.ReviewTarget,
             Owners = ownerVerifications,
             PrimaryOwnerEmail = owners.FirstOrDefault(o => o.IsPrimary)?.Email ?? "Unknown"
         };

@@ -70,7 +70,9 @@ public class GitLabHostingProvider : IGitHostingProvider
         if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
             path = path[..^4];
 
-        var baseUrl = $"{uri.Scheme}://{uri.Authority}/{path}";
+        var authority = uri.IsDefaultPort && uri.Host.Equals("www.gitlab.com", StringComparison.OrdinalIgnoreCase)
+            ? "gitlab.com" : uri.Authority;
+        var baseUrl = $"{uri.Scheme}://{authority}/{path}";
         var link = $"{baseUrl}/-/tree/{commit}";
         if (!string.IsNullOrEmpty(pluginDir))
             link += $"/{pluginDir}";

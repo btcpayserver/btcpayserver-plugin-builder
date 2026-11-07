@@ -16,7 +16,7 @@ No AI provider or review engine runs inside Plugin Builder.
 | `user.first_build_triggered` | The actor's first accepted build across the system. Also emits `build.triggered`. |
 | `build.succeeded` | A build reaches `uploaded`. |
 | `build.failed` | A build transitions to `failed`. |
-| `listing.requested` | A new listing request is saved. Email reminders do not create another request event. |
+| `listing.requested` | A new listing request is saved. Includes the stable version and source captured at submission: `version`, `preRelease`, `buildId`, `repository`, `gitCommit` and `pluginDirectory` (null for the repository root). Email reminders do not create another request event. |
 | `listing.approved` / `listing.rejected` | A pending request receives a decision. Includes reviewing account, token ID and note. |
 | `user.locked` / `user.unlocked` | An account is locked or unlocked through moderation. Includes the acting account and token ID (null for automatic GitHub ban enforcement), the reason, `until` (null when indefinite) and, for a lock, the builds it cancelled. |
 | `user.burned` | Explicit containment of an account and its GitHub identity. Includes the numeric GitHub ID when available, verified login, applied locks, skipped server admins and any unavailable evidence. |
@@ -45,7 +45,32 @@ Payloads contain relevant user, plugin, build, and listing-request IDs. Build ev
 include repository, requested ref and resolved commit when available. Registration
 includes only the user ID (fetch the current account through the admin users API);
 GitHub verification includes username and proof URL; listing events
-include submission details. Passwords, tokens, raw logs and environment variables
+include submission details. New listing submissions require a stable release backed
+by a successful build with a resolved commit. Selection uses the catalog's latest
+stable version by version number, without a BTCPay compatibility filter, then captures
+that version's build and source. Pre-releases and uploaded builds without a version
+are not candidates, including rebuilds that did not replace an already released
+version. A newer build of a lower version does not override the latest stable release.
+An unusable latest stable release must be corrected rather than silently selecting
+an older release.
+
+The snapshot comes from server-side version and build metadata, not caller-supplied
+fields or current plugin settings, and remains fixed after later builds, releases
+or settings changes. It includes `version` and `preRelease` (false for new snapshots).
+The admin listing API exposes it as `reviewTarget`. Existing requests retain a null
+target; snapshots recorded before version metadata was captured retain unknown
+version/pre-release values. Migrations do not infer historical source or version
+data or backfill fields in old events.
+
+Listing approval applies to the plugin as a whole. The catalog can serve a different
+compatible version or a later release without another listing review.
+
+An external coordinator can consume `listing.requested`, perform its initial review,
+start and follow scans, and submit the final decision through the existing listing
+review API. Automation policy, scan execution, retries and results belong to that
+coordinator. Plugin Builder records the submitted source and final decision.
+
+Passwords, tokens, raw logs and environment variables
 are not included. Submitted text and repository content remain untrusted input for
 any external review agent. Notifications observe activity; they do not gate builds
 or replace build isolation.
