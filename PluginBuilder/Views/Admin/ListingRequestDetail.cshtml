@@ -1,4 +1,5 @@
 @using PluginBuilder.DataModels
+@inject PluginBuilder.Services.GitHostingProviderFactory GitHostingProviderFactory
 @model ListingRequestDetailViewModel
 @{
     Layout = "_Layout";
@@ -47,13 +48,13 @@
             </div>
         </div>
 
-        @if (!string.IsNullOrEmpty(Model.GitRepository) || !string.IsNullOrEmpty(Model.Documentation))
+        @if ((Model.ReviewTarget is null && !string.IsNullOrEmpty(Model.GitRepository)) || !string.IsNullOrEmpty(Model.Documentation))
         {
             <div class="mb-5">
-                @if (!string.IsNullOrEmpty(Model.GitRepository))
+                @if (Model.ReviewTarget is null && !string.IsNullOrEmpty(Model.GitRepository))
                 {
                     <div class="mb-3">
-                        <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Repository</div>
+                        <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Repository (current settings)</div>
                         <a href="@Model.GitRepository" target="_blank" rel="noopener" class="small">@Model.GitRepository</a>
                     </div>
                 }
@@ -78,15 +79,45 @@
             </div>
             @if (Model.ReviewTarget is { } target)
             {
+                var directory = target.PluginDirectory is null ? null : string.Join("/", target.PluginDirectory.Split('/').Select(Uri.EscapeDataString));
+                var provider = GitHostingProviderFactory.GetProvider(target.Repository);
+                var repositoryName = provider?.ParseRepository(target.Repository) is { } repository ? $"{repository.Owner}/{repository.RepoName}" : target.Repository;
+                var sourceUrl = provider?.GetSourceUrl(target.Repository, target.GitCommit, directory);
+                var currentProvider = GitHostingProviderFactory.GetProvider(Model.GitRepository);
+                var currentRepositoryName = currentProvider?.ParseRepository(Model.GitRepository!) is { } currentRepository ? $"{currentRepository.Owner}/{currentRepository.RepoName}" : Model.GitRepository;
+                var currentSourceUrl = currentProvider?.GetSourceUrl(Model.GitRepository!, target.GitCommit, directory);
+                var repositoryChanged = !string.Equals(sourceUrl ?? target.Repository, currentSourceUrl ?? Model.GitRepository, StringComparison.Ordinal);
                 <div class="mb-3">
-                    <div class="text-muted fw-semibold small text-uppercase mb-1">Review target</div>
-                    @if (target.Version is { } version)
+                    <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Source to review</div>
+                    <div class="d-flex flex-wrap align-items-baseline gap-2">
+                        @if (sourceUrl is not null)
+                        {
+                            <a href="@sourceUrl" target="_blank" rel="noopener" class="text-break" title="@target.Repository">@repositoryName ↗</a>
+                        }
+                        else
+                        {
+                            <span class="text-break">@repositoryName</span>
+                        }
+                        @if (target.Version is { } version)
+                        {
+                            <span class="small text-muted">· Version @version @(target.PreRelease == true ? "(pre-release)" : "")</span>
+                        }
+                    </div>
+                    @if (repositoryChanged)
                     {
-                        <div>Version @version @(target.PreRelease == true ? "(pre-release)" : target.PreRelease == false ? "(stable)" : "")</div>
+                        <div class="small text-warning mt-2" role="alert" title="Current repository differs from the submitted source.">
+                            <vc:icon symbol="info" />
+                            Current settings:
+                            @if (!string.IsNullOrEmpty(Model.GitRepository))
+                            {
+                                <a href="@Model.GitRepository" target="_blank" rel="noopener" class="text-warning text-break" title="@Model.GitRepository">@currentRepositoryName ↗</a>
+                            }
+                            else
+                            {
+                                <span>Not configured</span>
+                            }
+                        </div>
                     }
-                    <div>Build @target.BuildId · <code>@target.GitCommit</code></div>
-                    <div class="small text-break">@target.Repository</div>
-                    <div class="small">@(target.PluginDirectory ?? "Repository root")</div>
                 </div>
             }
             @if (Model.ReviewedAt.HasValue)

@@ -18,9 +18,10 @@ namespace PluginBuilder.Tests;
 public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(output)
 {
     [Theory]
-    [InlineData(null)]
-    [InlineData("src/Plugin")]
-    public async Task OwnerSubmissionPinsBuildSourceInRequestEventAndAdminReads(string? pluginDirectory)
+    [InlineData(null, null)]
+    [InlineData("src/Plugin", "src/Plugin")]
+    [InlineData("src/Plugin #1?", "src/Plugin%20%231%3F")]
+    public async Task OwnerSubmissionPinsBuildSourceInRequestEventAndAdminReads(string? pluginDirectory, string? sourcePath)
     {
         await using var server = await StartServer();
         await using var conn = await server.GetService<DBConnectionFactory>().Open();
@@ -112,7 +113,60 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         Assert.Contains(target.GitCommit, adminPage);
         Assert.Contains(target.Repository, adminPage);
         Assert.Contains("Version 1.0.0", adminPage);
-        Assert.Contains(pluginDirectory ?? "Repository root", adminPage);
+        Assert.Contains("Source to review", adminPage);
+        Assert.DoesNotContain("Technical details", adminPage);
+        var pinnedSourceUrl = $"https://github.com/example/plugin/tree/{new string('a', 40)}" +
+                              (sourcePath is null ? "" : $"/{sourcePath}");
+        Assert.Contains($"href=\"{pinnedSourceUrl}\"", adminPage);
+        Assert.DoesNotContain($"/tree/{new string('b', 40)}", adminPage);
+        Assert.DoesNotContain("Repository (current settings)", adminPage);
+        Assert.Contains("href=\"https://github.com/example/changed\"", adminPage);
+        Assert.Contains("Current settings:", adminPage);
+
+        await conn.ExecuteAsync("UPDATE plugins SET settings = settings || '{\"gitRepository\":\"https://github.com/example/plugin.git/\"}'::jsonb WHERE slug = @slug",
+            new { slug = slug.ToString() });
+        var equivalentRepositoryPage = await adminBrowser.GetStringAsync($"/admin/listing-requests/{request.Id}");
+        Assert.Contains($"href=\"{pinnedSourceUrl}\"", equivalentRepositoryPage);
+        Assert.DoesNotContain("href=\"https://github.com/example/plugin.git/\"", equivalentRepositoryPage);
+        Assert.DoesNotContain("Current settings:", equivalentRepositoryPage);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("src/Plugin", "src/Plugin")]
+    [InlineData("src/Plugin #1?", "src/Plugin%20%231%3F")]
+    public async Task AdminReviewTargetLinksToGitLabCommitWithoutDependingOnCurrentSettings(string? pluginDirectory, string? sourcePath)
+    {
+        await using var server = await StartServer();
+        await using var conn = await server.GetService<DBConnectionFactory>().Open();
+        var admin = await CreateAdmin(server, conn);
+        var slug = new PluginSlug("listing-gitlab-link");
+        await conn.NewPlugin(slug, admin);
+        var target = new ListingReviewTarget
+        {
+            BuildId = 0, Version = "1.0.0", PreRelease = false,
+            Repository = "https://gitlab.com/example/group/plugin", GitCommit = new string('a', 40),
+            PluginDirectory = pluginDirectory
+        };
+        var requestId = await conn.CreateListingRequest(slug, "Release", "Proof", "Reviews", null, admin, target);
+        using var browser = HttpTestHelpers.CreateBrowser(server);
+        await HttpTestHelpers.LogIn(browser, "listing-admin@example.com", "123456");
+        var path = $"/admin/listing-requests/{requestId}";
+        var sourceUrl = $"https://gitlab.com/example/group/plugin/-/tree/{new string('a', 40)}" +
+                        (sourcePath is null ? "" : $"/{sourcePath}");
+        var page = await browser.GetStringAsync(path);
+        Assert.Contains($"href=\"{sourceUrl}\"", page);
+        Assert.Contains("Source to review", page);
+        Assert.DoesNotContain("Technical details", page);
+        Assert.Contains("Not configured", page);
+        Assert.Contains("Current settings:", page);
+
+        await conn.SetPluginSettings(slug, new PluginSettings { GitRepository = "https://gitlab.com/example/group/plugin.git/" });
+        var equivalentRepositoryPage = await browser.GetStringAsync(path);
+        Assert.Contains($"href=\"{sourceUrl}\"", equivalentRepositoryPage);
+        Assert.DoesNotContain("Repository (current settings)", equivalentRepositoryPage);
+        Assert.DoesNotContain("href=\"https://gitlab.com/example/group/plugin.git/\"", equivalentRepositoryPage);
+        Assert.DoesNotContain("Current settings:", equivalentRepositoryPage);
     }
 
     [Theory]
@@ -269,6 +323,7 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         var admin = await CreateAdmin(server, conn);
         var slug = new PluginSlug("listing-legacy-review");
         await conn.NewPlugin(slug, admin);
+        await conn.SetPluginSettings(slug, new PluginSettings { GitRepository = "https://github.com/example/current" });
         var requestId = await conn.CreateListingRequest(slug, "Release", "Proof", "Reviews", null, admin);
         await AddVersionBuild(conn, slug, 'a');
         using var api = server.CreateHttpClient();
@@ -278,6 +333,9 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         using var browser = HttpTestHelpers.CreateBrowser(server);
         await HttpTestHelpers.LogIn(browser, "listing-admin@example.com", "123456");
         var page = await browser.GetStringAsync($"/admin/listing-requests/{requestId}");
+        Assert.Contains("Repository (current settings)", page);
+        Assert.Contains("href=\"https://github.com/example/current\"", page);
+        Assert.DoesNotContain("Current settings:", page);
         using var approved = await browser.PostAsync($"/admin/listing-requests/{requestId}/approve", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = HttpTestHelpers.AntiforgeryToken(page)
