@@ -39,6 +39,7 @@ public class PluginController(
     : Controller
 {
     private static readonly TimeSpan _listingReminderCooldown = TimeSpan.FromDays(7);
+    private const string ListingReviewTargetRequiredMessage = "A stable release with a successful build, a resolved commit and a valid plugin directory is required before requesting listing.";
 
     [HttpGet("settings")]
     public async Task<IActionResult> Settings(
@@ -433,6 +434,7 @@ public class PluginController(
             model.AnnouncementDate = rejectedRequest.AnnouncementDate;
         }
 
+        model.HasReviewTarget = await conn.GetLatestListingReviewTarget(pluginSlug) is not null;
         PopulateListingRequirements(pluginSettings, pluginOwners, model, currentUserId);
         return View(model);
     }
@@ -459,6 +461,11 @@ public class PluginController(
         var currentUserId = userManager.GetUserId(User) ?? string.Empty;
         PopulateListingRequirements(pluginSettings, owners, model, currentUserId);
 
+        var reviewTarget = await conn.GetLatestListingReviewTarget(pluginSlug);
+        model.HasReviewTarget = reviewTarget is not null;
+        if (!model.HasReviewTarget)
+            ModelState.AddModelError(string.Empty, ListingReviewTargetRequiredMessage);
+
         if (!model.PluginSettingsComplete)
             ModelState.AddModelError(string.Empty, "Complete every required field in your plugin settings before submitting.");
 
@@ -479,7 +486,7 @@ public class PluginController(
         }
 
         await conn.CreateListingRequest(pluginSlug, model.ReleaseNote.Trim(), model.TelegramVerificationMessage.Trim(), model.UserReviews.Trim(),
-            model.AnnouncementDate, submittedBy: currentUserId);
+            model.AnnouncementDate, submittedBy: currentUserId, reviewTarget: reviewTarget);
         await SendRequestListingEmail(conn, pluginSlug);
         TempData[TempDataConstant.SuccessMessage] = "Your listing request has been sent and is pending validation";
         return RedirectToAction(nameof(Dashboard), new { pluginSlug });

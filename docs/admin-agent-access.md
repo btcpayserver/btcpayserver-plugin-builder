@@ -117,7 +117,7 @@ agent to approve listings: put the review policy in its local instructions.
 | `GET /admin/plugins/{pluginSlug}/builds/{buildId}/logs?before=&limit=50` | Newest log rows first. Rows are capped at 16,384 characters and flag truncation. |
 | `GET /admin/plugins/{pluginSlug}/builds/{buildId}/logs/{logId}?offset=0` | Read an entire long log row in 16,384-character chunks using `nextOffset` until `hasMore` is false. |
 | `GET /admin/listing-requests?status=pending&after=0&limit=50` | Pending, approved, rejected or all requests. |
-| `GET /admin/listing-requests/{id}` | Submission and review details, including reviewing account/token. |
+| `GET /admin/listing-requests/{id}` | Submission and review details, including reviewing account/token and the pinned stable version and source in `reviewTarget` (null for existing requests without a snapshot). |
 | `POST /admin/listing-requests/{id}/review` | `{"decision":"approve","note":"Review findings…"}` or `reject`; nonempty note up to 10,000 characters. |
 | `POST /admin/users/{userId}/lock` | `{"reason":"Spam burst"}` for an indefinite lock; optionally set `until` to a future ISO-8601 timestamp. See [Moderation](#moderation). |
 | `POST /admin/users/{userId}/unlock` | `{"reason":"False positive"}`. HTTP 409 if the account is not locked. |

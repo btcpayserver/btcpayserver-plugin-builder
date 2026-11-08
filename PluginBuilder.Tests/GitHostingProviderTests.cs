@@ -209,6 +209,17 @@ public class GitHostingProviderTests
         Assert.Equal("https://gitlab.com/owner/repo/-/tree/abc", url);
     }
 
+    [Theory]
+    [InlineData("https://www.gitlab.com/owner/repo", "https://gitlab.com/owner/repo/-/tree/abc")]
+    [InlineData("https://www.gitlab.com:443/owner/repo.git/", "https://gitlab.com/owner/repo/-/tree/abc")]
+    [InlineData("https://www.gitlab.com:8443/owner/repo", "https://www.gitlab.com:8443/owner/repo/-/tree/abc")]
+    [InlineData("https://www.gitlab.example.com/owner/repo", "https://www.gitlab.example.com/owner/repo/-/tree/abc")]
+    public void GitLab_GetSourceUrl_NormalizesPublicHostAliasOnly(string repository, string expected)
+    {
+        var provider = CreateGitLabProvider();
+        Assert.Equal(expected, provider.GetSourceUrl(repository, "abc", null));
+    }
+
     // ── Factory ───────────────────────────────────────────────────────
 
     [Theory]
