@@ -1,10 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json.Linq;
 using PluginBuilder.Authentication;
+using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.Services;
 using PluginBuilder.Util;
@@ -15,8 +17,10 @@ namespace PluginBuilder.Controllers;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Route("api/v1/admin")]
 [Authorize(Roles = Roles.ServerAdmin, AuthenticationSchemes = PluginBuilderAuthenticationSchemes.AdminApi)]
-public class AdminReviewController(DBConnectionFactory connections, ListingReviewService reviews, AdminSettingsCache settings) : ControllerBase
+public class AdminReviewController(DBConnectionFactory connections, ListingReviewService reviews, AdminSettingsCache settings,
+    PluginBuilderOptions options) : ControllerBase
 {
+    private const int ApplicationLogChunkBytes = 16_384;
     private const string UserJson = $"""
         jsonb_build_object('id', u."Id", 'email', u."Email", 'createdAt', u."CreatedAt",
           'emailVerified', u."EmailConfirmed", 'githubVerified', NULLIF(u."GithubGistUrl", '') IS NOT NULL,
@@ -216,6 +220,85 @@ public class AdminReviewController(DBConnectionFactory connections, ListingRevie
             """, new { network, since = since?.ToUniversalTime(), until = until?.ToUniversalTime(), path, before, take = limit + 1 },
             cancellationToken);
         return Page(rows, limit, "id", before?.ToString());
+    }
+
+    /// <summary>Files available in the administrator's application log viewer, newest first.</summary>
+    [HttpGet("server/logs")]
+    public IActionResult ApplicationLogs([FromQuery, Range(0, int.MaxValue - 100)] int offset = 0,
+        [FromQuery, Range(1, 100)] int limit = 10)
+    {
+        try
+        {
+            var files = ApplicationLogFiles.GetFiles(options.DebugLogFile);
+            var page = files.Skip(offset).Take(limit).Select(file => new
+            {
+                name = file.Name, sizeBytes = file.Length, lastModified = file.LastWriteTimeUtc
+            }).ToArray();
+            var hasMore = files.Count - offset > limit;
+            return Ok(new
+            {
+                configured = !string.IsNullOrEmpty(options.DebugLogFile), items = page,
+                nextOffset = hasMore ? offset + limit : (int?)null, hasMore
+            });
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return StatusCode(503, new { message = "Application log files are temporarily unavailable." });
+        }
+    }
+
+    /// <summary>At most 16 KiB from a configured application log; omit before for the tail.</summary>
+    [HttpGet("server/logs/{file}")]
+    public async Task<IActionResult> ApplicationLog([MaxLength(255)] string file,
+        [FromQuery, Range(0, long.MaxValue)] long? before = null, CancellationToken cancellationToken = default)
+    {
+        if (file != Path.GetFileName(file) || file.Contains('\\'))
+            return NotFound();
+
+        try
+        {
+            var selected = ApplicationLogFiles.GetFiles(options.DebugLogFile)
+                .FirstOrDefault(candidate => candidate.Name.Equals(file, StringComparison.Ordinal));
+            if (selected is null || (selected.Attributes & FileAttributes.ReparsePoint) != 0)
+                return NotFound();
+
+            await using var stream = new FileStream(selected.FullName, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous | FileOptions.RandomAccess);
+            var length = stream.Length;
+            var end = before ?? length;
+            if (end > length)
+                return Conflict(new { message = "The application log changed. List the files again and restart from the tail." });
+
+            var start = Math.Max(0, end - ApplicationLogChunkBytes);
+            var buffer = new byte[(int)(end - start)];
+            stream.Position = start;
+            var read = await stream.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, cancellationToken);
+            if (read != buffer.Length)
+                return Conflict(new { message = "The application log changed. List the files again and restart from the tail." });
+
+            // Start on a UTF-8 character boundary. The skipped continuation
+            // bytes belong to the preceding chunk, whose exclusive end is start.
+            var skip = 0;
+            if (start > 0)
+                while (skip < buffer.Length && (buffer[skip] & 0xC0) == 0x80)
+                    skip++;
+            start += skip;
+            return Ok(new
+            {
+                name = selected.Name, sizeBytes = length, startOffset = start, endOffset = end,
+                text = Encoding.UTF8.GetString(buffer, skip, buffer.Length - skip),
+                nextBefore = start > 0 ? start.ToString(System.Globalization.CultureInfo.InvariantCulture) : null,
+                hasMore = start > 0
+            });
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return StatusCode(503, new { message = "Application log files are temporarily unavailable." });
+        }
     }
 
     private async Task<List<JObject>> ReadJson(string sql, object args, CancellationToken cancellationToken)

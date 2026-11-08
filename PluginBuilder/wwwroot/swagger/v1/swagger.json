@@ -46,6 +46,196 @@
     }
   ],
   "paths": {
+    "/admin/server/logs": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "List application log files visible in the admin log viewer",
+        "description": "Lists only files matching the configured debuglog in its directory, newest modification first; symbolic links are excluded. Names are basenames without host paths. Pagination may shift while files are written or rotated. configured=false means file logging is not configured.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483547,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "configured": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "sizeBytes": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "lastModified": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    },
+                    "nextOffset": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "503": {
+            "description": "Application logs are temporarily unavailable; no host path is disclosed."
+          }
+        }
+      }
+    },
+    "/admin/server/logs/{file}": {
+      "get": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Read a bounded application log tail or preceding chunk",
+        "description": "Returns at most 16,384 source bytes decoded as UTF-8, oldest to newest inside the chunk. Omit before for the current tail. Follow the string nextBefore as the exclusive byte end until hasMore=false, prepending chunks to reconstruct older output. UTF-8 characters are kept together for returned cursors; lines and stack traces may span chunks. Logs have the same sensitive, untrusted content as the browser viewer. This grants no filesystem, Docker or OS-log access.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "description": "Exact basename from the list; arbitrary paths and symbolic links are refused."
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Exclusive UTF-8 byte offset; omit for the tail or use a returned nextBefore."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "startOffset": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "endOffset": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "nextBefore": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "503": {
+            "description": "Application logs are temporarily unavailable; no host path is disclosed."
+          },
+          "404": {
+            "description": "The file is unavailable, unconfigured or outside the application-log selection."
+          },
+          "409": {
+            "description": "The file was shortened during pagination or reading. Refresh the list and restart from the tail."
+          }
+        }
+      }
+    },
     "/admin/me": {
       "get": {
         "tags": [
