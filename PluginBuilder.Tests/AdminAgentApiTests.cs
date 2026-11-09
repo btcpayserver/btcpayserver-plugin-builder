@@ -421,6 +421,87 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(list + "/application-linked.log")).StatusCode);
     }
 
+    [Theory]
+    [InlineData("é", 1)]
+    [InlineData("€", 1)]
+    [InlineData("€", 2)]
+    [InlineData("🔧", 1)]
+    [InlineData("🔧", 2)]
+    [InlineData("🔧", 3)]
+    public async Task ApplicationLogRetriesIncompleteUtf8TailsWithoutCorruptingPagination(string character, int writtenBytes)
+    {
+        using var files = new ApplicationLogFixture();
+        var path = files.FilePath("application-partial.log");
+        var prefix = new string('x', 17000);
+        var characterBytes = Encoding.UTF8.GetBytes(character);
+        await using var writer = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        await writer.WriteAsync(Encoding.UTF8.GetBytes(prefix));
+        await writer.WriteAsync(characterBytes.AsMemory(0, writtenBytes));
+        await writer.FlushAsync();
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        const string route = "/api/v1/admin/server/logs/application-partial.log";
+
+        using (var incomplete = await client.GetAsync(route))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, incomplete.StatusCode);
+            var error = JObject.Parse(await incomplete.Content.ReadAsStringAsync());
+            Assert.Contains("UTF-8", error.Value<string>("message") ?? "");
+            Assert.Null(error["text"]);
+        }
+
+        await writer.WriteAsync(characterBytes.AsMemory(writtenBytes));
+        await writer.FlushAsync();
+        var chunks = new List<string>();
+        long? before = null;
+        for (var pageNumber = 0; pageNumber < 4; pageNumber++)
+        {
+            var page = JObject.Parse(await client.GetStringAsync(route + (before is null ? "" : "?before=" + before)));
+            var text = page.Value<string>("text")!;
+            Assert.DoesNotContain('\uFFFD', text);
+            Assert.InRange(Encoding.UTF8.GetByteCount(text), 1, 16384);
+            Assert.Equal(before ?? writer.Length, page.Value<long>("endOffset"));
+            chunks.Insert(0, text);
+            if (!page.Value<bool>("hasMore"))
+            {
+                Assert.Equal(0, page.Value<long>("startOffset"));
+                Assert.Equal(JTokenType.Null, page["nextBefore"]!.Type);
+                break;
+            }
+            var next = long.Parse(page.Value<string>("nextBefore")!);
+            Assert.InRange(next, 1, (before ?? writer.Length) - 1);
+            before = next;
+        }
+        Assert.Equal(prefix + character, string.Concat(chunks));
+    }
+
+    [Fact]
+    public async Task ApplicationLogPreservesReplacementCharactersAndMalformedByteFallback()
+    {
+        using var files = new ApplicationLogFixture();
+        var cases = new[]
+        {
+            (Name: "application-literal.log", Bytes: Encoding.UTF8.GetBytes("Fictional replacement: \uFFFD")),
+            (Name: "application-malformed.log", Bytes: new byte[] { 0xff })
+        };
+        foreach (var item in cases)
+            await File.WriteAllBytesAsync(files.FilePath(item.Name), item.Bytes);
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+
+        foreach (var item in cases)
+        {
+            using var response = await client.GetAsync("/api/v1/admin/server/logs/" + item.Name);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var page = JObject.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(Encoding.UTF8.GetString(item.Bytes), page.Value<string>("text"));
+        }
+    }
+
     [Fact]
     public async Task ApplicationLogTailPagesPreserveUtf8AndRemainBoundedWhileTheFileGrows()
     {

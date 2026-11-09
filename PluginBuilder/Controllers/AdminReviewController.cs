@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Text;
@@ -282,6 +283,11 @@ public class AdminReviewController(DBConnectionFactory connections, ListingRevie
                 while (skip < buffer.Length && (buffer[skip] & 0xC0) == 0x80)
                     skip++;
             start += skip;
+            // A concurrent writer may have flushed only part of the final UTF-8 character.
+            if (buffer.Length > skip &&
+                Rune.DecodeLastFromUtf8(buffer.AsSpan(skip), out _, out _) == OperationStatus.NeedMoreData)
+                return Conflict(new { message = "The application log ends with an incomplete UTF-8 character. Retry from the tail." });
+
             return Ok(new
             {
                 name = selected.Name, sizeBytes = length, startOffset = start, endOffset = end,

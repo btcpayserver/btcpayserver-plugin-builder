@@ -182,10 +182,12 @@ individual lines and stack traces may span chunks. Omit `before` again to see ne
 output. An empty file returns empty text and `hasMore=false`.
 
 HTTP 404 means the file is no longer available or is outside this selection.
-HTTP 409 means the selected range no longer fits the file or it was shortened
-during reading; refresh the list and restart from the tail. HTTP 503 means a file
-operation is temporarily unavailable. Log rotation and writes do not provide a
-snapshot across requests, and missing files never prove that no error occurred.
+HTTP 409 means the selected range no longer fits the file, it was shortened
+during reading, or the chunk ends with an incomplete UTF-8 character. Refresh the
+list and restart from the tail; retry after writing completes for an incomplete
+character. HTTP 503 means a file operation is temporarily unavailable. Log rotation
+and writes do not provide a snapshot across requests, and missing files never
+prove that no error occurred.
 
 Content is the same raw application log available to the administrator, including
 exception details and any sensitive data already logged by the application; there
