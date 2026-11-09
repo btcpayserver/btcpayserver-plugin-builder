@@ -259,11 +259,10 @@ public class AdminReviewController(DBConnectionFactory connections, ListingRevie
         {
             var selected = ApplicationLogFiles.GetFiles(options.DebugLogFile)
                 .FirstOrDefault(candidate => candidate.Name.Equals(file, StringComparison.Ordinal));
-            if (selected is null || (selected.Attributes & FileAttributes.ReparsePoint) != 0)
+            if (selected is null)
                 return NotFound();
 
-            await using var stream = new FileStream(selected.FullName, FileMode.Open, FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous | FileOptions.RandomAccess);
+            await using var stream = ApplicationLogFiles.OpenRead(selected);
             var length = stream.Length;
             var end = before ?? length;
             if (end > length)

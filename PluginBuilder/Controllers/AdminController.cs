@@ -1378,7 +1378,7 @@ public class AdminController(
 
         try
         {
-            var fileStream = new FileStream(selectedFile.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var fileStream = ApplicationLogFiles.OpenRead(selectedFile);
             if (download)
                 return File(fileStream, "text/plain", file, true);
             await using (fileStream)
