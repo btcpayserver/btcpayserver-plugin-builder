@@ -106,14 +106,28 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await tester.Page.ReloadAsync();
         Assert.False(await tester.Page.Locator($"a[href='/public/plugins/{slugString}']").IsVisibleAsync());
 
-        // Unlisted with search term should be visible
-        await tester.Page.Locator("input[name='searchPluginName']").FillAsync("rockstar");
+        // Partial searches must not reveal unlisted plugins.
+        await tester.GoToUrl("/public/plugins?searchPluginName=rockstar");
+        await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+        await Expect(tester.Page.Locator($"a[href='/public/plugins/{slugString}']")).ToHaveCountAsync(0);
+
+        // Exact slug and namespace searches make the unlisted status visible.
+        await tester.Page.Locator("input[name='searchPluginName']").FillAsync(slugString);
         await tester.Page.Keyboard.PressAsync("Enter");
         await tester.Page.WaitForSelectorAsync($"a[href='/public/plugins/{slugString}']",
             new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible });
         Assert.True(await tester.Page.Locator($"a[href='/public/plugins/{slugString}']").IsVisibleAsync());
+        await Expect(tester.Page.Locator(".plugin-card").GetByText("Unlisted", new() { Exact = true })).ToBeVisibleAsync();
 
-        // Author search should be visible
+        await tester.GoToUrl($"/public/plugins?searchPluginName={Uri.EscapeDataString(manifest.Identifier)}");
+        await Expect(tester.Page.Locator($"a[href='/public/plugins/{slugString}']")).ToBeVisibleAsync();
+
+        // Author searches only discover listed plugins.
+        await tester.GoToUrl("/public/plugins?searchPluginName=NicolasDorier");
+        await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+        await Expect(tester.Page.Locator($"a[href='/public/plugins/{slugString}']")).ToHaveCountAsync(0);
+
+        await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Listed);
         await tester.GoToUrl("/public/plugins");
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync("NicolasDorier");
         await tester.Page.Keyboard.PressAsync("Enter");
@@ -124,7 +138,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         // Hidden shouldn't appear
         await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Hidden);
         await tester.GoToUrl("/public/plugins");
-        await tester.Page.Locator("input[name='searchPluginName']").FillAsync("rockstar");
+        await tester.Page.Locator("input[name='searchPluginName']").FillAsync(slugString);
         await tester.Page.Keyboard.PressAsync("Enter");
         await tester.Page.WaitForSelectorAsync($"a[href='/public/plugins/{slugString}']",
             new PageWaitForSelectorOptions { State = WaitForSelectorState.Hidden });

@@ -67,7 +67,7 @@ public class ApiController(
         bool? includeAllVersions = null,
         string? searchPluginName = null)
     {
-        searchPluginName = searchPluginName.StripControlCharacters();
+        searchPluginName = searchPluginName.StripControlCharacters()?.Trim();
 
         includePreRelease ??= false;
         includeAllVersions ??= false;
@@ -87,23 +87,13 @@ public class ApiController(
         var isBtcpayV21OrHigher = btcpayVersion?.IsAtLeast(2, 1) == true;
         var hasPluginName = !string.IsNullOrWhiteSpace(searchPluginName);
 
-        if (isBtcpayV21OrHigher)
+        filters.Add(isBtcpayV21OrHigher && !hasPluginName
+            ? "p.visibility = 'listed'"
+            : "(p.visibility = 'listed' OR p.visibility = 'unlisted')");
+        if (hasPluginName)
         {
-            if (hasPluginName)
-            {
-                filters.Add("(p.visibility = 'listed' OR p.visibility = 'unlisted')");
-                filters.Add("(p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)");
-            }
-            else
-            {
-                filters.Add("p.visibility = 'listed'");
-            }
-        }
-        else
-        {
-            filters.Add("(p.visibility = 'listed' OR p.visibility = 'unlisted')");
-            if (hasPluginName)
-                filters.Add("(p.slug ILIKE @searchPattern OR b.manifest_info->>'Name' ILIKE @searchPattern)");
+            filters.Add("(p.visibility = 'listed' OR p.slug = @searchTerm OR p.identifier = @searchTerm)");
+            filters.Add("(p.slug ILIKE @searchPattern OR p.identifier = @searchTerm OR b.manifest_info->>'Name' ILIKE @searchPattern)");
         }
 
         var whereClause = "WHERE " + string.Join(" AND ", filters);
@@ -130,6 +120,7 @@ public class ApiController(
                 {
                     btcpayVersion = btcpayVersion?.VersionParts,
                     includePreRelease = includePreRelease.Value,
+                    searchTerm = searchPluginName,
                     searchPattern = $"%{searchPluginName}%"
                 });
 

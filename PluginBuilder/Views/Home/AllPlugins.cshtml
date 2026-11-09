@@ -139,8 +139,12 @@
                         <div class="card-body">
                             @if (plugin.IsUnlisted)
                             {
-                                <div class="position-absolute top-0 end-0 mt-3 me-3 d-flex flex-wrap justify-content-end gap-2">
-                                    <span class="badge fw-normal text-muted bg-medium rounded-pill px-2 py-1" title="This plugin is only shown in search results">Unlisted</span>
+                                <div class="d-flex justify-content-end mb-2">
+                                    <span class="badge bg-warning text-black rounded-pill px-2 py-1 d-inline-flex align-items-center gap-1"
+                                          title="This plugin is unlisted and only appears when its exact slug or namespace is searched.">
+                                        <span aria-hidden="true"><vc:icon symbol="warning" /></span>
+                                        Unlisted
+                                    </span>
                                 </div>
                             }
                             <div class="row">

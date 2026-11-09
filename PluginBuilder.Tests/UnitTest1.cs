@@ -161,13 +161,13 @@ public class UnitTest1 : UnitTestBase
         var res = await client.GetPublishedVersions("2.1.0.0", false);
         Assert.Contains(res, p => p.ProjectSlug == pluginSlug);
 
-        // unlisted - only render with compatible search term or legacy versions
+        // unlisted - only render with an exact slug/namespace search or legacy browsing
         await conn.ExecuteAsync("UPDATE plugins SET visibility = 'unlisted' WHERE slug = @pluginSlug", new { pluginSlug });
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         res = await client.GetPublishedVersions("2.1.0.0", false);
         Assert.DoesNotContain(res, p => p.ProjectSlug == pluginSlug);
 
-        res = await client.GetPublishedVersions("2.1.0.0", false, searchPluginName: "rockstar");
+        res = await client.GetPublishedVersions("2.1.0.0", false, searchPluginName: pluginSlug);
         Assert.Contains(res, p => p.ProjectSlug == pluginSlug);
 
         var raw = await client.GetStringAsync("/api/v1/plugins");
@@ -180,7 +180,7 @@ public class UnitTest1 : UnitTestBase
         res = await client.GetPublishedVersions("2.1.0.0", false);
         Assert.DoesNotContain(res, p => p.ProjectSlug == pluginSlug);
 
-        res = await client.GetPublishedVersions("2.1.0.0", false, searchPluginName: "rockstar");
+        res = await client.GetPublishedVersions("2.1.0.0", false, searchPluginName: pluginSlug);
         Assert.DoesNotContain(res, p => p.ProjectSlug == pluginSlug);
     }
     [Fact]
