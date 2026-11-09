@@ -284,7 +284,7 @@ public class AdminReviewController(DBConnectionFactory connections, ListingRevie
                     skip++;
             start += skip;
             // A concurrent writer may have flushed only part of the final UTF-8 character.
-            if (buffer.Length > skip &&
+            if (end == length && buffer.Length > skip &&
                 Rune.DecodeLastFromUtf8(buffer.AsSpan(skip), out _, out _) == OperationStatus.NeedMoreData)
                 return Conflict(new { message = "The application log ends with an incomplete UTF-8 character. Retry from the tail." });
 

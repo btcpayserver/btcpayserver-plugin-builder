@@ -231,7 +231,7 @@
             "description": "The file is unavailable, unconfigured or outside the application-log selection."
           },
           "409": {
-            "description": "The selected range no longer fits the file, the file was shortened during reading, or the chunk ends with an incomplete UTF-8 character. Refresh the list and restart from the tail; retry after writing completes for an incomplete character."
+            "description": "The selected range no longer fits the file, the file was shortened during reading, or the file tail ends with an incomplete UTF-8 character. Refresh the list and restart from the tail; retry after writing completes for an incomplete character. Older chunks retain replacement decoding for malformed bytes."
           }
         }
       }

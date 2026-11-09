@@ -503,6 +503,42 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Fact]
+    public async Task ApplicationLogOlderPagesPreserveMalformedUtf8Fallback()
+    {
+        using var files = new ApplicationLogFixture();
+        var prefix = new string('A', 100);
+        var tail = new string('b', 16383);
+        // The page boundary skips 0x82 and returns a cursor immediately after the malformed prefix.
+        var bytes = Encoding.ASCII.GetBytes(prefix).Concat(new byte[] { 0xe2, 0x82 })
+            .Concat(Encoding.ASCII.GetBytes(tail)).ToArray();
+        await File.WriteAllBytesAsync(files.FilePath("application-malformed-pages.log"), bytes);
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        const string route = "/api/v1/admin/server/logs/application-malformed-pages.log";
+
+        using var newestResponse = await client.GetAsync(route);
+        Assert.Equal(HttpStatusCode.OK, newestResponse.StatusCode);
+        var newest = JObject.Parse(await newestResponse.Content.ReadAsStringAsync());
+        Assert.Equal(tail, newest.Value<string>("text"));
+        Assert.Equal(102, newest.Value<long>("startOffset"));
+        Assert.True(newest.Value<bool>("hasMore"));
+        Assert.Equal("102", newest.Value<string>("nextBefore"));
+
+        using var olderResponse = await client.GetAsync(route + "?before=" + newest.Value<string>("nextBefore"));
+        Assert.Equal(HttpStatusCode.OK, olderResponse.StatusCode);
+        var older = JObject.Parse(await olderResponse.Content.ReadAsStringAsync());
+        Assert.Equal(prefix + "\uFFFD", older.Value<string>("text"));
+        Assert.Equal(102, older.Value<long>("endOffset"));
+        Assert.True(older.Value<long>("endOffset") < older.Value<long>("sizeBytes"));
+        Assert.False(older.Value<bool>("hasMore"));
+        Assert.Equal(Encoding.UTF8.GetString(bytes), older.Value<string>("text") + newest.Value<string>("text"));
+        foreach (var page in new[] { newest, older })
+            Assert.InRange(page.Value<long>("endOffset") - page.Value<long>("startOffset"), 1, 16384);
+    }
+
+    [Fact]
     public async Task ApplicationLogTailPagesPreserveUtf8AndRemainBoundedWhileTheFileGrows()
     {
         using var files = new ApplicationLogFixture();

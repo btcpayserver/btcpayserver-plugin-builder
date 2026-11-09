@@ -41,7 +41,9 @@ public static class ApplicationLogFiles
             throw new IOException("Safe application log access is unavailable on this architecture.");
 
         // O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK. NONBLOCK also prevents a substituted FIFO from hanging open.
-        var flags = linux ? 0x20000 | 0x80000 | 0x800 : 0x100 | 0x1000000 | 0x4;
+        // Linux ARM64 overrides O_NOFOLLOW; x86/x64 use the generic Linux value.
+        var linuxNoFollow = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 0x8000 : 0x20000;
+        var flags = linux ? linuxNoFollow | 0x80000 | 0x800 : 0x100 | 0x1000000 | 0x4;
         int descriptor;
         int error;
         do
