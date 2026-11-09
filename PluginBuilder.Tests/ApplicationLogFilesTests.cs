@@ -6,7 +6,7 @@ namespace PluginBuilder.Tests;
 
 public class ApplicationLogFilesTests
 {
-    [UnixFact]
+    [SymbolicLinkFact]
     public void RejectsASelectedLogReplacedByASymbolicLink()
     {
         using var files = new LogFiles();
@@ -24,7 +24,7 @@ public class ApplicationLogFilesTests
         });
     }
 
-    [UnixFact]
+    [SymbolicLinkFact]
     public void RejectsAnExistingSymbolicLink()
     {
         using var files = new LogFiles();

@@ -362,7 +362,6 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         await File.WriteAllTextAsync(files.FilePath("application-new.log"), "Application error: fictional failure\n   at Example.Run()");
         File.SetLastWriteTimeUtc(files.FilePath("application-old.log"), DateTime.UtcNow.AddDays(-1));
         await File.WriteAllTextAsync(files.FilePath("outside.log"), "This is not an application log");
-        File.CreateSymbolicLink(files.FilePath("application-linked.log"), files.FilePath("outside.log"));
         await using var tester = await StartAdminServer(files.ConfiguredFile);
         using var scope = tester.WebApp.Services.CreateScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
@@ -394,7 +393,7 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(JTokenType.Null, second["nextOffset"]!.Type);
         var content = JObject.Parse(await client.GetStringAsync(read));
         Assert.Equal(await File.ReadAllTextAsync(files.FilePath("application-new.log")), content.Value<string>("text"));
-        foreach (var file in new[] { "outside.log", "application-linked.log", "..%5Coutside.log", "%2Fetc%2Fpasswd" })
+        foreach (var file in new[] { "outside.log", "..%5Coutside.log", "%2Fetc%2Fpasswd" })
             Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(list + "/" + file)).StatusCode);
         var audit = JObject.Parse(await client.GetStringAsync("/api/v1/admin/audit?tokenId=" + token["id"]));
         Assert.Contains(audit["items"]!, row => row.Value<string>("path") == read);
@@ -402,6 +401,24 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
             .Revoke(admin.Id, token["id"]!.ToObject<Guid>(), admin.SecurityStamp)).GetValueOrDefault());
         foreach (var route in new[] { list, read })
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(route)).StatusCode);
+    }
+
+    [SymbolicLinkFact]
+    public async Task ApplicationLogsExcludeSymbolicLinks()
+    {
+        using var files = new ApplicationLogFixture();
+        await File.WriteAllTextAsync(files.FilePath("application-regular.log"), "Fictional application error");
+        await File.WriteAllTextAsync(files.FilePath("outside.log"), "This is not an application log");
+        File.CreateSymbolicLink(files.FilePath("application-linked.log"), files.FilePath("outside.log"));
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+
+        const string list = "/api/v1/admin/server/logs";
+        var filesListed = JObject.Parse(await client.GetStringAsync(list));
+        Assert.Equal("application-regular.log", Assert.Single(filesListed["items"]!).Value<string>("name"));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(list + "/application-linked.log")).StatusCode);
     }
 
     [Fact]
