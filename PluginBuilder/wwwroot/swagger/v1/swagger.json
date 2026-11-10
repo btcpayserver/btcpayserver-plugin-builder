@@ -2792,13 +2792,13 @@
       "get": {
         "tags": ["Plugins"],
         "summary": "List published plugins",
-        "description": "Returns published plugin versions, optionally filtered by BTCPay Server version compatibility and plugin name. By default, only the latest version of each listed plugin is returned.",
+        "description": "Returns published plugin versions, optionally filtered by BTCPay Server version compatibility and plugin search. By default, only the latest compatible version of each matching plugin is returned. Hidden plugins are never returned.",
         "operationId": "getPlugins",
         "parameters": [
           {
             "name": "btcpayVersion",
             "in": "query",
-            "description": "Filter by BTCPay Server version compatibility (e.g. `1.12.0`). When set to a version >= 2.1, only `listed` plugins are returned unless `searchPluginName` is also specified.",
+            "description": "Filter by BTCPay Server version compatibility (e.g. `1.12.0`). Without a search term, host versions >= 2.1 return only listed plugins; older or omitted host versions also return unlisted plugins for legacy compatibility. With a search term, unlisted plugins require an exact match as described by `searchPluginName`.",
             "required": false,
             "schema": {
               "type": "string",
@@ -2828,7 +2828,7 @@
           {
             "name": "searchPluginName",
             "in": "query",
-            "description": "Search by plugin slug or name (case-insensitive partial match).",
+            "description": "Listed plugins support case-insensitive partial matches on slug or manifest name, plus exact namespace and full display title matches. Unlisted plugins require an exact slug or namespace (identifier) match, which is case-sensitive, or a complete display title match, which is case-insensitive. Leading and trailing spaces are ignored when matching full titles. The display title is the configured plugin title, falling back to the manifest Name. Pattern characters such as `%` and `_` do not broaden unlisted searches.",
             "required": false,
             "schema": {
               "type": "string"

@@ -352,7 +352,7 @@ public class HomeController(
         [ModelBinder(typeof(BtcPayHostVersionModelBinder))]
         PluginVersion? btcpayVersion = null, bool includePreRelease = false, string? searchPluginName = null, string sort = "smart")
     {
-        searchPluginName = searchPluginName.StripControlCharacters();
+        searchPluginName = searchPluginName.StripControlCharacters()?.Trim();
 
         await using var conn = await connectionFactory.Open();
 
@@ -383,12 +383,22 @@ public class HomeController(
                        AND b.build_info IS NOT NULL
                        AND (
                            p.visibility = 'listed'
-                           OR (p.visibility = 'unlisted' AND @hasSearchTerm = true)
+                           OR (
+                               p.visibility = 'unlisted'
+                               AND @hasSearchTerm = true
+                               AND (
+                                   p.slug = @searchTerm
+                                   OR p.identifier = @searchTerm
+                                   OR LOWER(BTRIM(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name'))) = LOWER(@searchTerm)
+                               )
+                           )
                        )
                        AND (
                            @hasSearchTerm = false
                            OR (
                                p.slug ILIKE @searchPattern
+                               OR p.identifier = @searchTerm
+                               OR LOWER(BTRIM(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name'))) = LOWER(@searchTerm)
                                OR b.manifest_info->>'Name' ILIKE @searchPattern
                                OR p.settings->>'pluginTitle' ILIKE @searchPattern
                                OR b.build_info->>'gitRepository' ILIKE @searchPattern
@@ -425,6 +435,7 @@ public class HomeController(
                 {
                     btcpayVersion = btcpayVersion?.VersionParts,
                     includePreRelease,
+                    searchTerm = searchPluginName,
                     searchPattern = $"%{searchPluginName}%",
                     hasSearchTerm = !string.IsNullOrWhiteSpace(searchPluginName)
                 });
