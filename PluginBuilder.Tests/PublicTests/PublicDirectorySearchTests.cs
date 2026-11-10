@@ -13,7 +13,7 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task UnlistedPluginsRequireAnExactSlugOrNamespace(bool embedded)
+    public async Task UnlistedPluginsRequireAnExactTitleSlugOrNamespace(bool embedded)
     {
         await using var tester = Create();
         tester.ReuseDatabase = false;
@@ -28,12 +28,12 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
         var lookalikeSlug = $"{unlistedSlug}-extra";
         var listedSlug = $"listed-{suffix}";
         var hiddenSlug = $"hidden-{suffix}";
-        const string title = "Shared Directory Title";
+        const string title = "Shared Directory Title 100%_\\";
 
         foreach (var (slug, visibility, pluginTitle) in new[]
                  {
                      (unlistedSlug, PluginVisibilityEnum.Unlisted, title),
-                     (lookalikeSlug, PluginVisibilityEnum.Unlisted, unlistedSlug),
+                     (lookalikeSlug, PluginVisibilityEnum.Unlisted, (string?)null),
                      (listedSlug, PluginVisibilityEnum.Listed, title),
                      (hiddenSlug, PluginVisibilityEnum.Hidden, title)
                  })
@@ -53,7 +53,11 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
             "SELECT identifier FROM plugins WHERE slug = @hiddenSlug", new { hiddenSlug });
         using var client = tester.CreateHttpClient();
 
-        foreach (var search in new[] { identifier, unlistedSlug, $"  {unlistedSlug}  ", $"  {identifier}  " })
+        foreach (var search in new[]
+                 {
+                     identifier, unlistedSlug, $"  {unlistedSlug}  ", $"  {identifier}  ",
+                     title, title.ToUpperInvariant(), $"  {title.ToLowerInvariant()}  "
+                 })
         {
             var html = await Search(search);
             AssertPlugin(html, unlistedSlug, search, present: true);
@@ -66,13 +70,23 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
                      "", "   ", unlistedSlug[..^1], unlistedSlug + "%",
                      "%", "_", identifier[..^1], identifier + "%", identifier.Replace('.', '_'),
                      unlistedSlug.ToUpperInvariant(), identifier.ToLowerInvariant(),
-                     "rockstar", "Rockstar Stylist", title, "NicolasDorier", ServerTester.RepoUrl,
+                     "rockstar", "Shared", title[..^1], title + "%", title.Replace(' ', '_'),
+                     "NicolasDorier", ServerTester.RepoUrl,
                      hiddenSlug, hiddenIdentifier
                  })
         {
             var html = await Search(search);
             AssertPlugin(html, unlistedSlug, search, present: false);
             AssertPlugin(html, lookalikeSlug, search, present: false);
+            AssertPlugin(html, hiddenSlug, search, present: false);
+        }
+
+        // Unlisted plugins fall back to the manifest name only when no custom title is set.
+        foreach (var search in new[] { "Rockstar Stylist", "ROCKSTAR STYLIST", "  rockstar stylist  " })
+        {
+            var html = await Search(search);
+            AssertPlugin(html, lookalikeSlug, search, present: true);
+            AssertPlugin(html, unlistedSlug, search, present: false);
             AssertPlugin(html, hiddenSlug, search, present: false);
         }
 

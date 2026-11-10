@@ -386,7 +386,11 @@ public class HomeController(
                            OR (
                                p.visibility = 'unlisted'
                                AND @hasSearchTerm = true
-                               AND (p.slug = @searchTerm OR p.identifier = @searchTerm)
+                               AND (
+                                   p.slug = @searchTerm
+                                   OR p.identifier = @searchTerm
+                                   OR LOWER(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')) = LOWER(@searchTerm)
+                               )
                            )
                        )
                        AND (
@@ -394,6 +398,7 @@ public class HomeController(
                            OR (
                                p.slug ILIKE @searchPattern
                                OR p.identifier = @searchTerm
+                               OR LOWER(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')) = LOWER(@searchTerm)
                                OR b.manifest_info->>'Name' ILIKE @searchPattern
                                OR p.settings->>'pluginTitle' ILIKE @searchPattern
                                OR b.build_info->>'gitRepository' ILIKE @searchPattern

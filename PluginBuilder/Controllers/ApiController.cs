@@ -92,8 +92,15 @@ public class ApiController(
             : "(p.visibility = 'listed' OR p.visibility = 'unlisted')");
         if (hasPluginName)
         {
-            filters.Add("(p.visibility = 'listed' OR p.slug = @searchTerm OR p.identifier = @searchTerm)");
-            filters.Add("(p.slug ILIKE @searchPattern OR p.identifier = @searchTerm OR b.manifest_info->>'Name' ILIKE @searchPattern)");
+            filters.Add("""
+                        (p.visibility = 'listed' OR p.slug = @searchTerm OR p.identifier = @searchTerm
+                         OR LOWER(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')) = LOWER(@searchTerm))
+                        """);
+            filters.Add("""
+                        (p.slug ILIKE @searchPattern OR p.identifier = @searchTerm
+                         OR LOWER(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')) = LOWER(@searchTerm)
+                         OR b.manifest_info->>'Name' ILIKE @searchPattern)
+                        """);
         }
 
         var whereClause = "WHERE " + string.Join(" AND ", filters);

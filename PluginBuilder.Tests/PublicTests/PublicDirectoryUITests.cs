@@ -111,7 +111,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
         await Expect(tester.Page.Locator($"a[href='/public/plugins/{slugString}']")).ToHaveCountAsync(0);
 
-        // Exact slug and namespace searches make the unlisted status visible.
+        // Exact slug, namespace and full title searches make the unlisted status visible.
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync(slugString);
         await tester.Page.Keyboard.PressAsync("Enter");
         await tester.Page.WaitForSelectorAsync($"a[href='/public/plugins/{slugString}']",
@@ -120,6 +120,9 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await Expect(tester.Page.Locator(".plugin-card").GetByText("Unlisted", new() { Exact = true })).ToBeVisibleAsync();
 
         await tester.GoToUrl($"/public/plugins?searchPluginName={Uri.EscapeDataString(manifest.Identifier)}");
+        await Expect(tester.Page.Locator($"a[href='/public/plugins/{slugString}']")).ToBeVisibleAsync();
+
+        await tester.GoToUrl("/public/plugins?searchPluginName=rockstar%20stylist");
         await Expect(tester.Page.Locator($"a[href='/public/plugins/{slugString}']")).ToBeVisibleAsync();
 
         // Author searches only discover listed plugins.
