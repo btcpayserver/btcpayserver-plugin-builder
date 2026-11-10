@@ -44,7 +44,10 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
                 new { slug, id = build.BuildId });
             var manifest = PluginManifest.Parse(manifestJson);
             await conn.SetVersionBuild(build, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
-            await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = pluginTitle }, visibility);
+            await conn.SetPluginSettings(slug, new PluginSettings
+            {
+                PluginTitle = pluginTitle is null ? null : $"  {pluginTitle}  "
+            }, visibility);
         }
 
         var identifier = await conn.QuerySingleAsync<string>(
@@ -70,7 +73,7 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
                      "", "   ", unlistedSlug[..^1], unlistedSlug + "%",
                      "%", "_", identifier[..^1], identifier + "%", identifier.Replace('.', '_'),
                      unlistedSlug.ToUpperInvariant(), identifier.ToLowerInvariant(),
-                     "rockstar", "Shared", title[..^1], title + "%", title.Replace(' ', '_'),
+                     "rockstar", "Shared", title[..^1], title + "%", title.Replace(' ', '_'), title.Replace(" ", "  "),
                      "NicolasDorier", ServerTester.RepoUrl,
                      hiddenSlug, hiddenIdentifier
                  })

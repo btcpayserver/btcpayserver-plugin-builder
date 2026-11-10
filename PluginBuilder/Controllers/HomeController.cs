@@ -389,7 +389,7 @@ public class HomeController(
                                AND (
                                    p.slug = @searchTerm
                                    OR p.identifier = @searchTerm
-                                   OR LOWER(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')) = LOWER(@searchTerm)
+                                   OR LOWER(BTRIM(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name'))) = LOWER(@searchTerm)
                                )
                            )
                        )
@@ -398,7 +398,7 @@ public class HomeController(
                            OR (
                                p.slug ILIKE @searchPattern
                                OR p.identifier = @searchTerm
-                               OR LOWER(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')) = LOWER(@searchTerm)
+                               OR LOWER(BTRIM(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name'))) = LOWER(@searchTerm)
                                OR b.manifest_info->>'Name' ILIKE @searchPattern
                                OR p.settings->>'pluginTitle' ILIKE @searchPattern
                                OR b.build_info->>'gitRepository' ILIKE @searchPattern

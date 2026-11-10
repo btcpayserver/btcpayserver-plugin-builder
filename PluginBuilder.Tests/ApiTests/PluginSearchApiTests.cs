@@ -42,7 +42,10 @@ public class PluginSearchApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
                 new { pluginSlug, id = build.BuildId });
             var manifest = PluginManifest.Parse(json);
             await conn.SetVersionBuild(build, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
-            await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginTitle }, visibility);
+            await conn.SetPluginSettings(pluginSlug, new PluginSettings
+            {
+                PluginTitle = pluginTitle is null ? null : $"  {pluginTitle}  "
+            }, visibility);
         }
 
         var identifier = await conn.QuerySingleAsync<string>("SELECT identifier FROM plugins WHERE slug = @slug", new { slug });
@@ -62,7 +65,7 @@ public class PluginSearchApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         foreach (var search in new[]
                  {
                      slug[..^1], slug.ToUpperInvariant(), identifier.ToLowerInvariant(),
-                     "rockstar", "Shared", title[..^1], title + "%", title.Replace(' ', '_'),
+                     "rockstar", "Shared", title[..^1], title + "%", title.Replace(' ', '_'), title.Replace(" ", "  "),
                      "%", "_", identifier + "%", hidden, hiddenIdentifier
                  })
         {
