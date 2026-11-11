@@ -28,14 +28,15 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
         var lookalikeSlug = $"{unlistedSlug}-extra";
         var listedSlug = $"listed-{suffix}";
         var hiddenSlug = $"hidden-{suffix}";
-        const string title = "Shared Directory Title 100%_\\";
+        const string title = "Shared Café Directory Title 100%_\\";
+        const string listedTitle = "Listed " + title;
 
         foreach (var (slug, visibility, pluginTitle) in new[]
                  {
                      (unlistedSlug, PluginVisibilityEnum.Unlisted, title),
                      (lookalikeSlug, PluginVisibilityEnum.Unlisted, (string?)null),
-                     (listedSlug, PluginVisibilityEnum.Listed, title),
-                     (hiddenSlug, PluginVisibilityEnum.Hidden, title)
+                     (listedSlug, PluginVisibilityEnum.Listed, listedTitle),
+                     (hiddenSlug, PluginVisibilityEnum.Hidden, "Hidden " + title)
                  })
         {
             var build = await tester.CreatePublishedPluginAsync(ownerId, slug);
@@ -73,9 +74,10 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
                      "", "   ", unlistedSlug[..^1], unlistedSlug + "%",
                      "%", "_", identifier[..^1], identifier + "%", identifier.Replace('.', '_'),
                      unlistedSlug.ToUpperInvariant(), identifier.ToLowerInvariant(),
-                     "rockstar", "Shared", title[..^1], title + "%", title.Replace(' ', '_'), title.Replace(" ", "  "),
+                     "rockstar", "Shared", "CAFÉ", title[..^1], title + "%", title.Replace(' ', '_'), title.Replace(" ", "  "),
                      "NicolasDorier", ServerTester.RepoUrl,
-                     hiddenSlug, hiddenIdentifier
+                     hiddenSlug, hiddenIdentifier,
+                     "Hidden " + title, ("Hidden " + title).ToUpperInvariant(), $"  hidden {title.ToLowerInvariant()}  "
                  })
         {
             var html = await Search(search);
@@ -84,16 +86,17 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
             AssertPlugin(html, hiddenSlug, search, present: false);
         }
 
-        // Unlisted plugins fall back to the manifest name only when no custom title is set.
+        // Manifest metadata cannot make a plugin match a public title search.
         foreach (var search in new[] { "Rockstar Stylist", "ROCKSTAR STYLIST", "  rockstar stylist  " })
         {
             var html = await Search(search);
-            AssertPlugin(html, lookalikeSlug, search, present: true);
+            AssertPlugin(html, lookalikeSlug, search, present: false);
             AssertPlugin(html, unlistedSlug, search, present: false);
             AssertPlugin(html, hiddenSlug, search, present: false);
+            AssertPlugin(html, listedSlug, search, present: false);
         }
 
-        foreach (var search in new[] { "", "rockstar", "Rockstar Stylist", "Shared", title, "NicolasDorier", ServerTester.RepoUrl })
+        foreach (var search in new[] { "", "Listed", "Shared", "CAFÉ", listedTitle, listedTitle.ToUpperInvariant(), "NicolasDorier", ServerTester.RepoUrl })
             AssertPlugin(await Search(search), listedSlug, search, present: true);
 
         AssertPlugin(await Search(lookalikeSlug), lookalikeSlug, lookalikeSlug, present: true);

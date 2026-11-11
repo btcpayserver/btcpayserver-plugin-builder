@@ -226,14 +226,33 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         model.ActiveTab = PluginEditTabs.Settings;
+        var plugin = await conn.GetPluginDetails(pluginSlug);
+        if (plugin is null)
+            return NotFound();
+        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
+        var existingImages = pluginSettings.Images ?? [];
+        var existingImagesSet = new HashSet<string>(existingImages, StringComparer.Ordinal);
+        pluginSettings.Images = imagesUrlSubmitted
+            ? (imagesUrl ?? [])
+                .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .Where(existingImagesSet.Contains)
+                .ToList()
+            : [..existingImages];
+        model.PluginSettings.Images = [..pluginSettings.Images];
+        model.PluginSettings.Logo = pluginSettings.Logo;
+
+        if (string.IsNullOrWhiteSpace(model.PluginSettings.PluginTitle))
+            ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.PluginTitle)}",
+                "Plugin title is required.");
+        if (PluginSettings.IsTitleTooLong(model.PluginSettings?.PluginTitle))
+            ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.PluginTitle)}",
+                PluginTitleValidationException.LengthMessage);
         if (!ModelState.IsValid)
         {
             await PopulatePluginEditViewModel(conn, pluginSlug, model);
             return View(model);
         }
-
-        var plugin = await conn.GetPluginDetails(pluginSlug);
-        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
 
         if (!string.IsNullOrEmpty(model.PluginSettings.VideoUrl))
         {
@@ -265,7 +284,7 @@ public class AdminController(
             if (await conn.IsPluginTitleInUse(newTitle, currentSlug))
             {
                 ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.PluginTitle)}",
-                    "This plugin title is already in use. Please choose a different title.");
+                    PluginTitleValidationException.DuplicateMessage);
                 await PopulatePluginEditViewModel(conn, pluginSlug, model);
                 return View(model);
             }
@@ -280,17 +299,6 @@ public class AdminController(
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
 
-        var existingImages = pluginSettings.Images ?? [];
-        var existingImagesSet = new HashSet<string>(existingImages, StringComparer.Ordinal);
-        pluginSettings.Images = imagesUrlSubmitted
-            ? (imagesUrl ?? [])
-                .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
-                .Distinct(StringComparer.Ordinal)
-                .Where(existingImagesSet.Contains)
-                .ToList()
-            : [..existingImages];
-        model.PluginSettings.Images = [..pluginSettings.Images];
-
         if (pluginSettings.Images.Count > 10)
         {
             ModelState.AddModelError(nameof(model.Images), "A maximum of 10 images is allowed per plugin.");
@@ -298,6 +306,8 @@ public class AdminController(
             return View(model);
         }
 
+        var originalLogo = pluginSettings.Logo;
+        var uploadedFiles = new List<string>();
         if (model.LogoFile != null)
         {
             if (!model.LogoFile.ValidateImageFile(out var errorMessage))
@@ -311,6 +321,7 @@ public class AdminController(
             {
                 var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(model.LogoFile.FileName)}";
                 pluginSettings.Logo = await azureStorageClient.UploadImageFile(model.LogoFile, uniqueBlobName);
+                uploadedFiles.Add(pluginSettings.Logo);
             }
             catch (Exception)
             {
@@ -352,6 +363,7 @@ public class AdminController(
                     var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
                     return await azureStorageClient.UploadImageFile(image, blobName);
                 }))).ToList();
+                uploadedFiles.AddRange(uploadedImages);
             }
             catch (Exception)
             {
@@ -385,7 +397,23 @@ public class AdminController(
         pluginSettings.Images = orderedImages;
         model.PluginSettings.Images = orderedImages;
 
-        var setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
+        bool setPluginSettings;
+        try
+        {
+            setPluginSettings = await conn.SetPluginSettings(pluginSlug, pluginSettings, model.Visibility);
+        }
+        catch (PluginTitleValidationException ex)
+        {
+            await azureStorageClient.TryDeleteUploadedImages(uploadedFiles);
+            model.PluginSettings.Logo = originalLogo;
+            model.PluginSettings.Images = orderedImages.Where(existingImagesSet.Contains).ToList();
+            if (uploadedFiles.Count > 0)
+                TempData[TempDataConstant.WarningMessage] = "New uploads were not saved. Please select them again.";
+            ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.PluginTitle)}",
+                ex.Message);
+            await PopulatePluginEditViewModel(conn, pluginSlug, model);
+            return View(model);
+        }
         if (!setPluginSettings)
             return NotFound();
 

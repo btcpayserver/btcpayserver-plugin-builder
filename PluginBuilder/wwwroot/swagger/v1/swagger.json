@@ -2828,7 +2828,7 @@
           {
             "name": "searchPluginName",
             "in": "query",
-            "description": "Listed plugins support case-insensitive partial matches on slug or manifest name, plus exact namespace and full display title matches. Unlisted plugins require an exact slug or namespace (identifier) match, which is case-sensitive, or a complete display title match, which is case-insensitive. Leading and trailing spaces are ignored when matching full titles. The display title is the configured plugin title, falling back to the manifest Name. Pattern characters such as `%` and `_` do not broaden unlisted searches.",
+            "description": "Listed plugins support case-insensitive partial matches on slug or configured plugin title, plus exact namespace and full display title matches. Unlisted plugins require an exact slug or namespace (identifier) match, which is case-sensitive, or a complete display title match, which is case-insensitive. Leading and trailing spaces are ignored when matching full titles. The display title is the configured plugin title. Pattern characters such as `%` and `_` do not broaden unlisted searches.",
             "required": false,
             "schema": {
               "type": "string"

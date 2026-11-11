@@ -68,6 +68,18 @@ public class AzureStorageClient
         await blob.DeleteIfExistsAsync(DeleteSnapshotsOption.None, null, null, null, CancellationToken.None);
     }
 
+    public async Task TryDeleteUploadedImages(IEnumerable<string> urls)
+    {
+        foreach (var url in urls)
+        {
+            try
+            {
+                await DeleteImageFileIfExists(Path.GetFileName(new Uri(url).AbsolutePath));
+            }
+            catch { } // Cleanup must not replace the original validation error.
+        }
+    }
+
     public async Task<string> UploadStagedArtifact(
         string stagingDirectory,
         string blobName,
