@@ -573,11 +573,12 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
             var next = long.Parse(page.Value<string>("nextBefore")!);
             Assert.InRange(next, 1, (before ?? writer.Length) - 1);
             before = next;
+            if (chunks.Count == 1)
+                await File.AppendAllTextAsync(path, "New output\n");
         } while (chunks.Count < 20);
         Assert.True(exercisedCharacterBoundary, "The fixture must exercise a UTF-8 character boundary adjustment.");
         Assert.Equal(expected, string.Concat(chunks));
         Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync(route + "?before=" + (writer.Length + 1))).StatusCode);
-        await File.AppendAllTextAsync(path, "New output\n");
         var latest = JObject.Parse(await client.GetStringAsync(route));
         Assert.EndsWith("New output\n", latest.Value<string>("text"));
         writer.SetLength(0);
