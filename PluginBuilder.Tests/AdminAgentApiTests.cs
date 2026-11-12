@@ -539,6 +539,41 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
     }
 
     [Fact]
+    public async Task ApplicationLogPagesAdvanceThroughMalformedUtf8ContinuationBytes()
+    {
+        using var files = new ApplicationLogFixture();
+        var bytes = new byte[] { (byte)'A' }.Concat(Enumerable.Repeat((byte)0x80, 32768))
+            .Append((byte)'\n').ToArray();
+        await File.WriteAllBytesAsync(files.FilePath("application-continuations.log"), bytes);
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        const string route = "/api/v1/admin/server/logs/application-continuations.log";
+        var chunks = new List<string>();
+        long? before = null;
+        for (var pageNumber = 0; pageNumber < 4; pageNumber++)
+        {
+            var page = JObject.Parse(await client.GetStringAsync(route + (before is null ? "" : "?before=" + before)));
+            var end = before ?? bytes.LongLength;
+            Assert.Equal(end, page.Value<long>("endOffset"));
+            chunks.Insert(0, page.Value<string>("text")!);
+            if (!page.Value<bool>("hasMore"))
+            {
+                Assert.Equal(0, page.Value<long>("startOffset"));
+                Assert.Equal(JTokenType.Null, page["nextBefore"]!.Type);
+                break;
+            }
+            var next = long.Parse(page.Value<string>("nextBefore")!);
+            Assert.InRange(next, 1, end - 1);
+            Assert.Equal(page.Value<long>("startOffset"), next);
+            Assert.InRange(end - next, 1, 16384);
+            before = next;
+        }
+        Assert.Equal(Encoding.UTF8.GetString(bytes), string.Concat(chunks));
+    }
+
+    [Fact]
     public async Task ApplicationLogTailPagesPreserveUtf8AndRemainBoundedWhileTheFileGrows()
     {
         using var files = new ApplicationLogFixture();

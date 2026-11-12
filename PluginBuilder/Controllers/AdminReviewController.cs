@@ -278,9 +278,10 @@ public class AdminReviewController(DBConnectionFactory connections, ListingRevie
 
             // Start on a UTF-8 character boundary. The skipped continuation
             // bytes belong to the preceding chunk, whose exclusive end is start.
+            // UTF-8 has at most three continuation bytes; cap malformed runs so the cursor advances.
             var skip = 0;
             if (start > 0)
-                while (skip < buffer.Length && (buffer[skip] & 0xC0) == 0x80)
+                while (skip < buffer.Length && skip < 3 && (buffer[skip] & 0xC0) == 0x80)
                     skip++;
             start += skip;
             // A concurrent writer may have flushed only part of the final UTF-8 character.
