@@ -40,6 +40,8 @@ public class DashboardController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
     {
+        if (PluginSettings.IsTitleTooLong(model.PluginTitle))
+            ModelState.AddModelError(nameof(model.PluginTitle), PluginTitleValidationException.LengthMessage);
         if (!ModelState.IsValid)
             return View(model);
 
@@ -86,13 +88,7 @@ public class DashboardController(
 
         if (await conn.IsPluginTitleInUse(model.PluginTitle))
         {
-            ModelState.AddModelError(nameof(model.PluginTitle), "This plugin title is already in use. Please choose a different title.");
-            return View(model);
-        }
-
-        if (!await conn.NewPlugin(pluginSlug, userId))
-        {
-            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+            ModelState.AddModelError(nameof(model.PluginTitle), PluginTitleValidationException.DuplicateMessage);
             return View(model);
         }
 
@@ -108,29 +104,56 @@ public class DashboardController(
             catch (Exception) { logoUploadFailed = true; }
         }
 
-        var baseSettings = new PluginSettings
+        var commitAttempted = false;
+        try
         {
-            PluginTitle = model.PluginTitle,
-            Description = model.Description,
-            VideoUrl = model.VideoUrl,
-            Logo = logoUrl,
-            Images = []
-        };
-
-        if (!await conn.SetPluginSettings(pluginSlug, baseSettings))
-        {
-            await conn.DeletePlugin(pluginSlug);
-            if (logoUrl is not null)
+            await using var transaction = await conn.BeginTransactionAsync();
+            if (!await conn.NewPlugin(pluginSlug, userId))
             {
-                var uploadedBlobName = Path.GetFileName(new Uri(logoUrl).AbsolutePath);
-                try
-                {
-                    await azureStorageClient.DeleteImageFileIfExists(uploadedBlobName);
-                }
-                catch { }
+                await transaction.RollbackAsync();
+                ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+                return View(model);
             }
-            ModelState.AddModelError(string.Empty, "Could not complete plugin creation.");
-            return View(model);
+
+            var baseSettings = new PluginSettings
+            {
+                PluginTitle = model.PluginTitle,
+                Description = model.Description,
+                VideoUrl = model.VideoUrl,
+                Logo = logoUrl,
+                Images = []
+            };
+
+            var settingsSaved = false;
+            string? titleError = null;
+            try
+            {
+                settingsSaved = await conn.SetPluginSettings(pluginSlug, baseSettings);
+            }
+            catch (PluginTitleValidationException ex)
+            {
+                titleError = ex.Message;
+            }
+
+            if (!settingsSaved)
+            {
+                await transaction.RollbackAsync();
+                ModelState.AddModelError(titleError is not null ? nameof(model.PluginTitle) : string.Empty,
+                    titleError ?? "Could not complete plugin creation.");
+                return View(model);
+            }
+
+            // A failed commit can still have succeeded on the server.
+            commitAttempted = true;
+            await transaction.CommitAsync();
+        }
+        finally
+        {
+            if (!commitAttempted && logoUrl is not null)
+            {
+                await azureStorageClient.TryDeleteUploadedImages([logoUrl]);
+                TempData[TempDataConstant.WarningMessage] = "New uploads were not saved. Please select them again.";
+            }
         }
 
         TempData[TempDataConstant.SuccessMessage] = "Plugin created successfully.";

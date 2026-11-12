@@ -94,7 +94,7 @@
                     <input type="hidden" name="@nameof(Model.ActiveTab)" value="@PluginEditTabs.Settings" />
                     <div class="mb-3">
                         <label asp-for="PluginSettings.PluginTitle" class="form-label fw-semibold">Plugin Title</label>
-                        <input type="text" asp-for="PluginSettings.PluginTitle" class="form-control" placeholder="Enter plugin title" />
+                        <input type="text" asp-for="PluginSettings.PluginTitle" class="form-control" placeholder="Enter plugin title" required />
                         <span asp-validation-for="PluginSettings.PluginTitle" class="text-danger"></span>
                     </div>
                     <div class="mb-3">

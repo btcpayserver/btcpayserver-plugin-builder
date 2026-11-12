@@ -389,7 +389,7 @@ public class HomeController(
                                AND (
                                    p.slug = @searchTerm
                                    OR p.identifier = @searchTerm
-                                   OR LOWER(BTRIM(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name'))) = LOWER(@searchTerm)
+                                   OR LOWER(BTRIM(p.settings->>'pluginTitle') COLLATE "pg_c_utf8") = LOWER(@searchTerm COLLATE "pg_c_utf8")
                                )
                            )
                        )
@@ -398,9 +398,8 @@ public class HomeController(
                            OR (
                                p.slug ILIKE @searchPattern
                                OR p.identifier = @searchTerm
-                               OR LOWER(BTRIM(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name'))) = LOWER(@searchTerm)
-                               OR b.manifest_info->>'Name' ILIKE @searchPattern
-                               OR p.settings->>'pluginTitle' ILIKE @searchPattern
+                               OR LOWER(BTRIM(p.settings->>'pluginTitle') COLLATE "pg_c_utf8") = LOWER(@searchTerm COLLATE "pg_c_utf8")
+                               OR (p.settings->>'pluginTitle') COLLATE "pg_c_utf8" ILIKE @searchPattern
                                OR b.build_info->>'gitRepository' ILIKE @searchPattern
                            ))
                      ORDER BY {OrderByClause()}
@@ -409,7 +408,7 @@ public class HomeController(
         // be careful not to introduce sql injection here
         string OrderByClause()
         {
-            const string pluginNameExpr = "COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name')";
+            const string pluginNameExpr = "p.settings->>'pluginTitle'";
             var orderByClause = sort.ToLowerInvariant() switch
             {
                 "rating" => $"rs.avg_rating DESC NULLS LAST, rs.total_reviews DESC, b.created_at DESC, {pluginNameExpr}",
@@ -448,7 +447,7 @@ public class HomeController(
             var settings = SafeJson.Deserialize<PluginSettings>(r.settings);
             return new PublishedPlugin
             {
-                PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
+                PluginTitle = settings?.PluginTitle,
                 Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
                 ProjectSlug = r.plugin_slug,
                 Version = string.Join('.', r.ver),
@@ -650,7 +649,7 @@ public class HomeController(
         var manifestInfo = JObject.Parse((string)pluginDetails.manifest_info);
         var plugin = new PublishedPlugin
         {
-            PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
+            PluginTitle = settings?.PluginTitle,
             Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
             ProjectSlug = pluginSlug.ToString(),
             ManifestInfo = manifestInfo,

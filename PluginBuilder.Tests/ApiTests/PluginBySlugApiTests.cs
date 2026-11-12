@@ -112,6 +112,42 @@ public class PluginBySlugApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(HttpStatusCode.BadRequest, invalidHostResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task CatalogUsesConfiguredTitlesAcrossVersionsAndForOrdering()
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        await tester.Start();
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        var alpha = UniqueSlug("title-alpha");
+        var zulu = UniqueSlug("title-zulu");
+        await InsertPlugin(conn, alpha, PluginVisibilityEnum.Listed,
+            new VersionFixture("1.0.0.0"), new VersionFixture("2.0.0.0", PreRelease: true));
+        await InsertPlugin(conn, zulu, PluginVisibilityEnum.Listed, new VersionFixture("1.0.0.0"));
+        await conn.ExecuteAsync("""
+            UPDATE plugins SET settings=jsonb_build_object('pluginTitle',
+                CASE WHEN slug=@alpha THEN 'Alpha configured' ELSE 'Zulu configured' END)
+            WHERE slug IN (@alpha, @zulu);
+            UPDATE builds SET manifest_info=jsonb_set(manifest_info, '{Name}', to_jsonb(
+                CASE WHEN plugin_slug=@alpha AND id=1 THEN 'ZZZ package'
+                     WHEN plugin_slug=@alpha THEN 'AAA other package' ELSE 'AAA package' END::text))
+            WHERE plugin_slug IN (@alpha, @zulu);
+            """, new { alpha, zulu });
+
+        using var client = tester.CreateHttpClient();
+        var versions = JArray.Parse(await client.GetStringAsync(
+            "/api/v1/plugins?includeAllVersions=true&includePreRelease=true&btcpayVersion=2.3.7"))
+            .ToObject<PublishedVersion[]>()!;
+        Assert.Equal(new[] { "Alpha configured", "Alpha configured", "Zulu configured" },
+            versions.Select(v => v.PluginTitle));
+        var alphaVersions = versions.Where(v => v.ProjectSlug == alpha).ToArray();
+        Assert.Equal(2, alphaVersions.Length);
+        Assert.Equal(new[] { "AAA other package", "ZZZ package" },
+            alphaVersions.Select(v => v.ManifestInfo["Name"]!.ToString()).Order());
+        Assert.Empty(JArray.Parse(await client.GetStringAsync(
+            "/api/v1/plugins?searchPluginName=ZZZ%20package&includePreRelease=true&includeAllVersions=true")));
+    }
+
     private static async Task InsertPlugin(
         System.Data.IDbConnection conn,
         string pluginSlug,
@@ -128,7 +164,7 @@ public class PluginBySlugApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
             {
                 pluginSlug,
                 identifier,
-                settings = "{\"pluginTitle\":\"Test plugin\",\"description\":\"Test plugin description\"}",
+                settings = JsonConvert.SerializeObject(new { pluginTitle = pluginSlug, description = "Test plugin description" }),
                 visibility = visibility.ToString().ToLowerInvariant()
             });
 
@@ -190,6 +226,7 @@ public class PluginBySlugApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(JTokenType.Object, json.Type);
         var publishedVersion = json.ToObject<PublishedVersion>() ?? throw new InvalidOperationException("Expected a published plugin version.");
         Assert.Equal(expectedSlug, publishedVersion.ProjectSlug);
+        Assert.Equal(expectedSlug, publishedVersion.PluginTitle);
         Assert.Equal(expectedVersion, publishedVersion.Version);
         Assert.Equal(IdentifierFor(expectedSlug), publishedVersion.ManifestInfo?["Identifier"]?.ToString());
         Assert.NotNull(publishedVersion.BuildInfo);

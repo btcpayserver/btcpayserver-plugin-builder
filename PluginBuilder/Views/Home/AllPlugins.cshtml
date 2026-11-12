@@ -137,31 +137,31 @@
                 <div class="@(embedMode ? "col" : "col-md-6 mb-4")" data-plugin-card data-plugin-identifier="@pluginIdentifier">
                     <div class="card h-100 plugin-card" data-type="community">
                         <div class="card-body">
-                            @if (plugin.IsUnlisted)
-                            {
-                                <div class="d-flex justify-content-end mb-2">
-                                    <span class="badge bg-warning text-black rounded-pill px-2 py-1 d-inline-flex align-items-center gap-1"
-                                          title="This plugin is unlisted and only appears when its full title, exact slug or namespace is searched.">
-                                        <span aria-hidden="true"><vc:icon symbol="warning" /></span>
-                                        Unlisted
-                                    </span>
-                                </div>
-                            }
                             <div class="row">
                                 <div style="display: flex; align-items: flex-start; margin-bottom: 20px;">
-                                    <div style="margin-right: 15px;">
+                                    <div class="flex-shrink-0" style="margin-right: 15px;">
                                         <partial name="_PluginLogo" model="plugin" />
                                     </div>
-                                    <div>
-                                        <h3 style="margin-top: 0; margin-bottom: 5px;">
-                                            <a asp-action="GetPluginDetails"
-                                               asp-route-embed="@embedRoute"
-                                               asp-route-btcpayVersion="@btcpayVersionRoute"
-                                               asp-route-includePreRelease="@includePreReleaseRoute"
-                                               data-plugin-slug="@plugin.ProjectSlug"
-                                               data-plugin-identifier="@plugin.ManifestInfo?["Identifier"]?.ToString()"
-                                               asp-route-pluginSlug="@plugin.ProjectSlug">@plugin.PluginTitle</a>
-                                        </h3>
+                                    <div class="flex-grow-1" style="min-width: 0;">
+                                        <div class="d-flex align-items-start justify-content-between gap-2">
+                                            <h3 class="flex-grow-1 text-break" style="min-width: 0; margin-top: 0; margin-bottom: 5px;">
+                                                <a asp-action="GetPluginDetails"
+                                                   asp-route-embed="@embedRoute"
+                                                   asp-route-btcpayVersion="@btcpayVersionRoute"
+                                                   asp-route-includePreRelease="@includePreReleaseRoute"
+                                                   data-plugin-slug="@plugin.ProjectSlug"
+                                                   data-plugin-identifier="@plugin.ManifestInfo?["Identifier"]?.ToString()"
+                                                   asp-route-pluginSlug="@plugin.ProjectSlug">@plugin.PluginTitle</a>
+                                            </h3>
+                                            @if (plugin.IsUnlisted)
+                                            {
+                                                <span class="badge bg-warning text-black rounded-pill px-2 py-1 d-inline-flex align-items-center gap-1 flex-shrink-0"
+                                                      title="This plugin is unlisted and only appears when its full title, exact slug or namespace is searched.">
+                                                    <span aria-hidden="true"><vc:icon symbol="warning" /></span>
+                                                    Unlisted
+                                                </span>
+                                            }
+                                        </div>
 
                                         <p style="margin-bottom: 5px;">
                                             @plugin.Description.Truncate(300)
@@ -186,7 +186,7 @@
                                                                     TotalReviews = plugin.RatingSummary?.TotalReviews ?? 0,
                                                                     ShowNumber = false,
                                                                     ShowTotalReviews = true,
-                                                                    AriaLabelPrefix = plugin.PluginTitle ?? plugin.ManifestInfo?["Name"]?.ToString()
+                                                                    AriaLabelPrefix = plugin.PluginTitle
                                                                 })" />
                                             </div>
 

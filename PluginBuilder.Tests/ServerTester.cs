@@ -222,6 +222,7 @@ public class ServerTester : IAsyncDisposable
         var buildService = GetService<BuildService>();
 
         await conn.NewPlugin(slug, userId);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug });
         var buildId = await conn.NewBuild(slug, new PluginBuildParameters(RepoUrl)
         {
             GitRef = gitRef,
@@ -252,6 +253,7 @@ public class ServerTester : IAsyncDisposable
 
         await using var conn = await GetService<DBConnectionFactory>().Open();
         Assert.True(await conn.NewPlugin(slug, userId));
+        Assert.True(await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug }));
         var buildId = await conn.NewBuild(slug, new PluginBuildParameters(RepoUrl)
         {
             GitRef = GitRef,

@@ -29,6 +29,62 @@ public class BuildUserLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
     private const int Requests = BuildPolicy.MaxActiveBuildsPerUser + 2;
 
     [Fact]
+    public async Task InitialUiBuildDefaultsPreserveAConcurrentTitleEdit()
+    {
+        var git = new GatedGitProvider(1);
+        var sandbox = new AdmissionTestSandbox();
+        await using var tester = Create("TitleBuildDefaults");
+        tester.ReuseDatabase = false;
+        tester.ConfigureServices = services =>
+        {
+            sandbox.Register(services);
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(git);
+        };
+        await tester.Start();
+        MarkExecutorReady(tester);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await EnableBuilds(tester, conn);
+        var email = NewEmail();
+        var ownerId = await tester.CreateFakeUserAsync(email);
+        var slug = NewSlug();
+        await conn.NewPlugin(slug, ownerId);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = "Café  Build", Description = "Keep this description" });
+        await conn.EnsureIdentifierOwnership(slug, GatedGitProvider.Identifier);
+        using var browser = CreateBrowser(tester);
+        await LogIn(browser, email, Password);
+        using var page = await browser.GetAsync($"/plugins/{slug}/create");
+        page.EnsureSuccessStatusCode();
+        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["GitRepository"] = git.RepositoryUrl, ["GitRef"] = "main", ["BuildConfig"] = ServerTester.BuildCfg,
+            ["__RequestVerificationToken"] = AntiforgeryToken(await page.Content.ReadAsStringAsync())
+        });
+        await using var editor = await tester.GetService<DBConnectionFactory>().Open();
+        await using var transaction = await editor.BeginTransactionAsync();
+        await editor.SetPluginSettings(slug, new PluginSettings { PluginTitle = "Concurrent title", Description = "Concurrent description" });
+        var request = browser.PostAsync($"/plugins/{slug}/create", form);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        string? blockedQuery;
+        while ((blockedQuery = await conn.QueryFirstOrDefaultAsync<string>("""
+                   SELECT query FROM pg_stat_activity
+                   WHERE datname=current_database() AND @Pid=ANY(pg_blocking_pids(pid))
+                   LIMIT 1
+                   """, new { Pid = editor.ProcessID })) is null)
+            await Task.Delay(10, timeout.Token);
+        Assert.Contains("UPDATE plugins SET settings", blockedQuery);
+        await transaction.CommitAsync();
+        using var response = await request;
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var settings = await conn.GetSettings(slug);
+        Assert.Equal("Concurrent title", settings!.PluginTitle);
+        Assert.Equal("Concurrent description", settings.Description);
+        Assert.Equal(git.RepositoryUrl, settings.GitRepository);
+        Assert.Equal("main", settings.GitRef);
+        await WaitForFinishedBuilds(conn, slug);
+    }
+
+    [Fact]
     public async Task ConcurrentRequests_AdmitOnlyTheUsersLimitUntilABuildFinishes()
     {
         TaskCompletionSource releasePreparation = new(TaskCreationOptions.RunContinuationsAsynchronously);

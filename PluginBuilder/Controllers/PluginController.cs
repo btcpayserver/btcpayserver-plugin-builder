@@ -127,7 +127,13 @@ public class PluginController(
             return View(settingViewModel);
         }
 
-        if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrEmpty(settingViewModel.PluginTitle)))
+        if (settingViewModel.IsPluginPrimaryOwner && PluginSettings.IsTitleTooLong(settingViewModel.PluginTitle))
+        {
+            ModelState.AddModelError(nameof(settingViewModel.PluginTitle), PluginTitleValidationException.LengthMessage);
+            return View(settingViewModel);
+        }
+
+        if (settingViewModel.IsPluginPrimaryOwner && (string.IsNullOrEmpty(settingViewModel.Description) || string.IsNullOrWhiteSpace(settingViewModel.PluginTitle)))
         {
             ModelState.AddModelError(nameof(settingViewModel.PluginTitle), "Plugin title and description are required");
             return View(settingViewModel);
@@ -141,11 +147,12 @@ public class PluginController(
             if (!string.Equals(newTitle, currentTitle, StringComparison.OrdinalIgnoreCase) && await conn.IsPluginTitleInUse(newTitle, pluginSlug))
             {
                 ModelState.AddModelError(nameof(settingViewModel.PluginTitle),
-                    "This plugin title is already in use. Please choose a different title.");
+                    PluginTitleValidationException.DuplicateMessage);
                 return View(settingViewModel);
             }
         }
 
+        var uploadedFiles = new List<string>();
         if (settingViewModel.Logo != null)
         {
             if (!settingViewModel.Logo.ValidateImageFile(out var errorMessage))
@@ -158,6 +165,7 @@ public class PluginController(
             {
                 var uniqueBlobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(settingViewModel.Logo.FileName)}";
                 settingViewModel.LogoUrl = await azureStorageClient.UploadImageFile(settingViewModel.Logo, uniqueBlobName);
+                uploadedFiles.Add(settingViewModel.LogoUrl);
             }
             catch (Exception ex)
             {
@@ -196,6 +204,7 @@ public class PluginController(
                     var blobName = $"{pluginSlug}-{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
                     return await azureStorageClient.UploadImageFile(image, blobName);
                 }))).ToList();
+                uploadedFiles.AddRange(uploadedImages);
             }
             catch (Exception ex)
             {
@@ -234,7 +243,20 @@ public class PluginController(
             settingViewModel.Description = existingSetting.Description;
         }
 
-        await conn.SetPluginSettings(pluginSlug, settingViewModel.ToPluginSettings());
+        try
+        {
+            await conn.SetPluginSettings(pluginSlug, settingViewModel.ToPluginSettings());
+        }
+        catch (PluginTitleValidationException ex)
+        {
+            await azureStorageClient.TryDeleteUploadedImages(uploadedFiles);
+            settingViewModel.LogoUrl = existingSetting?.Logo;
+            settingViewModel.ImagesUrl = orderedImages.Where(existingImagesSet.Contains).ToList();
+            if (uploadedFiles.Count > 0)
+                TempData[TempDataConstant.WarningMessage] = "New uploads were not saved. Please select them again.";
+            ModelState.AddModelError(nameof(settingViewModel.PluginTitle), ex.Message);
+            return View(settingViewModel);
+        }
         await outputCacheStore.EvictByTagAsync(CacheTags.Plugins, CancellationToken.None);
         TempData[TempDataConstant.SuccessMessage] = "Settings updated successfully";
         return RedirectToAction(nameof(Settings), new { pluginSlug });
@@ -353,12 +375,13 @@ public class PluginController(
 
         if (buildId == 0)
         {
-            var existingSetting = await conn.GetSettings(pluginSlug) ?? new PluginSettings();
-            existingSetting.GitRepository = model.GitRepository;
-            existingSetting.GitRef = model.GitRef;
-            existingSetting.PluginDirectory = model.PluginDirectory;
-            existingSetting.BuildConfig = model.BuildConfig;
-            await conn.SetPluginSettings(pluginSlug, existingSetting);
+            // Initial build defaults must not overwrite a concurrently edited title.
+            await conn.ExecuteAsync("""
+                UPDATE plugins SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
+                    'gitRepository', @GitRepository::text, 'gitRef', @GitRef::text,
+                    'pluginDirectory', @PluginDirectory::text, 'buildConfig', @BuildConfig::text)
+                WHERE slug = @Slug
+                """, new { Slug = pluginSlug.ToString(), model.GitRepository, model.GitRef, model.PluginDirectory, model.BuildConfig });
         }
 
         _ = buildService.Build(new FullBuildId(pluginSlug, buildId), isWhitelisted);

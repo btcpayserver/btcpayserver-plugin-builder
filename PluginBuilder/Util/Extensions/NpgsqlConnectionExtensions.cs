@@ -31,15 +31,31 @@ public static class NpgsqlConnectionExtensions
     {
         var settingsJson = "{}";
         if (pluginSettings != null)
+        {
+            pluginSettings.PluginTitle = pluginSettings.PluginTitle?.Trim();
             settingsJson = JsonConvert.SerializeObject(pluginSettings, CamelCaseSerializerSettings.Instance);
+        }
 
         var sql = "UPDATE plugins SET settings = @settings::JSONB WHERE slug = @pluginSlug";
         if (visibility != null)
             sql = "UPDATE plugins SET settings = @settings::JSONB, visibility = @visibility::plugin_visibility_enum WHERE slug = @pluginSlug";
 
-        var affectedRows = await connection.ExecuteAsync(sql,
-            new { pluginSlug = pluginSlug.ToString(), settings = settingsJson, visibility = visibility?.ToString().ToLowerInvariant() });
-        return affectedRows == 1;
+        try
+        {
+            var affectedRows = await connection.ExecuteAsync(sql,
+                new { pluginSlug = pluginSlug.ToString(), settings = settingsJson, visibility = visibility?.ToString().ToLowerInvariant() });
+            return affectedRows == 1;
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation &&
+                                           ex.ConstraintName == PluginTitleValidationException.UniqueConstraint)
+        {
+            throw new PluginTitleValidationException(PluginTitleValidationException.DuplicateMessage, ex);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.CheckViolation &&
+                                           ex.ConstraintName == PluginTitleValidationException.LengthConstraint)
+        {
+            throw new PluginTitleValidationException(PluginTitleValidationException.LengthMessage, ex);
+        }
     }
 
     public static async Task<PluginViewModel?> GetPluginDetails(this NpgsqlConnection connection, PluginSlug pluginSlug)
@@ -54,7 +70,8 @@ public static class NpgsqlConnectionExtensions
         const string sql = """
                            SELECT slug
                            FROM plugins
-                           WHERE LOWER(settings->>'pluginTitle') = LOWER(@Title)
+                           WHERE lower(nullif(btrim(settings->>'pluginTitle'), '') COLLATE "pg_c_utf8")
+                               = lower(@Title COLLATE "pg_c_utf8")
                              AND (@CurrentSlug IS NULL OR slug <> @CurrentSlug)
                            LIMIT 1
                            """;
