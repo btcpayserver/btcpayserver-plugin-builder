@@ -1390,19 +1390,8 @@ public class AdminController(
             return View("Logs", vm);
         }
 
-        var logsDirectory = Directory.GetParent(pbOptions.DebugLogFile);
-        if (logsDirectory is null)
-        {
-            TempData[TempDataConstant.WarningMessage] = "Could not load log files";
-            return View("Logs", vm);
-        }
-
-        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(pbOptions.DebugLogFile);
         var fileExtension = Path.GetExtension(pbOptions.DebugLogFile);
-
-        var allFiles = logsDirectory.GetFiles($"{fileNameWithoutExtension}*{fileExtension}")
-            .OrderByDescending(info => info.LastWriteTime)
-            .ToList();
+        var allFiles = ApplicationLogFiles.GetFiles(pbOptions.DebugLogFile);
 
         vm.LogFileCount = allFiles.Count;
         vm.LogFiles = allFiles.Skip(offset).Take(5).ToList();
@@ -1417,7 +1406,7 @@ public class AdminController(
 
         try
         {
-            var fileStream = new FileStream(selectedFile.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var fileStream = ApplicationLogFiles.OpenRead(selectedFile);
             if (download)
                 return File(fileStream, "text/plain", file, true);
             await using (fileStream)

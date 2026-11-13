@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.RegularExpressions;
 using Dapper;
@@ -13,6 +14,7 @@ using MimeKit;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using PluginBuilder.Authentication;
+using PluginBuilder.Configuration;
 using PluginBuilder.Controllers.Logic;
 using PluginBuilder.DataModels;
 using PluginBuilder.HostedServices;
@@ -247,7 +249,7 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
             (await client.GetAsync("/api/v1/admin/me")).StatusCode);
     }
 
-    private async Task<ServerTester> StartAdminServer()
+    private async Task<ServerTester> StartAdminServer(string? logFile = null)
     {
         var tester = Create();
         tester.ReuseDatabase = false;
@@ -255,6 +257,13 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         {
             foreach (var service in services.Where(s => s.ServiceType == typeof(IHostedService) && s.ImplementationType != typeof(DatabaseStartupHostedService)).ToArray())
                 services.Remove(service);
+            var options = (PluginBuilderOptions)services.Single(service => service.ServiceType == typeof(PluginBuilderOptions)).ImplementationInstance!;
+            services.AddSingleton(new PluginBuilderOptions
+            {
+                DataDir = options.DataDir, BuildBrokerUrl = options.BuildBrokerUrl,
+                BuildBrokerTokenFile = options.BuildBrokerTokenFile, DebugLogFile = logFile,
+                DebugLogLevel = options.DebugLogLevel, LogRetainCount = options.LogRetainCount
+            });
         };
         await tester.Start();
         return tester;
@@ -274,6 +283,374 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var response = await client.PostAsJsonAsync("/api/v1/admin/access-tokens", new { name, expiresInDays = 30 });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return JObject.Parse(await response.Content.ReadAsStringAsync());
+    }
+
+    private sealed class ApplicationLogFixture : IDisposable
+    {
+        public string DirectoryPath { get; } = Directory.CreateTempSubdirectory("pluginbuilder-application-logs-").FullName;
+        public string ConfiguredFile => Path.Combine(DirectoryPath, "application.log");
+        public string FilePath(string name) => Path.Combine(DirectoryPath, name);
+        public void Dispose() => Directory.Delete(DirectoryPath, true);
+    }
+
+    private sealed class UnprivilegedUnixFactAttribute : FactAttribute
+    {
+        public UnprivilegedUnixFactAttribute()
+        {
+            if (OperatingSystem.IsWindows())
+                Skip = "Requires Unix directory permissions.";
+            else if (Environment.UserName == "root")
+                Skip = "Requires a user without root permission bypass.";
+        }
+    }
+
+    [UnprivilegedUnixFact]
+    [UnsupportedOSPlatform("windows")]
+    public async Task ApplicationLogAccessFailureIsNotAnEmptySuccessfulListing()
+    {
+        using var files = new ApplicationLogFixture();
+        var directory = Path.Combine(files.DirectoryPath, "logs");
+        Directory.CreateDirectory(directory);
+        var log = Path.Combine(directory, "application.log");
+        const string content = "Fictional application error";
+        await File.WriteAllTextAsync(log, content);
+        await using var tester = await StartAdminServer(log);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        var token = await IssueToken(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value<string>("token"));
+        const string listing = "/api/v1/admin/server/logs";
+        Assert.Single(JObject.Parse(await client.GetStringAsync(listing))["items"]!);
+
+        var permissions = File.GetUnixFileMode(files.DirectoryPath);
+        try
+        {
+            File.SetUnixFileMode(files.DirectoryPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            Assert.False(Directory.Exists(directory), "The fixture must deny traversal to the configured log directory.");
+            foreach (var route in new[] { listing, listing + "/application.log" })
+            {
+                using var response = await client.GetAsync(route);
+                Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+                Assert.DoesNotContain(files.DirectoryPath, await response.Content.ReadAsStringAsync());
+            }
+        }
+        finally
+        {
+            File.SetUnixFileMode(files.DirectoryPath, permissions);
+        }
+
+        Assert.Equal(content, JObject.Parse(await client.GetStringAsync(listing + "/application.log")).Value<string>("text"));
+        File.Delete(log);
+        foreach (var removeDirectory in new[] { false, true })
+        {
+            if (removeDirectory)
+                Directory.Delete(directory);
+            var empty = JObject.Parse(await client.GetStringAsync(listing));
+            Assert.True(empty.Value<bool>("configured"));
+            Assert.Empty(empty["items"]!);
+            Assert.False(empty.Value<bool>("hasMore"));
+        }
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(listing + "/application.log")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ApplicationLogsUseTheAdminBoundaryAndRevocableTokens()
+    {
+        using var files = new ApplicationLogFixture();
+        await File.WriteAllTextAsync(files.FilePath("application-old.log"), "Earlier application error");
+        await File.WriteAllTextAsync(files.FilePath("application-new.log"), "Application error: fictional failure\n   at Example.Run()");
+        File.SetLastWriteTimeUtc(files.FilePath("application-old.log"), DateTime.UtcNow.AddDays(-1));
+        await File.WriteAllTextAsync(files.FilePath("outside.log"), "This is not an application log");
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        var ordinary = await AddUser(users, "ordinary@example.com");
+        var admin = await AddUser(users, "admin@example.com", true);
+        using var client = tester.CreateHttpClient();
+        const string list = "/api/v1/admin/server/logs";
+        const string read = list + "/application-new.log";
+        foreach (var route in new[] { list, read })
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(route)).StatusCode);
+        client.SetBasicAuth(ordinary.Email!, "test-password:with-colons:123");
+        foreach (var route in new[] { list, read })
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(route)).StatusCode);
+        client.SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        var token = await IssueToken(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value<string>("token"));
+        using var listed = await client.GetAsync(list + "?limit=1");
+        Assert.Equal(HttpStatusCode.OK, listed.StatusCode);
+        Assert.True(listed.Headers.CacheControl!.NoStore);
+        var rawList = await listed.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(files.DirectoryPath, rawList);
+        var first = JObject.Parse(rawList);
+        Assert.True(first.Value<bool>("configured"));
+        Assert.True(first.Value<bool>("hasMore"));
+        Assert.Equal("application-new.log", Assert.Single(first["items"]!).Value<string>("name"));
+        var second = JObject.Parse(await client.GetStringAsync(list + "?limit=1&offset=" + first["nextOffset"]));
+        Assert.Equal("application-old.log", Assert.Single(second["items"]!).Value<string>("name"));
+        Assert.False(second.Value<bool>("hasMore"));
+        Assert.Equal(JTokenType.Null, second["nextOffset"]!.Type);
+        var content = JObject.Parse(await client.GetStringAsync(read));
+        Assert.Equal(await File.ReadAllTextAsync(files.FilePath("application-new.log")), content.Value<string>("text"));
+        foreach (var file in new[] { "outside.log", "..%5Coutside.log", "%2Fetc%2Fpasswd" })
+            Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(list + "/" + file)).StatusCode);
+        var audit = JObject.Parse(await client.GetStringAsync("/api/v1/admin/audit?tokenId=" + token["id"]));
+        Assert.Contains(audit["items"]!, row => row.Value<string>("path") == read);
+        Assert.True((await scope.ServiceProvider.GetRequiredService<AdminAccessTokenService>()
+            .Revoke(admin.Id, token["id"]!.ToObject<Guid>(), admin.SecurityStamp)).GetValueOrDefault());
+        foreach (var route in new[] { list, read })
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(route)).StatusCode);
+    }
+
+    [SymbolicLinkFact]
+    public async Task ApplicationLogsExcludeSymbolicLinks()
+    {
+        using var files = new ApplicationLogFixture();
+        await File.WriteAllTextAsync(files.FilePath("application-regular.log"), "Fictional application error");
+        await File.WriteAllTextAsync(files.FilePath("outside.log"), "This is not an application log");
+        File.CreateSymbolicLink(files.FilePath("application-linked.log"), files.FilePath("outside.log"));
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+
+        const string list = "/api/v1/admin/server/logs";
+        var filesListed = JObject.Parse(await client.GetStringAsync(list));
+        Assert.Equal("application-regular.log", Assert.Single(filesListed["items"]!).Value<string>("name"));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(list + "/application-linked.log")).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("é", 1)]
+    [InlineData("€", 1)]
+    [InlineData("€", 2)]
+    [InlineData("🔧", 1)]
+    [InlineData("🔧", 2)]
+    [InlineData("🔧", 3)]
+    public async Task ApplicationLogRetriesIncompleteUtf8TailsWithoutCorruptingPagination(string character, int writtenBytes)
+    {
+        using var files = new ApplicationLogFixture();
+        var path = files.FilePath("application-partial.log");
+        var prefix = new string('x', 17000);
+        var characterBytes = Encoding.UTF8.GetBytes(character);
+        await using var writer = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        await writer.WriteAsync(Encoding.UTF8.GetBytes(prefix));
+        await writer.WriteAsync(characterBytes.AsMemory(0, writtenBytes));
+        await writer.FlushAsync();
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        const string route = "/api/v1/admin/server/logs/application-partial.log";
+
+        using (var incomplete = await client.GetAsync(route))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, incomplete.StatusCode);
+            var error = JObject.Parse(await incomplete.Content.ReadAsStringAsync());
+            Assert.Contains("UTF-8", error.Value<string>("message") ?? "");
+            Assert.Null(error["text"]);
+        }
+
+        await writer.WriteAsync(characterBytes.AsMemory(writtenBytes));
+        await writer.FlushAsync();
+        var chunks = new List<string>();
+        long? before = null;
+        for (var pageNumber = 0; pageNumber < 4; pageNumber++)
+        {
+            var page = JObject.Parse(await client.GetStringAsync(route + (before is null ? "" : "?before=" + before)));
+            var text = page.Value<string>("text")!;
+            Assert.DoesNotContain('\uFFFD', text);
+            Assert.InRange(Encoding.UTF8.GetByteCount(text), 1, 16384);
+            Assert.Equal(before ?? writer.Length, page.Value<long>("endOffset"));
+            chunks.Insert(0, text);
+            if (!page.Value<bool>("hasMore"))
+            {
+                Assert.Equal(0, page.Value<long>("startOffset"));
+                Assert.Equal(JTokenType.Null, page["nextBefore"]!.Type);
+                break;
+            }
+            var next = long.Parse(page.Value<string>("nextBefore")!);
+            Assert.InRange(next, 1, (before ?? writer.Length) - 1);
+            before = next;
+        }
+        Assert.Equal(prefix + character, string.Concat(chunks));
+    }
+
+    [Fact]
+    public async Task ApplicationLogPreservesReplacementCharactersAndMalformedByteFallback()
+    {
+        using var files = new ApplicationLogFixture();
+        var cases = new[]
+        {
+            (Name: "application-literal.log", Bytes: Encoding.UTF8.GetBytes("Fictional replacement: \uFFFD")),
+            (Name: "application-malformed.log", Bytes: new byte[] { 0xff })
+        };
+        foreach (var item in cases)
+            await File.WriteAllBytesAsync(files.FilePath(item.Name), item.Bytes);
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+
+        foreach (var item in cases)
+        {
+            using var response = await client.GetAsync("/api/v1/admin/server/logs/" + item.Name);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var page = JObject.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(Encoding.UTF8.GetString(item.Bytes), page.Value<string>("text"));
+        }
+    }
+
+    [Fact]
+    public async Task ApplicationLogOlderPagesPreserveMalformedUtf8Fallback()
+    {
+        using var files = new ApplicationLogFixture();
+        var prefix = new string('A', 100);
+        var tail = new string('b', 16383);
+        // The page boundary skips 0x82 and returns a cursor immediately after the malformed prefix.
+        var bytes = Encoding.ASCII.GetBytes(prefix).Concat(new byte[] { 0xe2, 0x82 })
+            .Concat(Encoding.ASCII.GetBytes(tail)).ToArray();
+        await File.WriteAllBytesAsync(files.FilePath("application-malformed-pages.log"), bytes);
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        const string route = "/api/v1/admin/server/logs/application-malformed-pages.log";
+
+        using var newestResponse = await client.GetAsync(route);
+        Assert.Equal(HttpStatusCode.OK, newestResponse.StatusCode);
+        var newest = JObject.Parse(await newestResponse.Content.ReadAsStringAsync());
+        Assert.Equal(tail, newest.Value<string>("text"));
+        Assert.Equal(102, newest.Value<long>("startOffset"));
+        Assert.True(newest.Value<bool>("hasMore"));
+        Assert.Equal("102", newest.Value<string>("nextBefore"));
+
+        using var olderResponse = await client.GetAsync(route + "?before=" + newest.Value<string>("nextBefore"));
+        Assert.Equal(HttpStatusCode.OK, olderResponse.StatusCode);
+        var older = JObject.Parse(await olderResponse.Content.ReadAsStringAsync());
+        Assert.Equal(prefix + "\uFFFD", older.Value<string>("text"));
+        Assert.Equal(102, older.Value<long>("endOffset"));
+        Assert.True(older.Value<long>("endOffset") < older.Value<long>("sizeBytes"));
+        Assert.False(older.Value<bool>("hasMore"));
+        Assert.Equal(Encoding.UTF8.GetString(bytes), older.Value<string>("text") + newest.Value<string>("text"));
+        foreach (var page in new[] { newest, older })
+            Assert.InRange(page.Value<long>("endOffset") - page.Value<long>("startOffset"), 1, 16384);
+    }
+
+    [Fact]
+    public async Task ApplicationLogPagesAdvanceThroughMalformedUtf8ContinuationBytes()
+    {
+        using var files = new ApplicationLogFixture();
+        var bytes = new byte[] { (byte)'A' }.Concat(Enumerable.Repeat((byte)0x80, 32768))
+            .Append((byte)'\n').ToArray();
+        await File.WriteAllBytesAsync(files.FilePath("application-continuations.log"), bytes);
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        const string route = "/api/v1/admin/server/logs/application-continuations.log";
+        var chunks = new List<string>();
+        long? before = null;
+        for (var pageNumber = 0; pageNumber < 4; pageNumber++)
+        {
+            var page = JObject.Parse(await client.GetStringAsync(route + (before is null ? "" : "?before=" + before)));
+            var end = before ?? bytes.LongLength;
+            Assert.Equal(end, page.Value<long>("endOffset"));
+            chunks.Insert(0, page.Value<string>("text")!);
+            if (!page.Value<bool>("hasMore"))
+            {
+                Assert.Equal(0, page.Value<long>("startOffset"));
+                Assert.Equal(JTokenType.Null, page["nextBefore"]!.Type);
+                break;
+            }
+            var next = long.Parse(page.Value<string>("nextBefore")!);
+            Assert.InRange(next, 1, end - 1);
+            Assert.Equal(page.Value<long>("startOffset"), next);
+            Assert.InRange(end - next, 1, 16384);
+            before = next;
+        }
+        Assert.Equal(Encoding.UTF8.GetString(bytes), string.Concat(chunks));
+    }
+
+    [Fact]
+    public async Task ApplicationLogTailPagesPreserveUtf8AndRemainBoundedWhileTheFileGrows()
+    {
+        using var files = new ApplicationLogFixture();
+        var path = files.FilePath("application-unicode.log");
+        // Shift a page boundary into a multibyte character instead of ASCII.
+        var expected = string.Concat(Enumerable.Repeat("Erro fictício: ação 🔧\n   at Example.Run()\n", 2000)) + "\n\n";
+        await File.WriteAllTextAsync(path, expected, new UTF8Encoding(false));
+        await using var writer = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        const string route = "/api/v1/admin/server/logs/application-unicode.log";
+        var chunks = new List<string>();
+        var exercisedCharacterBoundary = false;
+        long? before = null;
+        do
+        {
+            var page = JObject.Parse(await client.GetStringAsync(route + (before is null ? "" : "?before=" + before)));
+            var text = page.Value<string>("text")!;
+            Assert.InRange(Encoding.UTF8.GetByteCount(text), 1, 16384);
+            Assert.DoesNotContain('\uFFFD', text);
+            Assert.Equal(before ?? writer.Length, page.Value<long>("endOffset"));
+            exercisedCharacterBoundary |= page.Value<long>("startOffset") >
+                Math.Max(0, page.Value<long>("endOffset") - 16384);
+            chunks.Insert(0, text);
+            if (!page.Value<bool>("hasMore"))
+            {
+                Assert.Equal(0, page.Value<long>("startOffset"));
+                break;
+            }
+            var next = long.Parse(page.Value<string>("nextBefore")!);
+            Assert.InRange(next, 1, (before ?? writer.Length) - 1);
+            before = next;
+            if (chunks.Count == 1)
+            {
+                writer.Seek(0, SeekOrigin.End);
+                await writer.WriteAsync(Encoding.UTF8.GetBytes("New output\n"));
+                await writer.FlushAsync();
+            }
+        } while (chunks.Count < 20);
+        Assert.True(exercisedCharacterBoundary, "The fixture must exercise a UTF-8 character boundary adjustment.");
+        Assert.Equal(expected, string.Concat(chunks));
+        Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync(route + "?before=" + (writer.Length + 1))).StatusCode);
+        var latest = JObject.Parse(await client.GetStringAsync(route));
+        Assert.EndsWith("New output\n", latest.Value<string>("text"));
+        writer.SetLength(0);
+        var empty = JObject.Parse(await client.GetStringAsync(route));
+        Assert.Equal("", empty.Value<string>("text"));
+        Assert.False(empty.Value<bool>("hasMore"));
+        Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync(route + "?before=" + before)).StatusCode);
+    }
+
+    [Fact]
+    public async Task ApplicationLogsValidateBoundsAndDistinguishMissingConfigurationAndFiles()
+    {
+        using var files = new ApplicationLogFixture();
+        await File.WriteAllTextAsync(files.FilePath("application-empty.log"), "");
+        await using var tester = await StartAdminServer(files.ConfiguredFile);
+        using var scope = tester.WebApp.Services.CreateScope();
+        var admin = await AddUser(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "admin@example.com", true);
+        using var client = tester.CreateHttpClient().SetBasicAuth(admin.Email!, "test-password:with-colons:123");
+        const string list = "/api/v1/admin/server/logs";
+        foreach (var suffix in new[] { "?offset=-1", "?limit=0", "?limit=101", "/application-empty.log?before=-1", "/application-empty.log?before=invalid" })
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync(list + suffix)).StatusCode);
+        File.Delete(files.FilePath("application-empty.log"));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(list + "/application-empty.log")).StatusCode);
+
+        await using var unconfigured = await StartAdminServer();
+        using var otherScope = unconfigured.WebApp.Services.CreateScope();
+        var otherAdmin = await AddUser(otherScope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), "other@example.com", true);
+        using var other = unconfigured.CreateHttpClient().SetBasicAuth(otherAdmin.Email!, "test-password:with-colons:123");
+        var unavailable = JObject.Parse(await other.GetStringAsync(list));
+        Assert.False(unavailable.Value<bool>("configured"));
+        Assert.Empty(unavailable["items"]!);
+        Assert.False(unavailable.Value<bool>("hasMore"));
+        Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync(list + "/application.log")).StatusCode);
     }
 
     [Fact]
