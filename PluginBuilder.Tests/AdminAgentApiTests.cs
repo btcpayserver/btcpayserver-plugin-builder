@@ -609,7 +609,11 @@ public class AdminAgentApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Assert.InRange(next, 1, (before ?? writer.Length) - 1);
             before = next;
             if (chunks.Count == 1)
-                await File.AppendAllTextAsync(path, "New output\n");
+            {
+                writer.Seek(0, SeekOrigin.End);
+                await writer.WriteAsync(Encoding.UTF8.GetBytes("New output\n"));
+                await writer.FlushAsync();
+            }
         } while (chunks.Count < 20);
         Assert.True(exercisedCharacterBoundary, "The fixture must exercise a UTF-8 character boundary adjustment.");
         Assert.Equal(expected, string.Concat(chunks));
