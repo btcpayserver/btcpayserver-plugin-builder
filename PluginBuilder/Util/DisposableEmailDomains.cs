@@ -65,6 +65,7 @@ public static class DisposableEmailDomains
         "fexpost.com",
         "fextemp.com",
         "filzmail.com",
+        "fldubai.com",
         "fleckens.hu",
         "getairmail.com",
         "getnada.com",
