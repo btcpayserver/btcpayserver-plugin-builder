@@ -43,6 +43,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Data\Scripts\*.sql"/>
+    <EmbeddedResource Include="Data\disposable_email_blocklist.conf" LogicalName="PluginBuilder.Data.disposable_email_blocklist.conf" />
   </ItemGroup>
 
   <ItemGroup>
