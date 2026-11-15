@@ -28,6 +28,9 @@ public class DisposableEmailDomainsTests
     [InlineData("someone@TEMPMAIL.EMAIL")]
     [InlineData("someone@inbox.tempmail.email")]
     [InlineData("someone@trashmail.org")]
+    [InlineData("someone@flashbox.5july.org")]
+    [InlineData("someone@FLASHBOX.5JULY.ORG")]
+    [InlineData("someone@inbox.flashbox.5july.org")]
     // Catch-all services that hand out made-up subdomains, as in a scripted sign-up burst.
     [InlineData("someone@2uh.kashre.com")]
     [InlineData("someone@c2.lucktaro.com")]
@@ -57,6 +60,8 @@ public class DisposableEmailDomainsTests
     [InlineData("someone@mailinator.com.example.org")]
     [InlineData("someone@nottempmail.email")]
     [InlineData("someone@tempmail.email.example.org")]
+    [InlineData("someone@notflashbox.5july.org")]
+    [InlineData("someone@flashbox.5july.org.example.org")]
     [InlineData("someone@b\u00FCcher.example")]
     [InlineData("someone@mailinator..com")]
     [InlineData("mailinator.com@example.org")]
@@ -77,10 +82,10 @@ public class DisposableEmailDomainsTests
     }
 
     [Fact]
-    public void TheListMatchesThePinnedCommunitySnapshot()
+    public void TheListMatchesThePinnedSnapshotWithLocalCorrections()
     {
         var canonical = Encoding.UTF8.GetBytes(string.Join('\n', DisposableEmailDomains.Domains) + "\n");
-        Assert.Equal("8a303e28fe2704fc20e73bd320cb9f47e8b3658adc0ebb046260d5acf59c27c2",
+        Assert.Equal("96eed897524f3850f9f7d67e1833abf1fbe59d9294e860791d5974906adab360",
             Convert.ToHexStringLower(SHA256.HashData(canonical)));
     }
 
@@ -88,6 +93,8 @@ public class DisposableEmailDomainsTests
     [InlineData("mailinator.com")]
     [InlineData("tempmail.email")]
     [InlineData("trashmail.org")]
+    [InlineData("flashbox.5july.org")]
+    [InlineData("inbox.flashbox.5july.org")]
     public void RegistrationRefusesADisposableAddress(string domain)
     {
         var model = new RegisterViewModel { Email = "someone@" + domain, Password = "123456", ConfirmPassword = "123456" };
@@ -100,6 +107,31 @@ public class DisposableEmailDomainsTests
 
         model.Email = "someone@example.org";
         Assert.True(Validator.TryValidateObject(model, new ValidationContext(model), errors, validateAllProperties: true));
+    }
+
+    [Theory]
+    [InlineData("21cn.com")]
+    [InlineData("5july.org")]
+    [InlineData("atomauto.vn")]
+    [InlineData("dhm.ro")]
+    [InlineData("digitalsanctuary.com")]
+    [InlineData("hola.org")]
+    [InlineData("jsrsolutions.com")]
+    [InlineData("lukecarriere.com")]
+    [InlineData("neomailbox.com")]
+    [InlineData("privacy.net")]
+    [InlineData("stanfordujjain.com")]
+    public void RegistrationAllowsLegitimateDomainsAndTheirSubdomains(string domain)
+    {
+        foreach (var email in new[] { "someone@" + domain, "someone@inbox." + domain })
+        {
+            var model = new RegisterViewModel { Email = email, Password = "123456", ConfirmPassword = "123456" };
+            var errors = new List<ValidationResult>();
+
+            Assert.False(DisposableEmailDomains.IsDisposable(email));
+            Assert.True(Validator.TryValidateObject(model, new ValidationContext(model), errors, validateAllProperties: true));
+            Assert.Empty(errors);
+        }
     }
 
     [Theory]
@@ -170,6 +202,8 @@ public class DisposableEmailRegistrationTests(ITestOutputHelper logs) : UnitTest
             $"disposable-{Guid.NewGuid():N}@mailinator\u3002com",
             $"disposable-{Guid.NewGuid():N}@tempmail.email",
             $"disposable-{Guid.NewGuid():N}@trashmail.org",
+            $"disposable-{Guid.NewGuid():N}@flashbox.5july.org",
+            $"disposable-{Guid.NewGuid():N}@inbox.flashbox.5july.org",
             new string('a', 245) + "@example.org", // 257 characters: just above the database's limit.
             "someone@" + string.Concat(Enumerable.Repeat("a.", 8192)) + "example.org"
         };
@@ -183,10 +217,15 @@ public class DisposableEmailRegistrationTests(ITestOutputHelper logs) : UnitTest
             Assert.False(await UserExists(conn, email));
         }
 
-        var normal = $"normal-{Guid.NewGuid():N}@example.org";
-        using (var response = await client.PostAsync("/register", Form(normal, AntiforgeryToken(page))))
-            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.True(await UserExists(conn, normal));
+        foreach (var domain in new[] { "example.org", "5july.org" })
+        {
+            // A successful registration signs in the client, so refresh the user-bound antiforgery token.
+            page = await (await client.GetAsync("/register")).Content.ReadAsStringAsync();
+            var normal = $"normal-{Guid.NewGuid():N}@{domain}";
+            using (var response = await client.PostAsync("/register", Form(normal, AntiforgeryToken(page))))
+                Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.True(await UserExists(conn, normal));
+        }
     }
 
     private static FormUrlEncodedContent Form(string email, string antiforgeryToken) =>

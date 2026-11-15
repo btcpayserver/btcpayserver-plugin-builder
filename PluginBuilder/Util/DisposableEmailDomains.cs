@@ -4,8 +4,8 @@ namespace PluginBuilder.Util;
 
 /// <summary>
 /// Throwaway inbox services, refused at registration. Listed domains cover their subdomains too, and case does not matter.
-/// Embedded CC0 snapshot from https://github.com/disposable-email-domains/disposable-email-domains.
-/// See docs/disposable-email-domains.md for the source revision, license and update procedure.
+/// Embedded list based on a CC0 snapshot from https://github.com/disposable-email-domains/disposable-email-domains.
+/// See docs/disposable-email-domains.md for the source revision, local corrections, license and update procedure.
 /// </summary>
 public static class DisposableEmailDomains
 {
