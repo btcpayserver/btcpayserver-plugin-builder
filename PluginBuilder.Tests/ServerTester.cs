@@ -153,11 +153,16 @@ public class ServerTester : IAsyncDisposable
         ConfigureServices?.Invoke(webappBuilder.Services);
 
         var webapp = webappBuilder.Build();
-        host.Configure(webapp);
-        ConfigureApplication?.Invoke(webapp);
-
-        _webRootFileProvider = webapp.Environment.WebRootFileProvider as IDisposable;
         disposables.Add(webapp);
+        try
+        {
+            host.Configure(webapp);
+            ConfigureApplication?.Invoke(webapp);
+        }
+        finally
+        {
+            _webRootFileProvider = webapp.Environment.WebRootFileProvider as IDisposable;
+        }
         await webapp.StartAsync();
         _WebApp = webapp;
 

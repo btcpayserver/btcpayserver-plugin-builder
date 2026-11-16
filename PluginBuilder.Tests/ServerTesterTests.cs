@@ -22,11 +22,13 @@ namespace PluginBuilder.Tests;
 public class ServerTesterTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ServerTesterDisposesWebRootFileProviderEvenWhenStartupFails(bool failStartup)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ServerTesterDisposesResourcesEvenWhenInitializationFails(bool failStartup, bool failConfiguration)
     {
         TrackingFileProvider? files = null;
+        TrackingDisposableService? service = null;
         await using (var tester = Create())
         {
             tester.ConfigureServices = services =>
@@ -34,23 +36,27 @@ public class ServerTesterTests(ITestOutputHelper logs) : UnitTestBase(logs)
                 // This lifecycle check needs neither a database nor external services.
                 foreach (var service in services.Where(service => service.ServiceType == typeof(IHostedService)).ToArray())
                     services.Remove(service);
+                services.AddSingleton<TrackingDisposableService>();
                 if (failStartup)
                     services.AddSingleton<IHostedService, FailingStartupService>();
             };
             tester.ConfigureApplication = app =>
             {
+                service = app.Services.GetRequiredService<TrackingDisposableService>();
                 files = new TrackingFileProvider(app.Environment.WebRootFileProvider);
                 app.Environment.WebRootFileProvider = files;
                 // Exercise the asset-versioning path that creates the native watcher in Razor pages.
                 var versioned = app.Services.GetRequiredService<IFileVersionProvider>()
                     .AddFileVersionToPath("", "/main/site.css");
                 Assert.Contains("?v=", versioned);
+                if (failConfiguration)
+                    throw new InvalidOperationException("Expected configuration failure");
             };
 
-            if (failStartup)
+            if (failStartup || failConfiguration)
             {
                 var error = await Assert.ThrowsAsync<InvalidOperationException>(() => tester.Start());
-                Assert.Equal("Expected startup failure", error.Message);
+                Assert.Equal(failConfiguration ? "Expected configuration failure" : "Expected startup failure", error.Message);
             }
             else
                 await tester.Start();
@@ -58,10 +64,20 @@ public class ServerTesterTests(ITestOutputHelper logs) : UnitTestBase(logs)
             Assert.NotNull(files);
             Assert.True(files.WatchCalls > 0);
             Assert.Equal(0, files.DisposeCalls);
+            Assert.NotNull(service);
+            Assert.Equal(0, service.DisposeCalls);
             await tester.DisposeAsync();
             Assert.Equal(1, files.DisposeCalls);
+            Assert.Equal(1, service.DisposeCalls);
         }
         Assert.Equal(1, files!.DisposeCalls);
+        Assert.Equal(1, service!.DisposeCalls);
+    }
+
+    private sealed class TrackingDisposableService : IDisposable
+    {
+        public int DisposeCalls { get; private set; }
+        public void Dispose() => DisposeCalls++;
     }
 
     private sealed class TrackingFileProvider(IFileProvider inner) : IFileProvider, IDisposable
