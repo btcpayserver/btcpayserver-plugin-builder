@@ -4,8 +4,10 @@ namespace PluginBuilder.Util;
 
 /// <summary>
 /// Throwaway inbox services, refused at registration. Listed domains cover their subdomains too, and case does not matter.
-/// Embedded list based on a CC0 snapshot from https://github.com/disposable-email-domains/disposable-email-domains.
-/// See docs/disposable-email-domains.md for the source revision, local corrections, license and update procedure.
+/// Source: https://github.com/disposable-email-domains/disposable-email-domains
+/// Revision: ba992a0b4c867db3ff39605696bb7de9fbb2e11f. License: https://creativecommons.org/publicdomain/zero/1.0/
+/// On updates, preserve the 11 exclusions covered by DisposableEmailDomainsTests and block flashbox.5july.org instead of 5july.org.
+/// Review the changes and update the checksum in those tests.
 /// </summary>
 public static class DisposableEmailDomains
 {
