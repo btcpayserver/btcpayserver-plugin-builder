@@ -131,6 +131,13 @@ public class BuildService
                             throw new BuildServiceException("Failed to parse plugin manifest: " + err.Message);
                         }
 
+                        await using (var releaseCheck = await ConnectionFactory.Open())
+                        {
+                            if (await releaseCheck.WasVersionEverReleased(fullBuildId.PluginSlug, manifest.Version))
+                                throw new BuildServiceException(
+                                    $"Version {manifest.Version} was already released and cannot be rebuilt. Bump the version in your .csproj.");
+                        }
+
                         // The verified local artifact no longer depends on broker readiness.
                         await UpdateBuild(fullBuildId, BuildStates.WaitingUpload, staged.BuildEnvironment, manifest);
                         await UpdateBuild(fullBuildId, BuildStates.Uploading, null);
@@ -152,8 +159,19 @@ public class BuildService
                 {
                     await using var transaction = await connection.BeginTransactionAsync();
                     if (ownsIdentifier)
-                        await connection.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion,
-                            manifest.BTCPayMaxVersion, true, transaction);
+                    {
+                        try
+                        {
+                            await connection.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion,
+                                manifest.BTCPayMaxVersion, true, transaction);
+                        }
+                        catch (Npgsql.PostgresException e) when (e.SqlState == Npgsql.PostgresErrorCodes.IntegrityConstraintViolation)
+                        {
+                            throw new BuildServiceException(
+                                $"Version {manifest.Version} was already released and cannot be rebuilt. Bump the version in your .csproj.");
+                        }
+                    }
+
                     // A cancellation that won the race keeps the build failed and publishes no version.
                     if (!await connection.UpdateUnfinishedBuild(fullBuildId, BuildStates.Uploaded, publishedInfo, tx: transaction))
                     {
