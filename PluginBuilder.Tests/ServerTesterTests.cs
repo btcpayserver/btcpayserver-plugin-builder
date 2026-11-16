@@ -1,9 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Primitives;
 using PluginBuilder.Configuration;
 using PluginBuilder.HostedServices;
 using PluginBuilder.Services;
@@ -18,6 +21,90 @@ namespace PluginBuilder.Tests;
 [Collection(nameof(NonParallelizableCollectionDefinition))]
 public class ServerTesterTests(ITestOutputHelper logs) : UnitTestBase(logs)
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ServerTesterDisposesResourcesEvenWhenInitializationFails(bool failStartup, bool failConfiguration)
+    {
+        TrackingFileProvider? files = null;
+        TrackingDisposableService? service = null;
+        await using (var tester = Create())
+        {
+            tester.ConfigureServices = services =>
+            {
+                // This lifecycle check needs neither a database nor external services.
+                foreach (var service in services.Where(service => service.ServiceType == typeof(IHostedService)).ToArray())
+                    services.Remove(service);
+                services.AddSingleton<TrackingDisposableService>();
+                if (failStartup)
+                    services.AddSingleton<IHostedService, FailingStartupService>();
+            };
+            tester.ConfigureApplication = app =>
+            {
+                service = app.Services.GetRequiredService<TrackingDisposableService>();
+                files = new TrackingFileProvider(app.Environment.WebRootFileProvider);
+                app.Environment.WebRootFileProvider = files;
+                // Exercise the asset-versioning path that creates the native watcher in Razor pages.
+                var versioned = app.Services.GetRequiredService<IFileVersionProvider>()
+                    .AddFileVersionToPath("", "/main/site.css");
+                Assert.Contains("?v=", versioned);
+                if (failConfiguration)
+                    throw new InvalidOperationException("Expected configuration failure");
+            };
+
+            if (failStartup || failConfiguration)
+            {
+                var error = await Assert.ThrowsAsync<InvalidOperationException>(() => tester.Start());
+                Assert.Equal(failConfiguration ? "Expected configuration failure" : "Expected startup failure", error.Message);
+            }
+            else
+                await tester.Start();
+
+            Assert.NotNull(files);
+            Assert.True(files.WatchCalls > 0);
+            Assert.Equal(0, files.DisposeCalls);
+            Assert.NotNull(service);
+            Assert.Equal(0, service.DisposeCalls);
+            await tester.DisposeAsync();
+            Assert.Equal(1, files.DisposeCalls);
+            Assert.Equal(1, service.DisposeCalls);
+        }
+        Assert.Equal(1, files!.DisposeCalls);
+        Assert.Equal(1, service!.DisposeCalls);
+    }
+
+    private sealed class TrackingDisposableService : IDisposable
+    {
+        public int DisposeCalls { get; private set; }
+        public void Dispose() => DisposeCalls++;
+    }
+
+    private sealed class TrackingFileProvider(IFileProvider inner) : IFileProvider, IDisposable
+    {
+        public int WatchCalls { get; private set; }
+        public int DisposeCalls { get; private set; }
+        public IFileInfo GetFileInfo(string subpath) => inner.GetFileInfo(subpath);
+        public IDirectoryContents GetDirectoryContents(string subpath) => inner.GetDirectoryContents(subpath);
+        public IChangeToken Watch(string filter)
+        {
+            WatchCalls++;
+            return inner.Watch(filter);
+        }
+        public void Dispose()
+        {
+            Assert.IsAssignableFrom<IDisposable>(inner).Dispose();
+            DisposeCalls++;
+        }
+    }
+
+    private sealed class FailingStartupService : IHostedService
+    {
+        public Task StartAsync(CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Expected startup failure");
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
