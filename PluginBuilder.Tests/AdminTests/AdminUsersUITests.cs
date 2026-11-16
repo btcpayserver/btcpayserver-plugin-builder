@@ -17,6 +17,41 @@ namespace PluginBuilder.Tests.AdminTests;
 [Collection("Playwright Tests")]
 public class AdminUsersUITests(ITestOutputHelper output) : UnitTestBase(output)
 {
+    [Fact]
+    public async Task NavigationWaitsForPageScripts()
+    {
+        await using var tester = CreateTester("UsersScriptUi");
+        await tester.StartAsync();
+        await tester.LogIn(await tester.CreateServerAdminAsync());
+        var page = tester.Page!;
+        TaskCompletionSource scriptRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseScript = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await page.RouteAsync("**/js/admin-moderation.js*", async route =>
+        {
+            scriptRequested.TrySetResult();
+            await releaseScript.Task;
+            await route.FulfillAsync(new RouteFulfillOptions
+            {
+                ContentType = "application/javascript",
+                Body = "window.__moderationReady = true;"
+            });
+        });
+
+        var navigation = tester.GoToUrl("/admin/users");
+        try
+        {
+            await scriptRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            // The navigation helper must not hand back an interactive page before its script executes.
+            await Assert.ThrowsAsync<TimeoutException>(() => navigation.WaitAsync(TimeSpan.FromMilliseconds(250)));
+        }
+        finally
+        {
+            releaseScript.TrySetResult();
+        }
+        await navigation;
+        Assert.True(await page.EvaluateAsync<bool>("window.__moderationReady === true"));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

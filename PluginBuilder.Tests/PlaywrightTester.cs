@@ -172,7 +172,8 @@ public class PlaywrightTester : IAsyncDisposable
     public async Task<IResponse?> GoToUrl(string uri)
     {
         var fullUrl = new Uri(ServerUri ?? throw new InvalidOperationException(), uri).ToString();
-        return await Page?.GotoAsync(fullUrl, new PageGotoOptions { WaitUntil = WaitUntilState.Commit })!;
+        // Controls can be visible before page scripts attach their event handlers.
+        return await Page?.GotoAsync(fullUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded })!;
     }
 
     public async Task GoToLogin()
