@@ -33,6 +33,7 @@ public class ServerTester : IAsyncDisposable
     private string? _dbname;
     private string? _serverConnString;
     private WebApplication? _WebApp;
+    private IDisposable? _webRootFileProvider;
 
 
     public ServerTester(string testFolder, XUnitLogger logs)
@@ -58,32 +59,46 @@ public class ServerTester : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_WebApp != null)
+        try
         {
-            await _WebApp.StopAsync();
-            await _WebApp.DisposeAsync();
-            _WebApp = null;
+            if (_WebApp != null)
+            {
+                try { await _WebApp.StopAsync(); }
+                finally
+                {
+                    await _WebApp.DisposeAsync();
+                    _WebApp = null;
+                }
+            }
+
+            // If we are not reusing the database, drop the test database to keep environments clean
+            if (!ReuseDatabase && !string.IsNullOrEmpty(_dbname) && !string.IsNullOrEmpty(_serverConnString))
+                try
+                {
+                    await DropDatabaseAsync();
+                    Logs.LogInformation("Dropped test database {db}", _dbname);
+                }
+                catch (Exception ex)
+                {
+                    Logs.LogInformation("Could not drop test database {db}: {message}", _dbname, ex.Message);
+                }
+                finally
+                {
+                    _dbname = null;
+                    _serverConnString = null;
+                }
+
+            foreach (var d in disposables)
+                await d.DisposeAsync();
         }
-
-        // If we are not reusing the database, drop the test database to keep environments clean
-        if (!ReuseDatabase && !string.IsNullOrEmpty(_dbname) && !string.IsNullOrEmpty(_serverConnString))
-            try
-            {
-                await DropDatabaseAsync();
-                Logs.LogInformation("Dropped test database {db}", _dbname);
-            }
-            catch (Exception ex)
-            {
-                Logs.LogInformation("Could not drop test database {db}: {message}", _dbname, ex.Message);
-            }
-            finally
-            {
-                _dbname = null;
-                _serverConnString = null;
-            }
-
-        foreach (var d in disposables)
-            await d.DisposeAsync();
+        finally
+        {
+            // The generic host disposes the content-root provider, but not the web-root provider.
+            // Razor asset versioning starts a native watcher here; release it even if startup failed.
+            var files = _webRootFileProvider;
+            _webRootFileProvider = null;
+            files?.Dispose();
+        }
     }
 
     public T GetService<T>() where T : notnull
@@ -141,6 +156,7 @@ public class ServerTester : IAsyncDisposable
         host.Configure(webapp);
         ConfigureApplication?.Invoke(webapp);
 
+        _webRootFileProvider = webapp.Environment.WebRootFileProvider as IDisposable;
         disposables.Add(webapp);
         await webapp.StartAsync();
         _WebApp = webapp;
