@@ -8,6 +8,14 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"><vc:icon symbol="close" /></button>
                 </div>
                 <div class="modal-body">
+                    <div id="ModerationBanTypeField" class="mb-3" hidden>
+                        <label for="ModerationBanType" class="form-label">Type</label>
+                        <select id="ModerationBanType" name="Kind" class="form-select" required disabled>
+                            <option value="github">GitHub</option>
+                            <option value="email-domain" selected>Email domain</option>
+                            <option value="ip">IP</option>
+                        </select>
+                    </div>
                     <p id="ModerationTarget" class="fw-semibold text-break"></p>
                     <p id="ModerationDescription"></p>
                     <div id="ModerationSignupIpField" class="mb-3" hidden>
@@ -15,6 +23,12 @@
                         <code id="ModerationSignupIp"></code>
                     </div>
                     <div id="ModerationError" class="alert alert-danger" role="alert" tabindex="-1" hidden></div>
+                    <div id="ModerationBanTargetField" class="mb-3" hidden>
+                        <label for="ModerationBanTarget" id="ModerationBanTargetLabel" class="form-label">Domain</label>
+                        <input id="ModerationBanTarget" name="Target" class="form-control" required maxlength="253"
+                               autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="ModerationBanTargetHelp" disabled />
+                        <div id="ModerationBanTargetHelp" class="form-text"></div>
+                    </div>
                     <div id="ModerationNetworkField" class="mb-3" hidden>
                         <label for="ModerationNetwork" class="form-label">IP address or network <span class="text-danger" aria-hidden="true">*</span></label>
                         <input id="ModerationNetwork" name="Network" class="form-control" required minlength="1" maxlength="100" placeholder="203.0.113.42 or 2001:db8::/64" aria-describedby="ModerationNetworkHelp" disabled />

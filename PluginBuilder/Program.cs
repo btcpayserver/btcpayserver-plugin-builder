@@ -273,6 +273,7 @@ public class Program
         services.AddSingleton<ExternalAccountVerificationService>();
         services.AddSingleton<AccountModerationService>();
         services.AddSingleton<IpBanService>();
+        services.AddSingleton<EmailDomainBanService>();
         services.AddSingleton<GithubIdentityService>();
         services.AddSingleton<EmailService>();
         services.AddSingleton<NostrService>();

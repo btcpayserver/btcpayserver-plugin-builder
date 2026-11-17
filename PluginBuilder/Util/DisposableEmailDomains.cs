@@ -1,9 +1,11 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace PluginBuilder.Util;
 
 /// <summary>
-/// Throwaway inbox services, refused at registration. Listed domains cover their subdomains too, and case does not matter.
+/// Throwaway inbox services, refused at registration. Additional domains can be managed in Admin > Moderation.
+/// Listed domains cover their subdomains too, and case does not matter.
 /// Source: https://github.com/disposable-email-domains/disposable-email-domains
 /// Revision: ba992a0b4c867db3ff39605696bb7de9fbb2e11f. License: https://creativecommons.org/publicdomain/zero/1.0/
 /// On updates, preserve the 11 exclusions covered by DisposableEmailDomainsTests and block flashbox.5july.org instead of 5july.org.
@@ -21,6 +23,10 @@ public static class DisposableEmailDomains
     // Characters that IDNA reads as a dot between labels, as mail software does when it sends to the address.
     private static readonly char[] IdnaDots = ['\u3002', '\uFF0E', '\uFF61'];
 
+    private static readonly Regex BareDomain = new(
+        @"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$",
+        RegexOptions.CultureInvariant);
+
     private static string[] LoadDomains()
     {
         using var stream = typeof(DisposableEmailDomains).Assembly
@@ -30,7 +36,16 @@ public static class DisposableEmailDomains
         return reader.ReadToEnd().Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
     }
 
-    public static bool IsDisposable(string? email)
+    public static string? NormalizeDomain(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || !TryNormalizeDomain(value, out var domain) || domain.Length > 253)
+            return null;
+
+        domain = domain.ToLowerInvariant();
+        return BareDomain.IsMatch(domain) && Uri.CheckHostName(domain) == UriHostNameType.Dns ? domain : null;
+    }
+
+    public static bool IsDisposable(string? email, IReadOnlySet<string>? additionalDomains = null)
     {
         // Bound the work even when IDNA conversion fails and falls back to scanning every suffix.
         if (email is null || email.Length > MaxEmailLength)
@@ -40,24 +55,11 @@ public static class DisposableEmailDomains
         if (at < 0)
             return false;
 
-        var domain = email[(at + 1)..].Trim();
-        // Map them to '.' first, so the lookup below still sees the labels when the name is not valid IDNA.
-        foreach (var dot in IdnaDots)
-            domain = domain.Replace(dot, '.');
-        domain = domain.TrimEnd('.');
-        try
-        {
-            // "mailinator\u3002com" and full-width letters reach the same inbox as "mailinator.com".
-            domain = new IdnMapping().GetAscii(domain);
-        }
-        catch (ArgumentException)
-        {
-            // Not a valid international domain name: check it as written.
-        }
+        TryNormalizeDomain(email[(at + 1)..], out var domain);
 
         while (domain.Length > 0)
         {
-            if (Lookup.Contains(domain))
+            if (Lookup.Contains(domain) || additionalDomains?.Contains(domain) == true)
                 return true;
             var dot = domain.IndexOf('.');
             if (dot < 0)
@@ -66,5 +68,25 @@ public static class DisposableEmailDomains
         }
 
         return false;
+    }
+
+    private static bool TryNormalizeDomain(string value, out string domain)
+    {
+        domain = value.Trim();
+        // Map them to '.' first, so the lookup below still sees the labels when the name is not valid IDNA.
+        foreach (var dot in IdnaDots)
+            domain = domain.Replace(dot, '.');
+        domain = domain.TrimEnd('.');
+        try
+        {
+            // "mailinator\u3002com" and full-width letters reach the same inbox as "mailinator.com".
+            domain = new IdnMapping().GetAscii(domain);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            // Email checks still scan the suffixes as written when IDNA conversion fails.
+            return false;
+        }
     }
 }

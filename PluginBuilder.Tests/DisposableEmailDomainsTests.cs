@@ -81,6 +81,82 @@ public class DisposableEmailDomainsTests
         Assert.Empty(DisposableEmailDomains.Domains.GroupBy(d => d).Where(g => g.Count() > 1).Select(g => g.Key));
     }
 
+    [Theory]
+    [InlineData(" TEMP.example. ", "temp.example")]
+    [InlineData("b\u00fccher\u3002example", "xn--bcher-kva.example")]
+    [InlineData("\uFF54\uFF45\uFF4D\uFF50\uFF0Eexample\uFF61", "temp.example")]
+    [InlineData("temp\uFF61example\u3002", "temp.example")]
+    public void AValidDomainIsNormalized(string value, string expected) =>
+        Assert.Equal(expected, DisposableEmailDomains.NormalizeDomain(value));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \r\n\n\t")]
+    [InlineData("user@temp.example")]
+    [InlineData("https://temp.example")]
+    [InlineData("temp.example/path")]
+    [InlineData("temp.example:443")]
+    [InlineData("*.temp.example")]
+    [InlineData("temp.example,other.example")]
+    [InlineData("temp..example")]
+    [InlineData("-temp.example")]
+    [InlineData("temp-.example")]
+    [InlineData("temp_example.com")]
+    [InlineData("localhost")]
+    [InlineData("127.0.0.1")]
+    [InlineData("[2001:db8::1]")]
+    [InlineData("xn--.example")]
+    [InlineData("valid.example\ntemp.example")]
+    [InlineData("temp.example\ntemp.example")]
+    [InlineData("temp.example\r\nTEMP.example")]
+    public void AnInvalidOrMultipleDomainInputIsRejected(string? value) =>
+        Assert.Null(DisposableEmailDomains.NormalizeDomain(value));
+
+    [Theory]
+    [InlineData(63, true)]
+    [InlineData(64, false)]
+    public void DomainNormalizationRespectsTheDnsLabelLength(int labelLength, bool expected)
+    {
+        Assert.Equal(expected, DisposableEmailDomains.NormalizeDomain(new string('a', labelLength) + ".example") is not null);
+    }
+
+    [Theory]
+    [InlineData(253, true)]
+    [InlineData(254, false)]
+    public void DomainNormalizationRespectsTheDnsHostnameLength(int domainLength, bool expected)
+    {
+        var prefix = string.Concat(Enumerable.Repeat(new string('a', 63) + ".", 3));
+        var domain = prefix + new string('b', domainLength - prefix.Length);
+        Assert.Equal(expected, DisposableEmailDomains.NormalizeDomain(domain) is not null);
+    }
+
+    [Theory]
+    [InlineData("someone@temp.example", true)]
+    [InlineData("someone@INBOX.TEMP.EXAMPLE", true)]
+    [InlineData("someone@temp.example.", true)]
+    [InlineData("someone@temp\u3002example", true)]
+    [InlineData("someone@b\u00fccher.example", true)]
+    [InlineData("someone@xn--\u3002temp.example", true)]
+    [InlineData("someone@nottemp.example", false)]
+    [InlineData("someone@temp.example.org", false)]
+    [InlineData("someone@example.org", false)]
+    public void AdditionalDomainsUseTheSameEmailMatchingRules(string email, bool expected)
+    {
+        var additionalDomains = new HashSet<string>(["temp.example", "xn--bcher-kva.example"], StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(expected, DisposableEmailDomains.IsDisposable(email, additionalDomains));
+    }
+
+    [Fact]
+    public void AdditionalDomainsDoNotReplaceTheDefaultList()
+    {
+        var additionalDomains = new HashSet<string>(["temp.example"], StringComparer.OrdinalIgnoreCase);
+        Assert.True(DisposableEmailDomains.IsDisposable("someone@mailinator.com", additionalDomains));
+        additionalDomains.Clear();
+        Assert.True(DisposableEmailDomains.IsDisposable("someone@mailinator.com", additionalDomains));
+        Assert.False(DisposableEmailDomains.IsDisposable("someone@temp.example", additionalDomains));
+    }
+
     [Fact]
     public void TheListMatchesThePinnedSnapshotWithLocalCorrections()
     {

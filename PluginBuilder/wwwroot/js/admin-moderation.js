@@ -7,30 +7,69 @@
     const form = document.getElementById('ModerationForm');
     const reason = document.getElementById('ModerationReason');
     const network = document.getElementById('ModerationNetwork');
+    const banType = document.getElementById('ModerationBanType');
+    const banTarget = document.getElementById('ModerationBanTarget');
+    const description = document.getElementById('ModerationDescription');
     const error = document.getElementById('ModerationError');
     const submit = document.getElementById('ModerationSubmit');
     let pending = false;
+    let creatingBan = false;
+
+    function updateBanType() {
+        const isIp = banType.value === 'ip';
+        const isGithub = banType.value === 'github';
+        document.getElementById('ModerationNetworkField').hidden = !isIp;
+        network.disabled = !isIp;
+        document.getElementById('ModerationBanTargetField').hidden = isIp;
+        banTarget.disabled = isIp;
+        document.getElementById('ModerationBanTargetLabel').textContent = isGithub ? 'GitHub username or user ID' : 'Domain';
+        banTarget.placeholder = isGithub ? 'username or 12345678' : 'example.com';
+        banTarget.maxLength = isGithub ? 40 : 253;
+        document.getElementById('ModerationBanTargetHelp').textContent = isGithub
+            ? 'Use a numeric user ID to keep the ban across username changes.'
+            : 'The domain and its subdomains are included.';
+        description.textContent = isIp
+            ? 'Refuse new registrations from this address or network. Existing accounts keep access.'
+            : isGithub
+                ? 'Block this GitHub identity from verification and builds. No IP ban is created.'
+                : 'Refuse new registrations from this email domain. Existing accounts keep access. The default blocklist stays active.';
+    }
+
+    banType.addEventListener('change', () => {
+        banTarget.value = '';
+        network.value = '';
+        error.hidden = true;
+        error.textContent = '';
+        updateBanType();
+    });
 
     modal.addEventListener('show.bs.modal', event => {
         const button = event.relatedTarget;
         form.reset();
+        creatingBan = button.dataset.createBan === 'true';
         form.action = button.dataset.moderationAction;
         document.getElementById('ModerationTitle').textContent = button.dataset.title;
-        document.getElementById('ModerationTarget').textContent = button.dataset.target || '';
-        document.getElementById('ModerationDescription').textContent = button.dataset.description;
+        const target = document.getElementById('ModerationTarget');
+        target.textContent = button.dataset.target || '';
+        target.hidden = !target.textContent;
+        description.textContent = button.dataset.description || '';
+        document.getElementById('ModerationBanTypeField').hidden = !creatingBan;
+        banType.disabled = !creatingBan;
+        document.getElementById('ModerationBanTargetField').hidden = true;
+        banTarget.disabled = true;
         const signupIp = button.dataset.signupIp || '';
         document.getElementById('ModerationSignupIpField').hidden = !signupIp;
         document.getElementById('ModerationSignupIp').textContent = signupIp;
-        const needsNetwork = button.dataset.network === 'true';
-        document.getElementById('ModerationNetworkField').hidden = !needsNetwork;
-        network.disabled = !needsNetwork;
+        document.getElementById('ModerationNetworkField').hidden = true;
+        network.disabled = true;
+        if (creatingBan) updateBanType();
         submit.textContent = button.dataset.submitLabel;
         submit.classList.toggle('btn-danger', button.dataset.danger === 'true');
         submit.classList.toggle('btn-primary', button.dataset.danger !== 'true');
         error.hidden = true;
         error.textContent = '';
     });
-    modal.addEventListener('shown.bs.modal', () => (network.disabled ? reason : network).focus());
+    modal.addEventListener('shown.bs.modal', () => (creatingBan ? banType : reason).focus());
     modal.addEventListener('hide.bs.modal', event => {
         if (pending) event.preventDefault();
     });
@@ -46,7 +85,9 @@
         let navigating = false;
         try {
             const data = new FormData(form);
+            if (creatingBan && banType.value === 'ip') data.set('Target', network.value);
             data.set('returnUrl', window.location.pathname + window.location.search);
+            banType.disabled = true;
             const response = await fetch(form.action, {
                 method: 'POST', body: data, credentials: 'same-origin',
                 headers: { 'Accept': 'application/json' }
@@ -70,6 +111,7 @@
             if (!navigating) {
                 pending = false;
                 submit.textContent = label;
+                banType.disabled = !creatingBan;
                 form.querySelectorAll('button').forEach(button => button.disabled = false);
             }
         }
