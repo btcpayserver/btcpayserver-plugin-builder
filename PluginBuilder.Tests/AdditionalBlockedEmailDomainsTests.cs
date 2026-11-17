@@ -24,6 +24,38 @@ public class AdditionalBlockedEmailDomainsTests(ITestOutputHelper output) : Unit
     private const string CreatePath = PagePath + "/bans";
     private const string Refusal = "Please provide a valid email address.";
 
+    [Fact]
+    public async Task AdditionalBanLookupPreservesCanonicalDomainAndSubdomainMatching()
+    {
+        await using var tester = await StartServer();
+        var service = tester.GetService<EmailDomainBanService>();
+        await service.Create("temp.example", "disposable service", null, null);
+        await service.Create("bücher.example", "disposable service", null, null);
+        await service.Create("kelvin.example", "disposable service", null, null);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await using var tx = await conn.BeginTransactionAsync();
+
+        foreach (var email in new[]
+                 {
+                     "someone@temp.example", "someone@INBOX.TEMP.EXAMPLE", "someone@temp.example.",
+                     "someone@temp\u3002example", "someone@temp\uFF0Eexample", "someone@temp\uFF61example",
+                     "someone@\uFF54\uFF45\uFF4D\uFF50\uFF0Eexample\uFF61", "someone@bücher.example", "someone@BÜCHER.EXAMPLE.",
+                     "someone@inbox.xn--bcher-kva.example", "someone@xn--\u3002TEMP.EXAMPLE",
+                     "someone@bad\0.TEMP.EXAMPLE",
+                     new string('a', 256 - "@temp.example".Length) + "@temp.example"
+                 })
+            Assert.True(await service.IsBanned(conn, tx, email), email);
+
+        foreach (var email in new[]
+                 {
+                     "someone@nottemp.example", "someone@temp.example.org", "someone@notbücher.example",
+                     "someone@xn--bcher-kva.example.org", "someone@xn--.\u212AELVIN.EXAMPLE",
+                     "someone@bad\0.unlisted.example", "someone@example.org", "someone@", "temp.example",
+                     new string('a', 257 - "@temp.example".Length) + "@temp.example"
+                 })
+            Assert.False(await service.IsBanned(conn, tx, email), email);
+    }
+
     [Theory]
     [InlineData("email_domain.banned")]
     [InlineData("email_domain.ban_revoked")]

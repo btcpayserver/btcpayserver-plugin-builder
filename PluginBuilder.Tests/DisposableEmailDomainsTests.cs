@@ -64,6 +64,7 @@ public class DisposableEmailDomainsTests
     [InlineData("someone@flashbox.5july.org.example.org")]
     [InlineData("someone@b\u00FCcher.example")]
     [InlineData("someone@mailinator..com")]
+    [InlineData("someone@xn--.\u212AASHRE.COM")]
     [InlineData("mailinator.com@example.org")]
     [InlineData("someone@")]
     [InlineData("mailinator.com")]
@@ -132,29 +133,35 @@ public class DisposableEmailDomainsTests
     }
 
     [Theory]
-    [InlineData("someone@temp.example", true)]
-    [InlineData("someone@INBOX.TEMP.EXAMPLE", true)]
-    [InlineData("someone@temp.example.", true)]
-    [InlineData("someone@temp\u3002example", true)]
-    [InlineData("someone@b\u00fccher.example", true)]
-    [InlineData("someone@xn--\u3002temp.example", true)]
-    [InlineData("someone@nottemp.example", false)]
-    [InlineData("someone@temp.example.org", false)]
-    [InlineData("someone@example.org", false)]
-    public void AdditionalDomainsUseTheSameEmailMatchingRules(string email, bool expected)
-    {
-        var additionalDomains = new HashSet<string>(["temp.example", "xn--bcher-kva.example"], StringComparer.OrdinalIgnoreCase);
-        Assert.Equal(expected, DisposableEmailDomains.IsDisposable(email, additionalDomains));
-    }
+    [InlineData("someone@temp.example", new[] { "temp.example", "example" })]
+    [InlineData("someone@INBOX.TEMP.EXAMPLE", new[] { "inbox.temp.example", "temp.example", "example" })]
+    [InlineData("someone@temp.example.", new[] { "temp.example", "example" })]
+    [InlineData("someone@temp\u3002example", new[] { "temp.example", "example" })]
+    [InlineData("someone@\uFF54\uFF45\uFF4D\uFF50\uFF0Eexample\uFF61", new[] { "temp.example", "example" })]
+    [InlineData("someone@b\u00fccher.example", new[] { "xn--bcher-kva.example", "example" })]
+    [InlineData("someone@xn--\u3002TEMP.EXAMPLE", new[] { "xn--.TEMP.EXAMPLE", "TEMP.EXAMPLE", "EXAMPLE" })]
+    [InlineData("someone@nottemp.example", new[] { "nottemp.example", "example" })]
+    [InlineData("someone@temp.example.org", new[] { "temp.example.org", "example.org", "org" })]
+    public void EmailDomainSuffixesPreserveNormalizationAndFallback(string email, string[] expected) =>
+        Assert.Equal(expected, DisposableEmailDomains.GetDomainSuffixes(email));
 
-    [Fact]
-    public void AdditionalDomainsDoNotReplaceTheDefaultList()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("temp.example")]
+    [InlineData("someone@")]
+    public void EmailsWithoutADomainHaveNoSuffixes(string? email) =>
+        Assert.Empty(DisposableEmailDomains.GetDomainSuffixes(email));
+
+    [Theory]
+    [InlineData(256, true)]
+    [InlineData(257, false)]
+    [InlineData(16384, false)]
+    public void EmailDomainSuffixesRespectTheEmailLengthBound(int length, bool expected)
     {
-        var additionalDomains = new HashSet<string>(["temp.example"], StringComparer.OrdinalIgnoreCase);
-        Assert.True(DisposableEmailDomains.IsDisposable("someone@mailinator.com", additionalDomains));
-        additionalDomains.Clear();
-        Assert.True(DisposableEmailDomains.IsDisposable("someone@mailinator.com", additionalDomains));
-        Assert.False(DisposableEmailDomains.IsDisposable("someone@temp.example", additionalDomains));
+        const string suffix = "@temp.example";
+        var email = new string('a', length - suffix.Length) + suffix;
+        Assert.Equal(expected ? new[] { "temp.example", "example" } : [], DisposableEmailDomains.GetDomainSuffixes(email));
     }
 
     [Fact]

@@ -226,12 +226,13 @@ public class AdminUsersUITests(ITestOutputHelper output) : UnitTestBase(output)
         var modal = page.Locator("#UserModerationModal");
         await page.Locator("#Ban").ClickAsync();
         await modal.Locator("#ModerationBanType").SelectOptionAsync("ip");
-        await modal.Locator("#ModerationNetwork").FillAsync("198.51.100.0/24");
+        await modal.Locator("#ModerationBanTarget").FillAsync("198.51.100.0/24");
         await modal.Locator("#ModerationReason").FillAsync("confirmed abuse");
         await modal.Locator("#ModerationSubmit").ClickAsync();
         await Expect(modal.Locator("#ModerationError")).ToBeVisibleAsync();
+        await Expect(modal.Locator("#ModerationBanTarget")).ToHaveValueAsync("198.51.100.0/24");
         Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM ip_bans"));
-        await modal.Locator("#ModerationNetwork").FillAsync("2001:db8:42::123/64");
+        await modal.Locator("#ModerationBanTarget").FillAsync("2001:db8:42::123/64");
         await modal.Locator("#ModerationSubmit").ClickAsync();
         await Expect(page.Locator("#Bans")).ToContainTextAsync("2001:db8:42::/64");
         await Expect(page).ToHaveURLAsync(new Regex("/admin/moderation\\?kind=ip$"));

@@ -6,7 +6,6 @@
     const modal = document.getElementById('UserModerationModal');
     const form = document.getElementById('ModerationForm');
     const reason = document.getElementById('ModerationReason');
-    const network = document.getElementById('ModerationNetwork');
     const banType = document.getElementById('ModerationBanType');
     const banTarget = document.getElementById('ModerationBanTarget');
     const description = document.getElementById('ModerationDescription');
@@ -18,16 +17,14 @@
     function updateBanType() {
         const isIp = banType.value === 'ip';
         const isGithub = banType.value === 'github';
-        document.getElementById('ModerationNetworkField').hidden = !isIp;
-        network.disabled = !isIp;
-        document.getElementById('ModerationBanTargetField').hidden = isIp;
-        banTarget.disabled = isIp;
-        document.getElementById('ModerationBanTargetLabel').textContent = isGithub ? 'GitHub username or user ID' : 'Domain';
-        banTarget.placeholder = isGithub ? 'username or 12345678' : 'example.com';
-        banTarget.maxLength = isGithub ? 40 : 253;
-        document.getElementById('ModerationBanTargetHelp').textContent = isGithub
-            ? 'Use a numeric user ID to keep the ban across username changes.'
-            : 'The domain and its subdomains are included.';
+        document.getElementById('ModerationBanTargetLabel').textContent = isIp
+            ? 'IP address or network' : isGithub ? 'GitHub username or user ID' : 'Domain';
+        banTarget.placeholder = isIp ? '203.0.113.42 or 2001:db8::/64' : isGithub ? 'username or 12345678' : 'example.com';
+        banTarget.maxLength = isIp ? 100 : isGithub ? 40 : 253;
+        document.getElementById('ModerationBanTargetHelp').textContent = isIp
+            ? 'Exact IPv4 /32 or IPv6 /128 by default. Enter /64 explicitly to ban an IPv6 subnet.'
+            : isGithub ? 'Use a numeric user ID to keep the ban across username changes.'
+                : 'The domain and its subdomains are included.';
         description.textContent = isIp
             ? 'Refuse new registrations from this address or network. Existing accounts keep access.'
             : isGithub
@@ -37,7 +34,6 @@
 
     banType.addEventListener('change', () => {
         banTarget.value = '';
-        network.value = '';
         error.hidden = true;
         error.textContent = '';
         updateBanType();
@@ -55,13 +51,11 @@
         description.textContent = button.dataset.description || '';
         document.getElementById('ModerationBanTypeField').hidden = !creatingBan;
         banType.disabled = !creatingBan;
-        document.getElementById('ModerationBanTargetField').hidden = true;
-        banTarget.disabled = true;
+        document.getElementById('ModerationBanTargetField').hidden = !creatingBan;
+        banTarget.disabled = !creatingBan;
         const signupIp = button.dataset.signupIp || '';
         document.getElementById('ModerationSignupIpField').hidden = !signupIp;
         document.getElementById('ModerationSignupIp').textContent = signupIp;
-        document.getElementById('ModerationNetworkField').hidden = true;
-        network.disabled = true;
         if (creatingBan) updateBanType();
         submit.textContent = button.dataset.submitLabel;
         submit.classList.toggle('btn-danger', button.dataset.danger === 'true');
@@ -85,7 +79,6 @@
         let navigating = false;
         try {
             const data = new FormData(form);
-            if (creatingBan && banType.value === 'ip') data.set('Target', network.value);
             data.set('returnUrl', window.location.pathname + window.location.search);
             banType.disabled = true;
             const response = await fetch(form.action, {

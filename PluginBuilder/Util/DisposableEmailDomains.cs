@@ -45,29 +45,30 @@ public static class DisposableEmailDomains
         return BareDomain.IsMatch(domain) && Uri.CheckHostName(domain) == UriHostNameType.Dns ? domain : null;
     }
 
-    public static bool IsDisposable(string? email, IReadOnlySet<string>? additionalDomains = null)
+    public static bool IsDisposable(string? email) =>
+        GetDomainSuffixes(email).Any(Lookup.Contains);
+
+    public static IEnumerable<string> GetDomainSuffixes(string? email)
     {
         // Bound the work even when IDNA conversion fails and falls back to scanning every suffix.
         if (email is null || email.Length > MaxEmailLength)
-            return false;
+            yield break;
 
         var at = email.LastIndexOf('@');
         if (at < 0)
-            return false;
+            yield break;
 
-        TryNormalizeDomain(email[(at + 1)..], out var domain);
+        if (TryNormalizeDomain(email[(at + 1)..], out var domain))
+            domain = domain.ToLowerInvariant();
 
         while (domain.Length > 0)
         {
-            if (Lookup.Contains(domain) || additionalDomains?.Contains(domain) == true)
-                return true;
+            yield return domain;
             var dot = domain.IndexOf('.');
             if (dot < 0)
-                return false;
+                yield break;
             domain = domain[(dot + 1)..];
         }
-
-        return false;
     }
 
     private static bool TryNormalizeDomain(string value, out string domain)

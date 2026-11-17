@@ -29,11 +29,6 @@
                                autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="ModerationBanTargetHelp" disabled />
                         <div id="ModerationBanTargetHelp" class="form-text"></div>
                     </div>
-                    <div id="ModerationNetworkField" class="mb-3" hidden>
-                        <label for="ModerationNetwork" class="form-label">IP address or network <span class="text-danger" aria-hidden="true">*</span></label>
-                        <input id="ModerationNetwork" name="Network" class="form-control" required minlength="1" maxlength="100" placeholder="203.0.113.42 or 2001:db8::/64" aria-describedby="ModerationNetworkHelp" disabled />
-                        <div id="ModerationNetworkHelp" class="form-text">Exact IPv4 /32 or IPv6 /128 by default. Enter /64 explicitly to ban an IPv6 subnet.</div>
-                    </div>
                     <div class="mb-3">
                         <label for="ModerationReason" class="form-label">Reason <span class="text-danger" aria-hidden="true">*</span></label>
                         <textarea id="ModerationReason" name="Reason" class="form-control" rows="3" required maxlength="1000"></textarea>

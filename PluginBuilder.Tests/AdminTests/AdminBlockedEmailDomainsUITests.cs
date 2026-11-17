@@ -93,7 +93,7 @@ public class AdminBlockedEmailDomainsUITests(ITestOutputHelper output) : UnitTes
         {
             await page.Locator("#Ban").ClickAsync();
             await modal.Locator("#ModerationBanType").SelectOptionAsync(kind);
-            await modal.Locator(kind == "ip" ? "#ModerationNetwork" : "#ModerationBanTarget").FillAsync(target);
+            await modal.Locator("#ModerationBanTarget").FillAsync(target);
             await modal.Locator("#ModerationReason").FillAsync(reason);
             await modal.Locator("#ModerationSubmit").ClickAsync();
             await Expect(modal).ToBeHiddenAsync();

@@ -13,9 +13,16 @@ public sealed class EmailDomainBanService(DBConnectionFactory connections, Accou
     public async Task<bool> IsBanned(NpgsqlConnection conn, NpgsqlTransaction tx, string email,
         CancellationToken ct = default)
     {
-        var domains = await conn.QueryAsync<string>(new CommandDefinition("SELECT domain FROM email_domain_bans",
-            transaction: tx, cancellationToken: ct));
-        return DisposableEmailDomains.IsDisposable(email, domains.ToHashSet(StringComparer.OrdinalIgnoreCase));
+        // Stored domains are ASCII; PostgreSQL text cannot represent NUL in a failed IDNA prefix.
+        var domains = DisposableEmailDomains.GetDomainSuffixes(email)
+            .Where(domain => domain.All(character => char.IsAscii(character) && character != '\0'))
+            .Select(domain => domain.ToLowerInvariant()).ToArray();
+        if (domains.Length == 0)
+            return false;
+
+        return await conn.ExecuteScalarAsync<bool>(new CommandDefinition("""
+            SELECT EXISTS(SELECT 1 FROM email_domain_bans WHERE domain = ANY(@domains))
+            """, new { domains }, tx, cancellationToken: ct));
     }
 
     public async Task<long> Create(string domain, string reason, string? actor, string? tokenId,
