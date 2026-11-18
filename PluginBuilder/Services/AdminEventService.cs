@@ -10,6 +10,7 @@ public class AdminEventService(DBConnectionFactory connections)
         "user.registered", "user.github_verified", "user.first_build_triggered", "user.locked", "user.unlocked",
         "user.burned", "github.banned", "github.ban_applied", "github.ban_revoked",
         "ip.banned", "ip.ban_revoked",
+        "email_domain.banned", "email_domain.ban_revoked",
         "build.triggered", "build.succeeded", "build.failed", "build.cancelled", "listing.requested", "listing.approved", "listing.rejected",
         "plugin.visibility_changed", "version.revoked",
         "admin.token_created", "admin.token_revoked"

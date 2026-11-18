@@ -1,3 +1,4 @@
+using System.Globalization;
 using Dapper;
 using Newtonsoft.Json.Linq;
 using Npgsql;
@@ -10,6 +11,69 @@ public class GithubIdentityService(DBConnectionFactory connections, AccountModer
     public const string SuspendedMessage = "This account is suspended from creating builds.";
     public const string VerificationRequiredMessage = "Verify your GitHub account before creating a build.";
     private const string BanReason = "Verified GitHub identity is banned by a server admin.";
+
+    public static string? NormalizeTarget(string? value)
+    {
+        value = value?.Trim();
+        if (string.IsNullOrEmpty(value))
+            return null;
+        if (value.All(char.IsAsciiDigit))
+            return long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0
+                ? id.ToString(CultureInfo.InvariantCulture) : null;
+
+        var login = value.StartsWith('@') ? value[1..] : value;
+        if (login.Length is < 1 or > 39 || !char.IsAsciiLetterOrDigit(login[0]) ||
+            !char.IsAsciiLetterOrDigit(login[^1]) || login.Contains("--", StringComparison.Ordinal) ||
+            login.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '-'))
+            return null;
+        return "@" + login.ToLowerInvariant();
+    }
+
+    public async Task<long> Create(string target, string reason, string? actor, string? tokenId,
+        CancellationToken ct = default)
+    {
+        target = NormalizeTarget(target) ?? throw new ArgumentException("Invalid GitHub username or user ID.", nameof(target));
+        string? login = target.StartsWith('@') ? target[1..] : null;
+        long? githubUserId = login is null ? long.Parse(target, CultureInfo.InvariantCulture) : null;
+        await using var conn = await connections.Open(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await AccountModerationService.Serialize(conn, tx, ct);
+        var protectsAdmin = await conn.ExecuteScalarAsync<bool>(new CommandDefinition("""
+            SELECT EXISTS(
+                SELECT 1 FROM "AspNetUsers" u
+                JOIN "AspNetUserRoles" ur ON ur."UserId" = u."Id"
+                JOIN "AspNetRoles" r ON r."Id" = ur."RoleId"
+                WHERE r."Name" = 'ServerAdmin' AND (
+                    u."GithubUserId" = @githubUserId OR
+                    (lower(u."AccountDetail"->>'github') = @login
+                     AND (u."GithubUserId" IS NOT NULL OR NULLIF(u."GithubGistUrl", '') IS NOT NULL))))
+            """, new { githubUserId, login }, tx, cancellationToken: ct));
+        if (protectsAdmin)
+            throw new ProtectedIdentityException();
+
+        var id = await conn.QuerySingleOrDefaultAsync<long?>(new CommandDefinition("""
+            INSERT INTO github_bans (github_user_id, github_login, reason, banned_by)
+            VALUES (@githubUserId, @login, @reason, @actor) ON CONFLICT DO NOTHING RETURNING id
+            """, new { githubUserId, login = login ?? "", reason = reason.Trim(), actor }, tx, cancellationToken: ct));
+        if (id is null)
+            return await conn.QuerySingleAsync<long>(new CommandDefinition("""
+                SELECT id FROM github_bans WHERE github_user_id = @githubUserId
+                  OR (github_user_id IS NULL AND lower(github_login) = @login)
+                ORDER BY github_user_id NULLS LAST LIMIT 1
+                """, new { githubUserId, login }, tx, cancellationToken: ct));
+
+        await moderation.Emit(conn, tx, "github.banned", new JObject
+        {
+            ["banId"] = id.Value, ["githubUserId"] = githubUserId, ["githubLogin"] = login,
+            ["reason"] = reason.Trim()
+        }, actor, tokenId, ct);
+        await tx.CommitAsync(ct);
+        return id.Value;
+    }
+
+    public sealed class ProtectedIdentityException() : InvalidOperationException("Server admin GitHub identities cannot be banned.")
+    {
+    }
 
     private static Task<Account?> ReadAccount(NpgsqlConnection conn, string userId, CancellationToken ct) =>
         conn.QuerySingleOrDefaultAsync<Account>(new CommandDefinition("""

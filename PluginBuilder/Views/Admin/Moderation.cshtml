@@ -2,18 +2,36 @@
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(AdminNavPages.Moderation, "Moderation");
+    var typeFilterLabel = Model.Kind switch
+    {
+        "github" => "GitHub",
+        "email-domain" => "Email domain",
+        "ip" => "IP",
+        _ => "All types"
+    };
 }
 
 <div id="AdminModeration">
-    <div class="d-sm-flex align-items-center justify-content-between mb-4">
-        <h2 class="mb-0">@ViewData["Title"]</h2>
-    </div>
-    <section id="Bans" aria-labelledby="BansTitle">
-        <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
-            <h3 id="BansTitle" class="h5 mb-0">Bans</h3>
-            <button id="BanIp" type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#UserModerationModal"
-                    data-moderation-action="@Url.Action("BanIp")" data-title="Ban IP" data-network="true" data-submit-label="Ban IP"
-                    data-description="Refuse new registrations from this address or network. Existing accounts are not locked. The ban remains until manually revoked.">Ban IP</button>
+    <header class="d-flex align-items-center justify-content-between gap-3 mb-4">
+        <h2 class="mb-0">Moderation</h2>
+        <button id="Ban" type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#UserModerationModal"
+                data-create-ban="true" data-moderation-action="@Url.Action("CreateBan")" data-title="Ban" data-submit-label="Ban">Ban</button>
+    </header>
+
+    <section id="Bans" aria-label="Bans">
+        <div class="dropdown flex-shrink-0 mb-3">
+            <button class="btn btn-secondary dropdown-toggle text-nowrap" id="TypeOptionsToggle" type="button"
+                    data-bs-toggle="dropdown" aria-expanded="false">@typeFilterLabel</button>
+            <div class="dropdown-menu" aria-labelledby="TypeOptionsToggle">
+                <a class="dropdown-item @(Model.Kind is null ? "active" : null)" asp-action="Moderation"
+                   asp-route-kind="" asp-route-count="@Model.Count">All types</a>
+                <a class="dropdown-item @(Model.Kind == "github" ? "active" : null)" asp-action="Moderation"
+                   asp-route-kind="github" asp-route-count="@Model.Count">GitHub</a>
+                <a class="dropdown-item @(Model.Kind == "email-domain" ? "active" : null)" asp-action="Moderation"
+                   asp-route-kind="email-domain" asp-route-count="@Model.Count">Email domain</a>
+                <a class="dropdown-item @(Model.Kind == "ip" ? "active" : null)" asp-action="Moderation"
+                   asp-route-kind="ip" asp-route-count="@Model.Count">IP</a>
+            </div>
         </div>
         @if (Model.Bans.Count == 0)
         {
@@ -23,44 +41,41 @@
         {
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
-                    <thead><tr><th scope="col">Type</th><th scope="col">Identity or network</th><th scope="col">Reason</th><th scope="col">Banned by</th><th scope="col">Created</th><th scope="col" class="text-end">Actions</th></tr></thead>
+                    <thead><tr><th scope="col">Type</th><th scope="col">Target</th><th scope="col">Reason</th><th scope="col">Date</th><th scope="col" class="text-end">Action</th></tr></thead>
                     <tbody>
                     @foreach (var ban in Model.Bans)
                     {
                         var isGithub = ban.Kind == "github";
+                        var kindLabel = ban.Kind switch { "github" => "GitHub", "email-domain" => "Email domain", _ => "IP" };
                         var target = isGithub ? (!string.IsNullOrEmpty(ban.Target) ? $"@{ban.Target}" : $"ID {ban.GithubUserId}") : ban.Target;
                         var actionTarget = target + (isGithub && !string.IsNullOrEmpty(ban.Target) && ban.GithubUserId is not null ? $" · ID {ban.GithubUserId}" : "");
+                        var description = ban.Kind switch
+                        {
+                            "github" => "Remove this GitHub ban. Accounts stay locked until an admin unlocks them separately. Other bans remain active.",
+                            "email-domain" => "Remove this additional domain ban. The default blocklist and other domain bans remain active. Existing accounts are not affected.",
+                            _ => "Allow new registrations from this network unless another ban covers it. This does not unlock accounts or remove other bans."
+                        };
                         <tr data-ban-kind="@ban.Kind" data-ban-id="@ban.Id">
-                            <td>@(isGithub ? "GitHub" : "IP")</td>
-                            <td>
-                                @if (isGithub)
+                            <td class="text-nowrap">@kindLabel</td>
+                            <td class="text-break">
+                                <span class="@(isGithub ? "" : "font-monospace")">@target</span>
+                                @if (isGithub && !string.IsNullOrEmpty(ban.Target) && ban.GithubUserId is { } githubId)
                                 {
-                                    @target
-                                    @if (!string.IsNullOrEmpty(ban.Target) && ban.GithubUserId is { } githubId)
-                                    {
-                                        <div class="small text-muted">ID @githubId</div>
-                                    }
-                                    else if (ban.GithubUserId is null)
-                                    {
-                                        <div class="small text-muted">Username ban</div>
-                                    }
+                                    <div class="small text-muted">ID @githubId</div>
                                 }
-                                else
+                                else if (isGithub && ban.GithubUserId is null)
                                 {
-                                    <code class="text-nowrap">@ban.Target</code>
+                                    <div class="small text-muted">Username ban</div>
                                 }
                             </td>
                             <td class="text-break">@ban.Reason</td>
-                            <td class="text-break">@(ban.BannedBy ?? "Unavailable")</td>
                             <td class="text-nowrap" title="@ban.BannedAt.UtcDateTime.ToString("u")">@ban.BannedAt.ToString("yyyy-MM-dd")</td>
                             <td class="text-end">
-                                <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#UserModerationModal"
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#UserModerationModal"
+                                        aria-label="Revoke @kindLabel ban for @target"
                                         data-moderation-action="@Url.Action("RevokeBan", new { kind = ban.Kind, banId = ban.Id })"
-                                        data-title="@(isGithub ? "Revoke GitHub ban?" : "Revoke IP ban?")" data-target="@actionTarget"
-                                        data-submit-label="Revoke ban" data-danger="true"
-                                        data-description="@(isGithub
-                                            ? "Remove this GitHub ban. Accounts stay locked until an admin unlocks them separately. IP bans remain active."
-                                            : "Allow new registrations from this network unless another ban covers it. This does not unlock accounts or remove GitHub bans.")">Revoke</button>
+                                        data-title="Revoke @kindLabel ban?" data-target="@actionTarget" data-description="@description"
+                                        data-submit-label="Revoke ban" data-danger="true">Revoke</button>
                             </td>
                         </tr>
                     }

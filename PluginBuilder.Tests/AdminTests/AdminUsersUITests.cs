@@ -178,12 +178,12 @@ public class AdminUsersUITests(ITestOutputHelper output) : UnitTestBase(output)
         Assert.Equal(githubId, ipId); // Separate tables can assign the same ID to different kinds of ban.
         var githubRow = page.Locator($"#Bans tr[data-ban-kind='github'][data-ban-id='{githubId}']");
         var ipRow = page.Locator($"#Bans tr[data-ban-kind='ip'][data-ban-id='{ipId}']");
-        await Expect(githubRow.GetByRole(AriaRole.Cell, new() { Name = "GitHub", Exact = true })).ToBeVisibleAsync();
+        await Expect(githubRow.GetByText("GitHub", new() { Exact = true })).ToBeVisibleAsync();
         await Expect(ipRow.GetByRole(AriaRole.Cell, new() { Name = "IP", Exact = true })).ToBeVisibleAsync();
         await Expect(githubRow).ToContainTextAsync("321");
         await Expect(githubRow).ToContainTextAsync("confirmed network probe");
         await Expect(ipRow).ToContainTextAsync("203.0.113.42/32");
-        await githubRow.GetByRole(AriaRole.Button, new() { Name = "Revoke", Exact = true }).ClickAsync();
+        await githubRow.GetByRole(AriaRole.Button, new() { NameRegex = new Regex("^Revoke GitHub ban for ") }).ClickAsync();
         await modal.Locator("#ModerationReason").FillAsync("identity ban reviewed");
         await modal.Locator("#ModerationSubmit").ClickAsync();
         await Expect(githubRow).ToHaveCountAsync(0);
@@ -195,7 +195,7 @@ public class AdminUsersUITests(ITestOutputHelper output) : UnitTestBase(output)
         await conn.ExecuteAsync("INSERT INTO ip_bans (network, reason) VALUES ('198.51.100.80/32'::cidr, 'unrelated network')");
         await tester.GoToUrl("/admin/moderation?Count=1&Skip=1");
         await Expect(ipRow).ToContainTextAsync("203.0.113.42/32");
-        await ipRow.GetByRole(AriaRole.Button, new() { Name = "Revoke", Exact = true }).ClickAsync();
+        await ipRow.GetByRole(AriaRole.Button, new() { Name = "Revoke IP ban for 203.0.113.42/32", Exact = true }).ClickAsync();
         await Expect(modal).ToContainTextAsync("unlock");
         await modal.Locator("#ModerationReason").FillAsync("network ban reviewed");
         await modal.Locator("#ModerationSubmit").ClickAsync();
@@ -224,16 +224,18 @@ public class AdminUsersUITests(ITestOutputHelper output) : UnitTestBase(output)
         await tester.GoToUrl("/admin/moderation");
         var page = tester.Page!;
         var modal = page.Locator("#UserModerationModal");
-        await page.Locator("#BanIp").ClickAsync();
-        await modal.Locator("#ModerationNetwork").FillAsync("198.51.100.0/24");
+        await page.Locator("#Ban").ClickAsync();
+        await modal.Locator("#ModerationBanType").SelectOptionAsync("ip");
+        await modal.Locator("#ModerationBanTarget").FillAsync("198.51.100.0/24");
         await modal.Locator("#ModerationReason").FillAsync("confirmed abuse");
         await modal.Locator("#ModerationSubmit").ClickAsync();
         await Expect(modal.Locator("#ModerationError")).ToBeVisibleAsync();
+        await Expect(modal.Locator("#ModerationBanTarget")).ToHaveValueAsync("198.51.100.0/24");
         Assert.Equal(0, await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM ip_bans"));
-        await modal.Locator("#ModerationNetwork").FillAsync("2001:db8:42::123/64");
+        await modal.Locator("#ModerationBanTarget").FillAsync("2001:db8:42::123/64");
         await modal.Locator("#ModerationSubmit").ClickAsync();
         await Expect(page.Locator("#Bans")).ToContainTextAsync("2001:db8:42::/64");
-        await Expect(page).ToHaveURLAsync(new Regex("/admin/moderation$"));
+        await Expect(page).ToHaveURLAsync(new Regex("/admin/moderation\\?kind=ip$"));
         Assert.Equal("2001:db8:42::/64", await conn.QuerySingleAsync<string>("SELECT network::text FROM ip_bans"));
 
         await page.Locator("#AdminNav-Users").ClickAsync();

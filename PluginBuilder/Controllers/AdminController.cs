@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Dapper;
@@ -43,7 +44,8 @@ public class AdminController(
     ListingReviewService listingReviewService,
     AccountModerationService moderation,
     GithubIdentityService githubIdentities,
-    IpBanService ipBans)
+    IpBanService ipBans,
+    EmailDomainBanService emailDomainBans)
     : Controller
 {
     // settings editor
@@ -764,23 +766,83 @@ public class AdminController(
 
     [HttpGet("moderation")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-    public async Task<IActionResult> Moderation(AdminModerationViewModel? model = null)
+    public async Task<IActionResult> Moderation(string? kind = null, int skip = 0, int count = BasePagingViewModel.CountDefault)
     {
-        model ??= new AdminModerationViewModel();
-        model.Skip = Math.Max(0, model.Skip);
-        model.Count = Math.Clamp(model.Count, 1, 500);
+        kind = string.IsNullOrWhiteSpace(kind) ? null : kind.Trim().ToLowerInvariant();
+        if (kind is not (null or "github" or "email-domain" or "ip"))
+            return BadRequest();
+        var model = new AdminModerationViewModel
+        {
+            Kind = kind,
+            Skip = Math.Max(0, skip),
+            Count = Math.Clamp(count, 1, 500),
+            PaginationQuery = kind is null ? [] : new() { ["kind"] = kind }
+        };
         await using var conn = await connectionFactory.Open(HttpContext.RequestAborted);
         model.Bans = (await conn.QueryAsync<AdminBanViewModel>(new CommandDefinition("""
             SELECT b.kind AS Kind, b.id AS Id, b.target AS Target, b.github_user_id AS GithubUserId,
-              b.reason AS Reason, COALESCE(u."Email", b.banned_by) AS BannedBy, b.banned_at AS BannedAt
+              b.reason AS Reason, b.banned_at AS BannedAt
             FROM (
-              SELECT 'github' AS kind, id, github_login AS target, github_user_id, reason, banned_by, banned_at FROM github_bans
+              SELECT 'github' AS kind, id, github_login AS target, github_user_id, reason, banned_at FROM github_bans
               UNION ALL
-              SELECT 'ip', id, network::text, NULL::bigint, reason, banned_by, banned_at FROM ip_bans
-            ) b LEFT JOIN "AspNetUsers" u ON u."Id" = b.banned_by
+              SELECT 'email-domain', id, domain, NULL::bigint, reason, banned_at FROM email_domain_bans
+              UNION ALL
+              SELECT 'ip', id, network::text, NULL::bigint, reason, banned_at FROM ip_bans
+            ) b
+            WHERE @Kind IS NULL OR b.kind = @Kind
             ORDER BY b.banned_at DESC, b.kind, b.id DESC OFFSET @Skip LIMIT @Count
-            """, new { model.Skip, model.Count }, cancellationToken: HttpContext.RequestAborted))).ToList();
+            """, new { model.Kind, model.Skip, model.Count }, cancellationToken: HttpContext.RequestAborted))).ToList();
         return View(model);
+    }
+
+    [HttpPost("moderation/bans")]
+    public async Task<IActionResult> CreateBan(CreateBanRequest request, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+        var kind = request.Kind.Trim().ToLowerInvariant();
+        var target = kind switch
+        {
+            "github" => GithubIdentityService.NormalizeTarget(request.Target),
+            "email-domain" => EmailDomainBanService.NormalizeDomain(request.Target),
+            "ip" => IpBanService.NormalizeNetwork(request.Target),
+            _ => null
+        };
+        if (kind is not ("github" or "email-domain" or "ip"))
+            ModelState.AddModelError(nameof(request.Kind), "Choose GitHub, email domain or IP.");
+        else if (target is null)
+            ModelState.AddModelError(nameof(request.Target), kind switch
+            {
+                "github" => "Enter a GitHub username or a positive numeric user ID.",
+                "email-domain" => "Enter a domain such as example.com, without an email address, URL or wildcard.",
+                _ => "Provide an IPv4 address, an IPv6 address, or an explicit IPv6 /64 network."
+            });
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        var actor = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        long id;
+        try
+        {
+            id = kind switch
+            {
+                "github" => await githubIdentities.Create(target!, request.Reason.Trim(), actor, null, cancellationToken),
+                "email-domain" => await emailDomainBans.Create(target!, request.Reason.Trim(), actor, null, cancellationToken),
+                _ => await ipBans.Create(target!, request.Reason.Trim(), actor, null, cancellationToken)
+            };
+        }
+        catch (GithubIdentityService.ProtectedIdentityException)
+        {
+            return Conflict(new { message = "Server admin GitHub identities cannot be banned." });
+        }
+        TempData[TempDataConstant.SuccessMessage] = "Ban active.";
+        return Json(new { id, kind, redirectUrl = Url.Action(nameof(Moderation), new { kind }) });
+    }
+
+    public sealed class CreateBanRequest : AdminModerationController.ReasonRequest
+    {
+        [Required, MaxLength(20)] public string Kind { get; set; } = "";
+        [Required, MaxLength(253)] public string Target { get; set; } = "";
     }
 
     [HttpPost("users/{userId}/{operation}")]
@@ -826,19 +888,6 @@ public class AdminController(
         return Json(new { redirectUrl = Url.IsLocalUrl(returnUrl) ? returnUrl : Url.Action(nameof(Users)) });
     }
 
-    [HttpPost("moderation/ip-bans")]
-    public async Task<IActionResult> BanIp(AdminModerationController.IpBanRequest request, CancellationToken cancellationToken)
-    {
-        var network = IpBanService.NormalizeNetwork(request.Network);
-        if (network is null)
-            ModelState.AddModelError(nameof(request.Network), "Provide an IPv4 address, an IPv6 address, or an explicit IPv6 /64 network.");
-        if (!ModelState.IsValid)
-            return ValidationProblem(ModelState);
-        await ipBans.Create(network!, request.Reason.Trim(), User.FindFirstValue(ClaimTypes.NameIdentifier), null, cancellationToken);
-        TempData[TempDataConstant.SuccessMessage] = $"IP ban active: {network}. Accounts sharing the IP were not locked.";
-        return Json(new { redirectUrl = Url.Action(nameof(Moderation)) });
-    }
-
     [HttpPost("moderation/bans/{kind}/{banId:long}/revoke")]
     public async Task<IActionResult> RevokeBan(string kind, long banId, AdminModerationController.ReasonRequest request,
         string? returnUrl, CancellationToken cancellationToken)
@@ -852,13 +901,14 @@ public class AdminController(
         {
             "github" => await githubIdentities.Revoke(banId, request.Reason.Trim(), actor, null, cancellationToken),
             "ip" => await ipBans.Revoke(banId, request.Reason.Trim(), actor, null, cancellationToken),
+            "email-domain" => await emailDomainBans.Revoke(banId, request.Reason.Trim(), actor, null, cancellationToken),
             _ => (bool?)null
         };
         if (revoked is null)
             return NotFound();
         if (revoked is false)
             return NotFound(new { message = "This ban is no longer active. Reload the page." });
-        TempData[TempDataConstant.SuccessMessage] = $"{(kind == "github" ? "GitHub" : "IP")} ban revoked. Locked accounts stay locked; use Unlock separately.";
+        TempData[TempDataConstant.SuccessMessage] = $"{(kind == "github" ? "GitHub" : kind == "email-domain" ? "Email domain" : "IP")} ban revoked.";
         return Json(new { redirectUrl = Url.IsLocalUrl(returnUrl) ? returnUrl
             : Url.Action(nameof(Moderation)) });
     }
