@@ -1270,7 +1270,7 @@
           "Admin Agent"
         ],
         "summary": "List active GitHub bans",
-        "description": "Requires a current ServerAdmin account. Returns all bans ordered by id. Use the ban row id, not githubUserId, to revoke a ban. A null githubUserId identifies a case-insensitive legacy username ban.",
+        "description": "Requires a current ServerAdmin account. Returns all bans ordered by id. Use the ban row id, not githubUserId, to revoke a ban. A null githubUserId identifies a case-insensitive username ban, created manually or from a verified legacy account during Burn.",
         "security": [
           {
             "Basic": []

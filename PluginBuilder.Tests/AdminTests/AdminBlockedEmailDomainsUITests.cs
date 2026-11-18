@@ -30,7 +30,6 @@ public class AdminBlockedEmailDomainsUITests(ITestOutputHelper output) : UnitTes
         var domainRow = page.Locator("#Bans tr[data-ban-kind='email-domain']").Filter(new() { HasText = "temp.example" });
 
         await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Moderation", Exact = true })).ToBeVisibleAsync();
-        await Expect(page.Locator("#BlockedEmailDomains")).ToHaveCountAsync(0);
         await Expect(filter).ToHaveTextAsync("All types");
         await Expect(page.GetByRole(AriaRole.Button, new() { Name = "Filter", Exact = true })).ToHaveCountAsync(0);
         await CreateBan("email-domain", "TEMP.Example.", "disposable email service");

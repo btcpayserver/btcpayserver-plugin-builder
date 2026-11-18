@@ -204,9 +204,10 @@ with its admin event, which records the acting account and token, so the event s
 shows every action an agent took and why.
 
 Server admins can also use **Users** (`/admin/users`) to lock, unlock or burn an account,
-and **Moderation** (`/admin/moderation`) to review and revoke GitHub and IP bans in a single list. This page also
-accepts manual IP bans. Each action asks for a reason and confirms its scope; revoking a
-ban never unlocks accounts. Lock and Burn remain separate actions.
+and **Moderation** (`/admin/moderation`) to create, review and revoke GitHub, email domain
+and IP bans in a single list. Its **Ban** dialog asks for the type, target and reason.
+Each action confirms its scope; revoking a ban never unlocks accounts. Lock and Burn
+remain separate actions.
 
 - **Lock** sets the account's Identity lockout (indefinite unless `until` is given) and
   rotates its security stamp. Basic authentication and admin tokens are refused at once;
@@ -225,11 +226,18 @@ ban never unlocks accounts. Lock and Burn remain separate actions.
   move a finished build, so a cancellation that races the final publish wins or is refused
   with HTTP 409. The broker job itself is not killed; its lease deadline reclaims it. An
   artifact uploaded just before a losing publish is left unreferenced in storage.
+- **Manual GitHub bans** accept a numeric user ID or an explicit username, with an optional
+  `@` prefix. A digits-only target is an ID; use `@123` to target the username `123`.
+  Creating a ban does not query GitHub, require an existing verified local account or
+  resolve a stored username to an ID. Known verified ServerAdmin identities are protected.
+  Creation does not lock accounts, cancel builds or create an IP ban; existing GitHub
+  verification and build checks enforce the ban against verified identities.
+  Username bans ignore case and can miss renamed users or affect a later owner of the
+  same name; numeric ID bans survive renames.
 - **Burn** is separate from Lock. It bans the numeric GitHub owner ID when stored;
   the display login does not affect ID bans. For verified legacy accounts without an
-  ID, it instead bans the stored username, ignoring case. Unverified profile names
-  cannot create or match a username ban. Username bans can miss renamed users or
-  affect a later owner of the same name; ID bans survive renames.
+  ID, it instead bans the stored verified username, ignoring case. Burn does not derive
+  username bans from unverified profile names.
   Burn locks the target and verified accounts matching the ban, cancels their
   unfinished builds, and leaves published versions intact. Related server admins
   are skipped and reported; targeting a server admin returns HTTP 409. Without a
