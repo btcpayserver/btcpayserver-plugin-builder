@@ -5398,6 +5398,62 @@ fieldset:disabled .btn {
     display: block;
 }
 
+.plugin-media-carousel .plugin-media-video {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    object-fit: contain;
+    background: #000;
+    display: block;
+}
+
+.plugin-media-carousel .plugin-media-video-cover {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    padding: 1rem;
+    border: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    text-align: center;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.plugin-media-carousel .plugin-media-video-cover:hover,
+.plugin-media-carousel .plugin-media-video-cover:focus-visible {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.plugin-media-carousel .plugin-media-video-cover-icon {
+    width: 4rem;
+    height: 4rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    /* the triangle reads off centre without a nudge */
+    padding-left: 0.25rem;
+    background: rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.85);
+}
+
+.plugin-media-carousel .plugin-media-video-cover-text {
+    font-weight: 600;
+}
+
+.plugin-media-carousel .plugin-media-video-cover-host {
+    font-size: 0.8125rem;
+    opacity: 0.75;
+    word-break: break-all;
+}
+
 .plugin-media-carousel .plugin-media-nav {
     position: absolute;
     top: 50%;
