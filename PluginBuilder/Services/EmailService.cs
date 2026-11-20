@@ -71,7 +71,7 @@ BTCPay Server Plugin Builder Team
         {
             if (cancellationToken.IsCancellationRequested)
             {
-                LogCanceledEmailBatch(addresses, i, "not_attempted");
+                LogCanceledEmailBatch(i, "not_attempted");
                 cancellationToken.ThrowIfCancellationRequested();
             }
             var email = addresses[i];
@@ -86,7 +86,7 @@ BTCPay Server Plugin Builder Team
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                LogCanceledEmailBatch(addresses, i, "unconfirmed");
+                LogCanceledEmailBatch(i, "unconfirmed");
                 throw;
             }
             catch (Exception ex)
@@ -109,15 +109,14 @@ BTCPay Server Plugin Builder Team
         return recipients;
     }
 
-    private void LogCanceledEmailBatch(InternetAddress[] addresses, int acceptedCount, string currentStatus)
+    private void LogCanceledEmailBatch(int acceptedCount, string currentStatus)
     {
-        var accepted = new InternetAddressList(addresses.Take(acceptedCount));
-        var current = new InternetAddressList([addresses[acceptedCount]]);
+        var acceptedPositions = acceptedCount == 0 ? "none" : $"1-{acceptedCount}";
         logger.LogWarning(
-            "Email batch canceled by caller. SMTP accepted {AcceptedCount} recipient(s): {AcceptedRecipients}. Current recipient: {CurrentRecipient}; status: {CurrentStatus}.",
+            "Email batch canceled by caller. SMTP accepted {AcceptedCount} recipient(s) at positions {AcceptedPositions}; current recipient position {CurrentPosition}; status: {CurrentStatus}.",
             acceptedCount,
-            string.Join(", ", accepted.Mailboxes.Select(mailbox => mailbox.Address)),
-            string.Join(", ", current.Mailboxes.Select(mailbox => mailbox.Address)),
+            acceptedPositions,
+            acceptedCount + 1,
             currentStatus);
     }
 
