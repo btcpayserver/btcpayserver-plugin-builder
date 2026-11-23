@@ -113,6 +113,7 @@
                     <div class="form-group">
                         <label asp-for="PluginSettings.VideoUrl" class="form-label"></label>
                         <input asp-for="PluginSettings.VideoUrl" class="form-control" placeholder="https://www.youtube.com/watch?v=..." />
+                        <div class="form-text">YouTube, Vimeo, or a direct HTTPS link that serves a browser-playable video file.</div>
                         <span asp-validation-for="PluginSettings.VideoUrl" class="text-danger"></span>
                     </div>
                     <div class="form-group">

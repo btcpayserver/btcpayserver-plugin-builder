@@ -26,16 +26,16 @@
     var currentVersion = Model.PluginVersions.FirstOrDefault(v => v.Version == Model.Plugin.Version);
     var currentShortVersion = string.Join(".", Model.Plugin.Version.Split('.').Take(3));
 
-    var videoEmbedUrl = Model.Plugin.VideoUrl.GetVideoEmbedUrl();
+    var videoSource = Model.Plugin.VideoUrl.GetVideoSource();
     var videoThumbUrl = Model.Plugin.VideoUrl.GetVideoThumbnailUrl();
     var screenshots = Model.Plugin.Images?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList() ?? new List<string>();
-    var mediaItems = new List<(bool IsVideo, string MediaUrl, string? ThumbUrl, string Alt, string ThumbLabel)>();
+    var mediaItems = new List<(VideoSource? Video, string MediaUrl, string? ThumbUrl, string Alt, string ThumbLabel)>();
 
-    if (!string.IsNullOrWhiteSpace(videoEmbedUrl))
-        mediaItems.Add((true, videoEmbedUrl, videoThumbUrl, "Plugin video", "Show video"));
+    if (videoSource != null)
+        mediaItems.Add((videoSource, videoSource.Url, videoThumbUrl, "Plugin video", "Show video"));
 
     for (var i = 0; i < screenshots.Count; i++)
-        mediaItems.Add((false, screenshots[i], screenshots[i], $"{Model.Plugin.PluginTitle} screenshot {i + 1}", $"Show screenshot {i + 1}"));
+        mediaItems.Add((null, screenshots[i], screenshots[i], $"{Model.Plugin.PluginTitle} screenshot {i + 1}", $"Show screenshot {i + 1}"));
 }
 
 @section Meta {
@@ -143,13 +143,31 @@
                                 {
                                     var m = mediaItems[i];
                                     <div class="plugin-media-slide @(i == 0 ? "is-active" : "d-none")" data-media-slide aria-hidden="@(i == 0 ? "false" : "true")">
-                                        @if (m.IsVideo)
+                                        @if (m.Video is { Kind: VideoPlayerKind.Embed })
                                         {
                                             <iframe data-video-embed data-video-src="@m.MediaUrl"
                                                     title="Plugin video"
                                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                                     allowfullscreen loading="lazy" style="border: none;">
                                             </iframe>
+                                        }
+                                        else if (m.Video is { Kind: VideoPlayerKind.File })
+                                        {
+                                            var videoHost = new Uri(m.MediaUrl).Host;
+                                            @* No src is rendered: it is assigned from data-video-src on an explicit click, so the
+                                               request to the third party host is always user triggered rather than left to preload heuristics.
+                                               The cover tells the visitor that the player needs a click and which host it will reach. *@
+                                            <video data-video-file data-video-src="@m.MediaUrl" class="plugin-media-video" title="Plugin video"
+                                                   controls playsinline preload="none">
+                                                Your browser does not support embedded videos.
+                                                <a href="@m.MediaUrl" rel="noreferrer noopener" target="_blank">Download the video</a>.
+                                            </video>
+                                            <button type="button" class="plugin-media-video-cover" data-video-cover
+                                                    aria-label="Play video, loaded from @videoHost">
+                                                <span class="plugin-media-video-cover-icon"><i class="fa fa-play" aria-hidden="true"></i></span>
+                                                <span class="plugin-media-video-cover-text">Play video</span>
+                                                <span class="plugin-media-video-cover-host">Loads from @videoHost</span>
+                                            </button>
                                         }
                                         else
                                         {
@@ -164,7 +182,7 @@
                                 {
                                     var m = mediaItems[i];
                                     <button type="button" class="plugin-media-thumb @(i == 0 ? "is-active" : "")" data-media-thumb aria-label="@m.ThumbLabel" aria-current="@(i == 0 ? "true" : "false")">
-                                        @if (m.IsVideo)
+                                        @if (m.Video != null)
                                         {
                                             @if (!string.IsNullOrWhiteSpace(m.ThumbUrl))
                                             {
@@ -586,6 +604,23 @@
 
         let activeIndex = Math.max(0, slides.findIndex(s => s.classList.contains('is-active')));
 
+        // The file player stays sourceless until the visitor acts on it, so no request reaches the
+        // host that serves the video until they ask for it.
+        slides.forEach(s => {
+            const video = s.querySelector('video[data-video-file]');
+            if (!video || !video.dataset.videoSrc) return;
+            const cover = s.querySelector('[data-video-cover]');
+            const load = play => {
+                cover?.remove();
+                if (video.src) return;
+                video.src = video.dataset.videoSrc;
+                if (play) video.play?.().catch(() => { });
+            };
+            cover?.addEventListener('click', () => load(true));
+            video.addEventListener('click', () => load(true));
+            video.addEventListener('keydown', () => load(false));
+        });
+
         const setActive = (index, scroll = false) => {
             activeIndex = (index + slides.length) % slides.length;
             slides.forEach((s, i) => {
@@ -595,6 +630,8 @@
                 s.setAttribute('aria-hidden', on ? 'false' : 'true');
                 const iframe = s.querySelector('iframe[data-video-embed]');
                 if (iframe) on ? (iframe.src || (iframe.src = iframe.dataset.videoSrc)) : iframe.removeAttribute('src');
+                const video = s.querySelector('video[data-video-file]');
+                if (video && !on) video.pause();
             });
             thumbs.forEach((t, i) => {
                 const on = i === activeIndex;
