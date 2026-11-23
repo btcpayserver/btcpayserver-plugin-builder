@@ -42,7 +42,8 @@ public class HomeController(
     AdminSettingsCache adminSettingsCache,
     IdentityDbContext<IdentityUser> identityDbContext,
     ITurnstileVerifier turnstile,
-    IpBanService ipBans)
+    IpBanService ipBans,
+    EmailDomainBanService emailDomainBans)
     : Controller
 {
     [AllowAnonymous]
@@ -290,6 +291,12 @@ public class HomeController(
         {
             var connection = (NpgsqlConnection)identityDbContext.Database.GetDbConnection();
             var transaction = (NpgsqlTransaction)registration.GetDbTransaction();
+            if (await emailDomainBans.IsBanned(connection, transaction, model.Email, HttpContext.RequestAborted))
+            {
+                ModelState.AddModelError(nameof(model.Email), "Please provide a valid email address.");
+                return View(model);
+            }
+
             if (signupIp is not null && await ipBans.IsBanned(connection, transaction, signupIp, HttpContext.RequestAborted))
             {
                 ModelState.AddModelError(nameof(model.Email), "Please provide a valid email address.");
