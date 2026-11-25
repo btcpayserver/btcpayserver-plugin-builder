@@ -3880,10 +3880,25 @@
             "nullable": true,
             "description": "URL of the plugin logo image."
           },
-          "documentation": {
+          "builderUrl": {
             "type": "string",
             "nullable": true,
             "description": "URL to the plugin's public page on the Plugin Builder."
+          },
+          "docUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Documentation URL configured for the plugin."
+          },
+          "repositoryUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Browsable URL of the source repository for this build."
+          },
+          "commitUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL to browse the source at this build's exact commit."
           },
           "pluginTitle": {
             "type": "string",

@@ -69,7 +69,14 @@ public class PublisherApiDocumentationTests
         AssertSchema("BuildInfo", JObject.FromObject(new BuildInfo(), api));
         AssertSchema("PluginManifest", JObject.FromObject(new PluginManifest(), api));
         AssertSchema("PluginDependency", JObject.FromObject(new PluginManifest.PluginDependency(), api));
-        AssertSchema("PublishedVersion", JObject.FromObject(new PublishedVersion(), api));
+        var published = JObject.FromObject(new PublishedVersion
+        {
+            Documentation = "https://example.com/public/plugins/example",
+            BuilderUrl = "https://example.com/public/plugins/example"
+        }, api);
+        Assert.Equal(published.Value<string>("builderUrl"), published.Value<string>("documentation"));
+        Assert.True(published.Remove("documentation"));
+        AssertSchema("PublishedVersion", published);
         AssertSchema("CreateBuildRequest", JObject.FromObject(new CreateBuildRequest(), api));
         AssertSchema("InstalledPluginRequest", JObject.FromObject(new InstalledPluginRequest("", ""), api));
         AssertSchema("ReleaseVersionRequest", JObject.FromObject(new ReleaseVersionRequest(), api));

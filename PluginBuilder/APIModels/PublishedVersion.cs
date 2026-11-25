@@ -16,7 +16,12 @@ public class PublishedVersion
     public JObject BuildInfo { get; set; }
     public JObject ManifestInfo { get; set; }
     public string PluginLogo { get; set; }
+    // Kept in the JSON response for older clients. Use BuilderUrl for new clients.
     public string Documentation { get; set; }
+    public string BuilderUrl { get; set; }
+    public string DocUrl { get; set; }
+    public string RepositoryUrl { get; set; }
+    public string CommitUrl { get; set; }
     public string PluginTitle { get; set; }
     public string Description { get; set; }
     public string Changelog { get; set; }

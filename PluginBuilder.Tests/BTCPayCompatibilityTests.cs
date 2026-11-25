@@ -67,6 +67,34 @@ public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(log
     }
 
     [Fact]
+    public async Task DirectoryApiReturnsExplicitPluginLinksAndPreservesLegacyDocumentation()
+    {
+        await using var tester = Create();
+        tester.ReuseDatabase = false;
+        await tester.Start();
+
+        var ownerId = await tester.CreateFakeUserAsync();
+        var pluginSlug = "published-links-" + Guid.NewGuid().ToString("N")[..8];
+        await tester.CreatePublishedPluginAsync(ownerId, pluginSlug);
+        const string docUrl = "https://example.org/plugin-guide";
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings
+        {
+            PluginTitle = pluginSlug,
+            Documentation = docUrl
+        }, PluginVisibilityEnum.Listed);
+
+        var client = tester.CreateHttpClient();
+        var json = JObject.Parse(await client.GetStringAsync($"/api/v1/plugins/directory/{pluginSlug}"));
+        var builderUrl = new Uri(client.BaseAddress!, $"/public/plugins/{pluginSlug}").AbsoluteUri;
+        Assert.Equal(builderUrl, json.Value<string>("builderUrl"));
+        Assert.Equal(builderUrl, json.Value<string>("documentation"));
+        Assert.Equal(docUrl, json.Value<string>("docUrl"));
+        Assert.Equal(ServerTester.RepoUrl, json.Value<string>("repositoryUrl"));
+        Assert.Equal($"{ServerTester.RepoUrl}/tree/{new string('a', 40)}", json.Value<string>("commitUrl"));
+    }
+
+    [Fact]
     public async Task ApiCompatibilityFilters_NormalizePrereleaseHostVersions_AndKeepPluginVersionRoutesStrict()
     {
         await using var tester = Create();
