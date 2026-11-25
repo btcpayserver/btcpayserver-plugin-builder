@@ -85,7 +85,7 @@ public class BTCPayCompatibilityTests(ITestOutputHelper logs) : UnitTestBase(log
         }, PluginVisibilityEnum.Listed);
 
         var client = tester.CreateHttpClient();
-        var json = JObject.Parse(await client.GetStringAsync($"/api/v1/plugins/directory/{pluginSlug}"));
+        var json = JObject.Parse(await client.GetStringAsync($"/api/v1/plugins/directory/{pluginSlug}?includePreRelease=true"));
         var builderUrl = new Uri(client.BaseAddress!, $"/public/plugins/{pluginSlug}").AbsoluteUri;
         Assert.Equal(builderUrl, json.Value<string>("builderUrl"));
         Assert.Equal(builderUrl, json.Value<string>("documentation"));
