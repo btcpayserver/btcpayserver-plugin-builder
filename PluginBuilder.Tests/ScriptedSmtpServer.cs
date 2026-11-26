@@ -23,6 +23,8 @@ internal sealed class ScriptedSmtpServer : IAsyncDisposable
     public string? RejectRecipient { get; set; }
     public string? RejectDataRecipient { get; set; }
     public int DataRejectionStatus { get; set; } = 554;
+    public string? FinalResponseRecipient { get; set; }
+    public int FinalResponseStatus { get; set; } = 250;
     public string? DisconnectAfterDataRecipient { get; set; }
     public bool RejectQuit { get; set; }
     public TimeSpan DeliveryDelay { get; set; }
@@ -92,10 +94,12 @@ internal sealed class ScriptedSmtpServer : IAsyncDisposable
                     await BeforeMessageAccepted(recipient!, _stop.Token);
                 if (DeliveryDelay > TimeSpan.Zero)
                     await Task.Delay(DeliveryDelay, _stop.Token);
-                AcceptedRecipients.Enqueue(recipient!);
+                var status = recipient == FinalResponseRecipient ? FinalResponseStatus : 250;
+                if (status is >= 200 and < 300)
+                    AcceptedRecipients.Enqueue(recipient!);
                 if (recipient == DisconnectAfterDataRecipient)
                     return;
-                await writer.WriteLineAsync("250 Message accepted");
+                await writer.WriteLineAsync($"{status} Message response from test server");
             }
             else if (command == "RSET")
             {
