@@ -35,6 +35,58 @@ public class EmailDeliveryTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(new[] { "first@example.com" }, smtp.AcceptedRecipients);
     }
 
+    [Theory]
+    [InlineData(450)]
+    [InlineData(554)]
+    public async Task RejectedDataCommandPreservesAcceptedAndUnsentRecipients(int statusCode)
+    {
+        await using var smtp = new ScriptedSmtpServer
+        {
+            RejectDataRecipient = Second,
+            DataRejectionStatus = statusCode
+        };
+        await using var tester = Create();
+        var emails = await ConfigureEmailService(tester, smtp);
+
+        var error = await Assert.ThrowsAsync<EmailDeliveryException>(() =>
+            emails.SendEmail(Recipients, "Rejected DATA command", "Test message"));
+
+        Assert.Equal(new[] { First }, error.AcceptedRecipients);
+        Assert.Equal(new[] { Second, Third }, error.UnsentRecipients);
+        Assert.Null(error.UncertainRecipient);
+        var rejection = Assert.IsType<SmtpCommandException>(error.InnerException);
+        Assert.Equal(SmtpErrorCode.UnexpectedStatusCode, rejection.ErrorCode);
+        Assert.Equal(statusCode, (int)rejection.StatusCode);
+        Assert.Equal(new[] { "first@example.com", Second }, smtp.AttemptedRecipients);
+        Assert.Equal(new[] { "first@example.com" }, smtp.ReceivedDataRecipients);
+        Assert.Equal(new[] { "first@example.com" }, smtp.AcceptedRecipients);
+    }
+
+    [Fact]
+    public async Task UnexpectedPositiveDataResponseIsNotAssumedRejected()
+    {
+        await using var smtp = new ScriptedSmtpServer
+        {
+            RejectDataRecipient = Second,
+            DataRejectionStatus = 250
+        };
+        await using var tester = Create();
+        var emails = await ConfigureEmailService(tester, smtp);
+
+        var error = await Assert.ThrowsAsync<EmailDeliveryException>(() =>
+            emails.SendEmail(Recipients, "Unexpected DATA response", "Test message"));
+
+        Assert.Equal(new[] { First }, error.AcceptedRecipients);
+        Assert.Equal(new[] { Third }, error.UnsentRecipients);
+        Assert.Equal(Second, error.UncertainRecipient);
+        var response = Assert.IsType<SmtpCommandException>(error.InnerException);
+        Assert.Equal(SmtpErrorCode.UnexpectedStatusCode, response.ErrorCode);
+        Assert.Equal(SmtpStatusCode.Ok, response.StatusCode);
+        Assert.Equal(new[] { "first@example.com", Second }, smtp.AttemptedRecipients);
+        Assert.Equal(new[] { "first@example.com" }, smtp.ReceivedDataRecipients);
+        Assert.Equal(new[] { "first@example.com" }, smtp.AcceptedRecipients);
+    }
+
     [Fact]
     public async Task LostDataResponseLeavesCurrentRecipientUncertain()
     {

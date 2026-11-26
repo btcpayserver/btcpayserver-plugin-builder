@@ -91,10 +91,12 @@ BTCPay Server Plugin Builder Team
             }
             catch (Exception ex)
             {
-                var rejected = ex is SmtpCommandException
-                {
-                    ErrorCode: SmtpErrorCode.SenderNotAccepted or SmtpErrorCode.RecipientNotAccepted or SmtpErrorCode.MessageNotAccepted
-                };
+                // MailKit reports a negative DATA reply before sending the body as UnexpectedStatusCode.
+                var rejected = ex is SmtpCommandException smtpException &&
+                    (smtpException.ErrorCode is SmtpErrorCode.SenderNotAccepted
+                        or SmtpErrorCode.RecipientNotAccepted or SmtpErrorCode.MessageNotAccepted ||
+                     smtpException.ErrorCode == SmtpErrorCode.UnexpectedStatusCode &&
+                     (int)smtpException.StatusCode is >= 400 and < 600);
                 // A lost response can mean the server accepted this message. Do not offer it for blind retry.
                 throw new EmailDeliveryException(recipients,
                     addresses.Skip(i + (rejected ? 0 : 1)).Select(address => address.ToString()).ToArray(),

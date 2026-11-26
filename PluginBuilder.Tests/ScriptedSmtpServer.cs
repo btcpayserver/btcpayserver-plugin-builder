@@ -21,11 +21,14 @@ internal sealed class ScriptedSmtpServer : IAsyncDisposable
 
     public int Port { get; }
     public string? RejectRecipient { get; set; }
+    public string? RejectDataRecipient { get; set; }
+    public int DataRejectionStatus { get; set; } = 554;
     public string? DisconnectAfterDataRecipient { get; set; }
     public bool RejectQuit { get; set; }
     public TimeSpan DeliveryDelay { get; set; }
     public Func<string, CancellationToken, Task>? BeforeMessageAccepted { get; set; }
     public ConcurrentQueue<string> AttemptedRecipients { get; } = new();
+    public ConcurrentQueue<string> ReceivedDataRecipients { get; } = new();
     public ConcurrentQueue<string> AcceptedRecipients { get; } = new();
     public Task FirstMessageReceived => _firstMessageReceived.Task;
 
@@ -70,6 +73,11 @@ internal sealed class ScriptedSmtpServer : IAsyncDisposable
             }
             else if (command == "DATA")
             {
+                if (recipient == RejectDataRecipient)
+                {
+                    await writer.WriteLineAsync($"{DataRejectionStatus} DATA rejected by test server");
+                    continue;
+                }
                 await writer.WriteLineAsync("354 End with a dot");
                 string? line;
                 do
@@ -78,6 +86,7 @@ internal sealed class ScriptedSmtpServer : IAsyncDisposable
                     if (line is null)
                         return;
                 } while (line != ".");
+                ReceivedDataRecipients.Enqueue(recipient!);
                 _firstMessageReceived.TrySetResult();
                 if (BeforeMessageAccepted is not null)
                     await BeforeMessageAccepted(recipient!, _stop.Token);
