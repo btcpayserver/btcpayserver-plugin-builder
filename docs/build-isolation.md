@@ -104,7 +104,7 @@ The broker owns [the Squid policy](../PluginBuilder.BuildBroker/squid.conf) and
 mounts it read-only into each proxy. It allows only HTTPS CONNECT on port 443 to
 these exact hostnames:
 
-- `github.com`, `www.github.com`
+- `github.com`, `www.github.com`, `release-assets.githubusercontent.com`
 - `gitlab.com`, `www.gitlab.com`
 - `api.nuget.org`, `globalcdn.nuget.org`, `www.nuget.org`
 
