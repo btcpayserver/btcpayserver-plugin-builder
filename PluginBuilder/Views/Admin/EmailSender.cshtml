@@ -6,6 +6,25 @@
 
 <div class="row">
     <div class="col-xl-8 col-xxl-constrain">
+        @if (Model.AcceptedRecipients.Count > 0)
+        {
+            <div id="accepted-recipients" class="mb-3">
+                <strong>Accepted by the mail server</strong>
+                <ul>
+                    @foreach (var recipient in Model.AcceptedRecipients)
+                    {
+                        <li>@recipient</li>
+                    }
+                </ul>
+            </div>
+        }
+        @if (Model.UncertainRecipient is not null)
+        {
+            <div id="uncertain-recipient" class="alert alert-warning">
+                <strong>Delivery unconfirmed: @Model.UncertainRecipient</strong>
+                <p class="mb-0">Check the mail server's logs before sending to this address again. The server may already have accepted the message, so it has been removed from the recipient field.</p>
+            </div>
+        }
         <form asp-action="EmailSender">
             <div class="form-group">
                 <label asp-for="From" class="form-label"></label>
