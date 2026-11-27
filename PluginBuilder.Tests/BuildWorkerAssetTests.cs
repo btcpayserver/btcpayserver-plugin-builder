@@ -84,6 +84,7 @@ public class BuildWorkerAssetTests
             {
                 "github.com",
                 "www.github.com",
+                "release-assets.githubusercontent.com",
                 "gitlab.com",
                 "www.gitlab.com",
                 "api.nuget.org",
