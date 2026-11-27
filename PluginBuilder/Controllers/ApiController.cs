@@ -32,7 +32,8 @@ public class ApiController(
     BuildAccessLogic buildAccessLogic,
     IHttpClientFactory httpClientFactory,
     ServerEnvironment serverEnvironment,
-    AdminSettingsCache adminSettingsCache)
+    AdminSettingsCache adminSettingsCache,
+    GitHostingProviderFactory gitHostingProviderFactory)
     : ControllerBase
 {
     private sealed class BuildRow
@@ -697,6 +698,17 @@ public class ApiController(
         string? changelog)
     {
         var effectiveManifestInfo = ApplyEffectiveBtcPayCompatibility(manifestInfo, btcpayMinVersion, btcpayMaxVersion);
+        var builderUrl = PluginPublicPage(pluginSlug);
+        var gitRepository = buildInfo["gitRepository"]?.ToString();
+        var gitProvider = gitHostingProviderFactory.GetProvider(gitRepository);
+        string? repositoryUrl = null;
+        if (gitProvider is not null &&
+            Uri.TryCreate(gitRepository, UriKind.Absolute, out var repositoryUri) &&
+            repositoryUri.Scheme is "http" or "https" &&
+            gitProvider.ParseRepository(gitRepository!) is { } repository)
+        {
+            repositoryUrl = $"{repositoryUri.Scheme}://{repositoryUri.Authority}/{repository.Owner}/{repository.RepoName}";
+        }
 
         return new PublishedVersion
         {
@@ -711,7 +723,12 @@ public class ApiController(
             Changelog = changelog,
             ManifestInfo = effectiveManifestInfo,
             PluginLogo = settings?.Logo,
-            Documentation = PluginPublicPage(pluginSlug),
+            Documentation = builderUrl,
+            BuilderUrl = builderUrl,
+            DocUrl = settings?.Documentation,
+            RepositoryUrl = repositoryUrl,
+            CommitUrl = repositoryUrl is null ? null :
+                gitProvider?.GetSourceUrl(repositoryUrl, buildInfo["gitCommit"]?.ToString(), null),
             VideoUrl = settings?.VideoUrl,
             Fingerprint = fingerprint
         };
